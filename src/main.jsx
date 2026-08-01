@@ -1,7 +1,8 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";
-import { firebaseConfigurado } from "./firebaseStorage";
+import { firebaseConfigurado } from "./firebaseApp";
+import "./firebaseStorage";
 import App from "./App.jsx";
 
 function TelaConfiguracaoPendente() {

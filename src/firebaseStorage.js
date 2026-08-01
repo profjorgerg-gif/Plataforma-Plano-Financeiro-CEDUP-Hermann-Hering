@@ -3,26 +3,20 @@
 // usa (get/set/delete/list). Dentro do Claude.ai essa API é fornecida pelo
 // ambiente de artefatos; fora dele (como aqui, hospedado no GitHub Pages),
 // implementamos a mesma interface por cima do Firestore, então nenhuma linha
-// de App.jsx precisa mudar.
+// das telas de módulos precisa mudar.
 //
 // Toda a plataforma sempre chama window.storage com shared=true (os dados são
-// intencionalmente compartilhados entre professor e equipes), então guardamos
-// tudo em uma única coleção "kv" do Firestore, um documento por chave.
+// intencionalmente compartilhados entre professores, mestres e equipes),
+// então guardamos tudo em uma única coleção "kv" do Firestore, um documento
+// por chave.
 // ============================================================================
 
-import { initializeApp } from "firebase/app";
 import {
   getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs,
 } from "firebase/firestore";
-import { firebaseConfig } from "./firebaseConfig";
+import { app, firebaseConfigurado } from "./firebaseApp";
 
-const precisaConfigurar = Object.values(firebaseConfig).some((v) => !v || v.includes("COLE_AQUI"));
-
-let db = null;
-if (!precisaConfigurar) {
-  const app = initializeApp(firebaseConfig);
-  db = getFirestore(app);
-}
+const db = app ? getFirestore(app) : null;
 
 // Firestore não aceita "/" em IDs de documento; nossas chaves não usam "/",
 // mas sanitizamos mesmo assim por segurança.
@@ -62,4 +56,4 @@ window.storage = {
   },
 };
 
-export const firebaseConfigurado = !precisaConfigurar;
+export { firebaseConfigurado };

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, LineChart, Line,
@@ -9,11 +9,13 @@ import {
   UserCog, Gauge, FileBarChart, Target, ClipboardList, History, MessageSquare,
   Plus, Trash2, ChevronRight, ChevronDown, CheckCircle2, Circle, AlertTriangle,
   Save, Copy, ArrowLeft, BookOpen, Building2, KeyRound, Mail, Lock, ShieldCheck,
-  Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus,
+  Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
+  ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil,
 } from "lucide-react";
 import {
   observarSessao, cadastrar, entrar, sair, recuperarSenha, traduzErroAuth, CODIGO_MESTRE,
 } from "./firebaseAuth";
+import { extrairAlunosDoPDF, normalizarNome } from "./rosterPdf";
 
 // ============================================================================
 // CONSTANTES / HELPERS
@@ -1219,8 +1221,180 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
   );
 }
 
+function FormNovaEmpresa({ turmaId, equipes, setEquipes }) {
+  const [nome, setNome] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  const adicionar = async () => {
+    const limpo = nome.trim();
+    if (!limpo) return;
+    if ((equipes || []).some((e) => e.nomeNegocio.toLowerCase() === limpo.toLowerCase())) {
+      setNome("");
+      return;
+    }
+    setSalvando(true);
+    const nova = { id: uid(), turmaId, nomeNegocio: limpo, integrantes: [] };
+    await setEquipes([...(equipes || []), nova]);
+    setNome("");
+    setSalvando(false);
+  };
+
+  return (
+    <div className="flex gap-2">
+      <TxtInput value={nome} onChange={setNome} placeholder="Nome da empresa/negócio" />
+      <button
+        onClick={adicionar}
+        disabled={!nome.trim() || salvando}
+        className="bg-amber-500 text-slate-900 font-bold px-4 rounded-md text-sm hover:bg-amber-400 disabled:opacity-40 flex items-center gap-1.5 shrink-0"
+      >
+        <Plus size={15} /> Adicionar
+      </button>
+    </div>
+  );
+}
+
+function LinhaRosterPreview({ item, onMudar, onRemover }) {
+  return (
+    <tr className="border-b border-slate-800">
+      <td className="py-1.5 pr-2">
+        <input type="checkbox" checked={item.incluir} onChange={(e) => onMudar({ ...item, incluir: e.target.checked })} className="accent-amber-500" />
+      </td>
+      <td className="py-1.5 pr-2">
+        <input
+          value={item.nome}
+          onChange={(e) => onMudar({ ...item, nome: e.target.value })}
+          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-slate-100"
+        />
+      </td>
+      <td className="py-1.5 pr-2 text-slate-400 font-mono text-xs">{item.matricula}</td>
+      <td className="py-1.5 pr-1 text-right">
+        <button onClick={onRemover} className="text-slate-500 hover:text-rose-400"><Trash2 size={14} /></button>
+      </td>
+    </tr>
+  );
+}
+
+function PainelRoster({ turmaId }) {
+  const [roster, setRoster] = useSharedList(`roster_${turmaId}`);
+  const [preview, setPreview] = useState(null);
+  const [processando, setProcessando] = useState(false);
+  const [erro, setErro] = useState("");
+  const [aberto, setAberto] = useState(false);
+  const inputRef = useRef(null);
+
+  const aoSelecionarArquivo = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setErro(""); setProcessando(true);
+    try {
+      const alunos = await extrairAlunosDoPDF(file);
+      if (alunos.length === 0) {
+        setErro("Não encontramos nenhum aluno nesse PDF. Confira se é o arquivo \"Estudantes da Turma\" exportado do sistema da escola.");
+      } else {
+        setPreview(alunos.map((a) => ({ ...a, incluir: true })));
+      }
+    } catch {
+      setErro("Não foi possível ler esse arquivo. Confira se é um PDF válido.");
+    }
+    setProcessando(false);
+  };
+
+  const confirmarImportacao = async () => {
+    const novos = preview.filter((a) => a.incluir && a.nome.trim());
+    const atual = roster || [];
+    const porMatricula = new Map(atual.map((a) => [a.matricula, a]));
+    novos.forEach((a) => porMatricula.set(a.matricula, { nome: a.nome.trim().toUpperCase(), matricula: a.matricula }));
+    await setRoster(Array.from(porMatricula.values()));
+    setPreview(null);
+  };
+
+  if (roster === null) return null;
+
+  return (
+    <Card className="p-4">
+      <button onClick={() => setAberto(!aberto)} className="w-full flex items-center justify-between">
+        <SectionTitle icon={ListChecks} sub="Importe a lista oficial da escola (PDF) para agilizar a aprovação de cadastros: quem estiver na lista é aprovado automaticamente.">
+          Lista oficial de alunos ({roster.length})
+        </SectionTitle>
+        {aberto ? <ChevronDown size={18} className="text-slate-500 shrink-0 mt-1" /> : <ChevronRight size={18} className="text-slate-500 shrink-0 mt-1" />}
+      </button>
+
+      {aberto && (
+        <div className="mt-3">
+          {!preview && (
+            <>
+              <input ref={inputRef} type="file" accept="application/pdf" onChange={aoSelecionarArquivo} className="hidden" />
+              <button
+                onClick={() => inputRef.current?.click()}
+                disabled={processando}
+                className="flex items-center gap-2 bg-slate-900 border border-slate-700 hover:border-amber-500 text-slate-100 text-sm font-semibold px-4 py-2 rounded-md disabled:opacity-50"
+              >
+                <Upload size={15} /> {processando ? "Lendo PDF…" : "Importar lista (PDF)"}
+              </button>
+              {erro && <p className="text-sm text-rose-400 mt-2">{erro}</p>}
+              {roster.length > 0 && (
+                <div className="mt-3 max-h-52 overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-slate-500 border-b border-slate-700">
+                        <th className="py-1.5 pr-2">Nome</th><th className="py-1.5 pr-2">Matrícula</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {roster.map((a) => (
+                        <tr key={a.matricula} className="border-b border-slate-800">
+                          <td className="py-1 pr-2 text-slate-300">{a.nome}</td>
+                          <td className="py-1 pr-2 text-slate-500 font-mono">{a.matricula}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+
+          {preview && (
+            <div>
+              <p className="text-sm text-slate-400 mb-2">
+                Encontramos {preview.length} aluno(s). Confira os nomes, desmarque quem não deve entrar, e confirme.
+              </p>
+              <div className="max-h-64 overflow-y-auto mb-3">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700">
+                      <th className="py-1.5 pr-2 w-8"></th><th className="py-1.5 pr-2">Nome</th><th className="py-1.5 pr-2">Matrícula</th><th className="w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.map((item, i) => (
+                      <LinhaRosterPreview
+                        key={item.matricula}
+                        item={item}
+                        onMudar={(novo) => setPreview(preview.map((p, j) => (j === i ? novo : p)))}
+                        onRemover={() => setPreview(preview.filter((_, j) => j !== i))}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={confirmarImportacao} className="bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md text-sm hover:bg-amber-400">
+                  Confirmar importação ({preview.filter((a) => a.incluir).length} alunos)
+                </button>
+                <button onClick={() => setPreview(null)} className="text-sm text-slate-400 hover:text-slate-100 px-3">Cancelar</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function TurmaDetail({ turma, onVoltar, professorNome }) {
-  const [equipes] = useSharedList(`equipes_${turma.id}`);
+  const [equipes, setEquipes] = useSharedList(`equipes_${turma.id}`);
   const [equipeSel, setEquipeSel] = useState(null);
 
   if (equipeSel) {
@@ -1229,9 +1403,9 @@ function TurmaDetail({ turma, onVoltar, professorNome }) {
   }
 
   return (
-    <div>
-      <button onClick={onVoltar} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Minhas turmas</button>
-      <div className="flex items-center justify-between mb-4">
+    <div className="space-y-5">
+      <button onClick={onVoltar} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Minhas turmas</button>
+      <div className="flex items-center justify-between">
         <SectionTitle icon={School} sub={`Código da turma para os alunos entrarem: `}>{turma.nome}</SectionTitle>
         <div className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2">
           <KeyRound size={16} className="text-amber-400" />
@@ -1239,9 +1413,18 @@ function TurmaDetail({ turma, onVoltar, professorNome }) {
         </div>
       </div>
 
+      <PainelRoster turmaId={turma.id} />
+
+      <Card className="p-4">
+        <SectionTitle icon={Building2} sub="Cadastre aqui os nomes das empresas/negócios da turma — os alunos escolherão entre elas ao entrar (em vez de digitar um nome livre).">
+          Empresas da turma
+        </SectionTitle>
+        {equipes !== null && <FormNovaEmpresa turmaId={turma.id} equipes={equipes} setEquipes={setEquipes} />}
+      </Card>
+
       {equipes === null && <LoadingScreen />}
       {equipes && equipes.length === 0 && (
-        <Card className="p-8 text-center text-slate-500">Nenhuma equipe entrou nesta turma ainda. Compartilhe o código <b className="text-slate-300">{turma.codigo}</b> com os alunos.</Card>
+        <Card className="p-8 text-center text-slate-500">Nenhuma empresa cadastrada ainda. Use o formulário acima para adicionar.</Card>
       )}
       {equipes && equipes.length > 0 && (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1364,11 +1547,7 @@ function GestaoUsuariosView({ turmas }) {
   );
 }
 
-function GestaoRelatoriosView({ turmas }) {
-  const [turmaId, setTurmaId] = useState("");
-  const turma = turmas.find((t) => t.id === turmaId);
-  const dadosEquipes = useEquipesComDados(turmaId);
-
+function ResumoComparativo({ turma, dadosEquipes }) {
   const exportarCSV = () => {
     if (!dadosEquipes || !turma) return;
     const linhas = [["Equipe", "Integrantes", "Faturamento Mensal", "Investimento Total", "Resultado/mês", "Ponto de Equilíbrio (anual)", "Progresso (%)"]];
@@ -1387,40 +1566,232 @@ function GestaoRelatoriosView({ turmas }) {
     baixarArquivo(`relatorio_${turma.nome.replace(/\s+/g, "_")}.csv`, csv, "text/csv;charset=utf-8");
   };
 
+  if (dadosEquipes === null) return <LoadingScreen />;
+  if (dadosEquipes.length === 0) return <Card className="p-8 text-center text-slate-500">Nenhuma empresa nesta turma ainda.</Card>;
+
   return (
     <div>
-      <SectionTitle icon={FileBarChart} sub="Compare o desempenho das equipes de uma turma e exporte um relatório em CSV.">Relatórios</SectionTitle>
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <SeletorTurma turmas={turmas} value={turmaId} onChange={setTurmaId} />
-        {turmaId && dadosEquipes && dadosEquipes.length > 0 && (
-          <button onClick={exportarCSV} className="flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500"><Save size={15} /> Exportar CSV</button>
+      <div className="flex justify-end mb-3">
+        <button onClick={exportarCSV} className="flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500"><Save size={15} /> Exportar CSV</button>
+      </div>
+      <Card className="p-4 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700">
+              <th className="py-2 pr-3">Equipe</th><th className="py-2 pr-3">Faturamento/mês</th><th className="py-2 pr-3">Investimento Total</th><th className="py-2 pr-3">Resultado/mês</th><th className="py-2 pr-3">Ponto de Equilíbrio</th><th className="py-2 pr-3">Progresso</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dadosEquipes.map(({ equipe, calc }) => (
+              <tr key={equipe.id} className="border-b border-slate-800">
+                <td className="py-2 pr-3 font-semibold text-slate-100">{equipe.nomeNegocio}</td>
+                <td className="py-2 pr-3">{fmtBRL(calc.faturamento)}</td>
+                <td className="py-2 pr-3">{fmtBRL(calc.investimentoTotal)}</td>
+                <td className={`py-2 pr-3 ${calc.resultadoOperacional >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{fmtBRL(calc.resultadoOperacional)}</td>
+                <td className="py-2 pr-3">{calc.pontoEquilibrio != null ? fmtBRL(calc.pontoEquilibrio) : "—"}</td>
+                <td className="py-2 pr-3">{calc.progresso}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
+const TIPOS_RELATORIO = [
+  { id: "dre", label: "Demonstrativo de Resultado", icon: FileBarChart },
+  { id: "indicadores", label: "Indicadores de Viabilidade", icon: Target },
+  { id: "analise", label: "Análise do Negócio", icon: TrendingUp },
+  { id: "gerencial", label: "Relatório Gerencial (completo)", icon: FileSpreadsheet },
+];
+
+function RelatorioPorEmpresa({ dadosEquipes }) {
+  const [equipeId, setEquipeId] = useState("");
+  const [tipo, setTipo] = useState("gerencial");
+
+  if (dadosEquipes === null) return <LoadingScreen />;
+  if (dadosEquipes.length === 0) return <Card className="p-8 text-center text-slate-500">Nenhuma empresa nesta turma ainda.</Card>;
+
+  const selecionada = dadosEquipes.find((d) => d.equipe.id === equipeId);
+
+  return (
+    <div>
+      <div className="flex flex-wrap gap-3 mb-4">
+        <select value={equipeId} onChange={(e) => setEquipeId(e.target.value)} className="border border-slate-600 bg-slate-900 text-slate-100 rounded-md px-3 py-2 text-sm">
+          <option value="">Selecione a empresa…</option>
+          {dadosEquipes.map(({ equipe }) => <option key={equipe.id} value={equipe.id}>{equipe.nomeNegocio}</option>)}
+        </select>
+      </div>
+
+      {!selecionada && <Card className="p-8 text-center text-slate-500">Escolha uma empresa para ver o relatório.</Card>}
+
+      {selecionada && (
+        <div>
+          <div className="flex flex-wrap gap-2 mb-5">
+            {TIPOS_RELATORIO.map((t) => {
+              const Icon = t.icon;
+              const ativo = tipo === t.id;
+              return (
+                <button key={t.id} onClick={() => setTipo(t.id)}
+                  className={`flex items-center gap-2 text-sm font-semibold px-3 py-2 rounded-md border transition ${ativo ? "bg-amber-500 text-slate-900 border-amber-500" : "bg-slate-900 text-slate-300 border-slate-700 hover:border-amber-500"}`}>
+                  <Icon size={15} /> {t.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mb-4">
+            <div className="text-xs font-bold tracking-widest text-amber-500 uppercase">{selecionada.equipe.nomeNegocio}</div>
+            <div className="text-xs text-slate-500">{selecionada.equipe.integrantes.join(", ") || "sem integrantes"}</div>
+          </div>
+
+          {(tipo === "dre" || tipo === "gerencial") && (
+            <div className="mb-8">
+              {tipo === "gerencial" && <h3 className="text-sm font-bold text-slate-200 mb-2">1. Demonstrativo de Resultado</h3>}
+              <Card className="p-4"><M12View calc={selecionada.calc} /></Card>
+            </div>
+          )}
+          {(tipo === "indicadores" || tipo === "gerencial") && (
+            <div className="mb-8">
+              {tipo === "gerencial" && <h3 className="text-sm font-bold text-slate-200 mb-2">2. Indicadores de Viabilidade</h3>}
+              <M13View calc={selecionada.calc} />
+            </div>
+          )}
+          {(tipo === "analise" || tipo === "gerencial") && (
+            <div>
+              {tipo === "gerencial" && <h3 className="text-sm font-bold text-slate-200 mb-2">3. Análise do Negócio</h3>}
+              <AnaliseNegocio calc={selecionada.calc} historico={selecionada.dados.historico} readOnly />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RelatorioPendencias({ turma, dadosEquipes }) {
+  const [roster] = useSharedList(`roster_${turma.id}`);
+  const [usuarios] = useSharedList("usuarios_todos");
+
+  if (roster === null || usuarios === null || dadosEquipes === null) return <LoadingScreen />;
+
+  const alunosDaTurma = usuarios.filter((u) => u.papel === "aluno" && u.turmaId === turma.id);
+  const nomesRegistrados = new Set(alunosDaTurma.map((u) => normalizarNome(u.nome)));
+  const faltando = roster.filter((a) => !nomesRegistrados.has(normalizarNome(a.nome)));
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-sm font-bold text-slate-200 mb-2">
+          Alunos da lista oficial que ainda não se cadastraram
+          {roster.length > 0 && ` (${faltando.length} de ${roster.length})`}
+        </h3>
+        {roster.length === 0 && (
+          <Card className="p-6 text-center text-slate-500 text-sm">Nenhuma lista oficial importada para esta turma ainda (Gestão → Turmas → abra a turma → "Lista oficial de alunos").</Card>
+        )}
+        {roster.length > 0 && faltando.length === 0 && (
+          <Card className="p-6 text-center text-emerald-400 text-sm flex items-center justify-center gap-2"><CheckCircle2 size={16} /> Todos os alunos da lista já se cadastraram.</Card>
+        )}
+        {faltando.length > 0 && (
+          <Card className="p-0 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40">
+                  <th className="py-2 px-4">Nome</th><th className="py-2 px-4">Matrícula</th>
+                </tr>
+              </thead>
+              <tbody>
+                {faltando.map((a) => (
+                  <tr key={a.matricula} className="border-b border-slate-800">
+                    <td className="py-2 px-4 text-slate-200">{a.nome}</td>
+                    <td className="py-2 px-4 text-slate-500 font-mono text-xs">{a.matricula}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
         )}
       </div>
-      {!turmaId && <Card className="p-8 text-center text-slate-500">Selecione uma turma para ver o relatório.</Card>}
-      {turmaId && dadosEquipes === null && <LoadingScreen />}
-      {turmaId && dadosEquipes && dadosEquipes.length === 0 && <Card className="p-8 text-center text-slate-500">Nenhuma equipe nesta turma ainda.</Card>}
-      {turmaId && dadosEquipes && dadosEquipes.length > 0 && (
-        <Card className="p-4 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700">
-                <th className="py-2 pr-3">Equipe</th><th className="py-2 pr-3">Faturamento/mês</th><th className="py-2 pr-3">Investimento Total</th><th className="py-2 pr-3">Resultado/mês</th><th className="py-2 pr-3">Ponto de Equilíbrio</th><th className="py-2 pr-3">Progresso</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dadosEquipes.map(({ equipe, calc }) => (
-                <tr key={equipe.id} className="border-b border-slate-800">
-                  <td className="py-2 pr-3 font-semibold text-slate-100">{equipe.nomeNegocio}</td>
-                  <td className="py-2 pr-3">{fmtBRL(calc.faturamento)}</td>
-                  <td className="py-2 pr-3">{fmtBRL(calc.investimentoTotal)}</td>
-                  <td className={`py-2 pr-3 ${calc.resultadoOperacional >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{fmtBRL(calc.resultadoOperacional)}</td>
-                  <td className="py-2 pr-3">{calc.pontoEquilibrio != null ? fmtBRL(calc.pontoEquilibrio) : "—"}</td>
-                  <td className="py-2 pr-3">{calc.progresso}%</td>
+
+      <div>
+        <h3 className="text-sm font-bold text-slate-200 mb-2">Progresso das empresas</h3>
+        {dadosEquipes.length === 0 && <Card className="p-6 text-center text-slate-500 text-sm">Nenhuma empresa cadastrada nesta turma ainda.</Card>}
+        {dadosEquipes.length > 0 && (
+          <Card className="p-0 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40">
+                  <th className="py-2 px-4">Empresa</th><th className="py-2 px-4">Integrantes</th><th className="py-2 px-4">Progresso</th><th className="py-2 px-4">O que falta</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+              </thead>
+              <tbody>
+                {dadosEquipes.map(({ equipe, calc }) => {
+                  const modulosFaltando = 13 - Math.round((calc.progresso / 100) * 13);
+                  return (
+                    <tr key={equipe.id} className="border-b border-slate-800">
+                      <td className="py-2 px-4 font-semibold text-slate-100">{equipe.nomeNegocio}</td>
+                      <td className="py-2 px-4 text-slate-400">{equipe.integrantes.join(", ") || "sem integrantes"}</td>
+                      <td className="py-2 px-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-24 bg-slate-700 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{ width: `${calc.progresso}%` }} /></div>
+                          <span className="text-xs text-slate-400">{calc.progresso}%</span>
+                        </div>
+                      </td>
+                      <td className="py-2 px-4 text-xs text-slate-400">
+                        {calc.progresso >= 100 ? <span className="text-emerald-400 flex items-center gap-1"><CheckCircle2 size={13} /> Completo</span> : `${modulosFaltando} de 13 módulos`}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const ABAS_RELATORIO = [
+  { id: "resumo", label: "Resumo Comparativo", icon: FileBarChart },
+  { id: "empresa", label: "Relatório por Empresa", icon: Building2 },
+  { id: "pendencias", label: "Pendências", icon: ClipboardCheck },
+];
+
+function GestaoRelatoriosView({ turmas }) {
+  const [turmaId, setTurmaId] = useState("");
+  const [aba, setAba] = useState("resumo");
+  const turma = turmas.find((t) => t.id === turmaId);
+  const dadosEquipes = useEquipesComDados(turmaId);
+
+  return (
+    <div>
+      <SectionTitle icon={FileBarChart} sub="Escolha a turma e o tipo de relatório para acompanhar o desempenho das equipes.">Relatórios</SectionTitle>
+      <div className="mb-4">
+        <SeletorTurma turmas={turmas} value={turmaId} onChange={setTurmaId} />
+      </div>
+
+      {!turmaId && <Card className="p-8 text-center text-slate-500">Selecione uma turma para ver os relatórios.</Card>}
+
+      {turmaId && (
+        <div>
+          <div className="flex flex-wrap gap-2 mb-5 border-b border-slate-800 pb-4">
+            {ABAS_RELATORIO.map((a) => {
+              const Icon = a.icon;
+              const ativo = aba === a.id;
+              return (
+                <button key={a.id} onClick={() => setAba(a.id)}
+                  className={`flex items-center gap-2 text-sm font-semibold px-3 py-2 rounded-md transition ${ativo ? "bg-white/10 text-amber-400" : "text-slate-400 hover:text-slate-100"}`}>
+                  <Icon size={15} /> {a.label}
+                </button>
+              );
+            })}
+          </div>
+          {aba === "resumo" && <ResumoComparativo turma={turma} dadosEquipes={dadosEquipes} />}
+          {aba === "empresa" && <RelatorioPorEmpresa dadosEquipes={dadosEquipes} />}
+          {aba === "pendencias" && <RelatorioPendencias turma={turma} dadosEquipes={dadosEquipes} />}
+        </div>
       )}
     </div>
   );
@@ -1646,6 +2017,7 @@ function LinhaUsuarioPendente({ usuario, onAprovar, onRejeitar }) {
         </div>
         <div className="text-xs text-slate-400 mt-0.5">{usuario.email}</div>
         <div className="text-xs text-slate-500">Cadastrado em {fmtData(usuario.criadoEm)}</div>
+        {usuario.turmaNome && <div className="text-xs text-sky-400 mt-0.5">Tentou entrar na turma: <b>{usuario.turmaNome}</b></div>}
       </div>
       {usuario.papel === "professor" && (
         <label className="flex items-center gap-2 text-xs text-slate-300 shrink-0">
@@ -1745,54 +2117,39 @@ function useEquipeSalva(turmaId, equipeId) {
   return estado;
 }
 
-function EscolherEquipe({ perfil, onEntrar, onSair }) {
+// Passo 1 do fluxo do aluno: informar o código da turma. Se o nome do aluno
+// bater com a lista oficial (roster) importada pelo professor, o cadastro é
+// aprovado automaticamente nesse momento.
+function TelaInformarTurma({ perfil, onSair, onResultado }) {
   const [codigo, setCodigo] = useState("");
-  const [nomeNegocio, setNomeNegocio] = useState("");
-  const [turmaEncontrada, setTurmaEncontrada] = useState(null);
   const [buscando, setBuscando] = useState(false);
-  const [entrando, setEntrando] = useState(false);
   const [erro, setErro] = useState("");
 
-  const buscarTurma = async () => {
+  const buscar = async () => {
     setErro(""); setBuscando(true);
     try {
       const r = await window.storage.get(`turma_por_codigo_${codigo.trim().toUpperCase()}`, true);
-      if (!r) { setErro("Código de turma não encontrado. Confira com o professor."); setTurmaEncontrada(null); }
-      else setTurmaEncontrada(JSON.parse(r.value));
-    } catch { setErro("Código de turma não encontrado. Confira com o professor."); }
-    setBuscando(false);
-  };
+      if (!r) {
+        setErro("Código de turma não encontrado. Confira com o professor.");
+        setBuscando(false);
+        return;
+      }
+      const turma = JSON.parse(r.value);
 
-  const confirmarEntrada = async () => {
-    if (!turmaEncontrada || !nomeNegocio.trim()) return;
-    setEntrando(true);
-    const equipesKey = `equipes_${turmaEncontrada.id}`;
-    let lista = [];
-    try {
-      const r = await window.storage.get(equipesKey, true);
-      lista = r ? JSON.parse(r.value) : [];
-    } catch { lista = []; }
+      let match = false;
+      try {
+        const rr = await window.storage.get(`roster_${turma.id}`, true);
+        const roster = rr ? JSON.parse(rr.value) : [];
+        match = roster.some((a) => normalizarNome(a.nome) === normalizarNome(perfil.nome));
+      } catch {}
 
-    let equipe = lista.find((e) => e.nomeNegocio.toLowerCase() === nomeNegocio.trim().toLowerCase());
-    if (equipe) {
-      if (!equipe.integrantes.includes(perfil.nome)) equipe = { ...equipe, integrantes: [...equipe.integrantes, perfil.nome] };
-    } else {
-      equipe = { id: uid(), turmaId: turmaEncontrada.id, nomeNegocio: nomeNegocio.trim(), integrantes: [perfil.nome] };
-      lista = [...lista, equipe];
+      const mudancas = { turmaId: turma.id, turmaNome: turma.nome };
+      if (match && perfil.status === "pendente") mudancas.status = "aprovado";
+      await onResultado(mudancas);
+    } catch {
+      setErro("Não foi possível localizar essa turma. Tente novamente.");
     }
-    const listaFinal = lista.some((e) => e.id === equipe.id) ? lista.map((e) => (e.id === equipe.id ? equipe : e)) : [...lista, equipe];
-    await window.storage.set(equipesKey, JSON.stringify(listaFinal), true);
-
-    // grava a equipe no perfil do aluno, para pular esta tela nas próximas vezes
-    try {
-      const r2 = await window.storage.get("usuarios_todos", true);
-      const listaUsuarios = r2 ? JSON.parse(r2.value) : [];
-      const atualizada = listaUsuarios.map((u) => (u.uid === perfil.uid ? { ...u, turmaId: turmaEncontrada.id, equipeId: equipe.id } : u));
-      await window.storage.set("usuarios_todos", JSON.stringify(atualizada), true);
-    } catch {}
-
-    setEntrando(false);
-    onEntrar(turmaEncontrada, equipe);
+    setBuscando(false);
   };
 
   return (
@@ -1803,52 +2160,130 @@ function EscolherEquipe({ perfil, onEntrar, onSair }) {
         <Field label="Código da turma (fornecido pelo professor)">
           <div className="flex gap-2">
             <TxtInput value={codigo} onChange={setCodigo} placeholder="Ex.: A1B2C3" />
-            <button onClick={buscarTurma} disabled={buscando || !codigo.trim()} className="bg-slate-900 text-white px-4 rounded-md text-sm font-semibold hover:bg-slate-800 disabled:opacity-40">Buscar</button>
+            <button onClick={buscar} disabled={buscando || !codigo.trim()} className="bg-slate-900 text-white px-4 rounded-md text-sm font-semibold hover:bg-slate-800 disabled:opacity-40">
+              {buscando ? "Buscando…" : "Buscar"}
+            </button>
           </div>
         </Field>
         {erro && <p className="text-sm text-rose-400 mb-2">{erro}</p>}
-        {turmaEncontrada && (
-          <>
-            <div className="bg-emerald-950/40 border border-emerald-800/60 text-emerald-400 text-sm rounded-md px-3 py-2 mb-3 flex items-center gap-2"><CheckCircle2 size={16} /> Turma encontrada: <b>{turmaEncontrada.nome}</b></div>
-            <Field label="Nome do negócio / equipe" hint="Se já existe uma equipe com esse nome na turma, você entrará nela; senão, uma nova equipe será criada.">
-              <TxtInput value={nomeNegocio} onChange={setNomeNegocio} placeholder="Ex.: Doce Ponto Confeitaria" />
-            </Field>
-            <button onClick={confirmarEntrada} disabled={!nomeNegocio.trim() || entrando} className="w-full bg-amber-500 text-slate-900 py-2.5 rounded-md font-bold hover:bg-amber-400 disabled:opacity-40 mt-2">
-              {entrando ? "Entrando…" : "Entrar no workspace"}
-            </button>
-          </>
-        )}
       </Card>
     </div>
   );
 }
 
+// Passo 2 do fluxo do aluno (já aprovado): escolher, numa lista, a empresa
+// cadastrada pelo professor dentro da turma — evita nomes digitados errado
+// ou duplicados, e permite que vários alunos entrem na mesma empresa.
+function EscolherEmpresa({ perfil, turmaId, turmaNome, onSair, onEscolhida }) {
+  const [equipes, setEquipes] = useSharedList(`equipes_${turmaId}`);
+  const [entrando, setEntrando] = useState(null);
+
+  if (equipes === null) return <LoadingScreen />;
+
+  const entrarNaEmpresa = async (equipe) => {
+    setEntrando(equipe.id);
+    const jaEsta = equipe.integrantes.includes(perfil.nome);
+    const atualizada = jaEsta ? equipe : { ...equipe, integrantes: [...equipe.integrantes, perfil.nome] };
+    const nova = equipes.map((e) => (e.id === equipe.id ? atualizada : e));
+    await setEquipes(nova);
+    setEntrando(null);
+    onEscolhida(atualizada);
+  };
+
+  return (
+    <div className="max-w-md mx-auto w-full">
+      <button onClick={onSair} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><LogOut size={15} /> Sair</button>
+      <Card className="p-6">
+        <SectionTitle icon={Building2} sub={`Turma: ${turmaNome}. Escolha a empresa/negócio da sua equipe.`}>Escolher empresa</SectionTitle>
+
+        {equipes.length === 0 && (
+          <div className="text-sm text-slate-400 bg-slate-900 border border-slate-700 rounded-md p-4">
+            Nenhuma empresa cadastrada nesta turma ainda. Peça ao professor(a) para cadastrar as empresas (Gestão → Turmas → abrir a turma → "Empresas da turma") antes de continuar.
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {equipes.map((eq) => (
+            <button
+              key={eq.id}
+              onClick={() => entrarNaEmpresa(eq)}
+              disabled={entrando === eq.id}
+              className="w-full flex items-center justify-between border border-slate-700 hover:border-amber-500 bg-slate-900 rounded-md px-4 py-3 text-left transition disabled:opacity-50"
+            >
+              <div>
+                <div className="font-semibold text-slate-100">{eq.nomeNegocio}</div>
+                <div className="text-xs text-slate-500">{eq.integrantes.length > 0 ? eq.integrantes.join(", ") : "Nenhum integrante ainda"}</div>
+              </div>
+              <ChevronRight size={16} className="text-slate-500 shrink-0" />
+            </button>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function AlunoWorkspaceCarregado({ userSessao, turmaId, equipeId, onSair }) {
+  const equipe = useEquipeSalva(turmaId, equipeId);
+  if (!equipe) return <LoadingScreen />;
+  return <AlunoWorkspace user={userSessao} equipe={equipe} equipeKey={`dados_equipe_${equipe.id}`} onSair={onSair} />;
+}
+
 function AlunoRoteador({ perfil, onSair }) {
-  const [override, setOverride] = useState(null);
-  const turmaId = override?.turmaId || perfil.turmaId;
-  const equipeId = override?.equipeId || perfil.equipeId;
-  const equipeCarregada = useEquipeSalva(turmaId, equipeId);
-  const equipe = override?.equipeObj || equipeCarregada;
+  const [over, setOver] = useState({});
+  const efetivo = { ...perfil, ...over };
 
-  if (turmaId && equipeId && equipe === undefined) return <LoadingScreen />;
+  const atualizarPerfil = async (mudancas) => {
+    try {
+      const r = await window.storage.get("usuarios_todos", true);
+      const lista = r ? JSON.parse(r.value) : [];
+      const nova = lista.map((u) => (u.uid === perfil.uid ? { ...u, ...mudancas } : u));
+      await window.storage.set("usuarios_todos", JSON.stringify(nova), true);
+    } catch {}
+    setOver((prev) => ({ ...prev, ...mudancas }));
+  };
 
-  if (!turmaId || !equipeId || equipe === null) {
+  if (efetivo.status === "rejeitado") {
+    return <TelaAguardandoAprovacao perfil={efetivo} onSair={onSair} rejeitado />;
+  }
+
+  if (!efetivo.turmaId) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
-        <EscolherEquipe
-          perfil={perfil}
+        <TelaInformarTurma perfil={efetivo} onSair={onSair} onResultado={atualizarPerfil} />
+      </div>
+    );
+  }
+
+  if (efetivo.status === "pendente") {
+    return (
+      <TelaAguardandoAprovacao
+        perfil={efetivo}
+        onSair={onSair}
+        onTrocarTurma={() => atualizarPerfil({ turmaId: null, turmaNome: null })}
+      />
+    );
+  }
+
+  if (!efetivo.equipeId) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+        <EscolherEmpresa
+          perfil={efetivo}
+          turmaId={efetivo.turmaId}
+          turmaNome={efetivo.turmaNome}
           onSair={onSair}
-          onEntrar={(turma, equipeNova) => setOverride({ turmaId: turma.id, equipeId: equipeNova.id, equipeObj: equipeNova })}
+          onEscolhida={(equipe) => atualizarPerfil({ equipeId: equipe.id })}
         />
       </div>
     );
   }
 
-  const userSessao = { uid: perfil.uid, nome: perfil.nome, email: perfil.email, papel: "aluno" };
-  return <AlunoWorkspace user={userSessao} equipe={equipe} equipeKey={`dados_equipe_${equipe.id}`} onSair={onSair} />;
+  const userSessao = { uid: efetivo.uid, nome: efetivo.nome, email: efetivo.email, papel: "aluno" };
+  return <AlunoWorkspaceCarregado userSessao={userSessao} turmaId={efetivo.turmaId} equipeId={efetivo.equipeId} onSair={onSair} />;
 }
 
-function TelaAguardandoAprovacao({ perfil, onSair, rejeitado }) {
+function TelaAguardandoAprovacao({ perfil, onSair, rejeitado, onTrocarTurma }) {
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
       <Card className="p-8 max-w-md text-center">
@@ -1865,9 +2300,13 @@ function TelaAguardandoAprovacao({ perfil, onSair, rejeitado }) {
             <Clock size={40} className="mx-auto text-amber-500 mb-3" />
             <h2 className="text-lg font-bold text-slate-100 mb-2">Cadastro em análise</h2>
             <p className="text-sm text-slate-400 mb-1">
-              Olá, {perfil.nome}! Seu cadastro como {perfil.papel === "professor" ? "professor(a)" : "aluno(a)"} foi enviado e está aguardando aprovação de um Usuário Mestre.
+              Olá, {perfil.nome}! Seu cadastro como {perfil.papel === "professor" ? "professor(a)" : "aluno(a)"}
+              {perfil.turmaNome ? <> para a turma <b>{perfil.turmaNome}</b></> : ""} foi enviado e está aguardando aprovação de um Usuário Mestre.
             </p>
-            <p className="text-xs text-slate-500 mb-5">Assim que for aprovado, é só entrar novamente com seu e-mail e senha.</p>
+            <p className="text-xs text-slate-500 mb-3">Assim que for aprovado, é só entrar novamente com seu e-mail e senha.</p>
+            {onTrocarTurma && (
+              <button onClick={onTrocarTurma} className="text-xs text-amber-500 hover:text-amber-400 mb-3 block mx-auto">Errei o código da turma — tentar de novo</button>
+            )}
           </>
         )}
         <button onClick={onSair} className="text-sm text-slate-400 hover:text-slate-100 flex items-center gap-2 mx-auto"><LogOut size={14} /> Sair</button>
@@ -1917,7 +2356,7 @@ function TelaCadastro({ onCadastrado, onIrParaLogin }) {
         uid: fbUser.uid, nome: nome.trim(), email: email.trim(), papel,
         status: souMestre ? "aprovado" : "pendente",
         mestre: souMestre,
-        turmaId: null, equipeId: null,
+        turmaId: null, turmaNome: null, equipeId: null,
         criadoEm: Date.now(),
       };
       let lista = [];
@@ -2084,6 +2523,12 @@ export default function App() {
   if (!perfil) {
     return <TelaAguardandoAprovacao perfil={{ nome: firebaseUser.displayName || firebaseUser.email, papel: "—" }} onSair={efetuarSaida} />;
   }
+
+  if (perfil.papel === "aluno") {
+    return <AlunoRoteador perfil={perfil} onSair={efetuarSaida} />;
+  }
+
+  // professor
   if (perfil.status === "pendente") {
     return <TelaAguardandoAprovacao perfil={perfil} onSair={efetuarSaida} />;
   }
@@ -2092,10 +2537,5 @@ export default function App() {
   }
 
   const userSessao = { uid: perfil.uid, nome: perfil.nome, email: perfil.email, papel: perfil.papel, mestre: !!perfil.mestre };
-
-  if (perfil.papel === "professor") {
-    return <ProfessorDashboard user={userSessao} onSair={efetuarSaida} />;
-  }
-
-  return <AlunoRoteador perfil={perfil} onSair={efetuarSaida} />;
+  return <ProfessorDashboard user={userSessao} onSair={efetuarSaida} />;
 }

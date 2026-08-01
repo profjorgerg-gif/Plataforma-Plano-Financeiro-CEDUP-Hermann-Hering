@@ -215,7 +215,7 @@ function calcular(lanc) {
     necessidadeLiquidaDias, custoTotalDiario, caixaMinimo, estoqueInicial, capitalGiroTotal,
     investimentoTotal, receitaAnual, custoVariavelAnual, custoFixoAnual, lucroAnual,
     indiceMargemContribuicao, pontoEquilibrio, lucratividade, rentabilidade, prazoRetorno,
-    progresso,
+    progresso, preenchidos,
   };
 }
 
@@ -1727,7 +1727,7 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
               </thead>
               <tbody>
                 {dadosEquipes.map(({ equipe, calc }) => {
-                  const modulosFaltando = 13 - Math.round((calc.progresso / 100) * 13);
+                  const nomesFaltando = MODULOS.filter((_, i) => !calc.preenchidos?.[i]).map((m) => `${m.n}. ${m.nome}`);
                   return (
                     <tr key={equipe.id} className="border-b border-slate-800">
                       <td className="py-2 px-4 font-semibold text-slate-100">{equipe.nomeNegocio}</td>
@@ -1738,8 +1738,10 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
                           <span className="text-xs text-slate-400">{calc.progresso}%</span>
                         </div>
                       </td>
-                      <td className="py-2 px-4 text-xs text-slate-400">
-                        {calc.progresso >= 100 ? <span className="text-emerald-400 flex items-center gap-1"><CheckCircle2 size={13} /> Completo</span> : `${modulosFaltando} de 13 módulos`}
+                      <td className="py-2 px-4 text-xs text-slate-400 max-w-xs">
+                        {nomesFaltando.length === 0
+                          ? <span className="text-emerald-400 flex items-center gap-1"><CheckCircle2 size={13} /> Completo</span>
+                          : nomesFaltando.join(", ")}
                       </td>
                     </tr>
                   );
@@ -1797,11 +1799,53 @@ function GestaoRelatoriosView({ turmas }) {
   );
 }
 
-function GestaoBackupView({ turmas }) {
+function GestaoBackupView({ turmas, setTurmas }) {
   const [turmaId, setTurmaId] = useState("");
   const turma = turmas.find((t) => t.id === turmaId);
   const dadosEquipes = useEquipesComDados(turmaId);
   const [status, setStatus] = useState("");
+  const [excluindo, setExcluindo] = useState(false);
+
+  // Apaga permanentemente uma turma: empresas/equipes, lançamentos de cada uma,
+  // a lista oficial de alunos importada e as contas dos alunos que estavam
+  // vinculados a ela. Usado ao final do ano/semestre letivo, depois de já ter
+  // sido feito o backup, para abrir espaço para as turmas do próximo período.
+  const excluirTurma = async () => {
+    if (!turma || !dadosEquipes) return;
+    const ok = window.confirm(
+      `Tem certeza que deseja excluir a turma "${turma.nome}"?\n\nIsso vai apagar permanentemente todas as empresas, lançamentos, a lista oficial de alunos e as contas dos alunos vinculados a ela. Essa ação não pode ser desfeita.`
+    );
+    if (!ok) return;
+
+    setExcluindo(true);
+    setStatus("Excluindo turma…");
+    try {
+      // 1. Lançamentos de cada empresa/equipe
+      for (const { equipe } of dadosEquipes) {
+        try { await window.storage.delete(`dados_equipe_${equipe.id}`, true); } catch {}
+      }
+      // 2. Lista de empresas/equipes da turma
+      try { await window.storage.delete(`equipes_${turma.id}`, true); } catch {}
+      // 3. Lista oficial de alunos (roster) importada por PDF
+      try { await window.storage.delete(`roster_${turma.id}`, true); } catch {}
+      // 4. Registro que permite alunos encontrarem a turma pelo código
+      try { await window.storage.delete(`turma_por_codigo_${turma.codigo}`, true); } catch {}
+      // 5. Contas dos alunos vinculados a essa turma
+      try {
+        const r = await window.storage.get("usuarios_todos", true);
+        const lista = r ? JSON.parse(r.value) : [];
+        const restantes = lista.filter((u) => !(u.papel === "aluno" && u.turmaId === turma.id));
+        await window.storage.set("usuarios_todos", JSON.stringify(restantes), true);
+      } catch {}
+      // 6. Remove a turma da lista do professor
+      await setTurmas(turmas.filter((t) => t.id !== turma.id));
+      setTurmaId("");
+      setStatus(`Turma "${turma.nome}" excluída com sucesso.`);
+    } catch {
+      setStatus("Não foi possível concluir a exclusão. Tente novamente.");
+    }
+    setExcluindo(false);
+  };
 
   const exportarBackup = () => {
     if (!turma || !dadosEquipes) return;
@@ -1848,6 +1892,22 @@ function GestaoBackupView({ turmas }) {
         </div>
       )}
       {status && <p className="text-sm text-amber-400 mt-3">{status}</p>}
+
+      {turmaId && (
+        <Card className="p-5 mt-4 border-rose-900/60 bg-rose-950/10">
+          <h3 className="font-bold text-rose-400 mb-2 flex items-center gap-2"><Trash2 size={16} /> Excluir turma (fim de ano/semestre letivo)</h3>
+          <p className="text-sm text-slate-400 mb-3">
+            Apaga permanentemente as empresas, os lançamentos, a lista oficial de alunos e as contas dos alunos vinculados a esta turma — use depois de já ter exportado o backup acima, para liberar espaço para as turmas do próximo período.
+          </p>
+          <button
+            onClick={excluirTurma}
+            disabled={excluindo || !dadosEquipes}
+            className="bg-rose-600 text-white font-bold px-4 py-2 rounded-md hover:bg-rose-500 disabled:opacity-40 text-sm flex items-center gap-2"
+          >
+            <Trash2 size={15} /> {excluindo ? "Excluindo…" : "Excluir turma"}
+          </button>
+        </Card>
+      )}
     </div>
   );
 }
@@ -1992,7 +2052,7 @@ function ProfessorDashboard({ user, onSair }) {
         )}
         {aba === "usuarios" && <GestaoUsuariosView turmas={turmas} />}
         {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}
-        {aba === "backup" && <GestaoBackupView turmas={turmas} />}
+        {aba === "backup" && <GestaoBackupView turmas={turmas} setTurmas={setTurmas} />}
         {aba === "auditoria" && <GestaoAuditoriaView turmas={turmas} />}
         {aba === "aprovacoes" && user.mestre && <GestaoAprovacoesView usuarioAtualUid={user.uid} />}
       </main>

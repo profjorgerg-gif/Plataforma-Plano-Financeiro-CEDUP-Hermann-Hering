@@ -8,8 +8,12 @@ import {
   Wrench, PieChart as PieIcon, TrendingUp, Factory, ShoppingCart, Package,
   UserCog, Gauge, FileBarChart, Target, ClipboardList, History, MessageSquare,
   Plus, Trash2, ChevronRight, ChevronDown, CheckCircle2, Circle, AlertTriangle,
-  Save, Copy, ArrowLeft, BookOpen, Building2, KeyRound,
+  Save, Copy, ArrowLeft, BookOpen, Building2, KeyRound, Mail, Lock, ShieldCheck,
+  Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus,
 } from "lucide-react";
+import {
+  observarSessao, cadastrar, entrar, sair, recuperarSenha, traduzErroAuth, CODIGO_MESTRE,
+} from "./firebaseAuth";
 
 // ============================================================================
 // CONSTANTES / HELPERS
@@ -69,6 +73,10 @@ const GESTAO_ITENS = [
   { id: "backup", label: "Backup", icon: Save },
   { id: "auditoria", label: "Auditoria", icon: History },
 ];
+
+// Só aparece para professores com mestre:true — fica separado do GESTAO_ITENS
+// porque a visibilidade depende do usuário logado, não é fixa.
+const ITEM_APROVACOES = { id: "aprovacoes", label: "Aprovações", icon: Crown };
 
 const MANUAL_ALUNO_PASSOS = [
   { titulo: "Entrem na turma", texto: "Peçam ao professor(a) o código da turma (6 caracteres) e informem seu nome e o nome do negócio da equipe na tela inicial da plataforma." },
@@ -1555,34 +1563,41 @@ function ProfessorInicio({ user, turmas, onIrPara }) {
 }
 
 function ProfessorDashboard({ user, onSair }) {
-  const chaveMinhas = `turmas_prof_${user.nome.toLowerCase().replace(/\s+/g, "_")}`;
+  const chaveMinhas = `turmas_prof_${user.uid}`;
   const [turmas, setTurmas] = useSharedList(chaveMinhas);
   const [aba, setAba] = useState("inicio");
   const [turmaAtivaId, setTurmaAtivaId] = useState(null);
 
   if (turmas === null) return <LoadingScreen />;
 
-  const criarTurma = (nome) => {
+  const criarTurma = async (nome) => {
     const nova = { id: uid(), nome, codigo: codigoTurma(), professor: user.nome, criadaEm: Date.now() };
     setTurmas([...(turmas || []), nova]);
+    // registra o código para os alunos conseguirem encontrar a turma
+    try { await window.storage.set(`turma_por_codigo_${nova.codigo}`, JSON.stringify(nova), true); } catch {}
   };
 
   const turmaAtiva = turmas.find((t) => t.id === turmaAtivaId) || null;
   const irPara = (id) => { setAba(id); if (id !== "turmas") setTurmaAtivaId(null); };
+
+  const itensMenu = user.mestre ? [...GESTAO_ITENS, ITEM_APROVACOES] : GESTAO_ITENS;
 
   return (
     <div className="min-h-screen flex bg-slate-950">
       <aside className="w-72 bg-slate-900 text-white flex flex-col shrink-0">
         <div className="p-5 border-b border-white/10">
           <div className="flex items-center gap-2 font-bold text-amber-500"><GraduationCap size={20} /> Painel do Professor</div>
-          <div className="text-xs text-white/50 mt-1 truncate">{user.nome}</div>
+          <div className="text-xs text-white/50 mt-1 truncate flex items-center gap-1.5">
+            {user.nome}
+            {user.mestre && <span title="Usuário Mestre"><Crown size={12} className="text-amber-400 shrink-0" /></span>}
+          </div>
         </div>
         <nav className="flex-1 overflow-y-auto py-3">
           <button onClick={() => irPara("inicio")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "inicio" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
             <LayoutDashboard size={16} className="shrink-0" /> Início
           </button>
           <div className="px-5 pt-5 pb-2 text-[10px] font-bold tracking-widest text-white/40">GESTÃO</div>
-          {GESTAO_ITENS.map((it) => {
+          {itensMenu.map((it) => {
             const Icon = it.icon;
             const active = aba === it.id;
             return (
@@ -1608,24 +1623,134 @@ function ProfessorDashboard({ user, onSair }) {
         {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}
         {aba === "backup" && <GestaoBackupView turmas={turmas} />}
         {aba === "auditoria" && <GestaoAuditoriaView turmas={turmas} />}
+        {aba === "aprovacoes" && user.mestre && <GestaoAprovacoesView usuarioAtualUid={user.uid} />}
       </main>
     </div>
   );
 }
 
 // ============================================================================
-// LOGIN / ENTRADA
+// APROVAÇÕES (só para Usuários Mestre)
+// ============================================================================
+
+function LinhaUsuarioPendente({ usuario, onAprovar, onRejeitar }) {
+  const [tornarMestre, setTornarMestre] = useState(false);
+  return (
+    <Card className="p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+      <div className="flex-1">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-slate-100">{usuario.nome}</span>
+          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${usuario.papel === "professor" ? "bg-sky-950/40 text-sky-400" : "bg-amber-950/30 text-amber-400"}`}>
+            {usuario.papel === "professor" ? "Professor(a)" : "Aluno(a)"}
+          </span>
+        </div>
+        <div className="text-xs text-slate-400 mt-0.5">{usuario.email}</div>
+        <div className="text-xs text-slate-500">Cadastrado em {fmtData(usuario.criadoEm)}</div>
+      </div>
+      {usuario.papel === "professor" && (
+        <label className="flex items-center gap-2 text-xs text-slate-300 shrink-0">
+          <input type="checkbox" checked={tornarMestre} onChange={(e) => setTornarMestre(e.target.checked)} className="accent-amber-500" />
+          Também tornar Mestre
+        </label>
+      )}
+      <div className="flex gap-2 shrink-0">
+        <button onClick={() => onAprovar(usuario, tornarMestre)} className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-2 rounded-md"><UserCheck size={14} /> Aprovar</button>
+        <button onClick={() => onRejeitar(usuario)} className="flex items-center gap-1.5 bg-rose-950/40 border border-rose-800/60 hover:bg-rose-900/40 text-rose-400 text-xs font-semibold px-3 py-2 rounded-md"><UserX size={14} /> Recusar</button>
+      </div>
+    </Card>
+  );
+}
+
+function GestaoAprovacoesView({ usuarioAtualUid }) {
+  const [usuarios, setUsuarios] = useSharedList("usuarios_todos");
+  if (usuarios === null) return <LoadingScreen />;
+
+  const pendentes = usuarios.filter((u) => u.status === "pendente");
+  const aprovados = usuarios.filter((u) => u.status === "aprovado");
+
+  const atualizar = (uidAlvo, mudancas) => {
+    setUsuarios(usuarios.map((u) => (u.uid === uidAlvo ? { ...u, ...mudancas } : u)));
+  };
+  const aprovar = (u, tornarMestre) => atualizar(u.uid, { status: "aprovado", mestre: u.papel === "professor" ? !!tornarMestre : false });
+  const rejeitar = (u) => atualizar(u.uid, { status: "rejeitado" });
+  const alternarMestre = (u) => atualizar(u.uid, { mestre: !u.mestre });
+
+  return (
+    <div>
+      <SectionTitle icon={Crown} sub="Aprove ou recuse os cadastros novos. Esta tela só aparece para Usuários Mestre.">Aprovações</SectionTitle>
+
+      <h3 className="text-sm font-bold text-slate-200 mb-2 mt-2">Pendentes ({pendentes.length})</h3>
+      <div className="space-y-3 mb-8">
+        {pendentes.length === 0 && <Card className="p-6 text-center text-slate-500 text-sm">Nenhum cadastro aguardando aprovação.</Card>}
+        {pendentes.map((u) => (
+          <LinhaUsuarioPendente key={u.uid} usuario={u} onAprovar={aprovar} onRejeitar={rejeitar} />
+        ))}
+      </div>
+
+      <h3 className="text-sm font-bold text-slate-200 mb-2">Usuários aprovados ({aprovados.length})</h3>
+      <Card className="p-0 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40">
+              <th className="py-2 px-4">Nome</th><th className="py-2 px-4">Papel</th><th className="py-2 px-4">E-mail</th><th className="py-2 px-4">Mestre</th><th className="py-2 px-4"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {aprovados.map((u) => (
+              <tr key={u.uid} className="border-b border-slate-800">
+                <td className="py-2 px-4 text-slate-100">{u.nome}</td>
+                <td className="py-2 px-4 text-slate-400">{u.papel === "professor" ? "Professor(a)" : "Aluno(a)"}</td>
+                <td className="py-2 px-4 text-slate-400">{u.email}</td>
+                <td className="py-2 px-4">{u.mestre ? <Crown size={14} className="text-amber-400" /> : "—"}</td>
+                <td className="py-2 px-4 text-right">
+                  {u.papel === "professor" && u.uid !== usuarioAtualUid && (
+                    <button onClick={() => alternarMestre(u)} className="text-xs font-semibold text-sky-400 hover:text-sky-300">
+                      {u.mestre ? "Remover Mestre" : "Tornar Mestre"}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
+// ============================================================================
+// LOGIN / CADASTRO / APROVAÇÃO
 // ============================================================================
 
 function LoadingScreen() {
-  return <div className="min-h-screen flex items-center justify-center text-slate-500 text-sm">Carregando…</div>;
+  return <div className="min-h-screen flex items-center justify-center text-slate-500 text-sm bg-slate-950">Carregando…</div>;
 }
 
-function LoginAluno({ nome, onEntrar, onVoltar }) {
+function useEquipeSalva(turmaId, equipeId) {
+  const [estado, setEstado] = useState(turmaId && equipeId ? undefined : null);
+  useEffect(() => {
+    if (!turmaId || !equipeId) { setEstado(null); return; }
+    let alive = true;
+    setEstado(undefined);
+    (async () => {
+      try {
+        const r = await window.storage.get(`equipes_${turmaId}`, true);
+        const lista = r ? JSON.parse(r.value) : [];
+        const eq = lista.find((e) => e.id === equipeId) || null;
+        if (alive) setEstado(eq);
+      } catch { if (alive) setEstado(null); }
+    })();
+    return () => { alive = false; };
+  }, [turmaId, equipeId]);
+  return estado;
+}
+
+function EscolherEquipe({ perfil, onEntrar, onSair }) {
   const [codigo, setCodigo] = useState("");
   const [nomeNegocio, setNomeNegocio] = useState("");
   const [turmaEncontrada, setTurmaEncontrada] = useState(null);
   const [buscando, setBuscando] = useState(false);
+  const [entrando, setEntrando] = useState(false);
   const [erro, setErro] = useState("");
 
   const buscarTurma = async () => {
@@ -1638,8 +1763,9 @@ function LoginAluno({ nome, onEntrar, onVoltar }) {
     setBuscando(false);
   };
 
-  const entrar = async () => {
+  const confirmarEntrada = async () => {
     if (!turmaEncontrada || !nomeNegocio.trim()) return;
+    setEntrando(true);
     const equipesKey = `equipes_${turmaEncontrada.id}`;
     let lista = [];
     try {
@@ -1649,20 +1775,31 @@ function LoginAluno({ nome, onEntrar, onVoltar }) {
 
     let equipe = lista.find((e) => e.nomeNegocio.toLowerCase() === nomeNegocio.trim().toLowerCase());
     if (equipe) {
-      if (!equipe.integrantes.includes(nome)) equipe.integrantes = [...equipe.integrantes, nome];
+      if (!equipe.integrantes.includes(perfil.nome)) equipe = { ...equipe, integrantes: [...equipe.integrantes, perfil.nome] };
     } else {
-      equipe = { id: uid(), turmaId: turmaEncontrada.id, nomeNegocio: nomeNegocio.trim(), integrantes: [nome] };
+      equipe = { id: uid(), turmaId: turmaEncontrada.id, nomeNegocio: nomeNegocio.trim(), integrantes: [perfil.nome] };
       lista = [...lista, equipe];
     }
-    await window.storage.set(equipesKey, JSON.stringify(lista.map((e) => (e.id === equipe.id ? equipe : e))), true);
+    const listaFinal = lista.some((e) => e.id === equipe.id) ? lista.map((e) => (e.id === equipe.id ? equipe : e)) : [...lista, equipe];
+    await window.storage.set(equipesKey, JSON.stringify(listaFinal), true);
+
+    // grava a equipe no perfil do aluno, para pular esta tela nas próximas vezes
+    try {
+      const r2 = await window.storage.get("usuarios_todos", true);
+      const listaUsuarios = r2 ? JSON.parse(r2.value) : [];
+      const atualizada = listaUsuarios.map((u) => (u.uid === perfil.uid ? { ...u, turmaId: turmaEncontrada.id, equipeId: equipe.id } : u));
+      await window.storage.set("usuarios_todos", JSON.stringify(atualizada), true);
+    } catch {}
+
+    setEntrando(false);
     onEntrar(turmaEncontrada, equipe);
   };
 
   return (
-    <div className="max-w-md mx-auto">
-      <button onClick={onVoltar} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar</button>
+    <div className="max-w-md mx-auto w-full">
+      <button onClick={onSair} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><LogOut size={15} /> Sair</button>
       <Card className="p-6">
-        <SectionTitle icon={KeyRound}>Entrar em uma turma</SectionTitle>
+        <SectionTitle icon={KeyRound} sub={`Olá, ${perfil.nome}! Informe o código da turma para continuar.`}>Entrar em uma turma</SectionTitle>
         <Field label="Código da turma (fornecido pelo professor)">
           <div className="flex gap-2">
             <TxtInput value={codigo} onChange={setCodigo} placeholder="Ex.: A1B2C3" />
@@ -1676,7 +1813,9 @@ function LoginAluno({ nome, onEntrar, onVoltar }) {
             <Field label="Nome do negócio / equipe" hint="Se já existe uma equipe com esse nome na turma, você entrará nela; senão, uma nova equipe será criada.">
               <TxtInput value={nomeNegocio} onChange={setNomeNegocio} placeholder="Ex.: Doce Ponto Confeitaria" />
             </Field>
-            <button onClick={entrar} disabled={!nomeNegocio.trim()} className="w-full bg-amber-500 text-slate-900 py-2.5 rounded-md font-bold hover:bg-amber-400 disabled:opacity-40 mt-2">Entrar no workspace</button>
+            <button onClick={confirmarEntrada} disabled={!nomeNegocio.trim() || entrando} className="w-full bg-amber-500 text-slate-900 py-2.5 rounded-md font-bold hover:bg-amber-400 disabled:opacity-40 mt-2">
+              {entrando ? "Entrando…" : "Entrar no workspace"}
+            </button>
           </>
         )}
       </Card>
@@ -1684,107 +1823,279 @@ function LoginAluno({ nome, onEntrar, onVoltar }) {
   );
 }
 
-export default function App() {
-  const [sessao, setSessao] = useState(null); // {role, nome}
-  const [alunoTurmaEquipe, setAlunoTurmaEquipe] = useState(null); // {turma, equipe}
-  const [tela, setTela] = useState("landing"); // landing | escolha-papel | login-aluno
-  const [nomeInput, setNomeInput] = useState("");
+function AlunoRoteador({ perfil, onSair }) {
+  const [override, setOverride] = useState(null);
+  const turmaId = override?.turmaId || perfil.turmaId;
+  const equipeId = override?.equipeId || perfil.equipeId;
+  const equipeCarregada = useEquipeSalva(turmaId, equipeId);
+  const equipe = override?.equipeObj || equipeCarregada;
 
-  // Persistência do "código -> turma" para busca do aluno
-  const registrarCodigoTurma = async (turma) => {
-    try { await window.storage.set(`turma_por_codigo_${turma.codigo}`, JSON.stringify(turma), true); } catch {}
-  };
+  if (turmaId && equipeId && equipe === undefined) return <LoadingScreen />;
 
-  if (sessao?.role === "professor") {
-    return <ProfessorDashboardWithRegister user={sessao} onSair={() => { setSessao(null); setTela("landing"); }} registrarCodigoTurma={registrarCodigoTurma} />;
+  if (!turmaId || !equipeId || equipe === null) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+        <EscolherEquipe
+          perfil={perfil}
+          onSair={onSair}
+          onEntrar={(turma, equipeNova) => setOverride({ turmaId: turma.id, equipeId: equipeNova.id, equipeObj: equipeNova })}
+        />
+      </div>
+    );
   }
 
-  if (sessao?.role === "aluno" && alunoTurmaEquipe) {
-    const equipeKey = `dados_equipe_${alunoTurmaEquipe.equipe.id}`;
-    return (
-      <AlunoWorkspace
-        user={sessao}
-        equipe={alunoTurmaEquipe.equipe}
-        equipeKey={equipeKey}
-        onSair={() => { setSessao(null); setAlunoTurmaEquipe(null); setTela("landing"); }}
+  const userSessao = { uid: perfil.uid, nome: perfil.nome, email: perfil.email, papel: "aluno" };
+  return <AlunoWorkspace user={userSessao} equipe={equipe} equipeKey={`dados_equipe_${equipe.id}`} onSair={onSair} />;
+}
+
+function TelaAguardandoAprovacao({ perfil, onSair, rejeitado }) {
+  return (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+      <Card className="p-8 max-w-md text-center">
+        {rejeitado ? (
+          <>
+            <UserX size={40} className="mx-auto text-rose-400 mb-3" />
+            <h2 className="text-lg font-bold text-slate-100 mb-2">Cadastro não aprovado</h2>
+            <p className="text-sm text-slate-400 mb-5">
+              Olá, {perfil.nome}. Seu cadastro não foi aprovado por um Usuário Mestre. Fale com o(a) professor(a) responsável para mais informações.
+            </p>
+          </>
+        ) : (
+          <>
+            <Clock size={40} className="mx-auto text-amber-500 mb-3" />
+            <h2 className="text-lg font-bold text-slate-100 mb-2">Cadastro em análise</h2>
+            <p className="text-sm text-slate-400 mb-1">
+              Olá, {perfil.nome}! Seu cadastro como {perfil.papel === "professor" ? "professor(a)" : "aluno(a)"} foi enviado e está aguardando aprovação de um Usuário Mestre.
+            </p>
+            <p className="text-xs text-slate-500 mb-5">Assim que for aprovado, é só entrar novamente com seu e-mail e senha.</p>
+          </>
+        )}
+        <button onClick={onSair} className="text-sm text-slate-400 hover:text-slate-100 flex items-center gap-2 mx-auto"><LogOut size={14} /> Sair</button>
+      </Card>
+    </div>
+  );
+}
+
+function CampoSenha({ value, onChange, placeholder }) {
+  const [ver, setVer] = useState(false);
+  return (
+    <div className="relative">
+      <input
+        type={ver ? "text" : "password"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full border border-slate-600 bg-slate-900 text-slate-100 placeholder-slate-500 rounded-md pl-3 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
       />
+      <button type="button" onClick={() => setVer(!ver)} className="absolute right-2.5 top-2.5 text-slate-500 hover:text-slate-300">
+        {ver ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
+    </div>
+  );
+}
+
+function TelaCadastro({ onCadastrado, onIrParaLogin }) {
+  const [nome, setNome] = useState("");
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+  const [confirmar, setConfirmar] = useState("");
+  const [papel, setPapel] = useState("aluno");
+  const [codigoMestre, setCodigoMestre] = useState("");
+  const [erro, setErro] = useState("");
+  const [carregando, setCarregando] = useState(false);
+
+  const enviar = async () => {
+    if (!nome.trim()) return setErro("Digite seu nome completo.");
+    if (!email.trim()) return setErro("Digite seu e-mail.");
+    if (senha.length < 6) return setErro("A senha precisa ter pelo menos 6 caracteres.");
+    if (senha !== confirmar) return setErro("As senhas não coincidem.");
+    setErro(""); setCarregando(true);
+    try {
+      const fbUser = await cadastrar(email.trim(), senha, nome.trim());
+      const souMestre = papel === "professor" && codigoMestre.trim() !== "" && codigoMestre.trim() === CODIGO_MESTRE;
+      const perfil = {
+        uid: fbUser.uid, nome: nome.trim(), email: email.trim(), papel,
+        status: souMestre ? "aprovado" : "pendente",
+        mestre: souMestre,
+        turmaId: null, equipeId: null,
+        criadoEm: Date.now(),
+      };
+      let lista = [];
+      try {
+        const r = await window.storage.get("usuarios_todos", true);
+        lista = r ? JSON.parse(r.value) : [];
+      } catch {}
+      await window.storage.set("usuarios_todos", JSON.stringify([...lista, perfil]), true);
+      onCadastrado(perfil);
+    } catch (e) {
+      setErro(traduzErroAuth(e));
+    }
+    setCarregando(false);
+  };
+
+  return (
+    <Card className="p-6">
+      <SectionTitle icon={UserPlus}>Criar minha conta</SectionTitle>
+      <Field label="Nome completo"><TxtInput value={nome} onChange={setNome} placeholder="Ex.: Ana Souza" /></Field>
+      <Field label="E-mail">
+        <div className="relative">
+          <Mail size={15} className="absolute left-3 top-2.5 text-slate-500" />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seuemail@exemplo.com"
+            className="w-full border border-slate-600 bg-slate-900 text-slate-100 placeholder-slate-500 rounded-md pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent" />
+        </div>
+      </Field>
+      <Field label="Senha (mínimo 6 caracteres)"><CampoSenha value={senha} onChange={setSenha} placeholder="••••••••" /></Field>
+      <Field label="Confirmar senha"><CampoSenha value={confirmar} onChange={setConfirmar} placeholder="••••••••" /></Field>
+      <Field label="Você é">
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => setPapel("aluno")} className={`py-2 rounded-md text-sm font-semibold border ${papel === "aluno" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300"}`}>Aluno(a)</button>
+          <button type="button" onClick={() => setPapel("professor")} className={`py-2 rounded-md text-sm font-semibold border ${papel === "professor" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300"}`}>Professor(a)</button>
+        </div>
+      </Field>
+      {papel === "professor" && (
+        <Field label="Código de Mestre (opcional)" hint="Só preencha se você recebeu um código de Usuário Mestre. Deixe em branco para se cadastrar como professor(a) comum, aguardando aprovação.">
+          <TxtInput value={codigoMestre} onChange={setCodigoMestre} placeholder="Deixe em branco se não tiver" />
+        </Field>
+      )}
+      {erro && <p className="text-sm text-rose-400 mb-2">{erro}</p>}
+      <button onClick={enviar} disabled={carregando} className="w-full bg-amber-500 text-slate-900 py-2.5 rounded-md font-bold hover:bg-amber-400 disabled:opacity-40 mt-2">
+        {carregando ? "Enviando…" : "Criar conta"}
+      </button>
+      <button onClick={onIrParaLogin} className="w-full text-center text-sm text-slate-400 hover:text-slate-100 mt-3">Já tenho conta — entrar</button>
+    </Card>
+  );
+}
+
+function TelaLogin({ onIrParaCadastro }) {
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+  const [erro, setErro] = useState("");
+  const [carregando, setCarregando] = useState(false);
+  const [recuperarAberto, setRecuperarAberto] = useState(false);
+  const [emailRecuperar, setEmailRecuperar] = useState("");
+  const [msgRecuperar, setMsgRecuperar] = useState("");
+
+  const fazerLogin = async () => {
+    if (!email.trim() || !senha) return setErro("Preencha e-mail e senha.");
+    setErro(""); setCarregando(true);
+    try {
+      await entrar(email.trim(), senha);
+      // o App() detecta a sessão automaticamente pelo observador do Firebase
+    } catch (e) {
+      setErro(traduzErroAuth(e));
+      setCarregando(false);
+    }
+  };
+
+  const enviarRecuperacao = async () => {
+    setMsgRecuperar("");
+    try {
+      await recuperarSenha(emailRecuperar.trim());
+      setMsgRecuperar("Enviamos um e-mail com instruções para redefinir sua senha.");
+    } catch (e) {
+      setMsgRecuperar(traduzErroAuth(e));
+    }
+  };
+
+  if (recuperarAberto) {
+    return (
+      <Card className="p-6">
+        <SectionTitle icon={Lock}>Recuperar senha</SectionTitle>
+        <Field label="Seu e-mail">
+          <TxtInput value={emailRecuperar} onChange={setEmailRecuperar} placeholder="seuemail@exemplo.com" />
+        </Field>
+        {msgRecuperar && <p className="text-sm text-slate-300 mb-3">{msgRecuperar}</p>}
+        <button onClick={enviarRecuperacao} disabled={!emailRecuperar.trim()} className="w-full bg-amber-500 text-slate-900 py-2.5 rounded-md font-bold hover:bg-amber-400 disabled:opacity-40">Enviar e-mail de recuperação</button>
+        <button onClick={() => setRecuperarAberto(false)} className="w-full text-center text-sm text-slate-400 hover:text-slate-100 mt-3">Voltar ao login</button>
+      </Card>
     );
   }
 
   return (
+    <Card className="p-6">
+      <SectionTitle icon={Lock}>Entrar</SectionTitle>
+      <Field label="E-mail">
+        <div className="relative">
+          <Mail size={15} className="absolute left-3 top-2.5 text-slate-500" />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seuemail@exemplo.com"
+            className="w-full border border-slate-600 bg-slate-900 text-slate-100 placeholder-slate-500 rounded-md pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent" />
+        </div>
+      </Field>
+      <Field label="Senha"><CampoSenha value={senha} onChange={setSenha} placeholder="••••••••" /></Field>
+      {erro && <p className="text-sm text-rose-400 mb-2">{erro}</p>}
+      <button onClick={fazerLogin} disabled={carregando} className="w-full bg-amber-500 text-slate-900 py-2.5 rounded-md font-bold hover:bg-amber-400 disabled:opacity-40">
+        {carregando ? "Entrando…" : "Entrar"}
+      </button>
+      <div className="flex items-center justify-between mt-3">
+        <button onClick={() => setRecuperarAberto(true)} className="text-xs text-slate-400 hover:text-slate-100">Esqueci minha senha</button>
+        <button onClick={onIrParaCadastro} className="text-xs text-amber-500 hover:text-amber-400 font-semibold">Criar conta</button>
+      </div>
+    </Card>
+  );
+}
+
+function TelaEntrada({ tela, setTela, onCadastrado }) {
+  return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
-      <div className="w-full max-w-4xl">
-        <div className="text-center mb-10">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
           <div className="w-14 h-14 rounded-full bg-slate-900 border-2 border-amber-500 flex items-center justify-center mx-auto mb-4">
             <GraduationCap size={26} className="text-amber-500" />
           </div>
           <div className="text-xs font-bold tracking-widest text-amber-500 mb-2">CURSO TÉCNICO EM ADMINISTRAÇÃO E CONTABILIDADE</div>
-          <h1 className="text-3xl sm:text-4xl font-bold text-slate-50 mb-2">Plataforma do Plano Financeiro</h1>
-          <p className="text-slate-400 max-w-xl mx-auto">Construção guiada do plano financeiro do negócio, módulo a módulo — do investimento inicial aos indicadores de viabilidade · uso didático</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-50 mb-2">Plataforma do Plano Financeiro</h1>
+          <p className="text-slate-400 text-sm">Construção guiada do plano financeiro do negócio, módulo a módulo · uso didático</p>
         </div>
-
-        {tela === "landing" && (
-          <div className="grid sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
-            <button onClick={() => setTela("professor")} className="bg-slate-800 border-2 border-transparent hover:border-amber-500 rounded-2xl p-8 text-center shadow-sm hover:shadow-md transition">
-              <School size={36} className="mx-auto text-slate-100 mb-3" />
-              <div className="font-bold text-lg text-slate-100">Sou Professor(a)</div>
-              <p className="text-sm text-slate-400 mt-1">Criar turmas e acompanhar as equipes</p>
-            </button>
-            <button onClick={() => setTela("aluno")} className="bg-slate-800 border-2 border-transparent hover:border-amber-500 rounded-2xl p-8 text-center shadow-sm hover:shadow-md transition">
-              <Users size={36} className="mx-auto text-amber-400 mb-3" />
-              <div className="font-bold text-lg text-slate-100">Sou Aluno(a)</div>
-              <p className="text-sm text-slate-400 mt-1">Entrar na turma e montar o plano financeiro</p>
-            </button>
-          </div>
-        )}
-
-        {tela === "professor" && (
-          <div className="max-w-md mx-auto">
-            <button onClick={() => setTela("landing")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar</button>
-            <Card className="p-6">
-              <SectionTitle icon={School}>Identifique-se</SectionTitle>
-              <Field label="Seu nome"><TxtInput value={nomeInput} onChange={setNomeInput} placeholder="Ex.: Prof. Ana Souza" /></Field>
-              <button
-                onClick={() => nomeInput.trim() && setSessao({ role: "professor", nome: nomeInput.trim() })}
-                disabled={!nomeInput.trim()}
-                className="w-full bg-slate-900 text-white py-2.5 rounded-md font-semibold hover:bg-slate-800 disabled:opacity-40"
-              >Entrar como professor(a)</button>
-            </Card>
-          </div>
-        )}
-
-        {tela === "aluno" && !sessao && (
-          <div className="max-w-md mx-auto">
-            <button onClick={() => setTela("landing")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar</button>
-            <Card className="p-6">
-              <SectionTitle icon={Users}>Identifique-se</SectionTitle>
-              <Field label="Seu nome"><TxtInput value={nomeInput} onChange={setNomeInput} placeholder="Ex.: João Pereira" /></Field>
-              <button
-                onClick={() => nomeInput.trim() && setSessao({ role: "aluno", nome: nomeInput.trim() })}
-                disabled={!nomeInput.trim()}
-                className="w-full bg-amber-500 text-slate-900 py-2.5 rounded-md font-bold hover:bg-amber-400 disabled:opacity-40"
-              >Continuar</button>
-            </Card>
-          </div>
-        )}
-
-        {tela === "aluno" && sessao?.role === "aluno" && !alunoTurmaEquipe && (
-          <LoginAluno nome={sessao.nome} onVoltar={() => setSessao(null)} onEntrar={(turma, equipe) => setAlunoTurmaEquipe({ turma, equipe })} />
-        )}
+        {tela === "cadastro"
+          ? <TelaCadastro onCadastrado={onCadastrado} onIrParaLogin={() => setTela("login")} />
+          : <TelaLogin onIrParaCadastro={() => setTela("cadastro")} />}
       </div>
     </div>
   );
 }
 
-function ProfessorDashboardWithRegister({ user, onSair, registrarCodigoTurma }) {
-  // Envolve o ProfessorDashboard original, mas garante que toda turma criada
-  // fique também pesquisável pelo código (para os alunos encontrarem).
-  const chaveMinhas = `turmas_prof_${user.nome.toLowerCase().replace(/\s+/g, "_")}`;
-  const [turmas, setTurmas] = useSharedList(chaveMinhas);
+export default function App() {
+  const [firebaseUser, setFirebaseUser] = useState(undefined); // undefined=carregando, null=deslogado
+  const [usuarios, setUsuarios] = useSharedList("usuarios_todos");
+  const [tela, setTela] = useState("login");
+  const [perfilRecemCriado, setPerfilRecemCriado] = useState(null);
 
   useEffect(() => {
-    if (turmas) turmas.forEach((t) => registrarCodigoTurma(t));
-  }, [turmas]);
+    const cancelar = observarSessao((u) => setFirebaseUser(u || null));
+    return cancelar;
+  }, []);
 
-  return <ProfessorDashboard user={user} onSair={onSair} />;
+  const efetuarSaida = async () => {
+    try { await sair(); } catch {}
+    setPerfilRecemCriado(null);
+    setTela("login");
+  };
+
+  if (firebaseUser === undefined) return <LoadingScreen />;
+
+  if (!firebaseUser) {
+    return <TelaEntrada tela={tela} setTela={setTela} onCadastrado={setPerfilRecemCriado} />;
+  }
+
+  if (usuarios === null) return <LoadingScreen />;
+
+  const perfil = perfilRecemCriado || usuarios.find((u) => u.uid === firebaseUser.uid);
+
+  if (!perfil) {
+    return <TelaAguardandoAprovacao perfil={{ nome: firebaseUser.displayName || firebaseUser.email, papel: "—" }} onSair={efetuarSaida} />;
+  }
+  if (perfil.status === "pendente") {
+    return <TelaAguardandoAprovacao perfil={perfil} onSair={efetuarSaida} />;
+  }
+  if (perfil.status === "rejeitado") {
+    return <TelaAguardandoAprovacao perfil={perfil} onSair={efetuarSaida} rejeitado />;
+  }
+
+  const userSessao = { uid: perfil.uid, nome: perfil.nome, email: perfil.email, papel: perfil.papel, mestre: !!perfil.mestre };
+
+  if (perfil.papel === "professor") {
+    return <ProfessorDashboard user={userSessao} onSair={efetuarSaida} />;
+  }
+
+  return <AlunoRoteador perfil={perfil} onSair={efetuarSaida} />;
 }

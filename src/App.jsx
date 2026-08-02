@@ -1921,9 +1921,44 @@ function SeletorTurma({ turmas, value, onChange }) {
   );
 }
 
-function GestaoTurmasView({ turmas, onCriar, onAbrir }) {
+// Apaga permanentemente tudo que pertence a uma turma: empresas/equipes,
+// lançamentos de cada uma, a lista oficial de alunos importada, o código de
+// acesso e as contas dos alunos vinculados a ela. Não mexe na lista de
+// turmas do professor — quem chama essa função cuida disso depois.
+async function excluirTurmaCompleta(turma) {
+  try {
+    const r = await window.storage.get(`equipes_${turma.id}`, true);
+    const equipes = r ? JSON.parse(r.value) : [];
+    for (const equipe of equipes) {
+      try { await window.storage.delete(`dados_equipe_${equipe.id}`, true); } catch {}
+    }
+  } catch {}
+  try { await window.storage.delete(`equipes_${turma.id}`, true); } catch {}
+  try { await window.storage.delete(`roster_${turma.id}`, true); } catch {}
+  try { await window.storage.delete(`turma_por_codigo_${turma.codigo}`, true); } catch {}
+  try {
+    const todos = await listarUsuarios();
+    const afetados = todos.filter((u) => u.papel === "aluno" && u.turmaId === turma.id);
+    await Promise.all(afetados.map((u) => excluirUsuario(u.uid)));
+  } catch {}
+}
+
+function GestaoTurmasView({ turmas, onCriar, onAbrir, setTurmas }) {
   const [novoNome, setNovoNome] = useState("");
+  const [excluindoId, setExcluindoId] = useState(null);
   const criar = () => { if (novoNome.trim()) { onCriar(novoNome.trim()); setNovoNome(""); } };
+
+  const excluir = async (t) => {
+    const ok = window.confirm(
+      `Excluir a turma "${t.nome}"?\n\nIsso vai apagar permanentemente todas as empresas, lançamentos, a lista oficial de alunos e as contas dos alunos vinculados a ela. Essa ação não pode ser desfeita.\n\nDica: se quiser guardar uma cópia antes, cancele e use Gestão → Backup → Exportar.`
+    );
+    if (!ok) return;
+    setExcluindoId(t.id);
+    await excluirTurmaCompleta(t);
+    await setTurmas(turmas.filter((x) => x.id !== t.id));
+    setExcluindoId(null);
+  };
+
   return (
     <div>
       <SectionTitle icon={School} sub="Crie turmas, compartilhe o código com os alunos e acompanhe o plano financeiro de cada equipe.">Turmas</SectionTitle>
@@ -1941,12 +1976,23 @@ function GestaoTurmasView({ turmas, onCriar, onAbrir }) {
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {turmas.map((t) => (
-            <button key={t.id} onClick={() => onAbrir(t.id)} className="text-left bg-slate-800 border border-slate-700 rounded-xl p-4 hover:shadow-md hover:border-amber-500 transition">
-              <div className="flex items-center gap-2 mb-2"><School size={16} className="text-sky-400" /><span className="font-bold text-slate-100">{t.nome}</span></div>
-              <div className="flex items-center gap-2 text-xs text-slate-400">
-                <KeyRound size={13} /> Código: <span className="font-mono font-bold text-amber-400">{t.codigo}</span>
-              </div>
-            </button>
+            <div key={t.id} className="relative bg-slate-800 border border-slate-700 rounded-xl hover:border-amber-500 transition">
+              <button
+                onClick={(e) => { e.stopPropagation(); excluir(t); }}
+                disabled={excluindoId === t.id}
+                title="Excluir turma"
+                className="absolute top-2 right-2 z-10 p-1.5 rounded-md bg-slate-900/80 text-slate-400 hover:text-rose-400 disabled:opacity-40"
+              >
+                <Trash2 size={13} />
+              </button>
+              <button onClick={() => onAbrir(t.id)} className="text-left p-4 w-full">
+                <div className="flex items-center gap-2 mb-2 pr-6"><School size={16} className="text-sky-400 shrink-0" /><span className="font-bold text-slate-100 truncate">{t.nome}</span></div>
+                <div className="flex items-center gap-2 text-xs text-slate-400">
+                  <KeyRound size={13} /> Código: <span className="font-mono font-bold text-amber-400">{t.codigo}</span>
+                </div>
+                {excluindoId === t.id && <div className="text-xs text-rose-400 mt-2">Excluindo…</div>}
+              </button>
+            </div>
           ))}
         </div>
       )}
@@ -2300,7 +2346,7 @@ function GestaoBackupView({ turmas, setTurmas }) {
   // vinculados a ela. Usado ao final do ano/semestre letivo, depois de já ter
   // sido feito o backup, para abrir espaço para as turmas do próximo período.
   const excluirTurma = async () => {
-    if (!turma || !dadosEquipes) return;
+    if (!turma) return;
     const ok = window.confirm(
       `Tem certeza que deseja excluir a turma "${turma.nome}"?\n\nIsso vai apagar permanentemente todas as empresas, lançamentos, a lista oficial de alunos e as contas dos alunos vinculados a ela. Essa ação não pode ser desfeita.`
     );
@@ -2309,23 +2355,7 @@ function GestaoBackupView({ turmas, setTurmas }) {
     setExcluindo(true);
     setStatus("Excluindo turma…");
     try {
-      // 1. Lançamentos de cada empresa/equipe
-      for (const { equipe } of dadosEquipes) {
-        try { await window.storage.delete(`dados_equipe_${equipe.id}`, true); } catch {}
-      }
-      // 2. Lista de empresas/equipes da turma
-      try { await window.storage.delete(`equipes_${turma.id}`, true); } catch {}
-      // 3. Lista oficial de alunos (roster) importada por PDF
-      try { await window.storage.delete(`roster_${turma.id}`, true); } catch {}
-      // 4. Registro que permite alunos encontrarem a turma pelo código
-      try { await window.storage.delete(`turma_por_codigo_${turma.codigo}`, true); } catch {}
-      // 5. Contas dos alunos vinculados a essa turma
-      try {
-        const todos = await listarUsuarios();
-        const afetados = todos.filter((u) => u.papel === "aluno" && u.turmaId === turma.id);
-        await Promise.all(afetados.map((u) => excluirUsuario(u.uid)));
-      } catch {}
-      // 6. Remove a turma da lista do professor
+      await excluirTurmaCompleta(turma);
       await setTurmas(turmas.filter((t) => t.id !== turma.id));
       setTurmaId("");
       setStatus(`Turma "${turma.nome}" excluída com sucesso.`);
@@ -2559,7 +2589,7 @@ function ProfessorDashboard({ user, onSair }) {
           turmaAtiva
 
             ? <TurmaDetail turma={turmaAtiva} professorNome={user.nome} onVoltar={() => setTurmaAtivaId(null)} />
-            : <GestaoTurmasView turmas={turmas} onCriar={criarTurma} onAbrir={setTurmaAtivaId} />
+            : <GestaoTurmasView turmas={turmas} onCriar={criarTurma} onAbrir={setTurmaAtivaId} setTurmas={setTurmas} />
         )}
         {aba === "usuarios" && <GestaoUsuariosView turmas={turmas} />}
         {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}

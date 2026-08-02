@@ -2529,7 +2529,7 @@ function ProfessorDashboard({ user, onSair }) {
 // APROVAÇÕES (só para Usuários Mestre)
 // ============================================================================
 
-function LinhaUsuarioPendente({ usuario, onAprovar, onRejeitar, onMudarPapel }) {
+function LinhaUsuarioPendente({ usuario, onAprovar, onRejeitar, onMudarPapel, onExcluir }) {
   const [tornarMestre, setTornarMestre] = useState(false);
   return (
     <Card className="p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
@@ -2558,6 +2558,9 @@ function LinhaUsuarioPendente({ usuario, onAprovar, onRejeitar, onMudarPapel }) 
       <div className="flex gap-2 shrink-0">
         <button onClick={() => onAprovar(usuario, tornarMestre)} className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-2 rounded-md"><UserCheck size={14} /> Aprovar</button>
         <button onClick={() => onRejeitar(usuario)} className="flex items-center gap-1.5 bg-rose-950/40 border border-rose-800/60 hover:bg-rose-900/40 text-rose-400 text-xs font-semibold px-3 py-2 rounded-md"><UserX size={14} /> Recusar</button>
+        {onExcluir && (
+          <button onClick={() => onExcluir(usuario)} title="Excluir esta conta permanentemente" className="flex items-center gap-1.5 text-slate-500 hover:text-rose-400 text-xs font-semibold px-2 py-2 rounded-md"><Trash2 size={14} /></button>
+        )}
       </div>
     </Card>
   );
@@ -2584,6 +2587,12 @@ function GestaoAprovacoesView({ usuarioAtualUid }) {
     if (!ok) return;
     atualizar(u.uid, { papel: novoPapel, mestre: novoPapel === "professor" ? u.mestre : false });
   };
+  const excluir = async (u) => {
+    const ok = window.confirm(`Excluir permanentemente a conta de "${u.nome}" (${u.email})?\n\nEssa ação não pode ser desfeita.`);
+    if (!ok) return;
+    await excluirUsuario(u.uid);
+    setRefreshKey((k) => k + 1);
+  };
 
   return (
     <div>
@@ -2593,14 +2602,14 @@ function GestaoAprovacoesView({ usuarioAtualUid }) {
       <div className="space-y-3 mb-8">
         {pendentes.length === 0 && <Card className="p-6 text-center text-slate-500 text-sm">Nenhum cadastro aguardando aprovação.</Card>}
         {pendentes.map((u) => (
-          <LinhaUsuarioPendente key={u.uid} usuario={u} onAprovar={aprovar} onRejeitar={rejeitar} onMudarPapel={mudarPapel} />
+          <LinhaUsuarioPendente key={u.uid} usuario={u} onAprovar={aprovar} onRejeitar={rejeitar} onMudarPapel={mudarPapel} onExcluir={excluir} />
         ))}
       </div>
 
       <h3 className="text-sm font-bold text-slate-200 mb-2">Usuários aprovados ({aprovados.length})</h3>
       <Card className="p-0 overflow-hidden">
         <div className="overflow-x-auto">
-        <table className="w-full text-sm min-w-[560px]">
+        <table className="w-full text-sm min-w-[640px]">
           <thead>
             <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40">
               <th className="py-2 px-4">Nome</th><th className="py-2 px-4">Papel</th><th className="py-2 px-4">E-mail</th><th className="py-2 px-4">Mestre</th><th className="py-2 px-4"></th>
@@ -2620,9 +2629,12 @@ function GestaoAprovacoesView({ usuarioAtualUid }) {
                     </button>
                   )}
                   {u.papel === "professor" && u.uid !== usuarioAtualUid && (
-                    <button onClick={() => alternarMestre(u)} className="text-xs font-semibold text-sky-400 hover:text-sky-300">
+                    <button onClick={() => alternarMestre(u)} className="text-xs font-semibold text-sky-400 hover:text-sky-300 mr-3">
                       {u.mestre ? "Remover Mestre" : "Tornar Mestre"}
                     </button>
+                  )}
+                  {u.uid !== usuarioAtualUid && (
+                    <button onClick={() => excluir(u)} title="Excluir esta conta permanentemente" className="text-slate-500 hover:text-rose-400 align-middle"><Trash2 size={14} /></button>
                   )}
                 </td>
               </tr>

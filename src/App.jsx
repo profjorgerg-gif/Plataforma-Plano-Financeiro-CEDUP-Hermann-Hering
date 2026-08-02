@@ -10,7 +10,7 @@ import {
   Plus, Trash2, ChevronRight, ChevronDown, CheckCircle2, Circle, AlertTriangle,
   Save, Copy, ArrowLeft, BookOpen, Building2, KeyRound, Mail, Lock, ShieldCheck,
   Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
-  ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil,
+  ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
 } from "lucide-react";
 import {
   observarSessao, cadastrar, entrar, sair, recuperarSenha, traduzErroAuth, CODIGO_MESTRE,
@@ -420,10 +420,35 @@ function AddBtn({ onClick, children }) {
 // FORMULÁRIOS DE CADA MÓDULO
 // ============================================================================
 
+// Categorias padrão de bens do módulo "Investimentos Fixos". Além destas, o
+// professor/aluno pode criar quantas categorias personalizadas quiser pelo
+// botão "+ Nova categoria..." — elas ficam salvas junto dos lançamentos e
+// continuam disponíveis na lista depois.
+const CATEGORIAS_BEM_PADRAO = [
+  "Máquinas", "Móveis", "Veículos", "Equipamentos de Informática",
+  "Ferramentas", "Utensílios", "Instalações/Reformas", "Outros",
+];
+
 function M1Form({ data, update }) {
   const itens = data.itens;
   const setItens = (next) => update({ ...data, itens: next });
   const total = itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.valorUnit) || 0), 0);
+
+  // Junta as categorias padrão com quaisquer categorias personalizadas que já
+  // tenham sido usadas nesta lista de bens, para elas aparecerem no seletor.
+  const categoriasUsadas = itens.map((it) => it.categoria).filter(Boolean);
+  const categorias = [...new Set([...CATEGORIAS_BEM_PADRAO, ...categoriasUsadas])];
+
+  const alterarCategoria = (itemId, valor) => {
+    if (valor === "__nova__") {
+      const nome = (prompt("Nome da nova categoria de bem:") || "").trim();
+      if (!nome) return;
+      setItens(itens.map((r) => (r.id === itemId ? { ...r, categoria: nome } : r)));
+      return;
+    }
+    setItens(itens.map((r) => (r.id === itemId ? { ...r, categoria: valor } : r)));
+  };
+
   return (
     <div>
       <div className="overflow-x-auto">
@@ -443,8 +468,9 @@ function M1Form({ data, update }) {
               <tr key={it.id} className="border-b border-slate-800">
                 <td className="py-1.5 pr-2"><TxtInput value={it.desc} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, desc: v } : r)))} placeholder="Ex.: Máquina de costura" /></td>
                 <td className="py-1.5 pr-2">
-                  <select value={it.categoria || "Máquinas"} onChange={(e) => setItens(itens.map((r) => (r.id === it.id ? { ...r, categoria: e.target.value } : r)))} className="w-full border border-slate-600 rounded-md px-2 py-2 text-sm">
-                    <option>Máquinas</option><option>Móveis</option><option>Veículos</option>
+                  <select value={it.categoria || "Máquinas"} onChange={(e) => alterarCategoria(it.id, e.target.value)} className="w-full border border-slate-600 rounded-md px-2 py-2 text-sm">
+                    {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
+                    <option value="__nova__">+ Nova categoria…</option>
                   </select>
                 </td>
                 <td className="py-1.5 pr-2"><NumInput value={it.qtd} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, qtd: v } : r)))} /></td>
@@ -1058,6 +1084,8 @@ function ManualAlunoView({ equipe, onIrPara }) {
 function AlunoWorkspace({ user, equipe, equipeKey, onSair }) {
   const [dados, setDados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
   const [aba, setAba] = useState("inicio");
+  const [menuAberto, setMenuAberto] = useState(false);
+  const irPara = (id) => { setAba(id); setMenuAberto(false); };
 
   const lanc = mergeLancamentos(dados?.lancamentos);
   const calc = useMemo(() => calcular(lanc), [JSON.stringify(lanc)]);
@@ -1087,11 +1115,21 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair }) {
   ];
 
   return (
-    <div className="min-h-screen flex bg-slate-950">
-      <aside className="w-72 bg-slate-900 text-white flex flex-col shrink-0">
-        <div className="p-5 border-b border-white/10">
-          <div className="flex items-center gap-2 text-sm text-white/70"><Building2 size={16} /> {equipe.nomeNegocio}</div>
-          <div className="text-xs text-white/50 mt-1">Equipe · {equipe.integrantes.join(", ")}</div>
+    <div className="min-h-screen flex bg-slate-950 relative">
+      <header className="md:hidden fixed top-0 inset-x-0 z-20 bg-slate-900 border-b border-white/10 flex items-center justify-between px-4 py-3">
+        <div className="flex items-center gap-2 text-sm text-white/80 font-semibold truncate"><Building2 size={16} className="shrink-0" /> <span className="truncate">{equipe.nomeNegocio}</span></div>
+        <button onClick={() => setMenuAberto(true)} className="text-white/80 p-1 shrink-0"><Menu size={22} /></button>
+      </header>
+
+      {menuAberto && <div onClick={() => setMenuAberto(false)} className="md:hidden fixed inset-0 bg-black/60 z-30" />}
+
+      <aside className={`w-72 bg-slate-900 text-white flex flex-col shrink-0 fixed inset-y-0 left-0 z-40 transition-transform duration-200 md:static md:translate-x-0 ${menuAberto ? "translate-x-0" : "-translate-x-full"}`}>
+        <div className="p-5 border-b border-white/10 flex items-start justify-between gap-2">
+          <div>
+            <div className="flex items-center gap-2 text-sm text-white/70"><Building2 size={16} /> {equipe.nomeNegocio}</div>
+            <div className="text-xs text-white/50 mt-1">Equipe · {equipe.integrantes.join(", ")}</div>
+          </div>
+          <button onClick={() => setMenuAberto(false)} className="md:hidden text-white/60 hover:text-white shrink-0"><X size={18} /></button>
         </div>
         <nav className="flex-1 overflow-y-auto py-3">
           {menuItems.map((it) => {
@@ -1100,7 +1138,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair }) {
             return (
               <button
                 key={it.id}
-                onClick={() => setAba(it.id)}
+                onClick={() => irPara(it.id)}
                 className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${active ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}
               >
                 {it.num && <span className={`text-[10px] font-mono w-5 shrink-0 ${active ? "text-amber-500" : "text-white/30"}`}>{it.num}</span>}
@@ -1116,7 +1154,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair }) {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto p-8 max-w-5xl mx-auto w-full">
+      <main className="flex-1 overflow-y-auto p-4 pt-20 md:p-8 md:pt-8 max-w-5xl mx-auto w-full">
         {aba === "manual" && <ManualAlunoView equipe={equipe} onIrPara={setAba} />}
 
         {aba === "inicio" && (
@@ -1124,6 +1162,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair }) {
             <div className="mb-8">
               <div className="text-xs font-bold tracking-widest text-amber-500 mb-2">CURSO TÉCNICO EM ADMINISTRAÇÃO E CONTABILIDADE</div>
               <h1 className="text-3xl font-bold text-slate-50 mb-3">Plano Financeiro de Negócio</h1>
+
               <p className="text-slate-400 max-w-2xl">Bem-vindo(a), {user.nome}. Trabalhem módulo a módulo — os cálculos passam automaticamente de um para o outro até chegar aos indicadores de viabilidade do negócio {equipe.nomeNegocio}.</p>
               <div className="flex flex-wrap gap-3 mt-5">
                 <button onClick={() => setAba("m1")} className="bg-amber-500 text-slate-900 font-bold px-5 py-2.5 rounded-md hover:bg-amber-400 text-sm">Ir para o módulo 1</button>
@@ -1998,6 +2037,7 @@ function ProfessorDashboard({ user, onSair }) {
   const [turmas, setTurmas] = useSharedList(chaveMinhas);
   const [aba, setAba] = useState("inicio");
   const [turmaAtivaId, setTurmaAtivaId] = useState(null);
+  const [menuAberto, setMenuAberto] = useState(false);
 
   if (turmas === null) return <LoadingScreen />;
 
@@ -2009,19 +2049,29 @@ function ProfessorDashboard({ user, onSair }) {
   };
 
   const turmaAtiva = turmas.find((t) => t.id === turmaAtivaId) || null;
-  const irPara = (id) => { setAba(id); if (id !== "turmas") setTurmaAtivaId(null); };
+  const irPara = (id) => { setAba(id); if (id !== "turmas") setTurmaAtivaId(null); setMenuAberto(false); };
 
   const itensMenu = user.mestre ? [...GESTAO_ITENS, ITEM_APROVACOES] : GESTAO_ITENS;
 
   return (
-    <div className="min-h-screen flex bg-slate-950">
-      <aside className="w-72 bg-slate-900 text-white flex flex-col shrink-0">
-        <div className="p-5 border-b border-white/10">
-          <div className="flex items-center gap-2 font-bold text-amber-500"><GraduationCap size={20} /> Painel do Professor</div>
-          <div className="text-xs text-white/50 mt-1 truncate flex items-center gap-1.5">
-            {user.nome}
-            {user.mestre && <span title="Usuário Mestre"><Crown size={12} className="text-amber-400 shrink-0" /></span>}
+    <div className="min-h-screen flex bg-slate-950 relative">
+      <header className="md:hidden fixed top-0 inset-x-0 z-20 bg-slate-900 border-b border-white/10 flex items-center justify-between px-4 py-3">
+        <div className="flex items-center gap-2 font-bold text-amber-500 text-sm"><GraduationCap size={18} /> Painel do Professor</div>
+        <button onClick={() => setMenuAberto(true)} className="text-white/80 p-1 shrink-0"><Menu size={22} /></button>
+      </header>
+
+      {menuAberto && <div onClick={() => setMenuAberto(false)} className="md:hidden fixed inset-0 bg-black/60 z-30" />}
+
+      <aside className={`w-72 bg-slate-900 text-white flex flex-col shrink-0 fixed inset-y-0 left-0 z-40 transition-transform duration-200 md:static md:translate-x-0 ${menuAberto ? "translate-x-0" : "-translate-x-full"}`}>
+        <div className="p-5 border-b border-white/10 flex items-start justify-between gap-2">
+          <div>
+            <div className="flex items-center gap-2 font-bold text-amber-500"><GraduationCap size={20} /> Painel do Professor</div>
+            <div className="text-xs text-white/50 mt-1 truncate flex items-center gap-1.5">
+              {user.nome}
+              {user.mestre && <span title="Usuário Mestre"><Crown size={12} className="text-amber-400 shrink-0" /></span>}
+            </div>
           </div>
+          <button onClick={() => setMenuAberto(false)} className="md:hidden text-white/60 hover:text-white shrink-0"><X size={18} /></button>
         </div>
         <nav className="flex-1 overflow-y-auto py-3">
           <button onClick={() => irPara("inicio")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "inicio" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
@@ -2043,10 +2093,11 @@ function ProfessorDashboard({ user, onSair }) {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto p-8 max-w-6xl mx-auto w-full">
+      <main className="flex-1 overflow-y-auto p-4 pt-20 md:p-8 md:pt-8 max-w-6xl mx-auto w-full">
         {aba === "inicio" && <ProfessorInicio user={user} turmas={turmas} onIrPara={irPara} />}
         {aba === "turmas" && (
           turmaAtiva
+
             ? <TurmaDetail turma={turmaAtiva} professorNome={user.nome} onVoltar={() => setTurmaAtivaId(null)} />
             : <GestaoTurmasView turmas={turmas} onCriar={criarTurma} onAbrir={setTurmaAtivaId} />
         )}

@@ -223,6 +223,120 @@ function calcular(lanc) {
 // STORAGE HOOK
 // ============================================================================
 
+// ============================================================================
+// USUÁRIOS — um documento por pessoa (chave "usuario_{uid}"), em vez de uma
+// lista única compartilhada por todo mundo.
+//
+// Por quê: guardar todos os cadastros numa lista única fazia cada ação
+// (cadastro novo, aprovação, trocar de equipe...) ler a lista inteira,
+// mudar uma pessoa e salvar a lista inteira de volta. Se duas dessas ações
+// acontecessem próximas uma da outra, a segunda podia sobrescrever a lista
+// com uma versão desatualizada, apagando sem querer mudanças feitas em OUTRAS
+// contas — foi isso que fez contas de professor voltarem a aparecer como
+// "pendente". Com um documento por pessoa, uma ação nunca mais consegue
+// atropelar o registro de outra.
+//
+// Migração automática: contas antigas, criadas antes desta correção, só
+// existem na lista única antiga ("usuarios_todos"). buscarUsuario() e
+// listarUsuarios() enxergam as duas formas e "curam" a conta automaticamente
+// (copiando para o novo formato) assim que ela é acessada — sem precisar de
+// nenhuma ação manual.
+// ============================================================================
+
+async function buscarUsuarioListaAntiga(uid) {
+  try {
+    const r = await window.storage.get("usuarios_todos", true);
+    const lista = r ? JSON.parse(r.value) : [];
+    return lista.find((u) => u.uid === uid) || null;
+  } catch { return null; }
+}
+
+async function salvarUsuario(perfil) {
+  await window.storage.set(`usuario_${perfil.uid}`, JSON.stringify(perfil), true);
+}
+
+async function buscarUsuario(uid) {
+  try {
+    const r = await window.storage.get(`usuario_${uid}`, true);
+    if (r) return JSON.parse(r.value);
+  } catch {}
+  // Não achou no formato novo — tenta recuperar do formato antigo (lista
+  // única) e, se achar, já migra para o formato novo automaticamente.
+  const antigo = await buscarUsuarioListaAntiga(uid);
+  if (antigo) { try { await salvarUsuario(antigo); } catch {} }
+  return antigo;
+}
+
+async function atualizarUsuario(uid, mudancas) {
+  const atual = await buscarUsuario(uid);
+  if (!atual) return null;
+  const novo = { ...atual, ...mudancas };
+  await salvarUsuario(novo);
+  return novo;
+}
+
+async function excluirUsuario(uid) {
+  try { await window.storage.delete(`usuario_${uid}`, true); } catch {}
+  // Remove também do formato antigo, senão a conta "reviveria" sozinha na
+  // próxima vez que alguém chamasse buscarUsuario()/listarUsuarios().
+  try {
+    const r = await window.storage.get("usuarios_todos", true);
+    const lista = r ? JSON.parse(r.value) : [];
+    const restantes = lista.filter((u) => u.uid !== uid);
+    if (restantes.length !== lista.length) await window.storage.set("usuarios_todos", JSON.stringify(restantes), true);
+  } catch {}
+}
+
+async function listarUsuarios() {
+  const porUid = new Map();
+  try {
+    const idx = await window.storage.list("usuario_", true);
+    const chaves = idx?.keys || [];
+    const resultados = await Promise.all(chaves.map(async (k) => {
+      try { const r = await window.storage.get(k, true); return r ? JSON.parse(r.value) : null; } catch { return null; }
+    }));
+    resultados.filter(Boolean).forEach((u) => porUid.set(u.uid, u));
+  } catch {}
+  // Inclui também quem ainda só existe no formato antigo (ainda não foi
+  // acessado individualmente, então não foi migrado ainda).
+  try {
+    const r = await window.storage.get("usuarios_todos", true);
+    const lista = r ? JSON.parse(r.value) : [];
+    lista.forEach((u) => { if (!porUid.has(u.uid)) porUid.set(u.uid, u); });
+  } catch {}
+  return [...porUid.values()];
+}
+
+// Hook para a tela de um único usuário (ex.: o perfil da pessoa logada).
+function useUsuario(uid) {
+  const [perfil, setPerfil] = useState(undefined);
+  useEffect(() => {
+    if (!uid) { setPerfil(null); return; }
+    let alive = true;
+    (async () => {
+      setPerfil(undefined);
+      const p = await buscarUsuario(uid);
+      if (alive) setPerfil(p);
+    })();
+    return () => { alive = false; };
+  }, [uid]);
+  return perfil;
+}
+
+// Hook para telas de gestão que precisam ver todo mundo (Aprovações, Usuários...).
+function useListaUsuarios(refreshKey) {
+  const [lista, setLista] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const r = await listarUsuarios();
+      if (alive) setLista(r);
+    })();
+    return () => { alive = false; };
+  }, [refreshKey]);
+  return lista;
+}
+
 function useSharedList(key) {
   const [value, setValue] = useState(null);
   useEffect(() => {
@@ -1702,12 +1816,9 @@ function TurmaDetail({ turma, onVoltar, professorNome }) {
 // volta na tela "Escolher empresa" da mesma turma, sem perder o cadastro.
 async function desvincularAlunosDaEquipe(turmaId, equipeId) {
   try {
-    const r = await window.storage.get("usuarios_todos", true);
-    const lista = r ? JSON.parse(r.value) : [];
-    const nova = lista.map((u) =>
-      u.papel === "aluno" && u.turmaId === turmaId && u.equipeId === equipeId ? { ...u, equipeId: null } : u
-    );
-    await window.storage.set("usuarios_todos", JSON.stringify(nova), true);
+    const todos = await listarUsuarios();
+    const afetados = todos.filter((u) => u.papel === "aluno" && u.turmaId === turmaId && u.equipeId === equipeId);
+    await Promise.all(afetados.map((u) => atualizarUsuario(u.uid, { equipeId: null })));
   } catch {}
 }
 
@@ -1816,12 +1927,9 @@ function GestaoUsuariosView({ turmas }) {
       const nova = lista.map((e) => (e.id === equipe.id ? { ...e, integrantes: e.integrantes.filter((i) => i !== nome) } : e));
       await window.storage.set(`equipes_${turmaId}`, JSON.stringify(nova), true);
 
-      const ru = await window.storage.get("usuarios_todos", true);
-      const listaU = ru ? JSON.parse(ru.value) : [];
-      const novaU = listaU.map((u) =>
-        u.papel === "aluno" && u.turmaId === turmaId && u.equipeId === equipe.id && u.nome === nome ? { ...u, equipeId: null } : u
-      );
-      await window.storage.set("usuarios_todos", JSON.stringify(novaU), true);
+      const ru = await listarUsuarios();
+      const afetado = ru.find((u) => u.papel === "aluno" && u.turmaId === turmaId && u.equipeId === equipe.id && u.nome === nome);
+      if (afetado) await atualizarUsuario(afetado.uid, { equipeId: null });
     } catch {}
     setMovendo(null);
     setRefreshKey((k) => k + 1);
@@ -2003,7 +2111,7 @@ function RelatorioPorEmpresa({ dadosEquipes }) {
 
 function RelatorioPendencias({ turma, dadosEquipes }) {
   const [roster] = useSharedList(`roster_${turma.id}`);
-  const [usuarios] = useSharedList("usuarios_todos");
+  const usuarios = useListaUsuarios();
 
   if (roster === null || usuarios === null || dadosEquipes === null) return <LoadingScreen />;
 
@@ -2167,10 +2275,9 @@ function GestaoBackupView({ turmas, setTurmas }) {
       try { await window.storage.delete(`turma_por_codigo_${turma.codigo}`, true); } catch {}
       // 5. Contas dos alunos vinculados a essa turma
       try {
-        const r = await window.storage.get("usuarios_todos", true);
-        const lista = r ? JSON.parse(r.value) : [];
-        const restantes = lista.filter((u) => !(u.papel === "aluno" && u.turmaId === turma.id));
-        await window.storage.set("usuarios_todos", JSON.stringify(restantes), true);
+        const todos = await listarUsuarios();
+        const afetados = todos.filter((u) => u.papel === "aluno" && u.turmaId === turma.id);
+        await Promise.all(afetados.map((u) => excluirUsuario(u.uid)));
       } catch {}
       // 6. Remove a turma da lista do professor
       await setTurmas(turmas.filter((t) => t.id !== turma.id));
@@ -2422,16 +2529,21 @@ function ProfessorDashboard({ user, onSair }) {
 // APROVAÇÕES (só para Usuários Mestre)
 // ============================================================================
 
-function LinhaUsuarioPendente({ usuario, onAprovar, onRejeitar }) {
+function LinhaUsuarioPendente({ usuario, onAprovar, onRejeitar, onMudarPapel }) {
   const [tornarMestre, setTornarMestre] = useState(false);
   return (
     <Card className="p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
       <div className="flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-slate-100">{usuario.nome}</span>
           <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${usuario.papel === "professor" ? "bg-sky-950/40 text-sky-400" : "bg-amber-950/30 text-amber-400"}`}>
             {usuario.papel === "professor" ? "Professor(a)" : "Aluno(a)"}
           </span>
+          {onMudarPapel && (
+            <button onClick={() => onMudarPapel(usuario)} title="Cadastrou-se com o papel errado por engano? Clique para corrigir." className="text-[10px] font-semibold text-slate-500 hover:text-amber-400 underline">
+              corrigir para {usuario.papel === "professor" ? "Aluno(a)" : "Professor(a)"}
+            </button>
+          )}
         </div>
         <div className="text-xs text-slate-400 mt-0.5">{usuario.email}</div>
         <div className="text-xs text-slate-500">Cadastrado em {fmtData(usuario.criadoEm)}</div>
@@ -2452,18 +2564,26 @@ function LinhaUsuarioPendente({ usuario, onAprovar, onRejeitar }) {
 }
 
 function GestaoAprovacoesView({ usuarioAtualUid }) {
-  const [usuarios, setUsuarios] = useSharedList("usuarios_todos");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const usuarios = useListaUsuarios(refreshKey);
   if (usuarios === null) return <LoadingScreen />;
 
   const pendentes = usuarios.filter((u) => u.status === "pendente");
   const aprovados = usuarios.filter((u) => u.status === "aprovado");
 
-  const atualizar = (uidAlvo, mudancas) => {
-    setUsuarios(usuarios.map((u) => (u.uid === uidAlvo ? { ...u, ...mudancas } : u)));
+  const atualizar = async (uidAlvo, mudancas) => {
+    await atualizarUsuario(uidAlvo, mudancas);
+    setRefreshKey((k) => k + 1);
   };
   const aprovar = (u, tornarMestre) => atualizar(u.uid, { status: "aprovado", mestre: u.papel === "professor" ? !!tornarMestre : false });
   const rejeitar = (u) => atualizar(u.uid, { status: "rejeitado" });
   const alternarMestre = (u) => atualizar(u.uid, { mestre: !u.mestre });
+  const mudarPapel = (u) => {
+    const novoPapel = u.papel === "professor" ? "aluno" : "professor";
+    const ok = window.confirm(`Corrigir o cadastro de "${u.nome}" de ${u.papel === "professor" ? "Professor(a)" : "Aluno(a)"} para ${novoPapel === "professor" ? "Professor(a)" : "Aluno(a)"}?`);
+    if (!ok) return;
+    atualizar(u.uid, { papel: novoPapel, mestre: novoPapel === "professor" ? u.mestre : false });
+  };
 
   return (
     <div>
@@ -2473,7 +2593,7 @@ function GestaoAprovacoesView({ usuarioAtualUid }) {
       <div className="space-y-3 mb-8">
         {pendentes.length === 0 && <Card className="p-6 text-center text-slate-500 text-sm">Nenhum cadastro aguardando aprovação.</Card>}
         {pendentes.map((u) => (
-          <LinhaUsuarioPendente key={u.uid} usuario={u} onAprovar={aprovar} onRejeitar={rejeitar} />
+          <LinhaUsuarioPendente key={u.uid} usuario={u} onAprovar={aprovar} onRejeitar={rejeitar} onMudarPapel={mudarPapel} />
         ))}
       </div>
 
@@ -2493,7 +2613,12 @@ function GestaoAprovacoesView({ usuarioAtualUid }) {
                 <td className="py-2 px-4 text-slate-400">{u.papel === "professor" ? "Professor(a)" : "Aluno(a)"}</td>
                 <td className="py-2 px-4 text-slate-400">{u.email}</td>
                 <td className="py-2 px-4">{u.mestre ? <Crown size={14} className="text-amber-400" /> : "—"}</td>
-                <td className="py-2 px-4 text-right">
+                <td className="py-2 px-4 text-right whitespace-nowrap">
+                  {u.uid !== usuarioAtualUid && (
+                    <button onClick={() => mudarPapel(u)} className="text-xs font-semibold text-slate-500 hover:text-amber-400 mr-3">
+                      Corrigir para {u.papel === "professor" ? "Aluno(a)" : "Professor(a)"}
+                    </button>
+                  )}
                   {u.papel === "professor" && u.uid !== usuarioAtualUid && (
                     <button onClick={() => alternarMestre(u)} className="text-xs font-semibold text-sky-400 hover:text-sky-300">
                       {u.mestre ? "Remover Mestre" : "Tornar Mestre"}
@@ -2654,12 +2779,7 @@ function AlunoRoteador({ perfil, onSair }) {
   const efetivo = { ...perfil, ...over };
 
   const atualizarPerfil = async (mudancas) => {
-    try {
-      const r = await window.storage.get("usuarios_todos", true);
-      const lista = r ? JSON.parse(r.value) : [];
-      const nova = lista.map((u) => (u.uid === perfil.uid ? { ...u, ...mudancas } : u));
-      await window.storage.set("usuarios_todos", JSON.stringify(nova), true);
-    } catch {}
+    try { await atualizarUsuario(perfil.uid, mudancas); } catch {}
     setOver((prev) => ({ ...prev, ...mudancas }));
   };
 
@@ -2790,12 +2910,7 @@ function TelaCadastro({ onCadastrado, onIrParaLogin }) {
         turmaId: null, turmaNome: null, equipeId: null,
         criadoEm: Date.now(),
       };
-      let lista = [];
-      try {
-        const r = await window.storage.get("usuarios_todos", true);
-        lista = r ? JSON.parse(r.value) : [];
-      } catch {}
-      await window.storage.set("usuarios_todos", JSON.stringify([...lista, perfil]), true);
+      await salvarUsuario(perfil);
       onCadastrado(perfil);
     } catch (e) {
       setErro(traduzErroAuth(e));
@@ -2926,7 +3041,6 @@ function TelaEntrada({ tela, setTela, onCadastrado }) {
 
 export default function App() {
   const [firebaseUser, setFirebaseUser] = useState(undefined); // undefined=carregando, null=deslogado
-  const [usuarios, setUsuarios] = useSharedList("usuarios_todos");
   const [tela, setTela] = useState("login");
   const [perfilRecemCriado, setPerfilRecemCriado] = useState(null);
 
@@ -2941,15 +3055,21 @@ export default function App() {
     setTela("login");
   };
 
+  const perfilCarregado = useUsuario(firebaseUser?.uid);
+
   if (firebaseUser === undefined) return <LoadingScreen />;
 
   if (!firebaseUser) {
     return <TelaEntrada tela={tela} setTela={setTela} onCadastrado={setPerfilRecemCriado} />;
   }
 
-  if (usuarios === null) return <LoadingScreen />;
+  if (perfilCarregado === undefined) return <LoadingScreen />;
 
-  const perfil = perfilRecemCriado || usuarios.find((u) => u.uid === firebaseUser.uid);
+  // perfilRecemCriado só serve de "ponte" no instante logo após o cadastro
+  // (antes do registro recém-salvo terminar de carregar) — e só é usado se
+  // for realmente da conta que está logada agora, para nunca "vazar" o
+  // perfil de uma conta antiga ao trocar de usuário na mesma aba.
+  const perfil = perfilCarregado || (perfilRecemCriado?.uid === firebaseUser.uid ? perfilRecemCriado : null);
 
   if (!perfil) {
     return <TelaAguardandoAprovacao perfil={{ nome: firebaseUser.displayName || firebaseUser.email, papel: "—" }} onSair={efetuarSaida} />;

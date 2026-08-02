@@ -1491,20 +1491,25 @@ function ModuloLeitura({ mId, lanc, calc }) {
   // mesmos cálculos do aluno, sem duplicar código nem risco de desalinhar.
   const noop = () => {};
   return (
-    <div className="pointer-events-none opacity-90 select-none">
-      {mId === "m1" && <M1Form data={lanc.m1} update={noop} />}
-      {mId === "m2" && <M2Form data={lanc.m2} update={noop} calc={calc} />}
-      {mId === "m3" && <M3Form data={lanc.m3} update={noop} />}
-      {mId === "m4" && <M4Form data={lanc.m4} update={noop} calc={calc} />}
-      {mId === "m5" && <M5Form data={lanc.m5} update={noop} />}
-      {mId === "m6" && <M6Form data={lanc.m6} update={noop} m5itens={lanc.m5.itens} />}
-      {mId === "m7" && <M7Form data={lanc.m7} update={noop} faturamento={calc.faturamento} />}
-      {mId === "m8" && <M8Form data={lanc.m8} update={noop} m5itens={lanc.m5.itens} />}
-      {mId === "m9" && <M9Form data={lanc.m9} update={noop} />}
-      {mId === "m10" && <M10Form data={lanc.m10} update={noop} m1itens={lanc.m1.itens} depreciacaoLinhas={calc.depreciacaoLinhas} depreciacaoMensal={calc.depreciacaoMensal} />}
-      {mId === "m11" && <M11Form data={lanc.m11} update={noop} maoDeObra={calc.maoDeObra} depreciacaoMensal={calc.depreciacaoMensal} />}
-      {mId === "m12" && <M12View calc={calc} />}
-      {mId === "m13" && <M13View calc={calc} />}
+    <div className="relative">
+      <div className="absolute -top-1 right-0 z-10 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400 bg-slate-800 border border-slate-700 rounded-full px-2.5 py-1">
+        <Eye size={11} /> Somente leitura
+      </div>
+      <div className="pointer-events-none select-none opacity-60 grayscale-[30%] pt-6">
+        {mId === "m1" && <M1Form data={lanc.m1} update={noop} />}
+        {mId === "m2" && <M2Form data={lanc.m2} update={noop} calc={calc} />}
+        {mId === "m3" && <M3Form data={lanc.m3} update={noop} />}
+        {mId === "m4" && <M4Form data={lanc.m4} update={noop} calc={calc} />}
+        {mId === "m5" && <M5Form data={lanc.m5} update={noop} />}
+        {mId === "m6" && <M6Form data={lanc.m6} update={noop} m5itens={lanc.m5.itens} />}
+        {mId === "m7" && <M7Form data={lanc.m7} update={noop} faturamento={calc.faturamento} />}
+        {mId === "m8" && <M8Form data={lanc.m8} update={noop} m5itens={lanc.m5.itens} />}
+        {mId === "m9" && <M9Form data={lanc.m9} update={noop} />}
+        {mId === "m10" && <M10Form data={lanc.m10} update={noop} m1itens={lanc.m1.itens} depreciacaoLinhas={calc.depreciacaoLinhas} depreciacaoMensal={calc.depreciacaoMensal} />}
+        {mId === "m11" && <M11Form data={lanc.m11} update={noop} maoDeObra={calc.maoDeObra} depreciacaoMensal={calc.depreciacaoMensal} />}
+        {mId === "m12" && <M12View calc={calc} />}
+        {mId === "m13" && <M13View calc={calc} />}
+      </div>
     </div>
   );
 }

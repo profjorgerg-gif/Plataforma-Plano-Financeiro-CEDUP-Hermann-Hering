@@ -248,23 +248,59 @@ function useSharedList(key) {
 
 function useSharedObject(key, fallback) {
   const [value, setValue] = useState(undefined);
+  const ultimaEdicaoLocalRef = useRef(0);
+  const ultimoEscritoRef = useRef(null);
+
   useEffect(() => {
     if (!key) { setValue(undefined); return; }
     let alive = true;
-    (async () => {
+
+    const carregar = async (viaSincronizacao) => {
       try {
         const r = await window.storage.get(key, true);
-        if (alive) setValue(r ? JSON.parse(r.value) : fallback);
+        if (!alive) return;
+        const carregado = r ? JSON.parse(r.value) : fallback;
+        if (!viaSincronizacao) {
+          setValue(carregado);
+          ultimoEscritoRef.current = JSON.stringify(carregado);
+          return;
+        }
+        // Sincronização em segundo plano: só aplica o que veio do servidor se
+        // (a) realmente mudou desde a última vez que ESTE navegador escreveu, e
+        // (b) esta pessoa não digitou nada nos últimos segundos — assim, quem
+        // está com a equipe editando ao mesmo tempo não perde o que o colega
+        // salvou em outro módulo, mas também não se sobrescreve no meio de uma
+        // digitação em andamento.
+        const textoCarregado = JSON.stringify(carregado);
+        const inativoOk = Date.now() - ultimaEdicaoLocalRef.current > 4000;
+        if (inativoOk && textoCarregado !== ultimoEscritoRef.current) {
+          ultimoEscritoRef.current = textoCarregado;
+          setValue(carregado);
+        }
       } catch {
-        if (alive) setValue(fallback);
+        if (alive && !viaSincronizacao) setValue(fallback);
       }
-    })();
-    return () => { alive = false; };
+    };
+
+    carregar(false);
+    const intervalId = setInterval(() => carregar(true), 8000);
+    const aoFocar = () => carregar(true);
+    window.addEventListener("focus", aoFocar);
+    document.addEventListener("visibilitychange", aoFocar);
+    return () => {
+      alive = false;
+      clearInterval(intervalId);
+      window.removeEventListener("focus", aoFocar);
+      document.removeEventListener("visibilitychange", aoFocar);
+    };
   }, [key]);
 
   const save = useCallback(async (next) => {
+    ultimaEdicaoLocalRef.current = Date.now();
     setValue(next);
-    try { await window.storage.set(key, JSON.stringify(next), true); } catch {}
+    const json = JSON.stringify(next);
+    ultimoEscritoRef.current = json;
+    try { await window.storage.set(key, json, true); } catch {}
   }, [key]);
 
   return [value, save];
@@ -273,7 +309,7 @@ function useSharedObject(key, fallback) {
 // Carrega, para uma turma, a lista de equipes + os dados (lançamentos, histórico,
 // comentários) e o cálculo já pronto de cada uma. Usado pelas telas de Gestão
 // (Relatórios, Backup e Auditoria) que precisam olhar todas as equipes de uma vez.
-function useEquipesComDados(turmaId) {
+function useEquipesComDados(turmaId, refreshKey) {
   const [estado, setEstado] = useState(null);
   useEffect(() => {
     if (!turmaId) { setEstado([]); return; }
@@ -297,7 +333,7 @@ function useEquipesComDados(turmaId) {
       }
     })();
     return () => { alive = false; };
-  }, [turmaId]);
+  }, [turmaId, refreshKey]);
   return estado;
 }
 
@@ -1089,7 +1125,7 @@ function ManualAlunoView({ equipe, onIrPara }) {
   );
 }
 
-function AlunoWorkspace({ user, equipe, equipeKey, onSair }) {
+function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa }) {
   const [dados, setDados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
   const [aba, setAba] = useState("inicio");
   const [menuAberto, setMenuAberto] = useState(false);
@@ -1097,6 +1133,22 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair }) {
 
   const lanc = mergeLancamentos(dados?.lancamentos);
   const calc = useMemo(() => calcular(lanc), [JSON.stringify(lanc)]);
+
+  // Contador de feedback novo: compara a data de cada comentário com a última
+  // vez que esta pessoa abriu a aba "Feedback do Professor" neste navegador.
+  const comentarios = dados?.comentarios || [];
+  const [ultimaVista, setUltimaVista] = useState(() => {
+    try { return Number(localStorage.getItem(`feedback_visto_${equipeKey}`) || 0); } catch { return 0; }
+  });
+  const naoLidos = comentarios.filter((c) => c.timestamp > ultimaVista).length;
+  useEffect(() => {
+    if (aba === "feedback" && comentarios.length > 0) {
+      const agora = Date.now();
+      try { localStorage.setItem(`feedback_visto_${equipeKey}`, String(agora)); } catch {}
+      setUltimaVista(agora);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aba]);
 
   if (dados === undefined) return <LoadingScreen />;
 
@@ -1124,14 +1176,17 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair }) {
 
   return (
     <div className="min-h-screen flex bg-slate-950 relative">
-      <header className="md:hidden fixed top-0 inset-x-0 z-20 bg-slate-900 border-b border-white/10 flex items-center justify-between px-4 py-3">
+      <header className="app-mobile-header md:hidden fixed top-0 inset-x-0 z-20 bg-slate-900 border-b border-white/10 flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2 text-sm text-white/80 font-semibold truncate"><Building2 size={16} className="shrink-0" /> <span className="truncate">{equipe.nomeNegocio}</span></div>
-        <button onClick={() => setMenuAberto(true)} className="text-white/80 p-1 shrink-0"><Menu size={22} /></button>
+        <button onClick={() => setMenuAberto(true)} className="relative text-white/80 p-1 shrink-0">
+          <Menu size={22} />
+          {naoLidos > 0 && <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-slate-900" />}
+        </button>
       </header>
 
       {menuAberto && <div onClick={() => setMenuAberto(false)} className="md:hidden fixed inset-0 bg-black/60 z-30" />}
 
-      <aside className={`w-72 bg-slate-900 text-white flex flex-col shrink-0 fixed inset-y-0 left-0 z-40 transition-transform duration-200 md:static md:translate-x-0 ${menuAberto ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className={`app-sidebar w-72 bg-slate-900 text-white flex flex-col shrink-0 fixed inset-y-0 left-0 z-40 transition-transform duration-200 md:static md:translate-x-0 ${menuAberto ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="p-5 border-b border-white/10 flex items-start justify-between gap-2">
           <div>
             <div className="flex items-center gap-2 text-sm text-white/70"><Building2 size={16} /> {equipe.nomeNegocio}</div>
@@ -1150,7 +1205,10 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair }) {
                 className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${active ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}
               >
                 {it.num && <span className={`text-[10px] font-mono w-5 shrink-0 ${active ? "text-amber-500" : "text-white/30"}`}>{it.num}</span>}
-                <Icon size={16} className="shrink-0" /> <span className="truncate">{it.label}</span>
+                <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
+                {it.id === "feedback" && naoLidos > 0 && (
+                  <span className="text-[10px] font-bold bg-amber-500 text-slate-900 rounded-full px-1.5 py-0.5 shrink-0">{naoLidos}</span>
+                )}
               </button>
             );
           })}
@@ -1158,6 +1216,9 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair }) {
         <div className="p-4 border-t border-white/10">
           <div className="text-xs text-white/50 mb-2">Progresso geral</div>
           <div className="w-full bg-white/10 rounded-full h-2 mb-3"><div className="bg-amber-500 h-2 rounded-full transition-all" style={{ width: `${calc.progresso}%` }} /></div>
+          {onTrocarEmpresa && (
+            <button onClick={onTrocarEmpresa} className="flex items-center gap-2 text-sm text-white/70 hover:text-white mb-2"><Building2 size={15} /> Trocar de empresa</button>
+          )}
           <button onClick={onSair} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><LogOut size={15} /> Sair</button>
         </div>
       </aside>
@@ -1575,6 +1636,26 @@ function TurmaDetail({ turma, onVoltar, professorNome }) {
     return <EquipeReview turma={turma} equipe={eq} professorNome={professorNome} onVoltar={() => setEquipeSel(null)} />;
   }
 
+  const renomearEmpresa = async (equipe) => {
+    const novoNome = (prompt("Novo nome da empresa:", equipe.nomeNegocio) || "").trim();
+    if (!novoNome || novoNome === equipe.nomeNegocio) return;
+    if (equipes.some((e) => e.id !== equipe.id && e.nomeNegocio.toLowerCase() === novoNome.toLowerCase())) {
+      alert("Já existe uma empresa com esse nome nesta turma.");
+      return;
+    }
+    await setEquipes(equipes.map((e) => (e.id === equipe.id ? { ...e, nomeNegocio: novoNome } : e)));
+  };
+
+  const excluirEmpresa = async (equipe) => {
+    const ok = window.confirm(
+      `Excluir a empresa "${equipe.nomeNegocio}"?\n\nOs lançamentos dela serão apagados permanentemente, e os alunos vinculados a ela poderão escolher outra empresa da turma no próximo acesso.`
+    );
+    if (!ok) return;
+    await setEquipes(equipes.filter((e) => e.id !== equipe.id));
+    try { await window.storage.delete(`dados_equipe_${equipe.id}`, true); } catch {}
+    await desvincularAlunosDaEquipe(turma.id, equipe.id);
+  };
+
   return (
     <div className="space-y-5">
       <button onClick={onVoltar} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Minhas turmas</button>
@@ -1601,22 +1682,59 @@ function TurmaDetail({ turma, onVoltar, professorNome }) {
       )}
       {equipes && equipes.length > 0 && (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {equipes.map((eq) => <EquipeCard key={eq.id} equipe={eq} onClick={() => setEquipeSel(eq.id)} />)}
+          {equipes.map((eq) => (
+            <EquipeCard
+              key={eq.id}
+              equipe={eq}
+              onClick={() => setEquipeSel(eq.id)}
+              onRenomear={() => renomearEmpresa(eq)}
+              onExcluir={() => excluirEmpresa(eq)}
+            />
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function EquipeCard({ equipe, onClick }) {
+// Quando uma empresa é excluída (ou um aluno é movido para fora dela), os
+// alunos que estavam nela ficam sem equipeId — no próximo acesso, caem de
+// volta na tela "Escolher empresa" da mesma turma, sem perder o cadastro.
+async function desvincularAlunosDaEquipe(turmaId, equipeId) {
+  try {
+    const r = await window.storage.get("usuarios_todos", true);
+    const lista = r ? JSON.parse(r.value) : [];
+    const nova = lista.map((u) =>
+      u.papel === "aluno" && u.turmaId === turmaId && u.equipeId === equipeId ? { ...u, equipeId: null } : u
+    );
+    await window.storage.set("usuarios_todos", JSON.stringify(nova), true);
+  } catch {}
+}
+
+function EquipeCard({ equipe, onClick, onRenomear, onExcluir }) {
   const equipeKey = `dados_equipe_${equipe.id}`;
   const [dados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [] });
   const calc = dados ? calcular(dados.lancamentos) : null;
   return (
-    <button onClick={onClick} className="text-left bg-slate-800 border border-slate-700 rounded-xl p-4 hover:shadow-md hover:border-amber-500 transition">
-      <div className="flex items-center gap-2 mb-1">
-        <Building2 size={16} className="text-sky-400" />
-        <span className="font-bold text-slate-100">{equipe.nomeNegocio}</span>
+    <div className="relative bg-slate-800 border border-slate-700 rounded-xl hover:border-amber-500 transition">
+      {(onRenomear || onExcluir) && (
+        <div className="absolute top-2 right-2 flex gap-1 z-10">
+          {onRenomear && (
+            <button onClick={(e) => { e.stopPropagation(); onRenomear(); }} title="Renomear empresa" className="p-1.5 rounded-md bg-slate-900/80 text-slate-400 hover:text-amber-400">
+              <Pencil size={13} />
+            </button>
+          )}
+          {onExcluir && (
+            <button onClick={(e) => { e.stopPropagation(); onExcluir(); }} title="Excluir empresa" className="p-1.5 rounded-md bg-slate-900/80 text-slate-400 hover:text-rose-400">
+              <Trash2 size={13} />
+            </button>
+          )}
+        </div>
+      )}
+      <button onClick={onClick} className="text-left p-4 w-full">
+      <div className="flex items-center gap-2 mb-1 pr-12">
+        <Building2 size={16} className="text-sky-400 shrink-0" />
+        <span className="font-bold text-slate-100 truncate">{equipe.nomeNegocio}</span>
       </div>
       <div className="text-xs text-slate-500 mb-3">{equipe.integrantes.join(", ") || "sem integrantes"}</div>
       {calc ? (
@@ -1632,7 +1750,8 @@ function EquipeCard({ equipe, onClick }) {
           </div>
         </>
       ) : <span className="text-xs text-slate-300">Carregando…</span>}
-    </button>
+      </button>
+    </div>
   );
 }
 
@@ -1681,7 +1800,33 @@ function GestaoTurmasView({ turmas, onCriar, onAbrir }) {
 function GestaoUsuariosView({ turmas }) {
   const [turmaId, setTurmaId] = useState("");
   const turma = turmas.find((t) => t.id === turmaId);
-  const equipesComDados = useEquipesComDados(turmaId);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const equipesComDados = useEquipesComDados(turmaId, refreshKey);
+  const [movendo, setMovendo] = useState(null);
+
+  const moverAluno = async (equipe, nome) => {
+    const ok = window.confirm(
+      `Mover "${nome}" para fora da empresa "${equipe.nomeNegocio}"?\n\nNo próximo acesso, essa pessoa poderá escolher outra empresa da turma — sem precisar recriar o cadastro.`
+    );
+    if (!ok) return;
+    setMovendo(nome + equipe.id);
+    try {
+      const r = await window.storage.get(`equipes_${turmaId}`, true);
+      const lista = r ? JSON.parse(r.value) : [];
+      const nova = lista.map((e) => (e.id === equipe.id ? { ...e, integrantes: e.integrantes.filter((i) => i !== nome) } : e));
+      await window.storage.set(`equipes_${turmaId}`, JSON.stringify(nova), true);
+
+      const ru = await window.storage.get("usuarios_todos", true);
+      const listaU = ru ? JSON.parse(ru.value) : [];
+      const novaU = listaU.map((u) =>
+        u.papel === "aluno" && u.turmaId === turmaId && u.equipeId === equipe.id && u.nome === nome ? { ...u, equipeId: null } : u
+      );
+      await window.storage.set("usuarios_todos", JSON.stringify(novaU), true);
+    } catch {}
+    setMovendo(null);
+    setRefreshKey((k) => k + 1);
+  };
+
   return (
     <div>
       <SectionTitle icon={Users} sub="Veja quem está participando de cada turma: o(a) professor(a) e os integrantes de cada equipe.">Usuários</SectionTitle>
@@ -1692,7 +1837,7 @@ function GestaoUsuariosView({ turmas }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700">
-                <th className="py-2 pr-3">Nome</th><th className="py-2 pr-3">Papel</th><th className="py-2 pr-3">Equipe / Negócio</th>
+                <th className="py-2 pr-3">Nome</th><th className="py-2 pr-3">Papel</th><th className="py-2 pr-3">Equipe / Negócio</th><th className="py-2 pr-3"></th>
               </tr>
             </thead>
             <tbody>
@@ -1700,15 +1845,27 @@ function GestaoUsuariosView({ turmas }) {
                 <td className="py-2 pr-3 font-semibold text-slate-100">{turma?.professor}</td>
                 <td className="py-2 pr-3 text-amber-400">Professor(a)</td>
                 <td className="py-2 pr-3 text-slate-500">—</td>
+                <td className="py-2 pr-3"></td>
               </tr>
-              {equipesComDados === null && <tr><td colSpan={3} className="py-4 text-slate-500">Carregando…</td></tr>}
-              {equipesComDados && equipesComDados.length === 0 && <tr><td colSpan={3} className="py-4 text-slate-500">Nenhuma equipe nesta turma ainda.</td></tr>}
+              {equipesComDados === null && <tr><td colSpan={4} className="py-4 text-slate-500">Carregando…</td></tr>}
+              {equipesComDados && equipesComDados.length === 0 && <tr><td colSpan={4} className="py-4 text-slate-500">Nenhuma equipe nesta turma ainda.</td></tr>}
               {equipesComDados && equipesComDados.flatMap(({ equipe }) =>
                 (equipe.integrantes.length ? equipe.integrantes : ["(sem integrantes)"]).map((nome) => (
                   <tr key={equipe.id + nome} className="border-b border-slate-800">
                     <td className="py-2 pr-3">{nome}</td>
                     <td className="py-2 pr-3 text-sky-400">Aluno(a)</td>
                     <td className="py-2 pr-3">{equipe.nomeNegocio}</td>
+                    <td className="py-2 pr-3 text-right">
+                      {equipe.integrantes.includes(nome) && (
+                        <button
+                          onClick={() => moverAluno(equipe, nome)}
+                          disabled={movendo === nome + equipe.id}
+                          className="text-xs font-semibold text-slate-400 hover:text-amber-400 disabled:opacity-40 whitespace-nowrap"
+                        >
+                          {movendo === nome + equipe.id ? "Movendo…" : "Mover para outra equipe"}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))
               )}
@@ -1744,7 +1901,8 @@ function ResumoComparativo({ turma, dadosEquipes }) {
 
   return (
     <div>
-      <div className="flex justify-end mb-3">
+      <div className="flex justify-end gap-2 mb-3 no-print">
+        <button onClick={() => window.print()} className="flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500"><FileBarChart size={15} /> Exportar PDF</button>
         <button onClick={exportarCSV} className="flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500"><Save size={15} /> Exportar CSV</button>
       </div>
       <Card className="p-4 overflow-x-auto">
@@ -2033,6 +2191,10 @@ function GestaoBackupView({ turmas, setTurmas }) {
 
   const importarBackup = async (file) => {
     if (!turma) return;
+    const ok = window.confirm(
+      `Importar este backup vai SUBSTITUIR todos os dados atuais da turma "${turma.nome}" (empresas e lançamentos). Essa ação não pode ser desfeita. Deseja continuar?`
+    );
+    if (!ok) return;
     setStatus("Importando…");
     try {
       const texto = await file.text();
@@ -2193,14 +2355,21 @@ function ProfessorDashboard({ user, onSair }) {
 
   return (
     <div className="min-h-screen flex bg-slate-950 relative">
-      <header className="md:hidden fixed top-0 inset-x-0 z-20 bg-slate-900 border-b border-white/10 flex items-center justify-between px-4 py-3">
+      <style>{`
+        @media print {
+          .app-sidebar, .app-mobile-header, .no-print { display: none !important; }
+          main { padding: 0 !important; max-width: 100% !important; overflow: visible !important; }
+          body, .min-h-screen { background: #fff !important; }
+        }
+      `}</style>
+      <header className="app-mobile-header md:hidden fixed top-0 inset-x-0 z-20 bg-slate-900 border-b border-white/10 flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2 font-bold text-amber-500 text-sm"><GraduationCap size={18} /> Painel do Professor</div>
         <button onClick={() => setMenuAberto(true)} className="text-white/80 p-1 shrink-0"><Menu size={22} /></button>
       </header>
 
       {menuAberto && <div onClick={() => setMenuAberto(false)} className="md:hidden fixed inset-0 bg-black/60 z-30" />}
 
-      <aside className={`w-72 bg-slate-900 text-white flex flex-col shrink-0 fixed inset-y-0 left-0 z-40 transition-transform duration-200 md:static md:translate-x-0 ${menuAberto ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className={`app-sidebar w-72 bg-slate-900 text-white flex flex-col shrink-0 fixed inset-y-0 left-0 z-40 transition-transform duration-200 md:static md:translate-x-0 ${menuAberto ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="p-5 border-b border-white/10 flex items-start justify-between gap-2">
           <div>
             <div className="flex items-center gap-2 font-bold text-amber-500"><GraduationCap size={20} /> Painel do Professor</div>
@@ -2474,10 +2643,10 @@ function EscolherEmpresa({ perfil, turmaId, turmaNome, onSair, onEscolhida }) {
   );
 }
 
-function AlunoWorkspaceCarregado({ userSessao, turmaId, equipeId, onSair }) {
+function AlunoWorkspaceCarregado({ userSessao, turmaId, equipeId, onSair, onTrocarEmpresa }) {
   const equipe = useEquipeSalva(turmaId, equipeId);
   if (!equipe) return <LoadingScreen />;
-  return <AlunoWorkspace user={userSessao} equipe={equipe} equipeKey={`dados_equipe_${equipe.id}`} onSair={onSair} />;
+  return <AlunoWorkspace user={userSessao} equipe={equipe} equipeKey={`dados_equipe_${equipe.id}`} onSair={onSair} onTrocarEmpresa={() => onTrocarEmpresa(equipe)} />;
 }
 
 function AlunoRoteador({ perfil, onSair }) {
@@ -2531,7 +2700,18 @@ function AlunoRoteador({ perfil, onSair }) {
   }
 
   const userSessao = { uid: efetivo.uid, nome: efetivo.nome, email: efetivo.email, papel: "aluno" };
-  return <AlunoWorkspaceCarregado userSessao={userSessao} turmaId={efetivo.turmaId} equipeId={efetivo.equipeId} onSair={onSair} />;
+  const trocarDeEmpresa = async (equipeAtual) => {
+    const ok = window.confirm(`Sair da empresa "${equipeAtual.nomeNegocio}" e escolher outra na turma?`);
+    if (!ok) return;
+    try {
+      const r = await window.storage.get(`equipes_${efetivo.turmaId}`, true);
+      const lista = r ? JSON.parse(r.value) : [];
+      const nova = lista.map((e) => (e.id === equipeAtual.id ? { ...e, integrantes: e.integrantes.filter((i) => i !== efetivo.nome) } : e));
+      await window.storage.set(`equipes_${efetivo.turmaId}`, JSON.stringify(nova), true);
+    } catch {}
+    await atualizarPerfil({ equipeId: null });
+  };
+  return <AlunoWorkspaceCarregado userSessao={userSessao} turmaId={efetivo.turmaId} equipeId={efetivo.equipeId} onSair={onSair} onTrocarEmpresa={trocarDeEmpresa} />;
 }
 
 function TelaAguardandoAprovacao({ perfil, onSair, rejeitado, onTrocarTurma }) {

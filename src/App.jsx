@@ -1749,6 +1749,7 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
         )}
         {faltando.length > 0 && (
           <Card className="p-0 overflow-hidden">
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40">
@@ -1764,6 +1765,7 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
                 ))}
               </tbody>
             </table>
+            </div>
           </Card>
         )}
       </div>
@@ -1773,7 +1775,8 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
         {dadosEquipes.length === 0 && <Card className="p-6 text-center text-slate-500 text-sm">Nenhuma empresa cadastrada nesta turma ainda.</Card>}
         {dadosEquipes.length > 0 && (
           <Card className="p-0 overflow-hidden">
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[640px]">
               <thead>
                 <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40">
                   <th className="py-2 px-4">Empresa</th><th className="py-2 px-4">Integrantes</th><th className="py-2 px-4">Progresso</th><th className="py-2 px-4">O que falta</th>
@@ -1802,6 +1805,7 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
                 })}
               </tbody>
             </table>
+            </div>
           </Card>
         )}
       </div>
@@ -2187,7 +2191,8 @@ function GestaoAprovacoesView({ usuarioAtualUid }) {
 
       <h3 className="text-sm font-bold text-slate-200 mb-2">Usuários aprovados ({aprovados.length})</h3>
       <Card className="p-0 overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[560px]">
           <thead>
             <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40">
               <th className="py-2 px-4">Nome</th><th className="py-2 px-4">Papel</th><th className="py-2 px-4">E-mail</th><th className="py-2 px-4">Mestre</th><th className="py-2 px-4"></th>
@@ -2211,6 +2216,7 @@ function GestaoAprovacoesView({ usuarioAtualUid }) {
             ))}
           </tbody>
         </table>
+        </div>
       </Card>
     </div>
   );

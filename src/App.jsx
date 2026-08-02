@@ -2068,7 +2068,7 @@ function EditarAlunoPanel({ aluno, turmas, onFechar, onSalvo }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-40 flex items-center justify-center p-4" onClick={onFechar}>
+    <div className="fixed inset-0 bg-black/60 z-40 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onFechar(); }}>
       <Card className="p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
         <SectionTitle icon={UserCog} sub="Corrija a turma e/ou a empresa desta pessoa — por exemplo, se o cadastro foi feito errado ou se ela mudou de turma/empresa.">
           Editar aluno(a)

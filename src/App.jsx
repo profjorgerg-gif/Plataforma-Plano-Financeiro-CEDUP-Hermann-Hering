@@ -1001,19 +1001,18 @@ function AnaliseNegocio({ calc, historico, onSalvarVersao, readOnly }) {
 // COMENTÁRIOS DO PROFESSOR
 // ============================================================================
 
-function ComentariosPanel({ comentarios, onAdd, autor, readOnlyInput }) {
+function ComentariosPanel({ comentarios, onAdd, autor, readOnlyInput, moduloFixo, compact }) {
   const [texto, setTexto] = useState("");
-  const [modulo, setModulo] = useState("Geral");
-  return (
-    <Card className="p-4">
-      <SectionTitle icon={MessageSquare}>Feedback e ajustes solicitados pelo professor</SectionTitle>
-      <div className="space-y-3 max-h-72 overflow-y-auto mb-3">
-        {(comentarios || []).length === 0 && <p className="text-sm text-slate-500">Nenhum comentário ainda.</p>}
+  const [modulo, setModulo] = useState(moduloFixo || "Geral");
+  const conteudo = (
+    <>
+      <div className={`space-y-3 overflow-y-auto mb-3 ${compact ? "max-h-40" : "max-h-72"}`}>
+        {(comentarios || []).length === 0 && <p className="text-sm text-slate-500">{compact ? "Nenhum comentário neste módulo ainda." : "Nenhum comentário ainda."}</p>}
         {(comentarios || []).slice().reverse().map((c) => (
           <div key={c.timestamp} className="border border-slate-700 rounded-lg p-3 text-sm">
             <div className="flex justify-between text-xs text-slate-500 mb-1">
-              <span className="font-semibold text-sky-400">{c.modulo}</span>
-              <span>{new Date(c.timestamp).toLocaleString("pt-BR")}</span>
+              {!moduloFixo && <span className="font-semibold text-sky-400">{c.modulo}</span>}
+              <span className={moduloFixo ? "ml-auto" : ""}>{new Date(c.timestamp).toLocaleString("pt-BR")}</span>
             </div>
             <p className="text-slate-200">{c.texto}</p>
             <p className="text-xs text-slate-500 mt-1">— {c.autor}</p>
@@ -1022,17 +1021,26 @@ function ComentariosPanel({ comentarios, onAdd, autor, readOnlyInput }) {
       </div>
       {!readOnlyInput && (
         <div className="flex gap-2">
-          <select value={modulo} onChange={(e) => setModulo(e.target.value)} className="border border-slate-600 rounded-md px-2 text-sm">
-            <option>Geral</option>
-            {MODULOS.map((m) => <option key={m.id}>{`Módulo ${m.n}`}</option>)}
-          </select>
-          <input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Escreva um comentário ou ajuste solicitado…" className="flex-1 border border-slate-600 rounded-md px-3 py-2 text-sm" />
+          {!moduloFixo && (
+            <select value={modulo} onChange={(e) => setModulo(e.target.value)} className="border border-slate-600 rounded-md px-2 text-sm">
+              <option>Geral</option>
+              {MODULOS.map((m) => <option key={m.id}>{`Módulo ${m.n}`}</option>)}
+            </select>
+          )}
+          <input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder={moduloFixo ? "Comentário sobre este módulo…" : "Escreva um comentário ou ajuste solicitado…"} className="flex-1 border border-slate-600 rounded-md px-3 py-2 text-sm" />
           <button
-            onClick={() => { if (!texto.trim()) return; onAdd({ modulo, texto, autor, timestamp: Date.now() }); setTexto(""); }}
+            onClick={() => { if (!texto.trim()) return; onAdd({ modulo: moduloFixo || modulo, texto, autor, timestamp: Date.now() }); setTexto(""); }}
             className="bg-slate-900 text-white px-4 rounded-md text-sm font-semibold hover:bg-slate-800"
           >Enviar</button>
         </div>
       )}
+    </>
+  );
+  if (compact) return <div className="mt-3 border-t border-slate-800 pt-3">{conteudo}</div>;
+  return (
+    <Card className="p-4">
+      <SectionTitle icon={MessageSquare}>Feedback e ajustes solicitados pelo professor</SectionTitle>
+      {conteudo}
     </Card>
   );
 }
@@ -1255,21 +1263,132 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair }) {
 // PAINEL DO PROFESSOR
 // ============================================================================
 
+function ModuloLeitura({ mId, lanc, calc }) {
+  // Reaproveita exatamente os mesmos formulários que o aluno usa, só que
+  // "travados": update() não faz nada e pointer-events-none impede qualquer
+  // clique/edição. Garante que o professor vê sempre o mesmo layout e os
+  // mesmos cálculos do aluno, sem duplicar código nem risco de desalinhar.
+  const noop = () => {};
+  return (
+    <div className="pointer-events-none opacity-90 select-none">
+      {mId === "m1" && <M1Form data={lanc.m1} update={noop} />}
+      {mId === "m2" && <M2Form data={lanc.m2} update={noop} calc={calc} />}
+      {mId === "m3" && <M3Form data={lanc.m3} update={noop} />}
+      {mId === "m4" && <M4Form data={lanc.m4} update={noop} calc={calc} />}
+      {mId === "m5" && <M5Form data={lanc.m5} update={noop} />}
+      {mId === "m6" && <M6Form data={lanc.m6} update={noop} m5itens={lanc.m5.itens} />}
+      {mId === "m7" && <M7Form data={lanc.m7} update={noop} faturamento={calc.faturamento} />}
+      {mId === "m8" && <M8Form data={lanc.m8} update={noop} m5itens={lanc.m5.itens} />}
+      {mId === "m9" && <M9Form data={lanc.m9} update={noop} />}
+      {mId === "m10" && <M10Form data={lanc.m10} update={noop} m1itens={lanc.m1.itens} depreciacaoLinhas={calc.depreciacaoLinhas} depreciacaoMensal={calc.depreciacaoMensal} />}
+      {mId === "m11" && <M11Form data={lanc.m11} update={noop} maoDeObra={calc.maoDeObra} depreciacaoMensal={calc.depreciacaoMensal} />}
+      {mId === "m12" && <M12View calc={calc} />}
+      {mId === "m13" && <M13View calc={calc} />}
+    </div>
+  );
+}
+
+function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome }) {
+  const Icon = m.icon;
+  const comentariosModulo = (comentarios || []).filter((c) => c.modulo === `Módulo ${m.n}`);
+  return (
+    <Card className="p-0 overflow-hidden" id={`prof-mod-${m.id}`}>
+      <button onClick={onToggle} className="w-full flex items-center gap-3 p-4 text-left hover:bg-slate-800/40">
+        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${completo ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/40" : "bg-slate-900 border border-amber-500/40 text-amber-500"}`}>
+          {completo ? <CheckCircle2 size={14} /> : String(m.n).padStart(2, "0")}
+        </div>
+        <Icon size={16} className="text-sky-400 shrink-0" />
+        <span className="text-sm font-semibold text-slate-100 flex-1">{m.nome}</span>
+        {comentariosModulo.length > 0 && (
+          <span className="text-[10px] font-bold text-sky-400 bg-sky-950/40 border border-sky-500/30 rounded-full px-2 py-0.5">{comentariosModulo.length} coment.</span>
+        )}
+        {aberto ? <ChevronDown size={16} className="text-slate-500 shrink-0" /> : <ChevronRight size={16} className="text-slate-500 shrink-0" />}
+      </button>
+      {aberto && (
+        <div className="px-4 pb-4 border-t border-slate-800">
+          <div className="pt-4"><ModuloLeitura mId={m.id} lanc={lanc} calc={calc} /></div>
+          <ComentariosPanel
+            comentarios={comentariosModulo}
+            onAdd={onAddComentario}
+            autor={professorNome}
+            moduloFixo={`Módulo ${m.n}`}
+            compact
+          />
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
   const equipeKey = `dados_equipe_${equipe.id}`;
   const [dados, setDados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
+  const [modulosAbertos, setModulosAbertos] = useState(new Set());
   if (dados === undefined) return <LoadingScreen />;
-  const calc = calcular(dados.lancamentos);
+  const lanc = mergeLancamentos(dados.lancamentos);
+  const calc = calcular(lanc);
 
   const addComentario = (c) => setDados({ ...dados, comentarios: [...(dados.comentarios || []), c] });
+
+  const toggleModulo = (id) => {
+    const next = new Set(modulosAbertos);
+    next.has(id) ? next.delete(id) : next.add(id);
+    setModulosAbertos(next);
+  };
+  const irEExpandir = (id) => {
+    setModulosAbertos((prev) => new Set(prev).add(id));
+    setTimeout(() => document.getElementById(`prof-mod-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  };
+  const comentariosGerais = (dados.comentarios || []).filter((c) => c.modulo === "Geral");
 
   return (
     <div>
       <button onClick={onVoltar} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar para {turma.nome}</button>
-      <SectionTitle icon={Building2} sub={`Equipe: ${equipe.integrantes.join(", ") || "sem integrantes"}`}>{equipe.nomeNegocio}</SectionTitle>
+      <SectionTitle icon={Building2} sub={`Equipe: ${equipe.integrantes.join(", ") || "sem integrantes"} · veja cada módulo exatamente como a equipe preencheu, e deixe comentários direcionados`}>{equipe.nomeNegocio}</SectionTitle>
+
       <div className="space-y-6">
         <AnaliseNegocio calc={calc} historico={dados.historico} readOnly />
-        <ComentariosPanel comentarios={dados.comentarios} onAdd={addComentario} autor={professorNome} />
+
+        <Card className="p-4">
+          <SectionTitle icon={ClipboardList} sub="Clique em um módulo para abrir e ver o que a equipe preencheu, linha por linha.">Navegar pelos módulos</SectionTitle>
+          <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-2">
+            {MODULOS.map((m) => {
+              const Icon = m.icon;
+              const completo = !!calc.preenchidos?.[m.n - 1];
+              return (
+                <button key={m.id} onClick={() => irEExpandir(m.id)} className="flex items-center gap-2.5 border border-slate-700 rounded-lg p-2.5 text-left hover:border-amber-500 hover:bg-slate-800 transition">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${completo ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/40" : "bg-slate-900 border border-amber-500/40 text-amber-500"}`}>
+                    {completo ? <CheckCircle2 size={12} /> : m.n}
+                  </div>
+                  <Icon size={14} className="text-sky-400 shrink-0" />
+                  <span className="text-xs font-medium text-slate-200 truncate">{m.nome}</span>
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+
+        <div className="space-y-3">
+          {MODULOS.map((m) => (
+            <ModuloAccordion
+              key={m.id}
+              m={m}
+              aberto={modulosAbertos.has(m.id)}
+              onToggle={() => toggleModulo(m.id)}
+              lanc={lanc}
+              calc={calc}
+              completo={!!calc.preenchidos?.[m.n - 1]}
+              comentarios={dados.comentarios}
+              onAddComentario={addComentario}
+              professorNome={professorNome}
+            />
+          ))}
+        </div>
+
+        <div>
+          <div className="text-xs font-bold tracking-widest text-slate-500 mb-2">FEEDBACK GERAL (não ligado a um módulo específico)</div>
+          <ComentariosPanel comentarios={comentariosGerais} onAdd={addComentario} autor={professorNome} moduloFixo="Geral" />
+        </div>
       </div>
     </div>
   );

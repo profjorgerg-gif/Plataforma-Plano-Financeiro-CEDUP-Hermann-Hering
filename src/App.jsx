@@ -1198,6 +1198,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair }) {
 
         {MODULOS.map((m) => aba === m.id && (
           <div key={m.id}>
+            <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
             <SectionTitle icon={m.icon} sub={`Módulo ${m.n} de 13`}>{m.nome}</SectionTitle>
             <TeoriaBox modId={m.id} />
             <Card className="p-5">
@@ -1215,11 +1216,24 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair }) {
               {m.id === "m12" && <M12View calc={calc} />}
               {m.id === "m13" && <M13View calc={calc} />}
             </Card>
+            <div className="flex justify-between mt-4">
+              <button
+                onClick={() => setAba(m.n > 1 ? MODULOS[m.n - 2].id : "inicio")}
+                className="flex items-center gap-2 text-sm border border-slate-600 text-slate-100 px-4 py-2 rounded-md hover:bg-slate-800 font-semibold"
+              ><ArrowLeft size={15} /> {m.n > 1 ? `Módulo ${m.n - 1}` : "Início"}</button>
+              {m.n < MODULOS.length && (
+                <button
+                  onClick={() => setAba(MODULOS[m.n].id)}
+                  className="flex items-center gap-2 text-sm bg-amber-500 text-slate-900 px-4 py-2 rounded-md hover:bg-amber-400 font-bold"
+                >Módulo {m.n + 1} <ChevronRight size={15} /></button>
+              )}
+            </div>
           </div>
         ))}
 
         {aba === "analise" && (
           <div>
+            <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
             <SectionTitle icon={TrendingUp} sub="Acompanhe os indicadores consolidados e registre ajustes ao longo do projeto.">Análise do Negócio</SectionTitle>
             <AnaliseNegocio calc={calc} historico={dados.historico} onSalvarVersao={salvarVersao} />
           </div>
@@ -1227,6 +1241,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair }) {
 
         {aba === "feedback" && (
           <div>
+            <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
             <SectionTitle icon={MessageSquare} sub="Comentários e ajustes solicitados pelo(a) professor(a).">Feedback do Professor</SectionTitle>
             <ComentariosPanel comentarios={dados.comentarios} onAdd={addComentario} autor={user.nome} readOnlyInput />
           </div>

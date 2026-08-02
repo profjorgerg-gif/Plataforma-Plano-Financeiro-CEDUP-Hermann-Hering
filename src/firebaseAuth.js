@@ -19,7 +19,7 @@ import {
 } from "firebase/auth";
 import { app } from "./firebaseApp";
 
-export const CODIGO_MESTRE = "CEDUP-MESTRE-2026";
+export const CODIGO_MESTRE = "CEDUP-HH-CUK5HE";
 
 export const auth = app ? getAuth(app) : null;
 

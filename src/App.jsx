@@ -2000,36 +2000,118 @@ function GestaoTurmasView({ turmas, onCriar, onAbrir, setTurmas }) {
   );
 }
 
+// Painel para o professor corrigir a turma e/ou empresa de um aluno — usado
+// tanto para consertar um cadastro feito errado quanto para mudar alguém de
+// turma ou de empresa no meio do período.
+function EditarAlunoPanel({ aluno, turmas, onFechar, onSalvo }) {
+  const [turmaId, setTurmaId] = useState(aluno.turmaId || "");
+  const [empresaId, setEmpresaId] = useState(aluno.equipeId || "");
+  const [empresas, setEmpresas] = useState(null);
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    setEmpresas(null);
+    // Se a turma escolhida for a mesma de antes, mantém a empresa atual
+    // selecionada; se for outra turma, começa sem empresa (a lista é diferente).
+    setEmpresaId(turmaId === aluno.turmaId ? (aluno.equipeId || "") : "");
+    if (!turmaId) { setEmpresas([]); return; }
+    (async () => {
+      try {
+        const r = await window.storage.get(`equipes_${turmaId}`, true);
+        const lista = r ? JSON.parse(r.value) : [];
+        if (alive) setEmpresas(lista);
+      } catch { if (alive) setEmpresas([]); }
+    })();
+    return () => { alive = false; };
+  }, [turmaId]);
+
+  const salvar = async () => {
+    setSalvando(true);
+    try {
+      // 1. Se já estava em alguma empresa (dessa turma ou de outra) e vai
+      //    mudar, remove o nome dela primeiro.
+      if (aluno.turmaId && aluno.equipeId && (aluno.turmaId !== turmaId || aluno.equipeId !== empresaId)) {
+        try {
+          const r = await window.storage.get(`equipes_${aluno.turmaId}`, true);
+          const lista = r ? JSON.parse(r.value) : [];
+          const nova = lista.map((e) => (e.id === aluno.equipeId ? { ...e, integrantes: e.integrantes.filter((n) => n !== aluno.nome) } : e));
+          await window.storage.set(`equipes_${aluno.turmaId}`, JSON.stringify(nova), true);
+        } catch {}
+      }
+      // 2. Se escolheu uma empresa nova, adiciona o nome nela.
+      if (empresaId && (aluno.turmaId !== turmaId || aluno.equipeId !== empresaId)) {
+        try {
+          const r = await window.storage.get(`equipes_${turmaId}`, true);
+          const lista = r ? JSON.parse(r.value) : [];
+          const nova = lista.map((e) => (e.id === empresaId && !e.integrantes.includes(aluno.nome) ? { ...e, integrantes: [...e.integrantes, aluno.nome] } : e));
+          await window.storage.set(`equipes_${turmaId}`, JSON.stringify(nova), true);
+        } catch {}
+      }
+      // 3. Atualiza o cadastro do aluno com a turma/empresa definitivas.
+      const turmaObj = turmas.find((t) => t.id === turmaId);
+      await atualizarUsuario(aluno.uid, {
+        turmaId: turmaId || null,
+        turmaNome: turmaObj ? turmaObj.nome : null,
+        equipeId: empresaId || null,
+      });
+      onSalvo();
+    } catch {
+      alert("Não foi possível salvar. Tente novamente.");
+    }
+    setSalvando(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-40 flex items-center justify-center p-4" onClick={onFechar}>
+      <Card className="p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+        <SectionTitle icon={UserCog} sub="Corrija a turma e/ou a empresa desta pessoa — por exemplo, se o cadastro foi feito errado ou se ela mudou de turma/empresa.">
+          Editar aluno(a)
+        </SectionTitle>
+        <div className="text-sm font-semibold text-slate-100 mb-1">{aluno.nome}</div>
+        <div className="text-xs text-slate-500 mb-4">{aluno.email}</div>
+
+        <Field label="Turma">
+          <select value={turmaId} onChange={(e) => setTurmaId(e.target.value)} className="w-full border border-slate-600 bg-slate-900 text-slate-100 rounded-md px-3 py-2 text-sm">
+            <option value="">Nenhuma (remove da turma)</option>
+            {turmas.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+          </select>
+        </Field>
+
+        {turmaId && (
+          <Field label="Empresa" hint={empresas && empresas.length === 0 ? "Essa turma ainda não tem empresas cadastradas." : "Deixe em branco para a pessoa escolher no próximo acesso."}>
+            <select value={empresaId} onChange={(e) => setEmpresaId(e.target.value)} disabled={empresas === null} className="w-full border border-slate-600 bg-slate-900 text-slate-100 rounded-md px-3 py-2 text-sm disabled:opacity-40">
+              <option value="">Nenhuma (escolherá depois)</option>
+              {(empresas || []).map((eq) => <option key={eq.id} value={eq.id}>{eq.nomeNegocio}</option>)}
+            </select>
+          </Field>
+        )}
+
+        <div className="flex justify-end gap-2 mt-5">
+          <button onClick={onFechar} className="px-4 py-2 rounded-md text-sm font-semibold text-slate-300 hover:bg-slate-800">Cancelar</button>
+          <button onClick={salvar} disabled={salvando} className="bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40 text-sm">
+            {salvando ? "Salvando…" : "Salvar"}
+          </button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function GestaoUsuariosView({ turmas }) {
   const [turmaId, setTurmaId] = useState("");
   const turma = turmas.find((t) => t.id === turmaId);
   const [refreshKey, setRefreshKey] = useState(0);
   const equipesComDados = useEquipesComDados(turmaId, refreshKey);
-  const [movendo, setMovendo] = useState(null);
+  const usuarios = useListaUsuarios(refreshKey);
+  const [editando, setEditando] = useState(null);
 
-  const moverAluno = async (equipe, nome) => {
-    const ok = window.confirm(
-      `Mover "${nome}" para fora da empresa "${equipe.nomeNegocio}"?\n\nNo próximo acesso, essa pessoa poderá escolher outra empresa da turma — sem precisar recriar o cadastro.`
-    );
-    if (!ok) return;
-    setMovendo(nome + equipe.id);
-    try {
-      const r = await window.storage.get(`equipes_${turmaId}`, true);
-      const lista = r ? JSON.parse(r.value) : [];
-      const nova = lista.map((e) => (e.id === equipe.id ? { ...e, integrantes: e.integrantes.filter((i) => i !== nome) } : e));
-      await window.storage.set(`equipes_${turmaId}`, JSON.stringify(nova), true);
-
-      const ru = await listarUsuarios();
-      const afetado = ru.find((u) => u.papel === "aluno" && u.turmaId === turmaId && u.equipeId === equipe.id && u.nome === nome);
-      if (afetado) await atualizarUsuario(afetado.uid, { equipeId: null });
-    } catch {}
-    setMovendo(null);
-    setRefreshKey((k) => k + 1);
-  };
+  const alunosDaTurma = (usuarios || []).filter((u) => u.papel === "aluno" && u.turmaId === turmaId);
+  const nomeEmpresa = (equipeId) => equipesComDados?.find((d) => d.equipe.id === equipeId)?.equipe?.nomeNegocio;
 
   return (
     <div>
-      <SectionTitle icon={Users} sub="Veja quem está participando de cada turma: o(a) professor(a) e os integrantes de cada equipe.">Usuários</SectionTitle>
+      <SectionTitle icon={Users} sub="Veja quem está participando de cada turma e corrija a turma/empresa de um aluno quando necessário.">Usuários</SectionTitle>
       <SeletorTurma turmas={turmas} value={turmaId} onChange={setTurmaId} />
       {!turmaId && <Card className="p-8 text-center text-slate-500 mt-4">Selecione uma turma para ver os usuários.</Card>}
       {turmaId && (
@@ -2037,7 +2119,7 @@ function GestaoUsuariosView({ turmas }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700">
-                <th className="py-2 pr-3">Nome</th><th className="py-2 pr-3">Papel</th><th className="py-2 pr-3">Equipe / Negócio</th><th className="py-2 pr-3"></th>
+                <th className="py-2 pr-3">Nome</th><th className="py-2 pr-3">Papel</th><th className="py-2 pr-3">Empresa</th><th className="py-2 pr-3"></th>
               </tr>
             </thead>
             <tbody>
@@ -2047,31 +2129,34 @@ function GestaoUsuariosView({ turmas }) {
                 <td className="py-2 pr-3 text-slate-500">—</td>
                 <td className="py-2 pr-3"></td>
               </tr>
-              {equipesComDados === null && <tr><td colSpan={4} className="py-4 text-slate-500">Carregando…</td></tr>}
-              {equipesComDados && equipesComDados.length === 0 && <tr><td colSpan={4} className="py-4 text-slate-500">Nenhuma equipe nesta turma ainda.</td></tr>}
-              {equipesComDados && equipesComDados.flatMap(({ equipe }) =>
-                (equipe.integrantes.length ? equipe.integrantes : ["(sem integrantes)"]).map((nome) => (
-                  <tr key={equipe.id + nome} className="border-b border-slate-800">
-                    <td className="py-2 pr-3">{nome}</td>
-                    <td className="py-2 pr-3 text-sky-400">Aluno(a)</td>
-                    <td className="py-2 pr-3">{equipe.nomeNegocio}</td>
-                    <td className="py-2 pr-3 text-right">
-                      {equipe.integrantes.includes(nome) && (
-                        <button
-                          onClick={() => moverAluno(equipe, nome)}
-                          disabled={movendo === nome + equipe.id}
-                          className="text-xs font-semibold text-slate-400 hover:text-amber-400 disabled:opacity-40 whitespace-nowrap"
-                        >
-                          {movendo === nome + equipe.id ? "Movendo…" : "Mover para outra equipe"}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
+              {(usuarios === null || equipesComDados === null) && <tr><td colSpan={4} className="py-4 text-slate-500">Carregando…</td></tr>}
+              {usuarios !== null && alunosDaTurma.length === 0 && <tr><td colSpan={4} className="py-4 text-slate-500">Nenhum aluno nesta turma ainda.</td></tr>}
+              {usuarios !== null && equipesComDados !== null && alunosDaTurma.map((u) => (
+                <tr key={u.uid} className="border-b border-slate-800">
+                  <td className="py-2 pr-3 text-slate-100">{u.nome}</td>
+                  <td className="py-2 pr-3 text-sky-400">Aluno(a)</td>
+                  <td className="py-2 pr-3">
+                    {nomeEmpresa(u.equipeId) || <span className="text-slate-600 italic">Sem empresa escolhida</span>}
+                  </td>
+                  <td className="py-2 pr-3 text-right">
+                    <button onClick={() => setEditando(u)} className="flex items-center gap-1.5 ml-auto bg-slate-900 border border-slate-700 hover:border-amber-500 text-slate-200 text-xs font-semibold px-3 py-1.5 rounded-md">
+                      <Pencil size={13} /> Editar
+                    </button>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </Card>
+      )}
+
+      {editando && (
+        <EditarAlunoPanel
+          aluno={editando}
+          turmas={turmas}
+          onFechar={() => setEditando(null)}
+          onSalvo={() => { setEditando(null); setRefreshKey((k) => k + 1); }}
+        />
       )}
     </div>
   );

@@ -687,9 +687,36 @@ function M3Form({ data, update }) {
   );
 }
 
+// Opções padrão de fonte de recursos de terceiros (Módulo 4). O usuário
+// também pode digitar uma fonte personalizada pelo "+ Outra fonte...".
+const FONTES_TERCEIROS_PADRAO = [
+  "Empréstimo Bancário", "Financiamento para Empreendedores (ex.: BNDES, Sebraetec)",
+  "Parceria com Pessoa Física", "Investidor-Anjo", "Cooperativa de Crédito",
+  "Linha de Crédito de Fornecedor", "Familiares/Amigos",
+];
+
 function M4Form({ data, update, calc }) {
   const pctProprio = Number(data.pctProprio) || 0;
   const pctTerceiros = 100 - pctProprio;
+
+  const fontesUsadas = (data.fontesTerceiros || []).map((f) => f.fonte).filter(Boolean);
+  const fontesDisponiveis = [...new Set([...FONTES_TERCEIROS_PADRAO, ...fontesUsadas])];
+
+  const fontes = data.fontesTerceiros && data.fontesTerceiros.length > 0
+    ? data.fontesTerceiros
+    : [{ id: uid(), fonte: "", obs: "" }];
+  const setFontes = (next) => update({ ...data, fontesTerceiros: next });
+
+  const alterarFonte = (id, valor) => {
+    if (valor === "__nova__") {
+      const nome = (prompt("Nome da fonte de recursos de terceiros:") || "").trim();
+      if (!nome) return;
+      setFontes(fontes.map((f) => (f.id === id ? { ...f, fonte: nome } : f)));
+      return;
+    }
+    setFontes(fontes.map((f) => (f.id === id ? { ...f, fonte: valor } : f)));
+  };
+
   return (
     <div className="grid md:grid-cols-2 gap-6">
       <div>
@@ -710,6 +737,25 @@ function M4Form({ data, update, calc }) {
           <StatCard label="Recursos Próprios" value={fmtBRL((calc.investimentoTotal * pctProprio) / 100)} tone="emerald" small />
           <StatCard label="Recursos de Terceiros" value={fmtBRL((calc.investimentoTotal * pctTerceiros) / 100)} tone="gold" small />
         </div>
+
+        {pctTerceiros > 0 && (
+          <div className="mt-5">
+            <SectionTitle icon={Building2} sub="De onde vai vir o dinheiro de terceiros? Isso ajuda a planejar juros e prazos de pagamento mais adiante.">
+              Fonte dos recursos de terceiros
+            </SectionTitle>
+            {fontes.map((f) => (
+              <div key={f.id} className="flex gap-2 items-center mb-2">
+                <select value={f.fonte} onChange={(e) => alterarFonte(f.id, e.target.value)} className="flex-1 border border-slate-600 rounded-md px-2 py-2 text-sm">
+                  <option value="">Selecione a fonte…</option>
+                  {fontesDisponiveis.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                  <option value="__nova__">+ Outra fonte…</option>
+                </select>
+                {fontes.length > 1 && <RemoveBtn onClick={() => setFontes(fontes.filter((r) => r.id !== f.id))} />}
+              </div>
+            ))}
+            <AddBtn onClick={() => setFontes([...fontes, { id: uid(), fonte: "", obs: "" }])}>Adicionar outra fonte</AddBtn>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -13,7 +13,7 @@ import {
   ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
 } from "lucide-react";
 import {
-  observarSessao, cadastrar, entrar, sair, recuperarSenha, traduzErroAuth, CODIGO_MESTRE,
+  observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
 } from "./firebaseAuth";
 import { extrairAlunosDoPDF, normalizarNome } from "./rosterPdf";
 
@@ -3032,7 +3032,7 @@ function TelaAguardandoAprovacao({ perfil, onSair, rejeitado, onTrocarTurma }) {
               Olá, {perfil.nome}! Seu cadastro como {perfil.papel === "professor" ? "professor(a)" : "aluno(a)"}
               {perfil.turmaNome ? <> para a turma <b>{perfil.turmaNome}</b></> : ""} foi enviado e está aguardando aprovação de um Usuário Mestre.
             </p>
-            <p className="text-xs text-slate-500 mb-3">Assim que for aprovado, é só entrar novamente com seu e-mail e senha.</p>
+            <p className="text-xs text-slate-500 mb-3">Assim que for aprovado, é só entrar novamente com sua conta Google.</p>
             {onTrocarTurma && (
               <button onClick={onTrocarTurma} className="text-xs text-amber-500 hover:text-amber-400 mb-3 block mx-auto">Errei o código da turma — tentar de novo</button>
             )}
@@ -3044,105 +3044,92 @@ function TelaAguardandoAprovacao({ perfil, onSair, rejeitado, onTrocarTurma }) {
   );
 }
 
-function CampoSenha({ value, onChange, placeholder }) {
-  const [ver, setVer] = useState(false);
-  return (
-    <div className="relative">
-      <input
-        type={ver ? "text" : "password"}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full border border-slate-600 bg-slate-900 text-slate-100 placeholder-slate-500 rounded-md pl-3 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-      />
-      <button type="button" onClick={() => setVer(!ver)} className="absolute right-2.5 top-2.5 text-slate-500 hover:text-slate-300">
-        {ver ? <EyeOff size={16} /> : <Eye size={16} />}
-      </button>
-    </div>
-  );
-}
-
-function TelaCadastro({ onCadastrado, onIrParaLogin }) {
-  const [nome, setNome] = useState("");
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
-  const [confirmar, setConfirmar] = useState("");
+// Primeiro acesso: aparece só uma vez, logo após a pessoa entrar com a
+// conta Google pela primeira vez (ainda não existe um cadastro dela na
+// plataforma). Depois disso, o papel só pode ser alterado por um Usuário
+// Mestre, no painel de Usuários.
+function TelaPrimeiroAcesso({ firebaseUser, onCriado, onSair }) {
   const [papel, setPapel] = useState("aluno");
   const [codigoMestre, setCodigoMestre] = useState("");
   const [erro, setErro] = useState("");
-  const [carregando, setCarregando] = useState(false);
+  const [salvando, setSalvando] = useState(false);
 
-  const enviar = async () => {
-    if (!nome.trim()) return setErro("Digite seu nome completo.");
-    if (!email.trim()) return setErro("Digite seu e-mail.");
-    if (senha.length < 6) return setErro("A senha precisa ter pelo menos 6 caracteres.");
-    if (senha !== confirmar) return setErro("As senhas não coincidem.");
-    setErro(""); setCarregando(true);
+  const nome = firebaseUser.displayName || firebaseUser.email;
+
+  const confirmar = async () => {
+    setErro(""); setSalvando(true);
     try {
-      const fbUser = await cadastrar(email.trim(), senha, nome.trim());
       const souMestre = papel === "professor" && codigoMestre.trim() !== "" && codigoMestre.trim() === CODIGO_MESTRE;
       const perfil = {
-        uid: fbUser.uid, nome: nome.trim(), email: email.trim(), papel,
+        uid: firebaseUser.uid, nome, email: firebaseUser.email, papel,
         status: souMestre ? "aprovado" : "pendente",
         mestre: souMestre,
         turmaId: null, turmaNome: null, equipeId: null,
         criadoEm: Date.now(),
       };
       await salvarUsuario(perfil);
-      onCadastrado(perfil);
-    } catch (e) {
-      setErro(traduzErroAuth(e));
+      onCriado(perfil);
+    } catch {
+      setErro("Não foi possível concluir. Tente novamente.");
     }
-    setCarregando(false);
+    setSalvando(false);
   };
 
   return (
-    <Card className="p-6">
-      <SectionTitle icon={UserPlus}>Criar minha conta</SectionTitle>
-      <Field label="Nome completo"><TxtInput value={nome} onChange={setNome} placeholder="Ex.: Ana Souza" /></Field>
-      <Field label="E-mail">
-        <div className="relative">
-          <Mail size={15} className="absolute left-3 top-2.5 text-slate-500" />
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seuemail@exemplo.com"
-            className="w-full border border-slate-600 bg-slate-900 text-slate-100 placeholder-slate-500 rounded-md pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent" />
-        </div>
-      </Field>
-      <Field label="Senha (mínimo 6 caracteres)"><CampoSenha value={senha} onChange={setSenha} placeholder="••••••••" /></Field>
-      <Field label="Confirmar senha"><CampoSenha value={confirmar} onChange={setConfirmar} placeholder="••••••••" /></Field>
-      <Field label="Você é">
-        <div className="grid grid-cols-2 gap-2">
-          <button type="button" onClick={() => setPapel("aluno")} className={`py-2 rounded-md text-sm font-semibold border ${papel === "aluno" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300"}`}>Aluno(a)</button>
-          <button type="button" onClick={() => setPapel("professor")} className={`py-2 rounded-md text-sm font-semibold border ${papel === "professor" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300"}`}>Professor(a)</button>
-        </div>
-      </Field>
-      {papel === "professor" && (
-        <Field label="Código de Mestre (opcional)" hint="Só preencha se você recebeu um código de Usuário Mestre. Deixe em branco para se cadastrar como professor(a) comum, aguardando aprovação.">
-          <TxtInput value={codigoMestre} onChange={setCodigoMestre} placeholder="Deixe em branco se não tiver" />
-        </Field>
-      )}
-      {erro && <p className="text-sm text-rose-400 mb-2">{erro}</p>}
-      <button onClick={enviar} disabled={carregando} className="w-full bg-amber-500 text-slate-900 py-2.5 rounded-md font-bold hover:bg-amber-400 disabled:opacity-40 mt-2">
-        {carregando ? "Enviando…" : "Criar conta"}
-      </button>
-      <button onClick={onIrParaLogin} className="w-full text-center text-sm text-slate-400 hover:text-slate-100 mt-3">Já tenho conta — entrar</button>
-    </Card>
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+      <div className="w-full max-w-md">
+        <Card className="p-6">
+          <SectionTitle icon={UserPlus} sub={`Olá, ${nome}! Só nesta primeira vez: como você vai usar a plataforma?`}>
+            Primeiro acesso
+          </SectionTitle>
+          <Field label="Você é">
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setPapel("aluno")} className={`py-2 rounded-md text-sm font-semibold border ${papel === "aluno" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300"}`}>Aluno(a)</button>
+              <button type="button" onClick={() => setPapel("professor")} className={`py-2 rounded-md text-sm font-semibold border ${papel === "professor" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300"}`}>Professor(a)</button>
+            </div>
+          </Field>
+          {papel === "professor" && (
+            <Field label="Código de Mestre (opcional)" hint="Só preencha se você recebeu um código de Usuário Mestre. Deixe em branco para entrar como professor(a) comum, aguardando aprovação.">
+              <TxtInput value={codigoMestre} onChange={setCodigoMestre} placeholder="Deixe em branco se não tiver" />
+            </Field>
+          )}
+          {erro && <p className="text-sm text-rose-400 mb-2">{erro}</p>}
+          <button onClick={confirmar} disabled={salvando} className="w-full bg-amber-500 text-slate-900 py-2.5 rounded-md font-bold hover:bg-amber-400 disabled:opacity-40 mt-2">
+            {salvando ? "Salvando…" : "Confirmar e continuar"}
+          </button>
+          <button onClick={onSair} className="w-full text-center text-sm text-slate-400 hover:text-slate-100 mt-3 flex items-center justify-center gap-2">
+            <LogOut size={14} /> Sair
+          </button>
+        </Card>
+      </div>
+    </div>
   );
 }
 
-function TelaLogin({ onIrParaCadastro }) {
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
+// Ícone oficial do Google (multicolorido), como no botão "Continuar com o
+// Google" — mantido como SVG embutido para não depender de outro pacote.
+function GoogleIcon({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/>
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.9 18.9 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4c-7.7 0-14.4 4.4-17.7 10.7z"/>
+      <path fill="#4CAF50" d="M24 44c5.5 0 10.5-2.1 14.3-5.6l-6.6-5.6C29.6 34.7 26.9 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/>
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.2 4.2-4.1 5.6l6.6 5.6C41.6 36.6 44 30.9 44 24c0-1.3-.1-2.7-.4-3.5z"/>
+    </svg>
+  );
+}
+
+// Tela de entrada: um único caminho — "Continuar com o Google". Não existe
+// mais cadastro nem senha; o papel (Professor/Aluno) só é perguntado uma vez,
+// no primeiro acesso de cada conta (TelaPrimeiroAcesso).
+function TelaLogin() {
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
-  const [recuperarAberto, setRecuperarAberto] = useState(false);
-  const [emailRecuperar, setEmailRecuperar] = useState("");
-  const [msgRecuperar, setMsgRecuperar] = useState("");
 
-  const fazerLogin = async () => {
-    if (!email.trim() || !senha) return setErro("Preencha e-mail e senha.");
+  const entrarComGoogleClick = async () => {
     setErro(""); setCarregando(true);
     try {
-      await entrar(email.trim(), senha);
+      await entrarComGoogle();
       // o App() detecta a sessão automaticamente pelo observador do Firebase
     } catch (e) {
       setErro(traduzErroAuth(e));
@@ -3150,54 +3137,25 @@ function TelaLogin({ onIrParaCadastro }) {
     }
   };
 
-  const enviarRecuperacao = async () => {
-    setMsgRecuperar("");
-    try {
-      await recuperarSenha(emailRecuperar.trim());
-      setMsgRecuperar("Enviamos um e-mail com instruções para redefinir sua senha.");
-    } catch (e) {
-      setMsgRecuperar(traduzErroAuth(e));
-    }
-  };
-
-  if (recuperarAberto) {
-    return (
-      <Card className="p-6">
-        <SectionTitle icon={Lock}>Recuperar senha</SectionTitle>
-        <Field label="Seu e-mail">
-          <TxtInput value={emailRecuperar} onChange={setEmailRecuperar} placeholder="seuemail@exemplo.com" />
-        </Field>
-        {msgRecuperar && <p className="text-sm text-slate-300 mb-3">{msgRecuperar}</p>}
-        <button onClick={enviarRecuperacao} disabled={!emailRecuperar.trim()} className="w-full bg-amber-500 text-slate-900 py-2.5 rounded-md font-bold hover:bg-amber-400 disabled:opacity-40">Enviar e-mail de recuperação</button>
-        <button onClick={() => setRecuperarAberto(false)} className="w-full text-center text-sm text-slate-400 hover:text-slate-100 mt-3">Voltar ao login</button>
-      </Card>
-    );
-  }
-
   return (
     <Card className="p-6">
-      <SectionTitle icon={Lock}>Entrar</SectionTitle>
-      <Field label="E-mail">
-        <div className="relative">
-          <Mail size={15} className="absolute left-3 top-2.5 text-slate-500" />
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seuemail@exemplo.com"
-            className="w-full border border-slate-600 bg-slate-900 text-slate-100 placeholder-slate-500 rounded-md pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent" />
-        </div>
-      </Field>
-      <Field label="Senha"><CampoSenha value={senha} onChange={setSenha} placeholder="••••••••" /></Field>
-      {erro && <p className="text-sm text-rose-400 mb-2">{erro}</p>}
-      <button onClick={fazerLogin} disabled={carregando} className="w-full bg-amber-500 text-slate-900 py-2.5 rounded-md font-bold hover:bg-amber-400 disabled:opacity-40">
-        {carregando ? "Entrando…" : "Entrar"}
+      <SectionTitle icon={Lock}>Entrar no sistema</SectionTitle>
+      <p className="text-sm text-slate-400 mb-5">Entre com sua conta Google para acessar a Plataforma do Plano Financeiro.</p>
+      {erro && <p className="text-sm text-rose-400 mb-3">{erro}</p>}
+      <button
+        onClick={entrarComGoogleClick}
+        disabled={carregando}
+        className="w-full flex items-center justify-center gap-3 bg-white text-slate-800 py-2.5 rounded-md font-bold hover:bg-slate-100 disabled:opacity-40 transition"
+      >
+        <GoogleIcon size={18} />
+        {carregando ? "Entrando…" : "Continuar com o Google"}
       </button>
-      <div className="flex items-center justify-between mt-3">
-        <button onClick={() => setRecuperarAberto(true)} className="text-xs text-slate-400 hover:text-slate-100">Esqueci minha senha</button>
-        <button onClick={onIrParaCadastro} className="text-xs text-amber-500 hover:text-amber-400 font-semibold">Criar conta</button>
-      </div>
+      <p className="text-[11px] text-slate-500 mt-4 text-center">Autenticado via Firebase Authentication — somente conta Google.</p>
     </Card>
   );
 }
 
-function TelaEntrada({ tela, setTela, onCadastrado }) {
+function TelaEntrada() {
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col md:flex-row">
       {/* Painel de identidade — visível a partir de telas médias */}
@@ -3265,9 +3223,7 @@ function TelaEntrada({ tela, setTela, onCadastrado }) {
             <p className="text-slate-400 text-sm">Construção guiada do plano financeiro do negócio, módulo a módulo · uso didático</p>
           </div>
 
-          {tela === "cadastro"
-            ? <TelaCadastro onCadastrado={onCadastrado} onIrParaLogin={() => setTela("login")} />
-            : <TelaLogin onIrParaCadastro={() => setTela("cadastro")} />}
+          <TelaLogin />
         </div>
       </div>
     </div>
@@ -3276,7 +3232,6 @@ function TelaEntrada({ tela, setTela, onCadastrado }) {
 
 export default function App() {
   const [firebaseUser, setFirebaseUser] = useState(undefined); // undefined=carregando, null=deslogado
-  const [tela, setTela] = useState("login");
   const [perfilRecemCriado, setPerfilRecemCriado] = useState(null);
 
   useEffect(() => {
@@ -3287,7 +3242,6 @@ export default function App() {
   const efetuarSaida = async () => {
     try { await sair(); } catch {}
     setPerfilRecemCriado(null);
-    setTela("login");
   };
 
   const perfilCarregado = useUsuario(firebaseUser?.uid);
@@ -3295,19 +3249,19 @@ export default function App() {
   if (firebaseUser === undefined) return <LoadingScreen />;
 
   if (!firebaseUser) {
-    return <TelaEntrada tela={tela} setTela={setTela} onCadastrado={setPerfilRecemCriado} />;
+    return <TelaEntrada />;
   }
 
   if (perfilCarregado === undefined) return <LoadingScreen />;
 
-  // perfilRecemCriado só serve de "ponte" no instante logo após o cadastro
-  // (antes do registro recém-salvo terminar de carregar) — e só é usado se
-  // for realmente da conta que está logada agora, para nunca "vazar" o
-  // perfil de uma conta antiga ao trocar de usuário na mesma aba.
+  // perfilRecemCriado só serve de "ponte" no instante logo após o primeiro
+  // acesso (antes do registro recém-salvo terminar de carregar) — e só é
+  // usado se for realmente da conta que está logada agora, para nunca
+  // "vazar" o perfil de uma conta antiga ao trocar de usuário na mesma aba.
   const perfil = perfilCarregado || (perfilRecemCriado?.uid === firebaseUser.uid ? perfilRecemCriado : null);
 
   if (!perfil) {
-    return <TelaAguardandoAprovacao perfil={{ nome: firebaseUser.displayName || firebaseUser.email, papel: "—" }} onSair={efetuarSaida} />;
+    return <TelaPrimeiroAcesso firebaseUser={firebaseUser} onCriado={setPerfilRecemCriado} onSair={efetuarSaida} />;
   }
 
   if (perfil.papel === "aluno") {

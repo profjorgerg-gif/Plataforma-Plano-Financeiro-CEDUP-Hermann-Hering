@@ -1,10 +1,13 @@
 // ============================================================================
-// Autenticação real (Firebase Authentication) — cadastro com e-mail/senha,
-// login, recuperação de senha e logout.
+// Autenticação real (Firebase Authentication) — login somente com conta
+// Google. Não existe mais cadastro com e-mail/senha: o provedor "E-mail/senha"
+// foi desativado no Console do Firebase, e o único jeito de entrar é pelo
+// botão "Continuar com Google".
 //
-// CÓDIGO DE MESTRE: quem digitar esse código corretamente no cadastro (como
-// professor) já entra aprovado como Usuário Mestre, sem esperar aprovação —
-// é o "pontapé inicial" para existir alguém que possa aprovar os demais.
+// CÓDIGO DE MESTRE: quem digitar esse código corretamente no primeiro acesso
+// (como professor) já entra aprovado como Usuário Mestre, sem esperar
+// aprovação — é o "pontapé inicial" para existir alguém que possa aprovar
+// os demais.
 //
 // IMPORTANTE — leia antes de publicar a plataforma para a escola:
 // este repositório é PÚBLICO no GitHub, então qualquer pessoa que abrir o
@@ -12,30 +15,27 @@
 // de divulgar o link da plataforma, e trate-o como uma trava simples (evita
 // que alguém vire Mestre "sem querer"), não como um segredo forte.
 // ============================================================================
-
 import {
-  getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  signOut, onAuthStateChanged, sendPasswordResetEmail, updateProfile,
+  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
 } from "firebase/auth";
 import { app } from "./firebaseApp";
 
 export const CODIGO_MESTRE = "CEDUP-HH-CUK5HE";
-
 export const auth = app ? getAuth(app) : null;
+
+const googleProvider = new GoogleAuthProvider();
+// Evita a tela intermediária "Escolha uma conta" quando a pessoa só tem uma
+// conta Google logada no navegador; se tiver mais de uma, o Google mostra a
+// escolha normalmente.
+googleProvider.setCustomParameters({ prompt: "select_account" });
 
 export function observarSessao(callback) {
   if (!auth) return () => {};
   return onAuthStateChanged(auth, callback);
 }
 
-export async function cadastrar(email, senha, nome) {
-  const cred = await createUserWithEmailAndPassword(auth, email, senha);
-  await updateProfile(cred.user, { displayName: nome });
-  return cred.user;
-}
-
-export async function entrar(email, senha) {
-  const cred = await signInWithEmailAndPassword(auth, email, senha);
+export async function entrarComGoogle() {
+  const cred = await signInWithPopup(auth, googleProvider);
   return cred.user;
 }
 
@@ -43,22 +43,15 @@ export async function sair() {
   await signOut(auth);
 }
 
-export async function recuperarSenha(email) {
-  await sendPasswordResetEmail(auth, email);
-}
-
 export function traduzErroAuth(err) {
   const c = err?.code || "";
   const map = {
-    "auth/email-already-in-use": "Este e-mail já está cadastrado. Tente entrar ou recuperar a senha.",
-    "auth/invalid-email": "E-mail inválido.",
-    "auth/weak-password": "A senha precisa ter pelo menos 6 caracteres.",
-    "auth/missing-password": "Digite uma senha.",
-    "auth/user-not-found": "E-mail ou senha incorretos.",
-    "auth/wrong-password": "E-mail ou senha incorretos.",
-    "auth/invalid-credential": "E-mail ou senha incorretos.",
-    "auth/too-many-requests": "Muitas tentativas seguidas. Aguarde um pouco e tente novamente.",
+    "auth/popup-closed-by-user": "A janela do Google foi fechada antes de concluir. Tente novamente.",
+    "auth/cancelled-popup-request": "Só é possível ter uma janela de login por vez. Tente novamente.",
+    "auth/popup-blocked": "O navegador bloqueou a janela do Google. Permita pop-ups para este site e tente de novo.",
+    "auth/account-exists-with-different-credential": "Este e-mail já está associado a outra forma de login.",
     "auth/network-request-failed": "Falha de conexão. Verifique a internet e tente novamente.",
+    "auth/too-many-requests": "Muitas tentativas seguidas. Aguarde um pouco e tente novamente.",
   };
-  return map[c] || "Não foi possível concluir a operação. Tente novamente.";
+  return map[c] || "Não foi possível entrar com o Google. Tente novamente.";
 }

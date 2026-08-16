@@ -3199,19 +3199,76 @@ function TelaLogin({ onIrParaCadastro }) {
 
 function TelaEntrada({ tela, setTela, onCadastrado }) {
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-full bg-slate-900 border-2 border-amber-500 flex items-center justify-center mx-auto mb-4">
-            <GraduationCap size={26} className="text-amber-500" />
+    <div className="min-h-screen bg-slate-950 flex flex-col md:flex-row">
+      {/* Painel de identidade — visível a partir de telas médias */}
+      <div className="hidden md:flex md:w-1/2 relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex-col justify-center px-14 py-12">
+        <div className="absolute -top-24 -left-24 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 right-0 w-72 h-72 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10">
+          <div className="flex items-center gap-3 mb-10">
+            <div className="w-12 h-12 rounded-full bg-slate-900 border-2 border-amber-500 flex items-center justify-center flex-none">
+              <GraduationCap size={22} className="text-amber-500" />
+            </div>
+            <div>
+              <div className="text-[11px] font-bold tracking-widest text-amber-500">CEDUP HERMANN HERING</div>
+              <div className="text-xs text-slate-500">Curso Técnico em Administração e Contabilidade</div>
+            </div>
           </div>
-          <div className="text-xs font-bold tracking-widest text-amber-500 mb-2">CURSO TÉCNICO EM ADMINISTRAÇÃO E CONTABILIDADE</div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-50 mb-2">Plataforma do Plano Financeiro</h1>
-          <p className="text-slate-400 text-sm">Construção guiada do plano financeiro do negócio, módulo a módulo · uso didático</p>
+
+          <h1 className="text-4xl font-bold text-slate-50 leading-tight mb-4">
+            Plataforma do<br />Plano Financeiro
+          </h1>
+          <p className="text-slate-400 text-sm leading-relaxed mb-10 max-w-sm">
+            Construção guiada do plano financeiro do negócio, módulo a módulo — cada etapa preenchida é um passo real do plano de negócio da equipe, não apenas uma tarefa a cumprir.
+          </p>
+
+          {/* Elemento de assinatura: trilha dos 13 módulos até a conclusão */}
+          <div className="flex items-end gap-1.5 mb-10">
+            {Array.from({ length: 13 }).map((_, i) => (
+              <div
+                key={i}
+                className="w-2.5 rounded-t-sm bg-gradient-to-t from-amber-700 to-amber-400"
+                style={{ height: 14 + i * 5 }}
+              />
+            ))}
+            <CheckCircle2 size={22} className="text-amber-400 ml-2 mb-0.5 flex-none" />
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 text-sm text-slate-300">
+              <ClipboardList size={16} className="text-amber-500 flex-none" />
+              13 módulos guiados pela metodologia SEBRAE
+            </div>
+            <div className="flex items-center gap-3 text-sm text-slate-300">
+              <MessageSquare size={16} className="text-amber-500 flex-none" />
+              Feedback do professor a cada etapa
+            </div>
+            <div className="flex items-center gap-3 text-sm text-slate-300">
+              <TrendingUp size={16} className="text-amber-500 flex-none" />
+              Análise do negócio atualizada em tempo real
+            </div>
+          </div>
         </div>
-        {tela === "cadastro"
-          ? <TelaCadastro onCadastrado={onCadastrado} onIrParaLogin={() => setTela("login")} />
-          : <TelaLogin onIrParaCadastro={() => setTela("cadastro")} />}
+      </div>
+
+      {/* Painel de acesso */}
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="w-full max-w-md">
+          {/* Cabeçalho compacto — substitui o painel da esquerda no celular */}
+          <div className="md:hidden text-center mb-8">
+            <div className="w-14 h-14 rounded-full bg-slate-900 border-2 border-amber-500 flex items-center justify-center mx-auto mb-4">
+              <GraduationCap size={26} className="text-amber-500" />
+            </div>
+            <div className="text-xs font-bold tracking-widest text-amber-500 mb-2">CURSO TÉCNICO EM ADMINISTRAÇÃO E CONTABILIDADE</div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-50 mb-2">Plataforma do Plano Financeiro</h1>
+            <p className="text-slate-400 text-sm">Construção guiada do plano financeiro do negócio, módulo a módulo · uso didático</p>
+          </div>
+
+          {tela === "cadastro"
+            ? <TelaCadastro onCadastrado={onCadastrado} onIrParaLogin={() => setTela("login")} />
+            : <TelaLogin onIrParaCadastro={() => setTela("cadastro")} />}
+        </div>
       </div>
     </div>
   );

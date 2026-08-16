@@ -93,8 +93,8 @@ const MANUAIS_ITENS_MESTRE = [
 ];
 
 const MANUAL_ALUNO_PASSOS = [
-  { titulo: "Entrem com a conta Google", texto: "Na tela inicial, escolham o perfil \"Aluno(a)\" e cliquem em \"Continuar com o Google\". Não existe mais cadastro nem senha — o acesso é feito direto com a conta Google de cada um." },
-  { titulo: "Informem o código da turma", texto: "Peçam ao professor(a) o código da turma (6 caracteres) e digitem-no na tela seguinte para entrar nela." },
+  { titulo: "Entrem com a conta Google", texto: "Na tela inicial, escolham o perfil \"Aluno(a)\" e cliquem em \"Continuar com o Google\". Pode ser qualquer conta Google que vocês tiverem — não precisa ser uma conta específica da escola." },
+  { titulo: "Informem sua matrícula", texto: "Digitem o número de matrícula de vocês (o mesmo da lista oficial da escola). A plataforma já reconhece automaticamente a turma certa e o nome oficial de vocês — não precisa mais de código de turma nem de digitar o nome." },
   { titulo: "Escolham a empresa da equipe", texto: "Escolham, na lista de empresas já cadastradas pelo professor, o negócio da equipe de vocês. Se um colega já entrou na mesma empresa, vocês se juntam automaticamente a ela — combinem com o grupo qual escolher, para não se dividirem por engano." },
   { titulo: "Sigam a ordem dos 13 módulos", texto: "Preencham os módulos na sequência 1 a 13: cada um utiliza dados calculados no módulo anterior — por exemplo, o Módulo 8 usa os produtos cadastrados no Módulo 5, e o Módulo 11 já soma automaticamente os totais dos Módulos 9 e 10." },
   { titulo: "Leiam a teoria antes de lançar dados", texto: "Todo módulo tem uma caixa \"Teoria do módulo\" — abram-na antes de preencher. Ela traz o conceito e a fórmula que a plataforma está usando nos cálculos." },
@@ -106,9 +106,9 @@ const MANUAL_ALUNO_PASSOS = [
 
 const MANUAL_PROFESSOR_PASSOS = [
   { titulo: "Criem a turma", texto: "Em GESTÃO → Turmas, cadastrem o nome da turma e o período letivo. A plataforma gera um código de 6 caracteres — é ele que os alunos vão usar para entrar." },
-  { titulo: "Importem a lista de alunos (opcional)", texto: "Em GESTÃO → Usuários, usem o botão de importar PDF para subir a lista oficial de alunos da turma. A plataforma remove duplicidades automaticamente e já aprova o cadastro de quem constar na lista." },
+  { titulo: "Importem a lista de alunos", texto: "Em GESTÃO → Usuários (ou dentro da turma), usem o botão de importar PDF para subir a lista oficial de alunos da turma. Isso é o que permite cada aluno entrar direto com a própria matrícula — sem isso, eles só conseguem entrar pelo código da turma." },
   { titulo: "Pré-cadastrem as empresas", texto: "Ainda em GESTÃO, cadastrem os nomes dos negócios que as equipes vão trabalhar. Isso faz com que, na hora de entrar na plataforma, o aluno escolha a empresa numa lista pronta em vez de digitar o nome livremente." },
-  { titulo: "Aprovem os cadastros pendentes de alunos", texto: "Em GESTÃO → Aprovações, revisem os alunos que não vieram da importação por PDF (professores agora entram direto, sem aprovação). É possível aprovar, rejeitar, corrigir o papel ou excluir um cadastro feito por engano." },
+  { titulo: "Aprovações (uso raro agora)", texto: "Em GESTÃO → Aprovações, fiquem de olho só por precaução: como o código da turma já libera o aluno na hora, essa tela normalmente fica vazia. Ainda serve para corrigir o papel de alguém ou excluir um cadastro feito por engano." },
   { titulo: "Gerenciem os usuários", texto: "Em GESTÃO → Usuários, acompanhem a lista de alunos com a empresa atual de cada um. Usem o botão \"Editar\" para corrigir a turma ou a empresa de um aluno a qualquer momento." },
   { titulo: "Revisem os módulos e comentem", texto: "Abram o painel de revisão por módulo de cada equipe (modo somente leitura) e deixem comentários e ajustes solicitados. Os alunos veem esse feedback organizado por módulo na aba \"Feedback do Professor\" deles." },
   { titulo: "Consultem os relatórios", texto: "Em GESTÃO → Relatórios, acompanhem a visão consolidada da turma: um relatório de pendências e outros três relatórios complementares por empresa." },
@@ -134,7 +134,7 @@ const OPERACIONAL_SECOES = [
     "02/08: reforço de segurança, registro individual por usuário, navegação entre módulos.",
     "03/08: categorias ilimitadas, menu mobile em gaveta, coluna \"O que falta\" nos relatórios.",
     "04/08 – 05/08: manuais ilustrados, caixa de links de referência.",
-    "16/08: tela de login redesenhada, login exclusivo via conta Google (fim do cadastro por e-mail/senha), seletor de perfil integrado ao login, professor entra direto (sem aprovação), botão de auto-promoção a Mestre pelo código.",
+    "16/08: tela de login redesenhada, login exclusivo via conta Google (fim do cadastro por e-mail/senha), seletor de perfil integrado ao login, professor entra direto (sem aprovação), botão de auto-promoção a Mestre pelo código, aluno entra direto com a própria matrícula (a lista de alunos importada em PDF passou a ser o índice de acesso, com o código de turma como alternativa).",
   ]},
   { titulo: "Segurança da plataforma", paragrafos: [
     "Login exclusivo via Google: o provedor \"E-mail/senha\" foi desativado no Console do Firebase; só \"Google\" está ativo. É preciso conferir, em Authentication → Domínios autorizados, se o domínio do GitHub Pages está na lista.",
@@ -152,7 +152,7 @@ const OPERACIONAL_SECOES = [
 const CHECKLIST_SECOES = [
   { titulo: "O que já temos (funcionalidade confirmada)", tom: "ok", itens: [
     "Login exclusivo via Google, com seletor de perfil (Aluno/Professor + código de Mestre)",
-    "Professor entra direto; aluno segue com código de turma + escolha de empresa",
+    "Professor entra direto; aluno entra direto com a própria matrícula (nome oficial e turma reconhecidos automaticamente)",
     "Os 13 módulos financeiros calculando e passando dados entre si",
     "Análise do Negócio com gráficos e alertas automáticos",
     "Feedback do Professor por módulo",
@@ -1860,7 +1860,7 @@ function LinhaRosterPreview({ item, onMudar, onRemover }) {
   );
 }
 
-function PainelRoster({ turmaId }) {
+function PainelRoster({ turmaId, turmaNome }) {
   const [roster, setRoster] = useSharedList(`roster_${turmaId}`);
   const [preview, setPreview] = useState(null);
   const [processando, setProcessando] = useState(false);
@@ -1892,6 +1892,16 @@ function PainelRoster({ turmaId }) {
     const porMatricula = new Map(atual.map((a) => [a.matricula, a]));
     novos.forEach((a) => porMatricula.set(a.matricula, { nome: a.nome.trim().toUpperCase(), matricula: a.matricula }));
     await setRoster(Array.from(porMatricula.values()));
+    // Índice matrícula → turma: permite o aluno entrar direto com a própria
+    // matrícula (sem precisar de um código de turma compartilhado). Cada
+    // matrícula é única, então essa chave já resolve turma + nome oficial.
+    try {
+      await Promise.all(novos.map((a) =>
+        window.storage.set(`matricula_${a.matricula}`, JSON.stringify({
+          turmaId, turmaNome, nome: a.nome.trim().toUpperCase(), matricula: a.matricula,
+        }), true)
+      ));
+    } catch {}
     setPreview(null);
   };
 
@@ -2012,14 +2022,14 @@ function TurmaDetail({ turma, onVoltar, professorNome }) {
     <div className="space-y-5">
       <button onClick={onVoltar} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Minhas turmas</button>
       <div className="flex items-center justify-between">
-        <SectionTitle icon={School} sub={`Código da turma para os alunos entrarem: `}>{turma.nome}</SectionTitle>
+        <SectionTitle icon={School} sub="O jeito preferido é a matrícula (via lista importada abaixo). Este código de turma é só uma alternativa, para quem ainda não está na lista:">{turma.nome}</SectionTitle>
         <div className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2">
           <KeyRound size={16} className="text-amber-400" />
           <span className="font-mono font-bold tracking-widest text-slate-100">{turma.codigo}</span>
         </div>
       </div>
 
-      <PainelRoster turmaId={turma.id} />
+      <PainelRoster turmaId={turma.id} turmaNome={turma.nome} />
 
       <Card className="p-4">
         <SectionTitle icon={Building2} sub="Cadastre aqui os nomes das empresas/negócios da turma — os alunos escolherão entre elas ao entrar (em vez de digitar um nome livre).">
@@ -2126,6 +2136,11 @@ async function excluirTurmaCompleta(turma) {
     }
   } catch {}
   try { await window.storage.delete(`equipes_${turma.id}`, true); } catch {}
+  try {
+    const rr = await window.storage.get(`roster_${turma.id}`, true);
+    const roster = rr ? JSON.parse(rr.value) : [];
+    await Promise.all(roster.map((a) => window.storage.delete(`matricula_${a.matricula}`, true).catch(() => {})));
+  } catch {}
   try { await window.storage.delete(`roster_${turma.id}`, true); } catch {}
   try { await window.storage.delete(`turma_por_codigo_${turma.codigo}`, true); } catch {}
   try {
@@ -3042,37 +3057,39 @@ function useEquipeSalva(turmaId, equipeId) {
   return estado;
 }
 
-// Passo 1 do fluxo do aluno: informar o código da turma. Se o nome do aluno
-// bater com a lista oficial (roster) importada pelo professor, o cadastro é
-// aprovado automaticamente nesse momento.
+// Passo 1 do fluxo do aluno: informar a matrícula (o jeito preferido — já
+// identifica a turma certa e traz o nome oficial da lista importada pelo
+// professor) ou, alternativamente, o código da turma (para quando o
+// professor ainda não importou a lista). Em qualquer um dos dois casos, o
+// cadastro já entra aprovado na hora.
 function TelaInformarTurma({ perfil, onSair, onResultado }) {
-  const [codigo, setCodigo] = useState("");
+  const [valor, setValor] = useState("");
   const [buscando, setBuscando] = useState(false);
   const [erro, setErro] = useState("");
 
   const buscar = async () => {
     setErro(""); setBuscando(true);
+    const termo = valor.trim();
     try {
-      const r = await window.storage.get(`turma_por_codigo_${codigo.trim().toUpperCase()}`, true);
-      if (!r) {
-        setErro("Código de turma não encontrado. Confira com o professor.");
+      // 1) tenta como matrícula — resolve turma e nome oficial de uma vez.
+      const rm = await window.storage.get(`matricula_${termo}`, true);
+      if (rm) {
+        const registro = JSON.parse(rm.value);
+        await onResultado({ turmaId: registro.turmaId, turmaNome: registro.turmaNome, nome: registro.nome, status: "aprovado" });
         setBuscando(false);
         return;
       }
-      const turma = JSON.parse(r.value);
-
-      let match = false;
-      try {
-        const rr = await window.storage.get(`roster_${turma.id}`, true);
-        const roster = rr ? JSON.parse(rr.value) : [];
-        match = roster.some((a) => normalizarNome(a.nome) === normalizarNome(perfil.nome));
-      } catch {}
-
-      const mudancas = { turmaId: turma.id, turmaNome: turma.nome };
-      if (match && perfil.status === "pendente") mudancas.status = "aprovado";
-      await onResultado(mudancas);
+      // 2) alternativa: código da turma (6 caracteres).
+      const rt = await window.storage.get(`turma_por_codigo_${termo.toUpperCase()}`, true);
+      if (rt) {
+        const turma = JSON.parse(rt.value);
+        await onResultado({ turmaId: turma.id, turmaNome: turma.nome, status: "aprovado" });
+        setBuscando(false);
+        return;
+      }
+      setErro("Não encontramos essa matrícula nem esse código de turma. Confira com o professor.");
     } catch {
-      setErro("Não foi possível localizar essa turma. Tente novamente.");
+      setErro("Não foi possível concluir. Tente novamente.");
     }
     setBuscando(false);
   };
@@ -3081,11 +3098,11 @@ function TelaInformarTurma({ perfil, onSair, onResultado }) {
     <div className="max-w-md mx-auto w-full">
       <button onClick={onSair} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><LogOut size={15} /> Sair</button>
       <Card className="p-6">
-        <SectionTitle icon={KeyRound} sub={`Olá, ${perfil.nome}! Informe o código da turma para continuar.`}>Entrar em uma turma</SectionTitle>
-        <Field label="Código da turma (fornecido pelo professor)">
+        <SectionTitle icon={KeyRound} sub={`Olá, ${perfil.nome}! Informe sua matrícula para continuar.`}>Entrar em uma turma</SectionTitle>
+        <Field label="Matrícula (ou, se não tiver, o código da turma)">
           <div className="flex gap-2">
-            <TxtInput value={codigo} onChange={setCodigo} placeholder="Ex.: A1B2C3" />
-            <button onClick={buscar} disabled={buscando || !codigo.trim()} className="bg-slate-900 text-white px-4 rounded-md text-sm font-semibold hover:bg-slate-800 disabled:opacity-40">
+            <TxtInput value={valor} onChange={setValor} placeholder="Ex.: 2024001 ou A1B2C3" />
+            <button onClick={buscar} disabled={buscando || !valor.trim()} className="bg-slate-900 text-white px-4 rounded-md text-sm font-semibold hover:bg-slate-800 disabled:opacity-40">
               {buscando ? "Buscando…" : "Buscar"}
             </button>
           </div>
@@ -3255,7 +3272,7 @@ function TelaAguardandoAprovacao({ perfil, onSair, rejeitado, onTrocarTurma, onV
             </p>
             <p className="text-xs text-slate-500 mb-3">Assim que for aprovado, é só entrar novamente com sua conta Google.</p>
             {onTrocarTurma && (
-              <button onClick={onTrocarTurma} className="text-xs text-amber-500 hover:text-amber-400 mb-3 block mx-auto">Errei o código da turma — tentar de novo</button>
+              <button onClick={onTrocarTurma} className="text-xs text-amber-500 hover:text-amber-400 mb-3 block mx-auto">Errei a matrícula/código — tentar de novo</button>
             )}
             {perfil.papel === "professor" && onVirarMestre && (
               <div className="text-left bg-slate-900 border border-slate-700 rounded-md p-3 mb-3">

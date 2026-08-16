@@ -3048,64 +3048,6 @@ function TelaAguardandoAprovacao({ perfil, onSair, rejeitado, onTrocarTurma }) {
 // conta Google pela primeira vez (ainda não existe um cadastro dela na
 // plataforma). Depois disso, o papel só pode ser alterado por um Usuário
 // Mestre, no painel de Usuários.
-function TelaPrimeiroAcesso({ firebaseUser, onCriado, onSair }) {
-  const [papel, setPapel] = useState("aluno");
-  const [codigoMestre, setCodigoMestre] = useState("");
-  const [erro, setErro] = useState("");
-  const [salvando, setSalvando] = useState(false);
-
-  const nome = firebaseUser.displayName || firebaseUser.email;
-
-  const confirmar = async () => {
-    setErro(""); setSalvando(true);
-    try {
-      const souMestre = papel === "professor" && codigoMestre.trim() !== "" && codigoMestre.trim() === CODIGO_MESTRE;
-      const perfil = {
-        uid: firebaseUser.uid, nome, email: firebaseUser.email, papel,
-        status: souMestre ? "aprovado" : "pendente",
-        mestre: souMestre,
-        turmaId: null, turmaNome: null, equipeId: null,
-        criadoEm: Date.now(),
-      };
-      await salvarUsuario(perfil);
-      onCriado(perfil);
-    } catch {
-      setErro("Não foi possível concluir. Tente novamente.");
-    }
-    setSalvando(false);
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
-      <div className="w-full max-w-md">
-        <Card className="p-6">
-          <SectionTitle icon={UserPlus} sub={`Olá, ${nome}! Só nesta primeira vez: como você vai usar a plataforma?`}>
-            Primeiro acesso
-          </SectionTitle>
-          <Field label="Você é">
-            <div className="grid grid-cols-2 gap-2">
-              <button type="button" onClick={() => setPapel("aluno")} className={`py-2 rounded-md text-sm font-semibold border ${papel === "aluno" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300"}`}>Aluno(a)</button>
-              <button type="button" onClick={() => setPapel("professor")} className={`py-2 rounded-md text-sm font-semibold border ${papel === "professor" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300"}`}>Professor(a)</button>
-            </div>
-          </Field>
-          {papel === "professor" && (
-            <Field label="Código de Mestre (opcional)" hint="Só preencha se você recebeu um código de Usuário Mestre. Deixe em branco para entrar como professor(a) comum, aguardando aprovação.">
-              <TxtInput value={codigoMestre} onChange={setCodigoMestre} placeholder="Deixe em branco se não tiver" />
-            </Field>
-          )}
-          {erro && <p className="text-sm text-rose-400 mb-2">{erro}</p>}
-          <button onClick={confirmar} disabled={salvando} className="w-full bg-amber-500 text-slate-900 py-2.5 rounded-md font-bold hover:bg-amber-400 disabled:opacity-40 mt-2">
-            {salvando ? "Salvando…" : "Confirmar e continuar"}
-          </button>
-          <button onClick={onSair} className="w-full text-center text-sm text-slate-400 hover:text-slate-100 mt-3 flex items-center justify-center gap-2">
-            <LogOut size={14} /> Sair
-          </button>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
 // Ícone oficial do Google (multicolorido), como no botão "Continuar com o
 // Google" — mantido como SVG embutido para não depender de outro pacote.
 function GoogleIcon({ size = 18 }) {
@@ -3119,15 +3061,21 @@ function GoogleIcon({ size = 18 }) {
   );
 }
 
-// Tela de entrada: um único caminho — "Continuar com o Google". Não existe
-// mais cadastro nem senha; o papel (Professor/Aluno) só é perguntado uma vez,
-// no primeiro acesso de cada conta (TelaPrimeiroAcesso).
-function TelaLogin() {
+// Tela de entrada: escolha de perfil (Professor(a)/Aluno(a)) seguida do
+// botão "Continuar com o Google" — tudo em uma única tela, sem cadastro nem
+// senha. O perfil escolhido aqui só é usado se for a primeira vez que essa
+// conta Google entra no sistema (via onEscolherPerfil, repassado ao App());
+// contas que já têm cadastro mantêm o papel definido anteriormente, que só
+// um Usuário Mestre pode alterar depois, no painel de Usuários.
+function TelaLogin({ onEscolherPerfil }) {
+  const [papel, setPapel] = useState("aluno");
+  const [codigoMestre, setCodigoMestre] = useState("");
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
 
   const entrarComGoogleClick = async () => {
     setErro(""); setCarregando(true);
+    onEscolherPerfil?.(papel, codigoMestre.trim());
     try {
       await entrarComGoogle();
       // o App() detecta a sessão automaticamente pelo observador do Firebase
@@ -3141,11 +3089,30 @@ function TelaLogin() {
     <Card className="p-6">
       <SectionTitle icon={Lock}>Entrar no sistema</SectionTitle>
       <p className="text-sm text-slate-400 mb-5">Entre com sua conta Google para acessar a Plataforma do Plano Financeiro.</p>
+
+      <Field label="Perfil de acesso" hint="Só é usado na primeira vez que esta conta entra no sistema. Depois disso, o perfil só pode ser alterado por um Usuário Mestre, no painel de Usuários.">
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => setPapel("aluno")} className={`flex items-center justify-center gap-2 py-2 rounded-md text-sm font-semibold border ${papel === "aluno" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300 hover:border-slate-400"}`}>
+            <GraduationCap size={15} /> Aluno(a)
+          </button>
+          <button type="button" onClick={() => setPapel("professor")} className={`flex items-center justify-center gap-2 py-2 rounded-md text-sm font-semibold border ${papel === "professor" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300 hover:border-slate-400"}`}>
+            <UserCog size={15} /> Professor(a)
+          </button>
+        </div>
+      </Field>
+
+      {papel === "professor" && (
+        <Field label="Código de Mestre (opcional)" hint="Só preencha se você recebeu um código de Usuário Mestre. Deixe em branco para entrar como professor(a) comum, aguardando aprovação.">
+          <TxtInput value={codigoMestre} onChange={setCodigoMestre} placeholder="Deixe em branco se não tiver" />
+        </Field>
+      )}
+
       {erro && <p className="text-sm text-rose-400 mb-3">{erro}</p>}
+
       <button
         onClick={entrarComGoogleClick}
         disabled={carregando}
-        className="w-full flex items-center justify-center gap-3 bg-white text-slate-800 py-2.5 rounded-md font-bold hover:bg-slate-100 disabled:opacity-40 transition"
+        className="w-full flex items-center justify-center gap-3 bg-white text-slate-800 py-2.5 rounded-md font-bold hover:bg-slate-100 disabled:opacity-40 transition mt-1"
       >
         <GoogleIcon size={18} />
         {carregando ? "Entrando…" : "Continuar com o Google"}
@@ -3155,7 +3122,7 @@ function TelaLogin() {
   );
 }
 
-function TelaEntrada() {
+function TelaEntrada({ onEscolherPerfil }) {
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col md:flex-row">
       {/* Painel de identidade — visível a partir de telas médias */}
@@ -3223,7 +3190,7 @@ function TelaEntrada() {
             <p className="text-slate-400 text-sm">Construção guiada do plano financeiro do negócio, módulo a módulo · uso didático</p>
           </div>
 
-          <TelaLogin />
+          <TelaLogin onEscolherPerfil={onEscolherPerfil} />
         </div>
       </div>
     </div>
@@ -3233,6 +3200,11 @@ function TelaEntrada() {
 export default function App() {
   const [firebaseUser, setFirebaseUser] = useState(undefined); // undefined=carregando, null=deslogado
   const [perfilRecemCriado, setPerfilRecemCriado] = useState(null);
+  const [criandoPerfil, setCriandoPerfil] = useState(false);
+  // Guarda o perfil (Aluno/Professor + código de Mestre) escolhido na tela
+  // de login, ANTES de entrar com o Google — só é usado se for a primeira
+  // vez que essa conta acessa o sistema (ver useEffect abaixo).
+  const escolhaRef = useRef({ papel: "aluno", codigoMestre: "" });
 
   useEffect(() => {
     const cancelar = observarSessao((u) => setFirebaseUser(u || null));
@@ -3242,14 +3214,42 @@ export default function App() {
   const efetuarSaida = async () => {
     try { await sair(); } catch {}
     setPerfilRecemCriado(null);
+    escolhaRef.current = { papel: "aluno", codigoMestre: "" };
   };
 
   const perfilCarregado = useUsuario(firebaseUser?.uid);
 
+  // Primeiro acesso: assim que confirmamos que essa conta Google ainda não
+  // tem cadastro na plataforma, criamos o perfil automaticamente com o
+  // papel escolhido na tela de login (sem uma segunda tela de confirmação).
+  useEffect(() => {
+    if (!firebaseUser || perfilCarregado === undefined || perfilCarregado || perfilRecemCriado || criandoPerfil) return;
+    setCriandoPerfil(true);
+    const { papel, codigoMestre } = escolhaRef.current;
+    const souMestre = papel === "professor" && codigoMestre !== "" && codigoMestre === CODIGO_MESTRE;
+    const perfil = {
+      uid: firebaseUser.uid,
+      nome: firebaseUser.displayName || firebaseUser.email,
+      email: firebaseUser.email,
+      papel,
+      status: souMestre ? "aprovado" : "pendente",
+      mestre: souMestre,
+      turmaId: null, turmaNome: null, equipeId: null,
+      criadoEm: Date.now(),
+    };
+    (async () => {
+      try {
+        await salvarUsuario(perfil);
+        setPerfilRecemCriado(perfil);
+      } catch {}
+      setCriandoPerfil(false);
+    })();
+  }, [firebaseUser, perfilCarregado, perfilRecemCriado, criandoPerfil]);
+
   if (firebaseUser === undefined) return <LoadingScreen />;
 
   if (!firebaseUser) {
-    return <TelaEntrada />;
+    return <TelaEntrada onEscolherPerfil={(papel, codigoMestre) => { escolhaRef.current = { papel, codigoMestre }; }} />;
   }
 
   if (perfilCarregado === undefined) return <LoadingScreen />;
@@ -3260,9 +3260,7 @@ export default function App() {
   // "vazar" o perfil de uma conta antiga ao trocar de usuário na mesma aba.
   const perfil = perfilCarregado || (perfilRecemCriado?.uid === firebaseUser.uid ? perfilRecemCriado : null);
 
-  if (!perfil) {
-    return <TelaPrimeiroAcesso firebaseUser={firebaseUser} onCriado={setPerfilRecemCriado} onSair={efetuarSaida} />;
-  }
+  if (!perfil) return <LoadingScreen />;
 
   if (perfil.papel === "aluno") {
     return <AlunoRoteador perfil={perfil} onSair={efetuarSaida} />;

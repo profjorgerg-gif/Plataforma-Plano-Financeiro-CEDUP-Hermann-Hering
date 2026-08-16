@@ -3238,7 +3238,7 @@ function TelaEntrada({ tela, setTela, onCadastrado }) {
           <div className="space-y-4">
             <div className="flex items-center gap-3 text-sm text-slate-300">
               <ClipboardList size={16} className="text-amber-500 flex-none" />
-              13 módulos guiados pela metodologia SEBRAE
+              13 módulos guiados, da ideia à viabilidade do negócio
             </div>
             <div className="flex items-center gap-3 text-sm text-slate-300">
               <MessageSquare size={16} className="text-amber-500 flex-none" />

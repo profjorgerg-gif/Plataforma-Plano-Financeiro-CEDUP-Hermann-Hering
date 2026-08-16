@@ -20,7 +20,7 @@ import {
 } from "firebase/auth";
 import { app } from "./firebaseApp";
 
-export const CODIGO_MESTRE = "CEDUP-HH-CUK5HE";
+export const CODIGO_MESTRE = "623251@_@prof";
 export const auth = app ? getAuth(app) : null;
 
 const googleProvider = new GoogleAuthProvider();

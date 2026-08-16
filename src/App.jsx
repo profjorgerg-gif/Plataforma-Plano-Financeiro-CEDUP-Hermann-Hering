@@ -3133,7 +3133,7 @@ function TelaLogin({ onEscolherPerfil }) {
       </Field>
 
       {papel === "professor" && (
-        <Field label="Código de Mestre (opcional)" hint="Só preencha se você recebeu um código de Usuário Mestre. Deixe em branco para entrar como professor(a) comum, aguardando aprovação.">
+        <Field label="Código de Mestre (opcional)" hint="Só preencha se você recebeu um código de Usuário Mestre. Deixe em branco para entrar direto como professor(a) comum, sem privilégios de Usuário Mestre.">
           <TxtInput value={codigoMestre} onChange={setCodigoMestre} placeholder="Deixe em branco se não tiver" />
         </Field>
       )}
@@ -3258,12 +3258,17 @@ export default function App() {
     setCriandoPerfil(true);
     const { papel, codigoMestre } = escolhaRef.current;
     const souMestre = papel === "professor" && codigoMestre !== "" && codigoMestre === CODIGO_MESTRE;
+    // Professor(a) sempre entra aprovado direto — o código de Mestre só dá o
+    // nível extra de Usuário Mestre (quem pode aprovar alunos e gerenciar
+    // usuários), não é mais um portão de aprovação. Só o fluxo do aluno
+    // continua com status "pendente" até aprovação (por PDF importado ou
+    // por um Usuário Mestre).
     const perfil = {
       uid: firebaseUser.uid,
       nome: firebaseUser.displayName || firebaseUser.email,
       email: firebaseUser.email,
       papel,
-      status: souMestre ? "aprovado" : "pendente",
+      status: papel === "professor" ? "aprovado" : "pendente",
       mestre: souMestre,
       turmaId: null, turmaNome: null, equipeId: null,
       criadoEm: Date.now(),

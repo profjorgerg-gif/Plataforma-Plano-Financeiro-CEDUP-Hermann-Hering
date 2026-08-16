@@ -3012,7 +3012,26 @@ function AlunoRoteador({ perfil, onSair }) {
   return <AlunoWorkspaceCarregado userSessao={userSessao} turmaId={efetivo.turmaId} equipeId={efetivo.equipeId} onSair={onSair} onTrocarEmpresa={trocarDeEmpresa} />;
 }
 
-function TelaAguardandoAprovacao({ perfil, onSair, rejeitado, onTrocarTurma }) {
+function TelaAguardandoAprovacao({ perfil, onSair, rejeitado, onTrocarTurma, onVirarMestre }) {
+  const [codigoMestre, setCodigoMestre] = useState("");
+  const [erroMestre, setErroMestre] = useState("");
+  const [verificando, setVerificando] = useState(false);
+
+  const tentarVirarMestre = async () => {
+    setErroMestre(""); setVerificando(true);
+    if (codigoMestre.trim() !== CODIGO_MESTRE) {
+      setErroMestre("Código incorreto.");
+      setVerificando(false);
+      return;
+    }
+    try {
+      await onVirarMestre();
+    } catch {
+      setErroMestre("Não foi possível concluir. Tente novamente.");
+    }
+    setVerificando(false);
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
       <Card className="p-8 max-w-md text-center">
@@ -3035,6 +3054,18 @@ function TelaAguardandoAprovacao({ perfil, onSair, rejeitado, onTrocarTurma }) {
             <p className="text-xs text-slate-500 mb-3">Assim que for aprovado, é só entrar novamente com sua conta Google.</p>
             {onTrocarTurma && (
               <button onClick={onTrocarTurma} className="text-xs text-amber-500 hover:text-amber-400 mb-3 block mx-auto">Errei o código da turma — tentar de novo</button>
+            )}
+            {perfil.papel === "professor" && onVirarMestre && (
+              <div className="text-left bg-slate-900 border border-slate-700 rounded-md p-3 mb-3">
+                <label className="block text-[11px] text-slate-400 mb-1.5">Tem um código de Usuário Mestre? Digite aqui para liberar seu acesso na hora.</label>
+                <div className="flex gap-2">
+                  <TxtInput value={codigoMestre} onChange={setCodigoMestre} placeholder="Código de Mestre" />
+                  <button onClick={tentarVirarMestre} disabled={verificando || !codigoMestre.trim()} className="bg-amber-500 text-slate-900 px-3 rounded-md text-xs font-bold hover:bg-amber-400 disabled:opacity-40 flex-none">
+                    {verificando ? "…" : "Confirmar"}
+                  </button>
+                </div>
+                {erroMestre && <p className="text-xs text-rose-400 mt-1.5">{erroMestre}</p>}
+              </div>
             )}
           </>
         )}
@@ -3254,11 +3285,13 @@ export default function App() {
 
   if (perfilCarregado === undefined) return <LoadingScreen />;
 
-  // perfilRecemCriado só serve de "ponte" no instante logo após o primeiro
-  // acesso (antes do registro recém-salvo terminar de carregar) — e só é
+  // perfilRecemCriado tem prioridade sobre perfilCarregado: além de servir de
+  // "ponte" logo após o primeiro acesso, também reflete correções feitas
+  // localmente nesta sessão (ex.: virar Usuário Mestre pelo código, na tela
+  // de aguardando aprovação) sem precisar recarregar a página — e só é
   // usado se for realmente da conta que está logada agora, para nunca
   // "vazar" o perfil de uma conta antiga ao trocar de usuário na mesma aba.
-  const perfil = perfilCarregado || (perfilRecemCriado?.uid === firebaseUser.uid ? perfilRecemCriado : null);
+  const perfil = (perfilRecemCriado?.uid === firebaseUser.uid ? perfilRecemCriado : null) || perfilCarregado;
 
   if (!perfil) return <LoadingScreen />;
 
@@ -3268,7 +3301,11 @@ export default function App() {
 
   // professor
   if (perfil.status === "pendente") {
-    return <TelaAguardandoAprovacao perfil={perfil} onSair={efetuarSaida} />;
+    const virarMestre = async () => {
+      const atualizado = await atualizarUsuario(perfil.uid, { status: "aprovado", mestre: true });
+      if (atualizado) setPerfilRecemCriado(atualizado);
+    };
+    return <TelaAguardandoAprovacao perfil={perfil} onSair={efetuarSaida} onVirarMestre={virarMestre} />;
   }
   if (perfil.status === "rejeitado") {
     return <TelaAguardandoAprovacao perfil={perfil} onSair={efetuarSaida} rejeitado />;

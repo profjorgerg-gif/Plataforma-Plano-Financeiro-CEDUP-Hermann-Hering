@@ -80,15 +80,91 @@ const GESTAO_ITENS = [
 // porque a visibilidade depende do usuário logado, não é fixa.
 const ITEM_APROVACOES = { id: "aprovacoes", label: "Aprovações", icon: Crown };
 
+// Itens da seção MANUAIS: todo professor vê o Manual do Professor e o do
+// Aluno; só o Usuário Mestre vê também o Manual de Operacionalização e o
+// Checklist de Status (conteúdo mais técnico, de bastidor do projeto).
+const MANUAIS_ITENS_BASE = [
+  { id: "manualProfessor", label: "Manual do Professor", icon: BookOpen },
+  { id: "manualAlunoRef", label: "Manual do Aluno", icon: GraduationCap },
+];
+const MANUAIS_ITENS_MESTRE = [
+  { id: "manualOperacional", label: "Manual de Operacionalização", icon: ScrollText },
+  { id: "checklistStatus", label: "Checklist de Status", icon: ClipboardCheck },
+];
+
 const MANUAL_ALUNO_PASSOS = [
-  { titulo: "Entrem na turma", texto: "Peçam ao professor(a) o código da turma (6 caracteres) e informem seu nome e o nome do negócio da equipe na tela inicial da plataforma." },
-  { titulo: "Confirmem a equipe", texto: "Se um colega já criou a equipe com o mesmo nome do negócio, vocês entram automaticamente nela. Combinem com o grupo o nome exato antes de começar, para não criar equipes duplicadas." },
+  { titulo: "Entrem com a conta Google", texto: "Na tela inicial, escolham o perfil \"Aluno(a)\" e cliquem em \"Continuar com o Google\". Não existe mais cadastro nem senha — o acesso é feito direto com a conta Google de cada um." },
+  { titulo: "Informem o código da turma", texto: "Peçam ao professor(a) o código da turma (6 caracteres) e digitem-no na tela seguinte para entrar nela." },
+  { titulo: "Escolham a empresa da equipe", texto: "Escolham, na lista de empresas já cadastradas pelo professor, o negócio da equipe de vocês. Se um colega já entrou na mesma empresa, vocês se juntam automaticamente a ela — combinem com o grupo qual escolher, para não se dividirem por engano." },
   { titulo: "Sigam a ordem dos 13 módulos", texto: "Preencham os módulos na sequência 1 a 13: cada um utiliza dados calculados no módulo anterior — por exemplo, o Módulo 8 usa os produtos cadastrados no Módulo 5, e o Módulo 11 já soma automaticamente os totais dos Módulos 9 e 10." },
   { titulo: "Leiam a teoria antes de lançar dados", texto: "Todo módulo tem uma caixa \"Teoria do módulo\" — abram-na antes de preencher. Ela traz o conceito e a fórmula que a plataforma está usando nos cálculos." },
   { titulo: "Acompanhem a Análise do Negócio", texto: "A cada rodada de ajustes, confiram os gráficos e os alertas automáticos dessa aba para entender se o negócio está indo bem — ela reúne o que foi lançado em todos os módulos." },
   { titulo: "Salvem versões ao longo do projeto", texto: "Sempre que fizerem um ajuste relevante (novo preço, novo custo, nova equipe de trabalho), cliquem em \"Salvar versão\" na Análise do Negócio. Isso registra a evolução do projeto para vocês e para o professor." },
   { titulo: "Leiam o feedback do professor", texto: "Verifiquem regularmente a aba \"Feedback do Professor\": lá aparecem os comentários e ajustes solicitados, organizados por módulo." },
   { titulo: "Finalizem o projeto", texto: "O plano financeiro está concluído quando os 13 módulos estiverem preenchidos, o resultado operacional analisado e pelo menos duas versões salvas mostrando a evolução dos ajustes feitos pela equipe." },
+];
+
+const MANUAL_PROFESSOR_PASSOS = [
+  { titulo: "Criem a turma", texto: "Em GESTÃO → Turmas, cadastrem o nome da turma e o período letivo. A plataforma gera um código de 6 caracteres — é ele que os alunos vão usar para entrar." },
+  { titulo: "Importem a lista de alunos (opcional)", texto: "Em GESTÃO → Usuários, usem o botão de importar PDF para subir a lista oficial de alunos da turma. A plataforma remove duplicidades automaticamente e já aprova o cadastro de quem constar na lista." },
+  { titulo: "Pré-cadastrem as empresas", texto: "Ainda em GESTÃO, cadastrem os nomes dos negócios que as equipes vão trabalhar. Isso faz com que, na hora de entrar na plataforma, o aluno escolha a empresa numa lista pronta em vez de digitar o nome livremente." },
+  { titulo: "Aprovem os cadastros pendentes de alunos", texto: "Em GESTÃO → Aprovações, revisem os alunos que não vieram da importação por PDF (professores agora entram direto, sem aprovação). É possível aprovar, rejeitar, corrigir o papel ou excluir um cadastro feito por engano." },
+  { titulo: "Gerenciem os usuários", texto: "Em GESTÃO → Usuários, acompanhem a lista de alunos com a empresa atual de cada um. Usem o botão \"Editar\" para corrigir a turma ou a empresa de um aluno a qualquer momento." },
+  { titulo: "Revisem os módulos e comentem", texto: "Abram o painel de revisão por módulo de cada equipe (modo somente leitura) e deixem comentários e ajustes solicitados. Os alunos veem esse feedback organizado por módulo na aba \"Feedback do Professor\" deles." },
+  { titulo: "Consultem os relatórios", texto: "Em GESTÃO → Relatórios, acompanhem a visão consolidada da turma: um relatório de pendências e outros três relatórios complementares por empresa." },
+  { titulo: "Exportem um backup", texto: "Em GESTÃO → Backup, gerem um backup dos dados da turma sempre que quiserem guardar um retrato do trabalho." },
+  { titulo: "Excluam a turma ao final do período", texto: "Quando o período letivo terminar e o backup já estiver salvo, excluam a turma pelo ícone de lixeira. Essa ação libera a plataforma para a próxima turma e não pode ser desfeita." },
+];
+
+const OPERACIONAL_SECOES = [
+  { titulo: "Operacionalização — quem faz o quê", paragrafos: [
+    "Claude: escreve, corrige e revisa todo o código (App.jsx e arquivos auxiliares). O professor descreve em português o que precisa mudar; o Claude traduz em React/JSX e valida a sintaxe antes de entregar.",
+    "GitHub: onde o código vive e é publicado. O repositório profjorgerg-gif/Plataforma-Plano-Financeiro-CEDUP-Hermann-Hering guarda os arquivos; a aba Actions publica o site automaticamente a cada atualização.",
+    "Firebase: banco de dados (Firestore) e login (Authentication, somente Google), na região southamerica-east1. Guarda turmas, empresas, lançamentos e cadastros em tempo real.",
+  ]},
+  { titulo: "O caminho de uma alteração no código", lista: [
+    "Pedido: o professor descreve a mudança ao Claude, de preferência anexando o App.jsx atual.",
+    "Implementação: o Claude edita o código e valida a sintaxe antes de entregar.",
+    "Upload: pelo navegador, em src → Add file → Upload files, substituindo o(s) arquivo(s) e confirmando o commit.",
+    "Publicação automática: a aba Actions mostra uma bolinha amarela até ficar verde (1 a 3 minutos).",
+    "Teste: sempre em aba anônima/InPrivate, para evitar cache do navegador.",
+  ]},
+  { titulo: "Histórico de melhorias — resumo", paragrafos: [
+    "01/08: plataforma completa (v1) — autenticação, 13 módulos, Manual do Aluno, Análise do Negócio, Feedback, painel GESTÃO.",
+    "02/08: reforço de segurança, registro individual por usuário, navegação entre módulos.",
+    "03/08: categorias ilimitadas, menu mobile em gaveta, coluna \"O que falta\" nos relatórios.",
+    "04/08 – 05/08: manuais ilustrados, caixa de links de referência.",
+    "16/08: tela de login redesenhada, login exclusivo via conta Google (fim do cadastro por e-mail/senha), seletor de perfil integrado ao login, professor entra direto (sem aprovação), botão de auto-promoção a Mestre pelo código.",
+  ]},
+  { titulo: "Segurança da plataforma", paragrafos: [
+    "Login exclusivo via Google: o provedor \"E-mail/senha\" foi desativado no Console do Firebase; só \"Google\" está ativo. É preciso conferir, em Authentication → Domínios autorizados, se o domínio do GitHub Pages está na lista.",
+    "Regras do Firestore exigem login (request.auth != null) em qualquer leitura/escrita.",
+    "Código de Usuário Mestre: como o repositório é público, esse código nunca deve ser divulgado em canais públicos. Trocar periodicamente pelo arquivo firebaseAuth.js.",
+  ]},
+  { titulo: "Referências do projeto", lista: [
+    "Repositório: github.com/profjorgerg-gif/Plataforma-Plano-Financeiro-CEDUP-Hermann-Hering",
+    "Site publicado: profjorgerg-gif.github.io/Plataforma-Plano-Financeiro-CEDUP-Hermann-Hering/",
+    "Projeto Firebase: plataforma-plano-financeiro (Firestore + Authentication, southamerica-east1)",
+    "Metodologia de referência: elaboração de plano de negócios, por módulos financeiros sequenciais.",
+  ]},
+];
+
+const CHECKLIST_SECOES = [
+  { titulo: "O que já temos (funcionalidade confirmada)", tom: "ok", itens: [
+    "Login exclusivo via Google, com seletor de perfil (Aluno/Professor + código de Mestre)",
+    "Professor entra direto; aluno segue com código de turma + escolha de empresa",
+    "Os 13 módulos financeiros calculando e passando dados entre si",
+    "Análise do Negócio com gráficos e alertas automáticos",
+    "Feedback do Professor por módulo",
+    "Relatórios e importação de lista de alunos em PDF",
+    "Painel GESTÃO completo: Turmas, Usuários, Relatórios, Backup, Auditoria, Aprovações",
+    "Regras de segurança do Firestore exigindo login",
+  ]},
+  { titulo: "Pendente de confirmação", tom: "warn", itens: [
+    "Testar o login e a gravação de dados com uma conta de aluno real, de ponta a ponta",
+    "Confirmar no Console do Firebase se o domínio do site está nos Domínios autorizados",
+    "Repassar a lista real de turmas/alunos do semestre atual, se ainda não foi importada",
+  ]},
 ];
 
 function baixarArquivo(nome, conteudo, mime = "application/json") {
@@ -1245,17 +1321,26 @@ function ComentariosPanel({ comentarios, onAdd, autor, readOnlyInput, moduloFixo
 // WORKSPACE DO ALUNO
 // ============================================================================
 
-function ManualAlunoView({ equipe, onIrPara }) {
+function ManualAlunoView({ equipe, onIrPara, contexto = "aluno" }) {
   return (
     <div>
-      <div className="mb-8">
-        <div className="text-xs font-bold tracking-widest text-amber-500 mb-2">CURSO TÉCNICO EM ADMINISTRAÇÃO E CONTABILIDADE</div>
-        <h1 className="text-3xl font-bold text-slate-50 mb-3">Manual do Aluno</h1>
-        <p className="text-slate-400 max-w-2xl">Orientações para a equipe {equipe?.nomeNegocio} seguir, passo a passo, até finalizar o plano financeiro do negócio.</p>
-        <div className="flex flex-wrap gap-3 mt-5">
-          <button onClick={() => onIrPara("m1")} className="bg-amber-500 text-slate-900 font-bold px-5 py-2.5 rounded-md hover:bg-amber-400 text-sm">Ir para o Módulo 1</button>
-          <button onClick={() => onIrPara("inicio")} className="border border-slate-600 text-slate-100 px-5 py-2.5 rounded-md hover:bg-slate-800 text-sm font-semibold">Ver índice de módulos</button>
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="text-xs font-bold tracking-widest text-amber-500 mb-2">CURSO TÉCNICO EM ADMINISTRAÇÃO E CONTABILIDADE</div>
+          <h1 className="text-3xl font-bold text-slate-50 mb-3">Manual do Aluno</h1>
+          <p className="text-slate-400 max-w-2xl">
+            {contexto === "aluno"
+              ? `Orientações para a equipe ${equipe?.nomeNegocio || ""} seguir, passo a passo, até finalizar o plano financeiro do negócio.`
+              : "Orientações que as equipes de alunos seguem, passo a passo, até finalizar o plano financeiro do negócio."}
+          </p>
+          {contexto === "aluno" && (
+            <div className="flex flex-wrap gap-3 mt-5">
+              <button onClick={() => onIrPara("m1")} className="bg-amber-500 text-slate-900 font-bold px-5 py-2.5 rounded-md hover:bg-amber-400 text-sm">Ir para o Módulo 1</button>
+              <button onClick={() => onIrPara("inicio")} className="border border-slate-600 text-slate-100 px-5 py-2.5 rounded-md hover:bg-slate-800 text-sm font-semibold">Ver índice de módulos</button>
+            </div>
+          )}
         </div>
+        <button onClick={() => window.print()} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0"><FileBarChart size={15} /> Exportar PDF</button>
       </div>
 
       <Card className="p-6">
@@ -1280,6 +1365,108 @@ function ManualAlunoView({ equipe, onIrPara }) {
         <StatCard label="Módulos a preencher" value="13" tone="blue" small />
         <StatCard label="Ordem de trabalho" value="Sequencial (1 → 13)" tone="gold" small />
         <StatCard label="Conclusão" value="13/13 + 2 versões salvas" tone="slate" small />
+      </div>
+    </div>
+  );
+}
+
+function ManualProfessorView() {
+  return (
+    <div>
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="text-xs font-bold tracking-widest text-amber-500 mb-2">CURSO TÉCNICO EM ADMINISTRAÇÃO E CONTABILIDADE</div>
+          <h1 className="text-3xl font-bold text-slate-50 mb-3">Manual do Professor</h1>
+          <p className="text-slate-400 max-w-2xl">O ciclo completo de uso da plataforma com uma turma, do início ao fim do período letivo.</p>
+        </div>
+        <button onClick={() => window.print()} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0"><FileBarChart size={15} /> Exportar PDF</button>
+      </div>
+
+      <div className="bg-slate-900 border border-amber-500/60 rounded-md p-4 text-sm text-slate-300 mb-6">
+        <b className="text-amber-500">Acesso via Google:</b> não existe mais cadastro com e-mail e senha. Na tela inicial, escolha o perfil "Professor(a)" e clique em "Continuar com o Google" — o acesso já é liberado na hora. Se você for Usuário Mestre, informe o código de Mestre nesse mesmo momento.
+      </div>
+
+      <Card className="p-6">
+        <SectionTitle icon={ClipboardList} sub="O passo a passo de uma turma, do início ao fim do período.">Passo a passo</SectionTitle>
+        <div className="space-y-0">
+          {MANUAL_PROFESSOR_PASSOS.map((p, i) => (
+            <div key={i} className="flex gap-4">
+              <div className="flex flex-col items-center">
+                <div className="w-9 h-9 rounded-full bg-slate-900 border border-amber-500/50 text-amber-500 flex items-center justify-center text-xs font-bold shrink-0">{String(i + 1).padStart(2, "0")}</div>
+                {i < MANUAL_PROFESSOR_PASSOS.length - 1 && <div className="w-px flex-1 bg-slate-700 my-1" />}
+              </div>
+              <div className="pb-6">
+                <div className="font-semibold text-slate-100">{p.titulo}</div>
+                <p className="text-sm text-slate-400 mt-1 leading-relaxed">{p.texto}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function ManualOperacionalView() {
+  return (
+    <div>
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="text-xs font-bold tracking-widest text-amber-500 mb-2">CLAUDE · GITHUB · FIREBASE</div>
+          <h1 className="text-3xl font-bold text-slate-50 mb-3">Manual de Operacionalização</h1>
+          <p className="text-slate-400 max-w-2xl">Guia de referência para manter e evoluir o projeto — visível só para Usuários Mestre.</p>
+        </div>
+        <button onClick={() => window.print()} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0"><FileBarChart size={15} /> Exportar PDF</button>
+      </div>
+
+      <div className="space-y-5">
+        {OPERACIONAL_SECOES.map((sec, i) => (
+          <Card key={i} className="p-6">
+            <SectionTitle icon={ScrollText}>{`${i + 1} · ${sec.titulo}`}</SectionTitle>
+            {sec.paragrafos?.map((p, j) => (
+              <p key={j} className="text-sm text-slate-300 leading-relaxed mb-3 last:mb-0">{p}</p>
+            ))}
+            {sec.lista && (
+              <ol className="list-decimal list-inside space-y-2 text-sm text-slate-300">
+                {sec.lista.map((it, j) => <li key={j}>{it}</li>)}
+              </ol>
+            )}
+          </Card>
+        ))}
+      </div>
+      <p className="text-xs text-slate-500 mt-5">Esta é uma versão resumida, para consulta rápida dentro da plataforma. Peça ao Claude o PDF completo (com trechos de código-modelo) sempre que precisar de mais detalhe.</p>
+    </div>
+  );
+}
+
+function ChecklistStatusView() {
+  return (
+    <div>
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="text-xs font-bold tracking-widest text-amber-500 mb-2">CLAUDE · GITHUB · FIREBASE</div>
+          <h1 className="text-3xl font-bold text-slate-50 mb-3">Checklist de Status</h1>
+          <p className="text-slate-400 max-w-2xl">O que já está funcionando e o que ainda precisa de atenção — visível só para Usuários Mestre.</p>
+        </div>
+        <button onClick={() => window.print()} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0"><FileBarChart size={15} /> Exportar PDF</button>
+      </div>
+
+      <div className="space-y-5">
+        {CHECKLIST_SECOES.map((sec, i) => (
+          <Card key={i} className="p-6">
+            <SectionTitle icon={sec.tom === "ok" ? CheckCircle2 : AlertTriangle}>{sec.titulo}</SectionTitle>
+            <ul className="space-y-2">
+              {sec.itens.map((it, j) => (
+                <li key={j} className="flex items-start gap-2.5 text-sm text-slate-300">
+                  {sec.tom === "ok"
+                    ? <CheckCircle2 size={16} className="text-emerald-400 shrink-0 mt-0.5" />
+                    : <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />}
+                  {it}
+                </li>
+              ))}
+            </ul>
+          </Card>
+        ))}
       </div>
     </div>
   );
@@ -2625,6 +2812,7 @@ function ProfessorDashboard({ user, onSair }) {
   const irPara = (id) => { setAba(id); if (id !== "turmas") setTurmaAtivaId(null); setMenuAberto(false); };
 
   const itensMenu = user.mestre ? [...GESTAO_ITENS, ITEM_APROVACOES] : GESTAO_ITENS;
+  const itensManuais = user.mestre ? [...MANUAIS_ITENS_BASE, ...MANUAIS_ITENS_MESTRE] : MANUAIS_ITENS_BASE;
 
   return (
     <div className="min-h-screen flex bg-slate-950 relative">
@@ -2667,6 +2855,16 @@ function ProfessorDashboard({ user, onSair }) {
               </button>
             );
           })}
+          <div className="px-5 pt-5 pb-2 text-[10px] font-bold tracking-widest text-white/40">MANUAIS</div>
+          {itensManuais.map((it) => {
+            const Icon = it.icon;
+            const active = aba === it.id;
+            return (
+              <button key={it.id} onClick={() => irPara(it.id)} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${active ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
+                <Icon size={16} className="shrink-0" /> {it.label}
+              </button>
+            );
+          })}
         </nav>
         <div className="p-4 border-t border-white/10">
           <button onClick={onSair} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><LogOut size={15} /> Sair</button>
@@ -2686,6 +2884,10 @@ function ProfessorDashboard({ user, onSair }) {
         {aba === "backup" && <GestaoBackupView turmas={turmas} setTurmas={setTurmas} />}
         {aba === "auditoria" && <GestaoAuditoriaView turmas={turmas} />}
         {aba === "aprovacoes" && user.mestre && <GestaoAprovacoesView usuarioAtualUid={user.uid} />}
+        {aba === "manualProfessor" && <ManualProfessorView />}
+        {aba === "manualAlunoRef" && <ManualAlunoView contexto="professor" />}
+        {aba === "manualOperacional" && user.mestre && <ManualOperacionalView />}
+        {aba === "checklistStatus" && user.mestre && <ChecklistStatusView />}
       </main>
     </div>
   );

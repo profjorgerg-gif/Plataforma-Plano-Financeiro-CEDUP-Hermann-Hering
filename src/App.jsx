@@ -11,6 +11,7 @@ import {
   Save, Copy, ArrowLeft, BookOpen, Building2, KeyRound, Mail, Lock, ShieldCheck,
   Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
   ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
+  LifeBuoy, Send, Megaphone, RotateCcw, Printer,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
@@ -327,8 +328,511 @@ async function buscarUsuarioListaAntiga(uid) {
   } catch { return null; }
 }
 
+// ============================================================================
+// CENTRAL DE SUPORTE — chamados de "Sistema" (aluno/professor → Usuário
+// Mestre, sobre problemas ou sugestões da plataforma) e "Pedagógico"
+// (aluno ↔ o(a) professor(a) da própria turma, sobre dúvidas do plano de
+// negócio). Cada chamado é gravado como um documento próprio
+// (chamado_{id}), no mesmo padrão de usuario_{uid} — evita listas
+// compartilhadas com condição de corrida.
+// ============================================================================
+
+function gerarProtocolo() {
+  const d = new Date();
+  const p2 = (n) => String(n).padStart(2, "0");
+  const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `PPFCHH-${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${rand}`;
+}
+
+async function criarChamado(dados) {
+  const registro = {
+    id: uid(), numero: gerarProtocolo(), status: "Aberto",
+    criadoEm: Date.now(), atualizadoEm: Date.now(),
+    prazoResposta: null, encerradoPor: null, encerradoEm: null, reabrivelAte: null,
+    ...dados,
+  };
+  await window.storage.set(`chamado_${registro.id}`, JSON.stringify(registro), true);
+  return registro;
+}
+
+async function listarChamadosTodos() {
+  try {
+    const idx = await window.storage.list("chamado_", true);
+    const chaves = idx?.keys || [];
+    const resultados = await Promise.all(chaves.map(async (k) => {
+      try { const r = await window.storage.get(k, true); return r ? JSON.parse(r.value) : null; } catch { return null; }
+    }));
+    return resultados.filter(Boolean).sort((a, b) => (b.criadoEm || 0) - (a.criadoEm || 0));
+  } catch { return []; }
+}
+
+async function atualizarChamado(id, mudancas) {
+  const r = await window.storage.get(`chamado_${id}`, true);
+  const atual = r ? JSON.parse(r.value) : null;
+  if (!atual) return null;
+  const novo = { ...atual, ...mudancas, atualizadoEm: Date.now() };
+  await window.storage.set(`chamado_${id}`, JSON.stringify(novo), true);
+  return novo;
+}
+
+const SUPORTE_STATUS_TOM = {
+  "Aberto": "amber", "Em análise": "blue", "Aguardando resposta": "rose",
+  "Encaminhado para desenvolvimento": "violet", "Aprovado para desenvolvimento": "violet",
+  "Resolvido": "emerald", "Encerrado": "slate",
+};
+const SUPORTE_TOM_CLASSE = {
+  amber: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+  blue: "bg-sky-500/15 text-sky-400 border-sky-500/30",
+  rose: "bg-rose-500/15 text-rose-400 border-rose-500/30",
+  violet: "bg-violet-500/15 text-violet-400 border-violet-500/30",
+  emerald: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  slate: "bg-slate-700/40 text-slate-400 border-slate-600",
+};
+function SuporteBadge({ status }) {
+  const tom = SUPORTE_STATUS_TOM[status] || "slate";
+  return <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border whitespace-nowrap ${SUPORTE_TOM_CLASSE[tom]}`}>{status}</span>;
+}
+const SUPORTE_FILTROS = ["Todos", "Abertos", "Em análise", "Encaminhados", "Encerrados"];
+function chamadoPassaFiltro(c, filtro) {
+  if (filtro === "Todos") return true;
+  if (filtro === "Abertos") return c.status === "Aberto";
+  if (filtro === "Em análise") return ["Em análise", "Aguardando resposta"].includes(c.status);
+  if (filtro === "Encaminhados") return ["Encaminhado para desenvolvimento", "Aprovado para desenvolvimento"].includes(c.status);
+  if (filtro === "Encerrados") return ["Resolvido", "Encerrado"].includes(c.status);
+  return true;
+}
+
+// ============================================================================
+// NOVIDADES E ATUALIZAÇÕES — histórico de versões visível dentro da
+// plataforma, com aviso automático no primeiro acesso após cada atualização.
+// Lista do mais recente para o mais antigo — o primeiro item é a versão vigente.
+// ============================================================================
+const VERSOES = [
+  { versao: "2.0", data: "16/08/2026", itens: [
+    "Login exclusivo via conta Google (fim do cadastro por e-mail/senha).",
+    "Professor(a) entra direto, sem aprovação; código de Mestre agora só concede o nível extra de Usuário Mestre.",
+    "Aluno(a) entra direto com a própria matrícula — a plataforma já reconhece a turma e o nome oficial da escola.",
+    "Nova seção \"MANUAIS\" dentro da plataforma (Manual do Professor, do Aluno e, para o Mestre, Operacionalização e Checklist).",
+    "Nova Central de Suporte (menu \"Suporte\"): fale com o Usuário Mestre sobre o sistema, ou com o(a) professor(a) sobre o plano de negócio.",
+    "Nova área \"Novidades\", com o histórico completo de versões da plataforma.",
+  ]},
+  { versao: "1.3", data: "05/08/2026", itens: [
+    "Manuais ilustrados com esquemas visuais em cada passo.",
+    "Caixa de links de referência (repositório, site publicado, Firebase) no Manual de Operacionalização.",
+  ]},
+  { versao: "1.2", data: "03/08/2026", itens: [
+    "Categorias de bem personalizadas em Investimentos Fixos.",
+    "Menu lateral no celular em formato de gaveta deslizante.",
+    "Relatório de Pendências mostrando os nomes dos módulos que faltam, não só um número.",
+  ]},
+  { versao: "1.1", data: "02/08/2026", itens: [
+    "Reforço de segurança: regras do Firestore passaram a exigir login em qualquer leitura/escrita.",
+    "Correção de uma condição de corrida no cadastro de usuários (cada pessoa passou a ter seu próprio registro).",
+    "Navegação entre módulos com botões de avançar/voltar, e botão \"Voltar ao início\" em todas as telas.",
+  ]},
+  { versao: "1.0", data: "01/08/2026", itens: [
+    "Primeira publicação da Plataforma do Plano Financeiro: autenticação, 13 módulos, Manual do Aluno, Análise do Negócio, Feedback do Professor e painel de Gestão completo.",
+  ]},
+];
+const APP_VERSION = VERSOES[0].versao;
+
+function versaoMaiorQue(a, b) { return parseFloat(a) > parseFloat(b); }
+
+function NovidadesOverlay({ perfil, onFechar, onIrParaHistorico }) {
+  if (!perfil || perfil.ultimaVersaoVista === APP_VERSION) return null;
+  const vistas = perfil.ultimaVersaoVista;
+  const novas = vistas ? VERSOES.filter((v) => versaoMaiorQue(v.versao, vistas)) : [VERSOES[0]];
+  const mostrar = novas.length ? novas : [VERSOES[0]];
+  return (
+    <div className="fixed inset-0 bg-black/60 z-[998] flex items-center justify-center p-5">
+      <div className="bg-slate-900 border border-amber-500/40 rounded-xl max-w-md w-full p-7 text-center shadow-2xl">
+        <Megaphone size={32} className="mx-auto text-amber-500 mb-3" />
+        <h2 className="text-lg font-bold text-slate-50 mb-4">Novidades na Plataforma</h2>
+        <div className="text-left max-h-72 overflow-y-auto mb-5 space-y-4">
+          {mostrar.map((v, i) => (
+            <div key={i}>
+              <div className="text-sm font-bold text-slate-100">Versão {v.versao} <span className="text-xs font-normal text-slate-500">— {v.data}</span></div>
+              <ul className="list-disc list-inside mt-1 space-y-1">
+                {v.itens.map((it, j) => <li key={j} className="text-xs text-slate-400 leading-relaxed">{it}</li>)}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <button onClick={onFechar} className="w-full bg-amber-500 text-slate-900 font-bold py-2.5 rounded-md hover:bg-amber-400">Entendi</button>
+        <button onClick={onIrParaHistorico} className="w-full text-sm text-slate-400 hover:text-slate-100 mt-2">Ver histórico completo</button>
+      </div>
+    </div>
+  );
+}
+
+function NovidadesView() {
+  return (
+    <div>
+      <div className="mb-8">
+        <div className="text-xs font-bold tracking-widest text-amber-500 mb-2">HISTÓRICO DE VERSÕES</div>
+        <h1 className="text-3xl font-bold text-slate-50 mb-3">Novidades e Atualizações</h1>
+        <p className="text-slate-400 max-w-2xl">Da mais recente para a mais antiga. Versão atual: <b className="text-slate-200">{APP_VERSION}</b>.</p>
+      </div>
+      <div className="space-y-4">
+        {VERSOES.map((v, i) => (
+          <Card key={i} className="p-5">
+            <div className="flex items-baseline justify-between mb-2">
+              <h3 className="font-bold text-slate-100">Versão {v.versao} {i === 0 && <span className="text-[10px] font-bold text-amber-500 ml-1.5 align-middle">· ATUAL</span>}</h3>
+              <span className="text-xs text-slate-500">{v.data}</span>
+            </div>
+            <ul className="list-disc list-inside space-y-1.5">
+              {v.itens.map((it, j) => <li key={j} className="text-sm text-slate-300">{it}</li>)}
+            </ul>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 async function salvarUsuario(perfil) {
   await window.storage.set(`usuario_${perfil.uid}`, JSON.stringify(perfil), true);
+}
+
+// ============================================================================
+// CENTRAL DE SUPORTE — telas (lista, novo chamado, detalhe, relatório).
+// Um único componente serve tanto o aluno quanto o professor/Mestre; o que
+// muda é o "contexto" recebido:
+//   ctx = {
+//     uid, nome, papel: "aluno" | "professor", mestre: bool,
+//     professorUid, professorNome  (só para aluno — a quem falar no Pedagógico)
+//   }
+// Regra de visibilidade de cada chamado:
+//   - tipo "sistema": o Usuário Mestre vê todos; qualquer outra pessoa só
+//     vê os que ela mesma abriu.
+//   - tipo "pedagogico": visível para quem abriu e para o destinatário
+//     (o(a) professor(a) da turma do aluno).
+// ============================================================================
+function SuporteView({ ctx }) {
+  const [aba, setAba] = useState(ctx.papel === "aluno" ? "pedagogico" : "sistema");
+  const [modo, setModo] = useState("lista"); // 'lista' | 'novo' | 'detalhe'
+  const [chamados, setChamados] = useState(undefined);
+  const [chamadoAtualId, setChamadoAtualId] = useState(null);
+  const [filtro, setFiltro] = useState("Todos");
+  const [selecionados, setSelecionados] = useState(new Set());
+  const [relatorio, setRelatorio] = useState(null); // array de chamados, quando aberto
+
+  const carregar = async () => {
+    const todos = await listarChamadosTodos();
+    setChamados(todos);
+  };
+  useEffect(() => { carregar(); /* eslint-disable-next-line */ }, []);
+
+  if (chamados === undefined) return <LoadingScreen />;
+
+  const meus = chamados.filter((c) => {
+    if (c.tipo === "sistema") return ctx.mestre || c.autorUid === ctx.uid;
+    return c.destinatarioUid === ctx.uid || c.autorUid === ctx.uid;
+  });
+  const daAba = meus.filter((c) => c.tipo === aba);
+  const ordenados = daAba.filter((c) => chamadoPassaFiltro(c, filtro));
+  const chamadoAtual = chamados.find((c) => c.id === chamadoAtualId) || null;
+  const isMestreDoSistema = aba === "sistema" && ctx.mestre;
+
+  const abrirNovo = () => { setModo("novo"); };
+  const abrirDetalhe = (id) => { setChamadoAtualId(id); setModo("detalhe"); };
+  const voltarLista = () => { setModo("lista"); setChamadoAtualId(null); carregar(); };
+
+  const criar = async (assunto, descricao) => {
+    const base = {
+      tipo: aba, autorUid: ctx.uid, autorNome: ctx.nome, autorPapel: ctx.papel,
+      assunto,
+      mensagens: [{ autor: ctx.papel, autorNome: ctx.nome, texto: descricao, criadoEm: Date.now() }],
+    };
+    if (aba === "pedagogico") {
+      base.destinatarioUid = ctx.professorUid;
+      base.destinatarioNome = ctx.professorNome;
+      base.turmaNome = ctx.turmaNome;
+    } else {
+      base.destinatarioUid = null; // vai para qualquer Usuário Mestre
+    }
+    const novo = await criarChamado(base);
+    await carregar();
+    abrirDetalhe(novo.id);
+  };
+
+  const enviarMensagem = async (texto, novoStatus, prazoMs) => {
+    if (!chamadoAtual) return;
+    const autorPapel = ctx.mestre && aba === "sistema" ? "mestre" : ctx.papel;
+    const patch = {
+      mensagens: [...(chamadoAtual.mensagens || []), { autor: autorPapel, autorNome: ctx.nome, texto, criadoEm: Date.now() }],
+      status: novoStatus || (ctx.mestre ? "Aguardando resposta" : (aba === "pedagogico" ? "Aguardando resposta" : "Em análise")),
+      prazoResposta: prazoMs ? Date.now() + prazoMs : null,
+    };
+    await atualizarChamado(chamadoAtual.id, patch);
+    await carregar();
+  };
+
+  const mudarStatus = async (status, extra = {}) => {
+    if (!chamadoAtual) return;
+    await atualizarChamado(chamadoAtual.id, { status, ...extra });
+    await carregar();
+  };
+
+  const encerrar = async () => {
+    await mudarStatus(ctx.mestre || (aba === "pedagogico" && ctx.papel === "professor") ? "Encerrado" : "Resolvido", {
+      encerradoPor: ctx.papel, encerradoEm: Date.now(), reabrivelAte: Date.now() + 7 * 24 * 60 * 60 * 1000,
+    });
+  };
+  const reabrir = async () => { await mudarStatus("Aberto", { encerradoPor: null, encerradoEm: null, reabrivelAte: null }); };
+
+  const gerarRelatorio = async (lista) => {
+    setRelatorio(lista);
+    const agora = Date.now();
+    await Promise.all(lista.map((c) => atualizarChamado(c.id, {
+      status: "Encaminhado para desenvolvimento",
+      mensagens: [...(c.mensagens || []), { autor: "sistema", autorNome: "Sistema", texto: "Chamado encaminhado para desenvolvimento.", criadoEm: agora }],
+    })));
+    await carregar();
+  };
+
+  if (relatorio) {
+    return <SuporteRelatorio chamados={relatorio} onFechar={() => setRelatorio(null)} />;
+  }
+
+  return (
+    <div>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="text-xs font-bold tracking-widest text-amber-500 mb-2">CENTRAL DE SUPORTE</div>
+          <h1 className="text-3xl font-bold text-slate-50 mb-2">Suporte</h1>
+          <p className="text-slate-400 max-w-2xl text-sm">
+            {aba === "sistema"
+              ? (ctx.mestre ? "Chamados sobre o sistema, abertos por professores e alunos." : "Fale com o Usuário Mestre sobre dúvidas, problemas ou sugestões da plataforma.")
+              : (ctx.papel === "aluno" ? `Fale com o(a) professor(a) ${ctx.professorNome || ""} sobre o plano de negócio da equipe.` : "Conversas com os alunos das suas turmas sobre o plano de negócio.")}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex gap-2 mb-5 border-b border-slate-800">
+        <button onClick={() => { setAba("sistema"); setModo("lista"); }} className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition ${aba === "sistema" ? "border-amber-500 text-slate-100" : "border-transparent text-slate-500 hover:text-slate-300"}`}>
+          {ctx.mestre ? "Chamados do Sistema" : "Sistema"}
+        </button>
+        {ctx.papel !== "professor" && (
+          <button onClick={() => { setAba("pedagogico"); setModo("lista"); }} className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition ${aba === "pedagogico" ? "border-amber-500 text-slate-100" : "border-transparent text-slate-500 hover:text-slate-300"}`}>
+            Falar com o professor
+          </button>
+        )}
+        {ctx.papel === "professor" && (
+          <button onClick={() => { setAba("pedagogico"); setModo("lista"); }} className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition ${aba === "pedagogico" ? "border-amber-500 text-slate-100" : "border-transparent text-slate-500 hover:text-slate-300"}`}>
+            Suporte Pedagógico
+          </button>
+        )}
+      </div>
+
+      {modo === "novo" && (
+        <SuporteFormNovo onCancelar={() => setModo("lista")} onCriar={criar} destinatario={aba === "pedagogico" ? ctx.professorNome : "um Usuário Mestre"} />
+      )}
+
+      {modo === "detalhe" && chamadoAtual && (
+        <SuporteDetalhe
+          chamado={chamadoAtual} ctx={ctx} aba={aba}
+          onVoltar={voltarLista} onEnviar={enviarMensagem} onEncerrar={encerrar} onReabrir={reabrir}
+          onMudarStatus={mudarStatus} onGerarRelatorio={() => gerarRelatorio([chamadoAtual])}
+        />
+      )}
+
+      {modo === "lista" && (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            {isMestreDoSistema ? (
+              <div className="flex flex-wrap gap-2">
+                {SUPORTE_FILTROS.map((f) => (
+                  <button key={f} onClick={() => setFiltro(f)} className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${filtro === f ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-700 text-slate-400 hover:border-slate-500"}`}>{f}</button>
+                ))}
+              </div>
+            ) : <div />}
+            <button onClick={abrirNovo} className="no-print bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm flex items-center gap-2 shrink-0">
+              <Plus size={15} /> Novo chamado
+            </button>
+          </div>
+
+          {isMestreDoSistema && selecionados.size > 0 && (
+            <div className="no-print bg-slate-900 border border-amber-500/40 rounded-md p-3 flex items-center justify-between gap-3 mb-4 text-sm">
+              <span className="text-slate-300">{selecionados.size} chamado(s) selecionado(s)</span>
+              <button onClick={() => gerarRelatorio(chamados.filter((c) => selecionados.has(c.id)))} className="flex items-center gap-2 bg-amber-500 text-slate-900 font-bold px-3 py-1.5 rounded-md hover:bg-amber-400 text-xs">
+                <Printer size={13} /> Gerar relatório para desenvolvimento
+              </button>
+            </div>
+          )}
+
+          {ordenados.length === 0 && <Card className="p-8 text-center text-slate-500 text-sm">Nenhum chamado {isMestreDoSistema ? `com o filtro "${filtro}"` : "por aqui ainda"}.</Card>}
+
+          <div className="space-y-2.5">
+            {ordenados.map((c) => (
+              <Card key={c.id} className="p-4 flex items-center gap-3">
+                {isMestreDoSistema && (
+                  <input type="checkbox" checked={selecionados.has(c.id)} onChange={(e) => {
+                    const novo = new Set(selecionados);
+                    if (e.target.checked) novo.add(c.id); else novo.delete(c.id);
+                    setSelecionados(novo);
+                  }} className="accent-amber-500 shrink-0" />
+                )}
+                <button onClick={() => abrirDetalhe(c.id)} className="flex-1 min-w-0 text-left">
+                  <div className="font-semibold text-slate-100 text-sm truncate">{c.assunto} <span className="text-slate-500 font-normal text-xs">#{c.numero}</span></div>
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    {(ctx.mestre || ctx.papel === "professor") && c.autorUid !== ctx.uid ? `${c.autorNome} · ` : ""}
+                    {new Date(c.criadoEm).toLocaleDateString("pt-BR")}
+                  </div>
+                </button>
+                <SuporteBadge status={c.status} />
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function SuporteFormNovo({ onCancelar, onCriar, destinatario }) {
+  const [assunto, setAssunto] = useState("");
+  const [descricao, setDescricao] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const enviar = async () => {
+    if (!assunto.trim() || !descricao.trim()) return;
+    setEnviando(true);
+    await onCriar(assunto.trim(), descricao.trim());
+    setEnviando(false);
+  };
+  return (
+    <Card className="p-6">
+      <SectionTitle icon={LifeBuoy} sub={`Sua mensagem vai para: ${destinatario}.`}>Novo chamado</SectionTitle>
+      <Field label="Assunto">
+        <TxtInput value={assunto} onChange={setAssunto} placeholder="Resuma em poucas palavras" />
+      </Field>
+      <Field label="Descrição">
+        <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={5}
+          className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100 focus:border-amber-500 focus:outline-none"
+          placeholder="Descreva com o máximo de detalhes possível…" />
+      </Field>
+      <div className="flex gap-2 mt-2">
+        <button onClick={enviar} disabled={enviando || !assunto.trim() || !descricao.trim()} className="bg-amber-500 text-slate-900 font-bold px-5 py-2.5 rounded-md hover:bg-amber-400 disabled:opacity-40 text-sm">
+          {enviando ? "Enviando…" : "Abrir chamado"}
+        </button>
+        <button onClick={onCancelar} className="border border-slate-600 text-slate-100 px-5 py-2.5 rounded-md hover:bg-slate-800 text-sm font-semibold">Cancelar</button>
+      </div>
+    </Card>
+  );
+}
+
+function SuporteDetalhe({ chamado: c, ctx, aba, onVoltar, onEnviar, onEncerrar, onReabrir, onMudarStatus, onGerarRelatorio }) {
+  const [msg, setMsg] = useState("");
+  const estaEncerrado = c.status === "Resolvido" || c.status === "Encerrado";
+  const podeReabrir = estaEncerrado && c.reabrivelAte && Date.now() < c.reabrivelAte;
+  const souAutor = c.autorUid === ctx.uid;
+  const ehMestreAqui = ctx.mestre && aba === "sistema";
+  const ehProfessorPedagogico = aba === "pedagogico" && ctx.papel === "professor";
+
+  const enviar = async (novoStatus, prazoMs) => {
+    if (!msg.trim()) return;
+    await onEnviar(msg.trim(), novoStatus, prazoMs);
+    setMsg("");
+  };
+
+  return (
+    <div>
+      <button onClick={onVoltar} className="no-print flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar</button>
+      <Card className="p-6">
+        <div className="flex items-start justify-between gap-3 mb-1">
+          <h2 className="text-lg font-bold text-slate-100">{c.assunto}</h2>
+          <SuporteBadge status={c.status} />
+        </div>
+        <div className="text-xs text-slate-500 mb-5">
+          Protocolo #{c.numero} · Aberto em {new Date(c.criadoEm).toLocaleDateString("pt-BR")}
+          {!souAutor ? ` · ${c.autorNome}` : ""}
+          {c.prazoResposta && c.status === "Aguardando resposta" ? ` · Prazo para responder: ${new Date(c.prazoResposta).toLocaleDateString("pt-BR")}` : ""}
+        </div>
+
+        <div className="max-h-96 overflow-y-auto mb-5 space-y-3 pr-1">
+          {(c.mensagens || []).map((m, i) => {
+            const minha = m.autor === (ehMestreAqui ? "mestre" : ctx.papel) && (m.autorNome === ctx.nome);
+            return (
+              <div key={i} className={`flex ${minha ? "justify-end" : "justify-start"}`}>
+                <div className={`max-w-[80%] rounded-lg px-3.5 py-2.5 ${m.autor === "sistema" ? "bg-slate-800/60 border border-slate-700" : minha ? "bg-amber-500/15 border border-amber-500/30" : "bg-slate-800 border border-slate-700"}`}>
+                  <div className="text-[11px] font-bold text-slate-400 mb-1">{m.autor === "sistema" ? "Sistema" : m.autorNome} <span className="font-normal text-slate-600">· {new Date(m.criadoEm).toLocaleString("pt-BR")}</span></div>
+                  <div className="text-sm text-slate-200 whitespace-pre-wrap">{m.texto}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {!estaEncerrado ? (
+          <>
+            <Field label="Nova mensagem">
+              <textarea value={msg} onChange={(e) => setMsg(e.target.value)} rows={3}
+                className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100 focus:border-amber-500 focus:outline-none" />
+            </Field>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => enviar(null, null)} disabled={!msg.trim()} className="no-print flex items-center gap-2 bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40 text-sm"><Send size={14} /> Enviar mensagem</button>
+              {(ehMestreAqui || ehProfessorPedagogico) && (
+                <button onClick={() => msg.trim() && enviar("Aguardando resposta", 7 * 24 * 60 * 60 * 1000)} disabled={!msg.trim()} className="no-print border border-slate-600 text-slate-100 px-4 py-2 rounded-md hover:bg-slate-800 disabled:opacity-40 text-sm">Enviar e aguardar resposta (7 dias)</button>
+              )}
+              {ehMestreAqui && c.status === "Aberto" && (
+                <button onClick={() => onMudarStatus("Em análise")} className="no-print border border-slate-600 text-slate-100 px-4 py-2 rounded-md hover:bg-slate-800 text-sm">Iniciar análise</button>
+              )}
+              {ehMestreAqui && !["Encaminhado para desenvolvimento", "Aprovado para desenvolvimento"].includes(c.status) && (
+                <button onClick={onGerarRelatorio} className="no-print flex items-center gap-2 border border-slate-600 text-slate-100 px-4 py-2 rounded-md hover:bg-slate-800 text-sm"><Printer size={14} /> Encaminhar para desenvolvimento</button>
+              )}
+              {ehMestreAqui && c.status === "Encaminhado para desenvolvimento" && (
+                <button onClick={() => onMudarStatus("Aprovado para desenvolvimento")} className="no-print border border-slate-600 text-slate-100 px-4 py-2 rounded-md hover:bg-slate-800 text-sm">Aprovar para desenvolvimento</button>
+              )}
+              <button onClick={onEncerrar} className="no-print border border-slate-600 text-slate-400 px-4 py-2 rounded-md hover:bg-slate-800 text-sm">{ehMestreAqui || ehProfessorPedagogico ? "Encerrar chamado" : "Marcar como resolvido"}</button>
+            </div>
+          </>
+        ) : podeReabrir ? (
+          <div>
+            <button onClick={onReabrir} className="no-print bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm flex items-center gap-2"><RotateCcw size={14} /> Reabrir chamado</button>
+            <p className="text-xs text-slate-500 mt-2">Pode ser reaberto até {new Date(c.reabrivelAte).toLocaleDateString("pt-BR")}.</p>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">Este chamado está encerrado.</p>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function SuporteRelatorio({ chamados, onFechar }) {
+  const agora = new Date();
+  return (
+    <div>
+      <div className="no-print flex items-center justify-between mb-5">
+        <button onClick={onFechar} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Voltar ao Suporte</button>
+        <button onClick={() => window.print()} className="flex items-center gap-2 bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm"><Printer size={14} /> Imprimir / Baixar PDF</button>
+      </div>
+      <h1 className="text-2xl font-bold text-slate-50 mb-1">Relatório de Chamados para Desenvolvimento</h1>
+      <p className="text-sm text-slate-500 mb-6">Gerado em {agora.toLocaleDateString("pt-BR")} às {agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · {chamados.length} chamado(s)</p>
+      <div className="space-y-5">
+        {chamados.map((c) => (
+          <Card key={c.id} className="p-5">
+            <div className="text-sm mb-3">
+              <div><b className="text-slate-200">Protocolo:</b> <span className="text-slate-400">#{c.numero}</span></div>
+              <div><b className="text-slate-200">Assunto:</b> <span className="text-slate-400">{c.assunto}</span></div>
+              <div><b className="text-slate-200">Autor(a):</b> <span className="text-slate-400">{c.autorNome}</span></div>
+              <div><b className="text-slate-200">Aberto em:</b> <span className="text-slate-400">{new Date(c.criadoEm).toLocaleDateString("pt-BR")}</span></div>
+              <div><b className="text-slate-200">Status no momento do relatório:</b> <span className="text-slate-400">{c.status}</span></div>
+            </div>
+            <div className="border-t border-slate-800 pt-3 space-y-2">
+              {(c.mensagens || []).map((m, i) => (
+                <div key={i} className="text-xs">
+                  <b className="text-slate-300">{m.autor === "sistema" ? "Sistema" : m.autorNome}</b>
+                  <span className="text-slate-600"> · {new Date(m.criadoEm).toLocaleString("pt-BR")}</span>
+                  <div className="text-slate-400 whitespace-pre-wrap mt-0.5">{m.texto}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 async function buscarUsuario(uid) {
@@ -1472,10 +1976,11 @@ function ChecklistStatusView() {
   );
 }
 
-function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa }) {
+function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades }) {
   const [dados, setDados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
   const [aba, setAba] = useState("inicio");
   const [menuAberto, setMenuAberto] = useState(false);
+  const [confirmSairAberto, setConfirmSairAberto] = useState(false);
   const irPara = (id) => { setAba(id); setMenuAberto(false); };
 
   const lanc = mergeLancamentos(dados?.lancamentos);
@@ -1519,7 +2024,14 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa }) {
     ...MODULOS.map((m) => ({ id: m.id, label: m.nome, icon: m.icon, num: String(m.n).padStart(2, "0") })),
     { id: "analise", label: "Análise do Negócio", icon: TrendingUp, num: null },
     { id: "feedback", label: "Feedback do Professor", icon: MessageSquare, num: null },
+    { id: "suporte", label: "Suporte", icon: LifeBuoy, num: null },
+    { id: "novidades", label: "Novidades", icon: Megaphone, num: null },
   ];
+
+  const baixarBackupEquipe = () => {
+    const pacote = { versaoBackup: 1, geradoEm: new Date().toISOString(), equipe, dados };
+    baixarArquivo(`backup_${equipe.nomeNegocio.replace(/\s+/g, "_")}.json`, JSON.stringify(pacote, null, 2));
+  };
 
   return (
     <div className="min-h-screen flex bg-slate-950 relative">
@@ -1566,9 +2078,23 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa }) {
           {onTrocarEmpresa && (
             <button onClick={onTrocarEmpresa} className="flex items-center gap-2 text-sm text-white/70 hover:text-white mb-2"><Building2 size={15} /> Trocar de empresa</button>
           )}
-          <button onClick={onSair} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><LogOut size={15} /> Sair</button>
+          <button onClick={() => setConfirmSairAberto(true)} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><LogOut size={15} /> Sair</button>
         </div>
       </aside>
+
+      {confirmSairAberto && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-5">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-sm w-full p-6 text-center">
+            <Save size={30} className="mx-auto text-amber-500 mb-3" />
+            <h3 className="font-bold text-slate-100 mb-2">Baixar um backup antes de sair?</h3>
+            <p className="text-xs text-slate-400 mb-5">Baixa um arquivo com os lançamentos e o histórico de versões da equipe {equipe.nomeNegocio}. Recomendado, mas opcional.</p>
+            <button onClick={() => { baixarBackupEquipe(); setConfirmSairAberto(false); onSair(); }} className="w-full bg-amber-500 text-slate-900 font-bold py-2.5 rounded-md hover:bg-amber-400 mb-2">Sim, baixar backup e sair</button>
+            <button onClick={() => { setConfirmSairAberto(false); onSair(); }} className="w-full text-sm text-slate-400 hover:text-slate-100 py-1.5">Sair sem backup</button>
+          </div>
+        </div>
+      )}
+
+      {onVerNovidades && <NovidadesOverlay perfil={{ ultimaVersaoVista }} onFechar={onVerNovidades} onIrParaHistorico={() => { onVerNovidades(); irPara("novidades"); }} />}
 
       <main className="flex-1 overflow-y-auto p-4 pt-20 md:p-8 md:pt-8 max-w-5xl mx-auto w-full">
         {aba === "manual" && <ManualAlunoView equipe={equipe} onIrPara={setAba} />}
@@ -1662,6 +2188,12 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa }) {
             <ComentariosPanel comentarios={dados.comentarios} onAdd={addComentario} autor={user.nome} readOnlyInput />
           </div>
         )}
+
+        {aba === "suporte" && (
+          <SuporteView ctx={{ uid: user.uid, nome: user.nome, papel: "aluno", mestre: false, professorUid, professorNome, turmaNome }} />
+        )}
+
+        {aba === "novidades" && <NovidadesView />}
       </main>
     </div>
   );
@@ -1860,7 +2392,7 @@ function LinhaRosterPreview({ item, onMudar, onRemover }) {
   );
 }
 
-function PainelRoster({ turmaId, turmaNome }) {
+function PainelRoster({ turmaId, turmaNome, professorUid, professorNome }) {
   const [roster, setRoster] = useSharedList(`roster_${turmaId}`);
   const [preview, setPreview] = useState(null);
   const [processando, setProcessando] = useState(false);
@@ -1899,6 +2431,7 @@ function PainelRoster({ turmaId, turmaNome }) {
       await Promise.all(novos.map((a) =>
         window.storage.set(`matricula_${a.matricula}`, JSON.stringify({
           turmaId, turmaNome, nome: a.nome.trim().toUpperCase(), matricula: a.matricula,
+          professorUid, professorNome,
         }), true)
       ));
     } catch {}
@@ -2029,7 +2562,7 @@ function TurmaDetail({ turma, onVoltar, professorNome }) {
         </div>
       </div>
 
-      <PainelRoster turmaId={turma.id} turmaNome={turma.nome} />
+      <PainelRoster turmaId={turma.id} turmaNome={turma.nome} professorUid={turma.professorUid} professorNome={turma.professor} />
 
       <Card className="p-4">
         <SectionTitle icon={Building2} sub="Cadastre aqui os nomes das empresas/negócios da turma — os alunos escolherão entre elas ao entrar (em vez de digitar um nome livre).">
@@ -2807,7 +3340,7 @@ function ProfessorInicio({ user, turmas, onIrPara }) {
   );
 }
 
-function ProfessorDashboard({ user, onSair }) {
+function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades }) {
   const chaveMinhas = `turmas_prof_${user.uid}`;
   const [turmas, setTurmas] = useSharedList(chaveMinhas);
   const [aba, setAba] = useState("inicio");
@@ -2817,7 +3350,7 @@ function ProfessorDashboard({ user, onSair }) {
   if (turmas === null) return <LoadingScreen />;
 
   const criarTurma = async (nome) => {
-    const nova = { id: uid(), nome, codigo: codigoTurma(), professor: user.nome, criadaEm: Date.now() };
+    const nova = { id: uid(), nome, codigo: codigoTurma(), professor: user.nome, professorUid: user.uid, criadaEm: Date.now() };
     setTurmas([...(turmas || []), nova]);
     // registra o código para os alunos conseguirem encontrar a turma
     try { await window.storage.set(`turma_por_codigo_${nova.codigo}`, JSON.stringify(nova), true); } catch {}
@@ -2880,11 +3413,20 @@ function ProfessorDashboard({ user, onSair }) {
               </button>
             );
           })}
+          <div className="px-5 pt-5 pb-2 text-[10px] font-bold tracking-widest text-white/40">OUTROS</div>
+          <button onClick={() => irPara("suporte")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "suporte" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
+            <LifeBuoy size={16} className="shrink-0" /> Suporte
+          </button>
+          <button onClick={() => irPara("novidades")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "novidades" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
+            <Megaphone size={16} className="shrink-0" /> Novidades
+          </button>
         </nav>
         <div className="p-4 border-t border-white/10">
           <button onClick={onSair} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><LogOut size={15} /> Sair</button>
         </div>
       </aside>
+
+      {onVerNovidades && <NovidadesOverlay perfil={{ ultimaVersaoVista }} onFechar={onVerNovidades} onIrParaHistorico={() => { onVerNovidades(); irPara("novidades"); }} />}
 
       <main className="flex-1 overflow-y-auto p-4 pt-20 md:p-8 md:pt-8 max-w-6xl mx-auto w-full">
         {aba === "inicio" && <ProfessorInicio user={user} turmas={turmas} onIrPara={irPara} />}
@@ -2903,6 +3445,10 @@ function ProfessorDashboard({ user, onSair }) {
         {aba === "manualAlunoRef" && <ManualAlunoView contexto="professor" />}
         {aba === "manualOperacional" && user.mestre && <ManualOperacionalView />}
         {aba === "checklistStatus" && user.mestre && <ChecklistStatusView />}
+        {aba === "suporte" && (
+          <SuporteView ctx={{ uid: user.uid, nome: user.nome, papel: "professor", mestre: !!user.mestre }} />
+        )}
+        {aba === "novidades" && <NovidadesView />}
       </main>
     </div>
   );
@@ -3075,7 +3621,7 @@ function TelaInformarTurma({ perfil, onSair, onResultado }) {
       const rm = await window.storage.get(`matricula_${termo}`, true);
       if (rm) {
         const registro = JSON.parse(rm.value);
-        await onResultado({ turmaId: registro.turmaId, turmaNome: registro.turmaNome, nome: registro.nome, status: "aprovado" });
+        await onResultado({ turmaId: registro.turmaId, turmaNome: registro.turmaNome, nome: registro.nome, status: "aprovado", professorUid: registro.professorUid || null, professorNome: registro.professorNome || null });
         setBuscando(false);
         return;
       }
@@ -3083,7 +3629,7 @@ function TelaInformarTurma({ perfil, onSair, onResultado }) {
       const rt = await window.storage.get(`turma_por_codigo_${termo.toUpperCase()}`, true);
       if (rt) {
         const turma = JSON.parse(rt.value);
-        await onResultado({ turmaId: turma.id, turmaNome: turma.nome, status: "aprovado" });
+        await onResultado({ turmaId: turma.id, turmaNome: turma.nome, status: "aprovado", professorUid: turma.professorUid || null, professorNome: turma.professor || null });
         setBuscando(false);
         return;
       }
@@ -3165,10 +3711,10 @@ function EscolherEmpresa({ perfil, turmaId, turmaNome, onSair, onEscolhida }) {
   );
 }
 
-function AlunoWorkspaceCarregado({ userSessao, turmaId, equipeId, onSair, onTrocarEmpresa }) {
+function AlunoWorkspaceCarregado({ userSessao, turmaId, equipeId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades }) {
   const equipe = useEquipeSalva(turmaId, equipeId);
   if (!equipe) return <LoadingScreen />;
-  return <AlunoWorkspace user={userSessao} equipe={equipe} equipeKey={`dados_equipe_${equipe.id}`} onSair={onSair} onTrocarEmpresa={() => onTrocarEmpresa(equipe)} />;
+  return <AlunoWorkspace user={userSessao} equipe={equipe} equipeKey={`dados_equipe_${equipe.id}`} onSair={onSair} onTrocarEmpresa={() => onTrocarEmpresa(equipe)} professorUid={professorUid} professorNome={professorNome} turmaNome={turmaNome} ultimaVersaoVista={ultimaVersaoVista} onVerNovidades={onVerNovidades} />;
 }
 
 function AlunoRoteador({ perfil, onSair }) {
@@ -3228,7 +3774,7 @@ function AlunoRoteador({ perfil, onSair }) {
     } catch {}
     await atualizarPerfil({ equipeId: null });
   };
-  return <AlunoWorkspaceCarregado userSessao={userSessao} turmaId={efetivo.turmaId} equipeId={efetivo.equipeId} onSair={onSair} onTrocarEmpresa={trocarDeEmpresa} />;
+  return <AlunoWorkspaceCarregado userSessao={userSessao} turmaId={efetivo.turmaId} equipeId={efetivo.equipeId} onSair={onSair} onTrocarEmpresa={trocarDeEmpresa} professorUid={efetivo.professorUid} professorNome={efetivo.professorNome} turmaNome={efetivo.turmaNome} ultimaVersaoVista={efetivo.ultimaVersaoVista} onVerNovidades={() => atualizarPerfil({ ultimaVersaoVista: APP_VERSION })} />;
 }
 
 function TelaAguardandoAprovacao({ perfil, onSair, rejeitado, onTrocarTurma, onVirarMestre }) {
@@ -3536,5 +4082,11 @@ export default function App() {
   }
 
   const userSessao = { uid: perfil.uid, nome: perfil.nome, email: perfil.email, papel: perfil.papel, mestre: !!perfil.mestre };
-  return <ProfessorDashboard user={userSessao} onSair={efetuarSaida} />;
+  return (
+    <ProfessorDashboard
+      user={userSessao} onSair={efetuarSaida}
+      ultimaVersaoVista={perfil.ultimaVersaoVista}
+      onVerNovidades={() => atualizarUsuario(perfil.uid, { ultimaVersaoVista: APP_VERSION }).then((p) => p && setPerfilRecemCriado(p))}
+    />
+  );
 }

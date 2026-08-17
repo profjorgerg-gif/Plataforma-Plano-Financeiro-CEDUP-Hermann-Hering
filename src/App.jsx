@@ -3999,7 +3999,8 @@ function TelaLogin({ onEscolherPerfil }) {
 
 function TelaEntrada({ onEscolherPerfil }) {
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col md:flex-row">
+    <div className="min-h-screen bg-slate-950 flex flex-col">
+      <div className="flex-1 flex flex-col md:flex-row">
       {/* Painel de identidade — visível a partir de telas médias */}
       <div className="hidden md:flex md:w-1/2 relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex-col justify-center px-14 py-12">
         <div className="absolute -top-24 -left-24 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -4068,6 +4069,11 @@ function TelaEntrada({ onEscolherPerfil }) {
           <TelaLogin onEscolherPerfil={onEscolherPerfil} />
         </div>
       </div>
+      </div>
+
+      <footer className="text-center py-4 px-6 border-t border-slate-900 text-[11px] text-slate-600">
+        © {new Date().getFullYear()} Jorge Lima Cardoso. Todos os direitos reservados. Plataforma didática desenvolvida para o CEDUP Hermann Hering — Curso Técnico em Administração e Contabilidade.
+      </footer>
     </div>
   );
 }

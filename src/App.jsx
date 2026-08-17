@@ -11,7 +11,7 @@ import {
   Save, Copy, ArrowLeft, BookOpen, Building2, KeyRound, Mail, Lock, ShieldCheck,
   Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
   ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
-  LifeBuoy, Send, Megaphone, RotateCcw, Printer,
+  LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
@@ -492,6 +492,80 @@ function NovidadesView() {
 
 async function salvarUsuario(perfil) {
   await window.storage.set(`usuario_${perfil.uid}`, JSON.stringify(perfil), true);
+}
+
+// ============================================================================
+// TUTORIAIS EM VÍDEO — menu com vídeos curtos (hospedados como "não
+// listados" no YouTube) mostrando como usar as principais funções.
+// Para adicionar um vídeo novo: troque youtubeId de null para o código do
+// vídeo (a parte depois de "watch?v=" no link do YouTube). Enquanto for
+// null, o cartão mostra "Vídeo em breve" e fica desativado.
+// ============================================================================
+const TUTORIAIS = [
+  { id: "prof-criar-turma", categoria: "professor", titulo: "Criar uma turma", descricao: "Como cadastrar uma nova turma e obter o código de acesso.", youtubeId: null },
+  { id: "prof-importar-lista", categoria: "professor", titulo: "Importar a lista de alunos", descricao: "Como subir o PDF oficial da escola e habilitar o acesso por matrícula.", youtubeId: null },
+  { id: "prof-aprovacoes", categoria: "professor", titulo: "Painel de Aprovações", descricao: "Como revisar cadastros, corrigir papel ou excluir por engano.", youtubeId: null },
+  { id: "prof-relatorios", categoria: "professor", titulo: "Relatórios da turma", descricao: "Como acompanhar pendências e o progresso de cada equipe.", youtubeId: null },
+  { id: "prof-suporte", categoria: "professor", titulo: "Central de Suporte", descricao: "Como abrir e responder chamados do sistema e pedagógicos.", youtubeId: null },
+  { id: "aluno-entrar", categoria: "aluno", titulo: "Como entrar na plataforma", descricao: "Login com conta Google e acesso pela própria matrícula.", youtubeId: null },
+  { id: "aluno-modulo", categoria: "aluno", titulo: "Como preencher um módulo", descricao: "Passo a passo dentro de um módulo financeiro, do início ao fim.", youtubeId: null },
+  { id: "aluno-analise", categoria: "aluno", titulo: "Análise do Negócio", descricao: "Como interpretar os gráficos, os alertas e salvar uma versão.", youtubeId: null },
+  { id: "aluno-suporte", categoria: "aluno", titulo: "Como usar o Suporte", descricao: "Como falar com o(a) professor(a) ou reportar um problema do sistema.", youtubeId: null },
+];
+
+function TutorialCard({ t }) {
+  const [aberto, setAberto] = useState(false);
+  const temVideo = !!t.youtubeId;
+  return (
+    <Card className="p-0 overflow-hidden">
+      <button onClick={() => temVideo && setAberto((v) => !v)} disabled={!temVideo} className={`w-full text-left block ${temVideo ? "" : "cursor-default"}`}>
+        <div className="aspect-video bg-slate-800 relative flex items-center justify-center">
+          {temVideo ? (
+            aberto ? (
+              <iframe
+                className="w-full h-full"
+                src={`https://www.youtube.com/embed/${t.youtubeId}`}
+                title={t.titulo} allowFullScreen
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              />
+            ) : (
+              <>
+                <img src={`https://img.youtube.com/vi/${t.youtubeId}/hqdefault.jpg`} alt="" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 flex items-center justify-center bg-black/25 hover:bg-black/40 transition">
+                  <div className="w-12 h-12 rounded-full bg-amber-500 flex items-center justify-center shadow-lg"><Play size={20} className="text-slate-900 ml-0.5" fill="currentColor" /></div>
+                </div>
+              </>
+            )
+          ) : (
+            <div className="text-center text-slate-600 px-4">
+              <Video size={26} className="mx-auto mb-2" />
+              <span className="text-[11px] font-semibold tracking-wide">VÍDEO EM BREVE</span>
+            </div>
+          )}
+        </div>
+        <div className="p-4">
+          <div className="font-semibold text-slate-100 text-sm">{t.titulo}</div>
+          <div className="text-xs text-slate-400 mt-1 leading-relaxed">{t.descricao}</div>
+        </div>
+      </button>
+    </Card>
+  );
+}
+
+function TutoriaisView({ categoria }) {
+  const itens = TUTORIAIS.filter((t) => t.categoria === categoria);
+  return (
+    <div>
+      <div className="mb-8">
+        <div className="text-xs font-bold tracking-widest text-amber-500 mb-2">VÍDEOS CURTOS</div>
+        <h1 className="text-3xl font-bold text-slate-50 mb-3">Tutoriais</h1>
+        <p className="text-slate-400 max-w-2xl">Vídeos rápidos mostrando como usar as principais funções da plataforma. Ainda vamos gravando aos poucos — os que estiverem marcados "Vídeo em breve" chegam nas próximas atualizações.</p>
+      </div>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {itens.map((t) => <TutorialCard key={t.id} t={t} />)}
+      </div>
+    </div>
+  );
 }
 
 // ============================================================================
@@ -2026,6 +2100,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
     { id: "feedback", label: "Feedback do Professor", icon: MessageSquare, num: null },
     { id: "suporte", label: "Suporte", icon: LifeBuoy, num: null },
     { id: "novidades", label: "Novidades", icon: Megaphone, num: null },
+    { id: "tutoriais", label: "Tutoriais", icon: Video, num: null },
   ];
 
   const baixarBackupEquipe = () => {
@@ -3420,6 +3495,9 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
           <button onClick={() => irPara("novidades")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "novidades" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
             <Megaphone size={16} className="shrink-0" /> Novidades
           </button>
+          <button onClick={() => irPara("tutoriais")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "tutoriais" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
+            <Video size={16} className="shrink-0" /> Tutoriais
+          </button>
         </nav>
         <div className="p-4 border-t border-white/10">
           <button onClick={onSair} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><LogOut size={15} /> Sair</button>
@@ -3449,6 +3527,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
           <SuporteView ctx={{ uid: user.uid, nome: user.nome, papel: "professor", mestre: !!user.mestre }} />
         )}
         {aba === "novidades" && <NovidadesView />}
+        {aba === "tutoriais" && <TutoriaisView categoria="professor" />}
       </main>
     </div>
   );

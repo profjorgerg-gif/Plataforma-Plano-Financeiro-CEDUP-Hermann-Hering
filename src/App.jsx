@@ -54,6 +54,64 @@ const TEORIA = {
   m13: { conceito: "Quatro indicadores que revelam a viabilidade econômico-financeira do negócio.", formula: "Ponto de Equilíbrio = Custo Fixo ÷ Índice da Margem de Contribuição\nLucratividade = (Lucro ÷ Receita) × 100\nRentabilidade = (Lucro ÷ Investimento Total) × 100\nPrazo de Retorno = Investimento Total ÷ Lucro" },
 };
 
+// Complementa a TEORIA (conceito + fórmula, já usada dentro de cada módulo)
+// com "o que lançar" e um exemplo numérico — usado no Guia dos 13 Módulos,
+// dentro do Manual do Aluno.
+const GUIA_MODULOS_EXTRA = {
+  m1: {
+    lancamento: "Para cada bem: descrição, categoria (Máquinas, Móveis, Utensílios, Veículos ou uma categoria própria), quantidade e valor unitário.",
+    exemplo: "1 forno industrial, categoria Máquinas, quantidade 1, valor unitário R$ 8.500 → contribui R$ 8.500 ao Investimento Fixo.",
+  },
+  m2: {
+    lancamento: "Estoque inicial (R$), prazo médio de vendas (dias), prazo médio de estoque (dias) e prazo médio de compras (dias).",
+    exemplo: "Prazo de vendas 30 dias + prazo de estoque 15 dias − prazo de compras 20 dias = necessidade líquida de 25 dias. Com custo diário de R$ 400, o Caixa Mínimo fica em R$ 10.000.",
+  },
+  m3: {
+    lancamento: "Para cada despesa pré-operacional: descrição e valor.",
+    exemplo: "Registro do CNPJ R$ 400 + Reforma da loja R$ 3.000 + Divulgação de lançamento R$ 600 = R$ 4.000 de Investimento Pré-Operacional.",
+  },
+  m4: {
+    lancamento: "Percentual de recursos próprios (o restante vira automaticamente \"recursos de terceiros\", com a fonte: empréstimo, financiamento, investidor-anjo, etc.).",
+    exemplo: "Investimento Total de R$ 24.500, com 60% de recursos próprios: R$ 14.700 próprios + R$ 9.800 de terceiros (ex.: empréstimo bancário).",
+  },
+  m5: {
+    lancamento: "Para cada produto/serviço vendido: nome, quantidade média vendida por mês e preço de venda unitário.",
+    exemplo: "600 kg de pão francês por mês, a R$ 14,90/kg → R$ 8.940 de faturamento só com esse produto.",
+  },
+  m6: {
+    lancamento: "Para cada material usado num produto: nome do produto, nome do material, quantidade usada e custo unitário do material.",
+    exemplo: "1 pão usa 0,5 kg de farinha a R$ 4,50/kg → custo de matéria-prima de R$ 2,25 por pão.",
+  },
+  m7: {
+    lancamento: "Percentual de impostos sobre vendas (Simples, ICMS, ISS…) e percentual de comissões/gastos com vendas (comissão, propaganda, taxa de cartão) — aplicados sobre o Faturamento do Módulo 5.",
+    exemplo: "8% de impostos + 3% de comissão = 11% sobre R$ 8.940 de faturamento = R$ 983,40 de Custo de Comercialização.",
+  },
+  m8: {
+    lancamento: "Não precisa digitar de novo — a plataforma calcula automaticamente a partir da quantidade vendida (Módulo 5) e do custo de matéria-prima por unidade (Módulo 6).",
+    exemplo: "600 pães vendidos × R$ 2,25 de custo de matéria-prima cada = R$ 1.350 de CMD no mês.",
+  },
+  m9: {
+    lancamento: "Para cada função/cargo da equipe: nome da função, quantidade de pessoas, salário e percentual de encargos sociais (FGTS, férias, 13º, INSS…).",
+    exemplo: "1 padeiro, salário R$ 1.800, encargos de 35% → custo real de R$ 2.430/mês com essa função.",
+  },
+  m10: {
+    lancamento: "Não precisa digitar de novo — usa os bens já lançados no Módulo 1. Só é preciso informar a vida útil (em anos) de cada categoria de bem.",
+    exemplo: "Forno de R$ 8.500 com vida útil de 10 anos → R$ 8.500 ÷ 10 ÷ 12 = R$ 70,83 de depreciação por mês.",
+  },
+  m11: {
+    lancamento: "Para cada custo fixo (aluguel, água, luz, internet, contador…): descrição e valor. A Mão de Obra (Módulo 9) e a Depreciação (Módulo 10) entram automaticamente na soma.",
+    exemplo: "Aluguel R$ 1.200 + Água/Luz R$ 400 + Mão de Obra R$ 2.430 + Depreciação R$ 70,83 = R$ 4.100,83 de Custo Fixo Total.",
+  },
+  m12: {
+    lancamento: "Não precisa digitar nada — a plataforma monta o Demonstrativo de Resultados sozinha, juntando tudo que já foi lançado nos módulos anteriores.",
+    exemplo: "Faturamento R$ 8.940 − Custos Variáveis (Comercialização + CMD) R$ 2.333,40 − Custos Fixos R$ 4.100,83 = Resultado Operacional de R$ 2.505,77/mês.",
+  },
+  m13: {
+    lancamento: "Também é automático — a plataforma calcula os 4 indicadores a partir de tudo que já foi preenchido.",
+    exemplo: "Com Custo Fixo de R$ 4.100,83 e margem de contribuição de 63%, o Ponto de Equilíbrio fica perto de R$ 6.500/mês de faturamento.",
+  },
+};
+
 const uid = () => Math.random().toString(36).slice(2, 10);
 const codigoTurma = () => Math.random().toString(36).slice(2, 8).toUpperCase();
 
@@ -1920,6 +1978,53 @@ function ComentariosPanel({ comentarios, onAdd, autor, readOnlyInput, moduloFixo
 // WORKSPACE DO ALUNO
 // ============================================================================
 
+function GuiaModulosView() {
+  const [aberto, setAberto] = useState(null);
+  return (
+    <Card className="p-6 mt-6">
+      <SectionTitle icon={ListChecks} sub="O que cada módulo pede, a fórmula usada e um exemplo com números — clique num módulo para abrir.">Guia dos 13 módulos</SectionTitle>
+      <div className="divide-y divide-slate-800">
+        {MODULOS.map((m) => {
+          const Icon = m.icon;
+          const t = TEORIA[m.id];
+          const extra = GUIA_MODULOS_EXTRA[m.id];
+          const aberto_ = aberto === m.id;
+          return (
+            <div key={m.id}>
+              <button onClick={() => setAberto(aberto_ ? null : m.id)} className="w-full flex items-center gap-3 py-3 text-left">
+                <div className="w-8 h-8 rounded-full bg-slate-900 border border-amber-500/40 text-amber-500 flex items-center justify-center text-[11px] font-bold shrink-0">{String(m.n).padStart(2, "0")}</div>
+                <Icon size={16} className="text-sky-400 shrink-0" />
+                <span className="text-sm font-semibold text-slate-200 flex-1">{m.nome}</span>
+                {aberto_ ? <ChevronDown size={16} className="text-slate-500 shrink-0" /> : <ChevronRight size={16} className="text-slate-500 shrink-0" />}
+              </button>
+              {aberto_ && (
+                <div className="pb-5 pl-11 pr-2 space-y-3">
+                  <div>
+                    <div className="text-[11px] font-bold text-amber-500 uppercase tracking-wide mb-1">O que é</div>
+                    <p className="text-sm text-slate-300 leading-relaxed">{t.conceito}</p>
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-bold text-amber-500 uppercase tracking-wide mb-1">O que lançar</div>
+                    <p className="text-sm text-slate-300 leading-relaxed">{extra.lancamento}</p>
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-bold text-amber-500 uppercase tracking-wide mb-1">Fórmula</div>
+                    <pre className="text-xs text-sky-300 bg-slate-900 border border-slate-700 rounded-md px-3 py-2 whitespace-pre-wrap font-mono">{t.formula}</pre>
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-bold text-amber-500 uppercase tracking-wide mb-1">Exemplo</div>
+                    <p className="text-sm text-slate-400 leading-relaxed italic">{extra.exemplo}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 function ManualAlunoView({ equipe, onIrPara, contexto = "aluno" }) {
   return (
     <div>
@@ -1964,6 +2069,8 @@ function ManualAlunoView({ equipe, onIrPara, contexto = "aluno" }) {
           ))}
         </div>
       </Card>
+
+      <GuiaModulosView />
 
       <div className="grid sm:grid-cols-3 gap-3 mt-6">
         <StatCard label="Módulos a preencher" value="13" tone="blue" small />

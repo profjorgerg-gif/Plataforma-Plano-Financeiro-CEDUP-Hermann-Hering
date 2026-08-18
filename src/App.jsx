@@ -590,6 +590,16 @@ const TUTORIAIS = [
   { id: "aluno-modulo", categoria: "aluno", titulo: "Como preencher um módulo", descricao: "Passo a passo dentro de um módulo financeiro, do início ao fim.", youtubeId: null },
   { id: "aluno-analise", categoria: "aluno", titulo: "Análise do Negócio", descricao: "Como interpretar os gráficos, os alertas e salvar uma versão.", youtubeId: null },
   { id: "aluno-suporte", categoria: "aluno", titulo: "Como usar o Suporte", descricao: "Como falar com o(a) professor(a) ou reportar um problema do sistema.", youtubeId: null },
+  // Um tutorial por módulo (13 no total) — todos "em breve" por enquanto.
+  // Para adicionar o vídeo de um módulo específico, é só trocar o
+  // youtubeId dele de null para o código do vídeo no YouTube.
+  ...MODULOS.map((m) => ({
+    id: `modulo-${m.id}`,
+    categoria: "aluno",
+    titulo: `Módulo ${m.n} — ${m.nome}`,
+    descricao: "Como preencher este módulo, com exemplo de lançamento.",
+    youtubeId: null,
+  })),
 ];
 
 function TutorialCard({ t }) {
@@ -632,7 +642,8 @@ function TutorialCard({ t }) {
 }
 
 function TutoriaisView({ categoria }) {
-  const itens = TUTORIAIS.filter((t) => t.categoria === categoria);
+  const gerais = TUTORIAIS.filter((t) => t.categoria === categoria && !t.id.startsWith("modulo-"));
+  const modulos = TUTORIAIS.filter((t) => t.categoria === categoria && t.id.startsWith("modulo-"));
   return (
     <div>
       <div className="mb-8">
@@ -640,9 +651,19 @@ function TutoriaisView({ categoria }) {
         <h1 className="text-3xl font-bold text-slate-50 mb-3">Tutoriais</h1>
         <p className="text-slate-400 max-w-2xl">Vídeos rápidos mostrando como usar as principais funções da plataforma. Ainda vamos gravando aos poucos — os que estiverem marcados "Vídeo em breve" chegam nas próximas atualizações.</p>
       </div>
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {itens.map((t) => <TutorialCard key={t.id} t={t} />)}
-      </div>
+      {gerais.length > 0 && (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+          {gerais.map((t) => <TutorialCard key={t.id} t={t} />)}
+        </div>
+      )}
+      {modulos.length > 0 && (
+        <>
+          <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wide mt-8 mb-3">Por módulo</h2>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {modulos.map((t) => <TutorialCard key={t.id} t={t} />)}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1261,6 +1282,38 @@ function TeoriaBox({ modId }) {
         <div className="px-4 pb-4 text-sm text-amber-200 space-y-2">
           <p>{t.conceito}</p>
           <pre className="bg-black/20 border border-amber-800/60 rounded-md p-2 text-xs whitespace-pre-wrap font-mono text-slate-200">{t.formula}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Mesma ideia da TeoriaBox (clica pra abrir, clica de novo pra esconder),
+// mas focado no "como preencher na prática": o que lançar e um exemplo com
+// números — usa os mesmos dados do Guia dos 13 Módulos do Manual do Aluno.
+function ExemploLancamentoBox({ modId }) {
+  const [open, setOpen] = useState(false);
+  const extra = GUIA_MODULOS_EXTRA[modId];
+  if (!extra) return null;
+  return (
+    <div className="mb-5 border border-sky-800/60 bg-sky-950/20 rounded-lg overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold text-sky-400 hover:bg-sky-900/30 transition"
+      >
+        <span className="flex items-center gap-2"><ListChecks size={16} /> Exemplo de lançamento</span>
+        {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 text-sm text-sky-100 space-y-3">
+          <div>
+            <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide mb-1">O que lançar</div>
+            <p className="text-slate-300">{extra.lancamento}</p>
+          </div>
+          <div>
+            <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide mb-1">Exemplo</div>
+            <p className="text-slate-300 italic">{extra.exemplo}</p>
+          </div>
         </div>
       )}
     </div>
@@ -2355,6 +2408,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
             <SectionTitle icon={m.icon} sub={`Módulo ${m.n} de 13`}>{m.nome}</SectionTitle>
             <TeoriaBox modId={m.id} />
+            <ExemploLancamentoBox modId={m.id} />
             <Card className="p-5">
               {m.id === "m1" && <M1Form data={lanc.m1} update={(v) => updateModulo("m1", v)} />}
               {m.id === "m2" && <M2Form data={lanc.m2} update={(v) => updateModulo("m2", v)} calc={calc} />}

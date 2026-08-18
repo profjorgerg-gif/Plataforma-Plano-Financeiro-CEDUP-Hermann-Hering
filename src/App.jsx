@@ -1871,6 +1871,77 @@ function ComentariosPanel({ comentarios, onAdd, autor, readOnlyInput, moduloFixo
 // WORKSPACE DO ALUNO
 // ============================================================================
 
+// Visualizador de PDF: usa uma Blob URL (criada no navegador a partir do
+// base64 guardado no Firestore) em vez de uma "data URI" gigante direto no
+// código — mais leve para o código e mais robusto para o navegador exibir.
+function VisualizadorPDF({ base64, titulo, nomeArquivo }) {
+  const [blobUrl, setBlobUrl] = useState(null);
+  useEffect(() => {
+    if (!base64) return;
+    let url;
+    try {
+      url = base64ParaBlobUrl(base64);
+      setBlobUrl(url);
+    } catch {}
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [base64]);
+
+  if (!blobUrl) return <div className="text-sm text-slate-500 py-10 text-center">Carregando manual…</div>;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3 gap-3">
+        <p className="text-xs text-slate-500">Se o visualizador não aparecer corretamente, use "Baixar PDF".</p>
+        <a href={blobUrl} download={nomeArquivo || "manual.pdf"} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0">
+          <FileBarChart size={15} /> Baixar PDF
+        </a>
+      </div>
+      <iframe src={blobUrl} title={titulo} className="w-full rounded-lg border border-slate-700" style={{ height: "78vh", background: "#1e293b" }} />
+    </div>
+  );
+}
+
+// Upload do PDF (só Usuário Mestre vê isso) — lê o arquivo escolhido, converte
+// para base64 no navegador e guarda no Firestore. Não passa pelo código.
+function UploadManualPDF({ chave, label, onEnviado }) {
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  const escolherArquivo = (e) => {
+    const arquivo = e.target.files?.[0];
+    if (!arquivo) return;
+    if (arquivo.type !== "application/pdf") { setErro("Escolha um arquivo PDF."); return; }
+    if (arquivo.size > 900 * 1024) { setErro("Esse PDF está muito grande (máx. ~900 KB). Tente comprimir as imagens dele."); return; }
+    setErro(""); setEnviando(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const base64 = String(reader.result).split(",")[1];
+        await salvarManualPDF(chave, base64, arquivo.name);
+        onEnviado?.();
+      } catch {
+        setErro("Não foi possível salvar o PDF. Tente novamente.");
+      }
+      setEnviando(false);
+    };
+    reader.onerror = () => { setErro("Não foi possível ler o arquivo."); setEnviando(false); };
+    reader.readAsDataURL(arquivo);
+  };
+
+  return (
+    <div className="bg-slate-900 border border-dashed border-amber-500/50 rounded-md p-4 text-center mb-4">
+      <Upload size={22} className="mx-auto text-amber-500 mb-2" />
+      <p className="text-sm text-slate-300 mb-1">{label}</p>
+      <p className="text-xs text-slate-500 mb-3">Só Usuários Mestre veem esta opção.</p>
+      <label className="inline-block bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm cursor-pointer">
+        {enviando ? "Enviando…" : "Escolher arquivo PDF"}
+        <input type="file" accept="application/pdf" onChange={escolherArquivo} disabled={enviando} className="hidden" />
+      </label>
+      {erro && <p className="text-xs text-rose-400 mt-2">{erro}</p>}
+    </div>
+  );
+}
+
 function ManualAlunoView({ equipe, onIrPara, contexto = "aluno", ehMestre = false }) {
   const [versao, setVersao] = useState(0);
   const manual = useManualPDF("aluno", versao);

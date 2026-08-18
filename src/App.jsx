@@ -1042,18 +1042,21 @@ async function listarUsuarios() {
 
 // Hook para a tela de um único usuário (ex.: o perfil da pessoa logada).
 function useUsuario(uid) {
-  const [perfil, setPerfil] = useState(undefined);
+  // Guarda o uid junto com o perfil, e só devolve o perfil se ele for
+  // realmente da conta atual — evita um instante, logo após sair e entrar
+  // de novo, em que o valor "antigo" (de antes de sair) ainda estaria
+  // disponível e faria o sistema achar, por engano, que a conta é nova.
+  const [estado, setEstado] = useState({ uid: null, perfil: undefined });
   useEffect(() => {
-    if (!uid) { setPerfil(null); return; }
     let alive = true;
+    if (!uid) { setEstado({ uid, perfil: null }); return; }
     (async () => {
-      setPerfil(undefined);
       const p = await buscarUsuario(uid);
-      if (alive) setPerfil(p);
+      if (alive) setEstado({ uid, perfil: p });
     })();
     return () => { alive = false; };
   }, [uid]);
-  return perfil;
+  return estado.uid === uid ? estado.perfil : undefined;
 }
 
 // Hook para telas de gestão que precisam ver todo mundo (Aprovações, Usuários...).

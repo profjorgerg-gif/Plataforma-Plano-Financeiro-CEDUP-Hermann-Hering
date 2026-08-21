@@ -903,6 +903,15 @@ function SuporteDetalhe({ chamado: c, ctx, aba, onVoltar, onEnviar, onEncerrar, 
   const ehMestreAqui = ctx.mestre && aba === "sistema";
   const ehProfessorPedagogico = aba === "pedagogico" && ctx.papel === "professor";
 
+  // Uma vez que o Mestre coloca o chamado "Em análise" ou o encaminha para
+  // desenvolvimento, o controle passa a ser só dele — o chamado só volta a
+  // ficar "aberto" para quem originou se o Mestre pedir mais informações
+  // (status "Aguardando resposta"). Isso organiza o fluxo: fica claro de
+  // quem é a vez de agir em cada chamado.
+  const CONTROLADOS_PELO_ADMIN = ["Em análise", "Encaminhado para desenvolvimento", "Aprovado para desenvolvimento"];
+  const controladoPeloAdmin = aba === "sistema" && CONTROLADOS_PELO_ADMIN.includes(c.status);
+  const souOriginadorSemControle = controladoPeloAdmin && !ehMestreAqui;
+
   const enviar = async (novoStatus, prazoMs) => {
     if (!msg.trim()) return;
     await onEnviar(msg.trim(), novoStatus, prazoMs);
@@ -937,7 +946,12 @@ function SuporteDetalhe({ chamado: c, ctx, aba, onVoltar, onEnviar, onEncerrar, 
           })}
         </div>
 
-        {!estaEncerrado ? (
+        {souOriginadorSemControle ? (
+          <div className="bg-slate-900 border border-slate-700 rounded-md p-4 text-sm text-slate-400 flex items-start gap-3">
+            <ClipboardCheck size={18} className="text-amber-500 shrink-0 mt-0.5" />
+            <span>Este chamado está sendo tratado por um Usuário Mestre ({c.status}). Você será avisado aqui se for necessário complementar alguma informação.</span>
+          </div>
+        ) : !estaEncerrado ? (
           <>
             <Field label="Nova mensagem">
               <textarea value={msg} onChange={(e) => setMsg(e.target.value)} rows={3}
@@ -975,6 +989,16 @@ function SuporteDetalhe({ chamado: c, ctx, aba, onVoltar, onEnviar, onEncerrar, 
 
 function SuporteRelatorio({ chamados, onFechar }) {
   const agora = new Date();
+  // O navegador usa o <title> da página como nome sugerido ao "Salvar como
+  // PDF" — então montamos um nome com o(s) código(s) de protocolo antes de
+  // imprimir, e devolvemos o título original ao sair desta tela.
+  const tituloOriginalRef = useRef(document.title);
+  useEffect(() => {
+    const protocolos = chamados.map((c) => c.numero).join("_");
+    document.title = `Relatorio-Chamados-${protocolos}`;
+    return () => { document.title = tituloOriginalRef.current; };
+  }, [chamados]);
+
   return (
     <div>
       <div className="no-print flex items-center justify-between mb-5">
@@ -982,14 +1006,16 @@ function SuporteRelatorio({ chamados, onFechar }) {
         <button onClick={() => window.print()} className="flex items-center gap-2 bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm"><Printer size={14} /> Imprimir / Baixar PDF</button>
       </div>
       <h1 className="text-2xl font-bold text-slate-50 mb-1">Relatório de Chamados para Desenvolvimento</h1>
-      <p className="text-sm text-slate-500 mb-6">Gerado em {agora.toLocaleDateString("pt-BR")} às {agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · {chamados.length} chamado(s)</p>
+      <p className="text-sm text-slate-500 mb-6">Gerado em {agora.toLocaleDateString("pt-BR")} às {agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · {chamados.length} chamado(s) · Protocolos: {chamados.map((c) => c.numero).join(", ")}</p>
       <div className="space-y-5">
         {chamados.map((c) => (
           <Card key={c.id} className="p-5">
             <div className="text-sm mb-3">
               <div><b className="text-slate-200">Protocolo:</b> <span className="text-slate-400">#{c.numero}</span></div>
+              <div><b className="text-slate-200">Tipo:</b> <span className="text-slate-400">{c.tipo === "pedagogico" ? "Pedagógico" : "Sistema"}</span></div>
               <div><b className="text-slate-200">Assunto:</b> <span className="text-slate-400">{c.assunto}</span></div>
-              <div><b className="text-slate-200">Autor(a):</b> <span className="text-slate-400">{c.autorNome}</span></div>
+              <div><b className="text-slate-200">Autor(a):</b> <span className="text-slate-400">{c.autorNome} ({c.autorPapel === "professor" ? "professor(a)" : "aluno(a)"})</span></div>
+              {c.turmaNome && <div><b className="text-slate-200">Turma:</b> <span className="text-slate-400">{c.turmaNome}</span></div>}
               <div><b className="text-slate-200">Aberto em:</b> <span className="text-slate-400">{new Date(c.criadoEm).toLocaleDateString("pt-BR")}</span></div>
               <div><b className="text-slate-200">Status no momento do relatório:</b> <span className="text-slate-400">{c.status}</span></div>
             </div>

@@ -765,6 +765,12 @@ function SuporteView({ ctx }) {
     await carregar();
   };
 
+  // Só mostra/imprime o relatório dos chamados escolhidos — sem mudar o
+  // status de nada. Fica sempre disponível, independente do filtro ou do
+  // status de cada chamado (diferente de "Encaminhar para desenvolvimento",
+  // que já muda o status e só faz sentido uma vez por chamado).
+  const imprimirSelecionados = (lista) => { setRelatorio(lista); };
+
   if (relatorio) {
     return <SuporteRelatorio chamados={relatorio} onFechar={() => setRelatorio(null)} />;
   }
@@ -821,19 +827,22 @@ function SuporteView({ ctx }) {
                 ))}
               </div>
             ) : <div />}
-            <button onClick={abrirNovo} className="no-print bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm flex items-center gap-2 shrink-0">
-              <Plus size={15} /> Novo chamado
-            </button>
-          </div>
-
-          {isMestreDoSistema && selecionados.size > 0 && (
-            <div className="no-print bg-slate-900 border border-amber-500/40 rounded-md p-3 flex items-center justify-between gap-3 mb-4 text-sm">
-              <span className="text-slate-300">{selecionados.size} chamado(s) selecionado(s)</span>
-              <button onClick={() => gerarRelatorio(chamados.filter((c) => selecionados.has(c.id)))} className="flex items-center gap-2 bg-amber-500 text-slate-900 font-bold px-3 py-1.5 rounded-md hover:bg-amber-400 text-xs">
-                <Printer size={13} /> Gerar relatório para desenvolvimento
+            <div className="flex gap-2 shrink-0">
+              {isMestreDoSistema && (
+                <button
+                  onClick={() => imprimirSelecionados(chamados.filter((c) => selecionados.has(c.id)))}
+                  disabled={selecionados.size === 0}
+                  title={selecionados.size === 0 ? "Marque um ou mais chamados na lista para imprimir/salvar em PDF" : "Imprimir ou salvar em PDF os chamados marcados"}
+                  className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 font-semibold px-4 py-2 rounded-md hover:border-amber-500 text-sm disabled:opacity-40 disabled:hover:border-slate-700"
+                >
+                  <Printer size={15} /> Imprimir / Salvar PDF{selecionados.size > 0 ? ` (${selecionados.size})` : ""}
+                </button>
+              )}
+              <button onClick={abrirNovo} className="no-print bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm flex items-center gap-2">
+                <Plus size={15} /> Novo chamado
               </button>
             </div>
-          )}
+          </div>
 
           {ordenados.length === 0 && <Card className="p-8 text-center text-slate-500 text-sm">Nenhum chamado {isMestreDoSistema ? `com o filtro "${filtro}"` : "por aqui ainda"}.</Card>}
 
@@ -1005,7 +1014,7 @@ function SuporteRelatorio({ chamados, onFechar }) {
         <button onClick={onFechar} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Voltar ao Suporte</button>
         <button onClick={() => window.print()} className="flex items-center gap-2 bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm"><Printer size={14} /> Imprimir / Baixar PDF</button>
       </div>
-      <h1 className="text-2xl font-bold text-slate-50 mb-1">Relatório de Chamados para Desenvolvimento</h1>
+      <h1 className="text-2xl font-bold text-slate-50 mb-1">Relatório de Chamados</h1>
       <p className="text-sm text-slate-500 mb-6">Gerado em {agora.toLocaleDateString("pt-BR")} às {agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · {chamados.length} chamado(s) · Protocolos: {chamados.map((c) => c.numero).join(", ")}</p>
       <div className="space-y-5">
         {chamados.map((c) => (

@@ -1121,6 +1121,14 @@ function useSharedObject(key, fallback) {
   const [value, setValue] = useState(undefined);
   const ultimaEdicaoLocalRef = useRef(0);
   const ultimoEscritoRef = useRef(null);
+  // Salvamento com pausa: em vez de gravar no Firestore a cada tecla
+  // digitada, espera ~1s de silêncio antes de gravar de verdade. Reduz
+  // bastante o número de escritas quando várias pessoas usam a plataforma
+  // ao mesmo tempo, sem mudar nada na experiência de quem está digitando
+  // (a tela sempre reflete o que foi digitado na hora — só o envio pro
+  // banco de dados é que espera um instante).
+  const debounceRef = useRef(null);
+  const pendenteRef = useRef(null);
 
   useEffect(() => {
     if (!key) { setValue(undefined); return; }
@@ -1166,13 +1174,36 @@ function useSharedObject(key, fallback) {
     };
   }, [key]);
 
-  const save = useCallback(async (next) => {
+  const gravarPendente = useCallback(async () => {
+    if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
+    const pendente = pendenteRef.current;
+    if (!pendente || pendente.key !== key) return;
+    pendenteRef.current = null;
+    ultimoEscritoRef.current = pendente.json;
+    try { await window.storage.set(key, pendente.json, true); } catch {}
+  }, [key]);
+
+  // Garante que nada fica "perdido" na fila se a pessoa trocar de aba,
+  // minimizar a janela ou sair da página com um salvamento pendente.
+  useEffect(() => {
+    const aoEsconder = () => { if (document.hidden) gravarPendente(); };
+    document.addEventListener("visibilitychange", aoEsconder);
+    window.addEventListener("pagehide", gravarPendente);
+    return () => {
+      document.removeEventListener("visibilitychange", aoEsconder);
+      window.removeEventListener("pagehide", gravarPendente);
+      gravarPendente();
+    };
+  }, [gravarPendente]);
+
+  const save = useCallback((next) => {
     ultimaEdicaoLocalRef.current = Date.now();
     setValue(next);
     const json = JSON.stringify(next);
-    ultimoEscritoRef.current = json;
-    try { await window.storage.set(key, json, true); } catch {}
-  }, [key]);
+    pendenteRef.current = { key, json };
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(gravarPendente, 1000);
+  }, [key, gravarPendente]);
 
   return [value, save];
 }
@@ -2245,6 +2276,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
   const [aba, setAba] = useState("inicio");
   const [menuAberto, setMenuAberto] = useState(false);
   const [confirmSairAberto, setConfirmSairAberto] = useState(false);
+  const [decisaoGestorTomada, setDecisaoGestorTomada] = useState(false);
   const irPara = (id) => { setAba(id); setMenuAberto(false); };
 
   const lanc = mergeLancamentos(dados?.lancamentos);
@@ -2266,14 +2298,58 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aba]);
 
+  // Sinal de vida do Gestor: a cada 60s (só com a aba visível), atualiza
+  // "ultimoPing" para avisar que ainda está ativo. Usa uma ref para sempre
+  // ler o dado mais recente na hora de gravar — evita sobrescrever, por
+  // engano, um lançamento feito nos últimos segundos com uma cópia antiga.
+  const dadosRef = useRef(dados);
+  useEffect(() => { dadosRef.current = dados; }, [dados]);
+  useEffect(() => {
+    const intervalo = setInterval(() => {
+      const d = dadosRef.current;
+      const g = d?.gestor;
+      if (!g || g.uid !== user.uid) return;
+      if (document.visibilityState === "visible") {
+        setDados({ ...d, gestor: { ...g, ultimoPing: Date.now() } });
+      }
+    }, 60000);
+    return () => clearInterval(intervalo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.uid]);
+
   if (dados === undefined) return <LoadingScreen />;
 
+  // ===========================================================================
+  // GESTOR ÚNICO POR EMPRESA — evita que várias pessoas da mesma equipe
+  // gravem dados ao mesmo tempo (o que ajuda bastante o uso do banco de
+  // dados numa turma grande). O primeiro a entrar decide se assume a
+  // gestão; enquanto alguém estiver gerindo, os demais entram como
+  // visualizadores (podem ver tudo, mas não lançar dados). Se o Gestor
+  // ficar mais de 3 minutos sem sinal de vida (aba fechada/minimizada por
+  // muito tempo), a gestão é liberada automaticamente para a próxima
+  // pessoa que decidir.
+  const GESTOR_TIMEOUT_MS = 3 * 60 * 1000;
+  const gestor = dados.gestor || null;
+  const gestorAtivo = !!(gestor && Date.now() - (gestor.ultimoPing || 0) < GESTOR_TIMEOUT_MS);
+  const souGestor = gestorAtivo && gestor.uid === user.uid;
+  const souVisualizador = gestorAtivo && !souGestor;
+  const gestaoLivre = !gestorAtivo;
+
+  const assumirGestao = () => {
+    setDecisaoGestorTomada(true);
+    setDados({ ...dados, gestor: { uid: user.uid, nome: user.nome, ultimoPing: Date.now() } });
+  };
+  const continuarVisualizando = () => setDecisaoGestorTomada(true);
+  const liberarGestao = () => setDados({ ...dados, gestor: null });
+
   const updateModulo = (modId, val) => {
+    if (souVisualizador) return; // trava extra — a tela já fica sem interação para quem visualiza
     const novo = { ...dados, lancamentos: { ...lanc, [modId]: val } };
     setDados(novo);
   };
 
   const salvarVersao = () => {
+    if (souVisualizador) return;
     const nota = prompt("Descreva brevemente o ajuste feito nesta versão (opcional):") || "";
     const snap = { timestamp: Date.now(), indicadores: calc, nota };
     setDados({ ...dados, historico: [...(dados.historico || []), snap] });
@@ -2361,7 +2437,32 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
 
       {onVerNovidades && <NovidadesOverlay perfil={{ ultimaVersaoVista }} onFechar={onVerNovidades} onIrParaHistorico={() => { onVerNovidades(); irPara("novidades"); }} />}
 
+      {gestaoLivre && !decisaoGestorTomada && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-5">
+          <div className="bg-slate-900 border border-amber-500/50 rounded-xl max-w-sm w-full p-6 text-center">
+            <UserCog size={30} className="mx-auto text-amber-500 mb-3" />
+            <h3 className="font-bold text-slate-100 mb-2">Você vai gerir os lançamentos agora?</h3>
+            <p className="text-xs text-slate-400 mb-5">Só uma pessoa da equipe {equipe.nomeNegocio} lança dados por vez — evita que dois integrantes sobrescrevam um ao outro. Os demais acompanham em modo de visualização.</p>
+            <button onClick={assumirGestao} className="w-full bg-amber-500 text-slate-900 font-bold py-2.5 rounded-md hover:bg-amber-400 mb-2">Sim, eu vou lançar agora</button>
+            <button onClick={continuarVisualizando} className="w-full text-sm text-slate-400 hover:text-slate-100 py-1.5">Só visualizar por enquanto</button>
+          </div>
+        </div>
+      )}
+
       <main className="flex-1 overflow-y-auto p-4 pt-20 md:p-8 md:pt-8 max-w-5xl mx-auto w-full">
+        {souVisualizador && (
+          <div className="mb-4 bg-slate-900 border border-sky-800/60 rounded-md px-4 py-2.5 flex items-center gap-2.5 text-sm text-sky-300">
+            <Eye size={16} className="shrink-0" />
+            <span><b>{gestor.nome}</b> está gerindo os lançamentos agora. Você está no modo visualização.</span>
+          </div>
+        )}
+        {souGestor && (
+          <div className="mb-4 bg-slate-900 border border-amber-800/60 rounded-md px-4 py-2.5 flex items-center justify-between gap-2.5 text-sm text-amber-300">
+            <span className="flex items-center gap-2.5"><UserCog size={16} className="shrink-0" /> Você é quem está gerindo os lançamentos agora.</span>
+            <button onClick={liberarGestao} className="text-xs font-semibold text-slate-400 hover:text-slate-100 underline shrink-0">Liberar gestão</button>
+          </div>
+        )}
+
         {aba === "manual" && <ManualAlunoView equipe={equipe} onIrPara={setAba} />}
 
         {aba === "inicio" && (
@@ -2409,7 +2510,10 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
             <SectionTitle icon={m.icon} sub={`Módulo ${m.n} de 13`}>{m.nome}</SectionTitle>
             <TeoriaBox modId={m.id} />
             <ExemploLancamentoBox modId={m.id} />
-            <Card className="p-5">
+            {souVisualizador && (
+              <div className="mb-3 text-xs text-sky-400 flex items-center gap-1.5"><Eye size={13} /> Modo visualização — os campos abaixo estão travados enquanto {gestor.nome} estiver gerindo.</div>
+            )}
+            <Card className={`p-5 ${souVisualizador ? "opacity-70 pointer-events-none select-none" : ""}`}>
               {m.id === "m1" && <M1Form data={lanc.m1} update={(v) => updateModulo("m1", v)} />}
               {m.id === "m2" && <M2Form data={lanc.m2} update={(v) => updateModulo("m2", v)} calc={calc} />}
               {m.id === "m3" && <M3Form data={lanc.m3} update={(v) => updateModulo("m3", v)} />}
@@ -2443,7 +2547,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
           <div>
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
             <SectionTitle icon={TrendingUp} sub="Acompanhe os indicadores consolidados e registre ajustes ao longo do projeto.">Análise do Negócio</SectionTitle>
-            <AnaliseNegocio calc={calc} historico={dados.historico} onSalvarVersao={salvarVersao} />
+            <AnaliseNegocio calc={calc} historico={dados.historico} onSalvarVersao={salvarVersao} readOnly={souVisualizador} />
           </div>
         )}
 
@@ -3425,12 +3529,30 @@ function GestaoRelatoriosView({ turmas }) {
   );
 }
 
+async function buscarEquipesComDados(turmaId) {
+  try {
+    const r = await window.storage.get(`equipes_${turmaId}`, true);
+    const equipes = r ? JSON.parse(r.value) : [];
+    return await Promise.all(equipes.map(async (eq) => {
+      let dados = { lancamentos: defaultLancamentos(), historico: [], comentarios: [] };
+      try {
+        const rd = await window.storage.get(`dados_equipe_${eq.id}`, true);
+        if (rd) dados = JSON.parse(rd.value);
+      } catch {}
+      return { equipe: eq, dados };
+    }));
+  } catch { return []; }
+}
+
 function GestaoBackupView({ turmas, setTurmas }) {
   const [turmaId, setTurmaId] = useState("");
   const turma = turmas.find((t) => t.id === turmaId);
   const dadosEquipes = useEquipesComDados(turmaId);
   const [status, setStatus] = useState("");
   const [excluindo, setExcluindo] = useState(false);
+  const [ultimoBackupTurmaId, setUltimoBackupTurmaId] = useState(null);
+  const [periodoSemestre, setPeriodoSemestre] = useState("");
+  const [gerandoSemestre, setGerandoSemestre] = useState(false);
 
   // Apaga permanentemente uma turma: empresas/equipes, lançamentos de cada uma,
   // a lista oficial de alunos importada e as contas dos alunos que estavam
@@ -3438,6 +3560,12 @@ function GestaoBackupView({ turmas, setTurmas }) {
   // sido feito o backup, para abrir espaço para as turmas do próximo período.
   const excluirTurma = async () => {
     if (!turma) return;
+    if (ultimoBackupTurmaId !== turma.id) {
+      const semBackup = window.confirm(
+        `Você ainda não exportou um backup desta turma agora nesta sessão.\n\nRecomendamos clicar em "Exportar backup" antes de continuar. Tem certeza que quer excluir "${turma.nome}" sem baixar o backup agora?`
+      );
+      if (!semBackup) return;
+    }
     const ok = window.confirm(
       `Tem certeza que deseja excluir a turma "${turma.nome}"?\n\nIsso vai apagar permanentemente todas as empresas, lançamentos, a lista oficial de alunos e as contas dos alunos vinculados a ela. Essa ação não pode ser desfeita.`
     );
@@ -3460,7 +3588,30 @@ function GestaoBackupView({ turmas, setTurmas }) {
     if (!turma || !dadosEquipes) return;
     const pacote = { versaoBackup: 1, geradoEm: new Date().toISOString(), turma, equipes: dadosEquipes.map(({ equipe, dados }) => ({ equipe, dados })) };
     baixarArquivo(`backup_${turma.nome.replace(/\s+/g, "_")}.json`, JSON.stringify(pacote, null, 2));
+    setUltimoBackupTurmaId(turma.id);
     setStatus("Backup exportado com sucesso.");
+  };
+
+  // Backup do Semestre: reúne TODAS as turmas do professor num único
+  // arquivo, com nome padronizado — útil no fechamento do período letivo,
+  // para não precisar exportar turma por turma.
+  const exportarBackupSemestre = async () => {
+    if (!turmas.length) return;
+    setGerandoSemestre(true);
+    setStatus("Reunindo os dados de todas as turmas…");
+    try {
+      const porTurma = await Promise.all(turmas.map(async (t) => ({
+        turma: t,
+        equipes: await buscarEquipesComDados(t.id),
+      })));
+      const rotulo = periodoSemestre.trim() || new Date().getFullYear().toString();
+      const pacote = { versaoBackup: 1, tipo: "semestre", periodo: rotulo, geradoEm: new Date().toISOString(), turmas: porTurma };
+      baixarArquivo(`Backup-Semestre-${rotulo.replace(/\s+/g, "_")}.json`, JSON.stringify(pacote, null, 2));
+      setStatus(`Backup do semestre "${rotulo}" gerado com ${turmas.length} turma(s).`);
+    } catch {
+      setStatus("Não foi possível gerar o backup do semestre. Tente novamente.");
+    }
+    setGerandoSemestre(false);
   };
 
   const importarBackup = async (file) => {
@@ -3488,6 +3639,18 @@ function GestaoBackupView({ turmas, setTurmas }) {
   return (
     <div>
       <SectionTitle icon={Save} sub="Exporte os dados de uma turma para guardar uma cópia de segurança, ou restaure um backup anterior.">Backup</SectionTitle>
+
+      <Card className="p-5 mb-5 border-amber-800/50">
+        <h3 className="font-bold text-slate-100 mb-1 flex items-center gap-2"><History size={16} className="text-amber-500" /> Backup do Semestre</h3>
+        <p className="text-sm text-slate-400 mb-3">No fechamento do período letivo, gere um único arquivo com todas as {turmas.length} turma(s) de uma vez, em vez de exportar turma por turma.</p>
+        <div className="flex flex-wrap gap-2">
+          <TxtInput value={periodoSemestre} onChange={setPeriodoSemestre} placeholder="Ex.: 2026-1" />
+          <button onClick={exportarBackupSemestre} disabled={gerandoSemestre || !turmas.length} className="bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40 text-sm whitespace-nowrap">
+            {gerandoSemestre ? "Gerando…" : "Gerar backup do semestre"}
+          </button>
+        </div>
+      </Card>
+
       <SeletorTurma turmas={turmas} value={turmaId} onChange={setTurmaId} />
       {!turmaId && <Card className="p-8 text-center text-slate-500 mt-4">Selecione uma turma para exportar ou importar um backup.</Card>}
       {turmaId && (

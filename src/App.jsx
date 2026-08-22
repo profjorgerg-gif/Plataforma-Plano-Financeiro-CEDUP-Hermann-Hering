@@ -1,3 +1,4 @@
+// build: 2026-08-21_11h37m02s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -37,6 +38,16 @@ const MODULOS = [
   { id: "m12", n: 12, nome: "Demonstrativo de Resultados", icon: FileBarChart },
   { id: "m13", n: 13, nome: "Indicadores de Viabilidade", icon: Target },
 ];
+
+// Módulos onde faz sentido o professor dar uma nota de 0 a 10: são os que
+// exigem pesquisa/decisão real da equipe (o que comprar, que preço cobrar,
+// quantos funcionários...). Os demais (04, 08, 10, 12) só consolidam
+// automaticamente o que já foi decidido nesses módulos, então dar nota ali
+// avaliaria a mesma coisa duas vezes. O Módulo 13 é tratado à parte: não é
+// nota do cálculo (automático), e sim uma "nota final" de síntese sobre a
+// conclusão que a equipe tira da viabilidade do negócio.
+const NOTA_MODULOS_AVALIAVEIS = ["m1", "m2", "m3", "m5", "m6", "m7", "m9", "m11"];
+const NOTA_MODULO_FINAL = "m13";
 
 const TEORIA = {
   m1: { conceito: "Bens que a empresa precisa comprar para funcionar: máquinas, equipamentos, móveis, utensílios e veículos.", formula: "Total = Σ (Quantidade × Valor Unitário)" },
@@ -765,6 +776,12 @@ function SuporteView({ ctx }) {
     await carregar();
   };
 
+  // Só mostra/imprime o relatório dos chamados escolhidos — sem mudar o
+  // status de nada. Fica sempre disponível, independente do filtro ou do
+  // status de cada chamado (diferente de "Encaminhar para desenvolvimento",
+  // que já muda o status e só faz sentido uma vez por chamado).
+  const imprimirSelecionados = (lista) => { setRelatorio(lista); };
+
   if (relatorio) {
     return <SuporteRelatorio chamados={relatorio} onFechar={() => setRelatorio(null)} />;
   }
@@ -821,19 +838,22 @@ function SuporteView({ ctx }) {
                 ))}
               </div>
             ) : <div />}
-            <button onClick={abrirNovo} className="no-print bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm flex items-center gap-2 shrink-0">
-              <Plus size={15} /> Novo chamado
-            </button>
-          </div>
-
-          {isMestreDoSistema && selecionados.size > 0 && (
-            <div className="no-print bg-slate-900 border border-amber-500/40 rounded-md p-3 flex items-center justify-between gap-3 mb-4 text-sm">
-              <span className="text-slate-300">{selecionados.size} chamado(s) selecionado(s)</span>
-              <button onClick={() => gerarRelatorio(chamados.filter((c) => selecionados.has(c.id)))} className="flex items-center gap-2 bg-amber-500 text-slate-900 font-bold px-3 py-1.5 rounded-md hover:bg-amber-400 text-xs">
-                <Printer size={13} /> Gerar relatório para desenvolvimento
+            <div className="flex gap-2 shrink-0">
+              {isMestreDoSistema && (
+                <button
+                  onClick={() => imprimirSelecionados(chamados.filter((c) => selecionados.has(c.id)))}
+                  disabled={selecionados.size === 0}
+                  title={selecionados.size === 0 ? "Marque um ou mais chamados na lista para imprimir/salvar em PDF" : "Imprimir ou salvar em PDF os chamados marcados"}
+                  className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 font-semibold px-4 py-2 rounded-md hover:border-amber-500 text-sm disabled:opacity-40 disabled:hover:border-slate-700"
+                >
+                  <Printer size={15} /> Imprimir / Salvar PDF{selecionados.size > 0 ? ` (${selecionados.size})` : ""}
+                </button>
+              )}
+              <button onClick={abrirNovo} className="no-print bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm flex items-center gap-2">
+                <Plus size={15} /> Novo chamado
               </button>
             </div>
-          )}
+          </div>
 
           {ordenados.length === 0 && <Card className="p-8 text-center text-slate-500 text-sm">Nenhum chamado {isMestreDoSistema ? `com o filtro "${filtro}"` : "por aqui ainda"}.</Card>}
 
@@ -903,6 +923,15 @@ function SuporteDetalhe({ chamado: c, ctx, aba, onVoltar, onEnviar, onEncerrar, 
   const ehMestreAqui = ctx.mestre && aba === "sistema";
   const ehProfessorPedagogico = aba === "pedagogico" && ctx.papel === "professor";
 
+  // Uma vez que o Mestre coloca o chamado "Em análise" ou o encaminha para
+  // desenvolvimento, o controle passa a ser só dele — o chamado só volta a
+  // ficar "aberto" para quem originou se o Mestre pedir mais informações
+  // (status "Aguardando resposta"). Isso organiza o fluxo: fica claro de
+  // quem é a vez de agir em cada chamado.
+  const CONTROLADOS_PELO_ADMIN = ["Em análise", "Encaminhado para desenvolvimento", "Aprovado para desenvolvimento"];
+  const controladoPeloAdmin = aba === "sistema" && CONTROLADOS_PELO_ADMIN.includes(c.status);
+  const souOriginadorSemControle = controladoPeloAdmin && !ehMestreAqui;
+
   const enviar = async (novoStatus, prazoMs) => {
     if (!msg.trim()) return;
     await onEnviar(msg.trim(), novoStatus, prazoMs);
@@ -937,7 +966,12 @@ function SuporteDetalhe({ chamado: c, ctx, aba, onVoltar, onEnviar, onEncerrar, 
           })}
         </div>
 
-        {!estaEncerrado ? (
+        {souOriginadorSemControle ? (
+          <div className="bg-slate-900 border border-slate-700 rounded-md p-4 text-sm text-slate-400 flex items-start gap-3">
+            <ClipboardCheck size={18} className="text-amber-500 shrink-0 mt-0.5" />
+            <span>Este chamado está sendo tratado por um Usuário Mestre ({c.status}). Você será avisado aqui se for necessário complementar alguma informação.</span>
+          </div>
+        ) : !estaEncerrado ? (
           <>
             <Field label="Nova mensagem">
               <textarea value={msg} onChange={(e) => setMsg(e.target.value)} rows={3}
@@ -975,21 +1009,33 @@ function SuporteDetalhe({ chamado: c, ctx, aba, onVoltar, onEnviar, onEncerrar, 
 
 function SuporteRelatorio({ chamados, onFechar }) {
   const agora = new Date();
+  // O navegador usa o <title> da página como nome sugerido ao "Salvar como
+  // PDF" — então montamos um nome com o(s) código(s) de protocolo antes de
+  // imprimir, e devolvemos o título original ao sair desta tela.
+  const tituloOriginalRef = useRef(document.title);
+  useEffect(() => {
+    const protocolos = chamados.map((c) => c.numero).join("_");
+    document.title = `Relatorio-Chamados-${protocolos}`;
+    return () => { document.title = tituloOriginalRef.current; };
+  }, [chamados]);
+
   return (
     <div>
       <div className="no-print flex items-center justify-between mb-5">
         <button onClick={onFechar} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Voltar ao Suporte</button>
         <button onClick={() => window.print()} className="flex items-center gap-2 bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm"><Printer size={14} /> Imprimir / Baixar PDF</button>
       </div>
-      <h1 className="text-2xl font-bold text-slate-50 mb-1">Relatório de Chamados para Desenvolvimento</h1>
-      <p className="text-sm text-slate-500 mb-6">Gerado em {agora.toLocaleDateString("pt-BR")} às {agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · {chamados.length} chamado(s)</p>
+      <h1 className="text-2xl font-bold text-slate-50 mb-1">Relatório de Chamados</h1>
+      <p className="text-sm text-slate-500 mb-6">Gerado em {agora.toLocaleDateString("pt-BR")} às {agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · {chamados.length} chamado(s) · Protocolos: {chamados.map((c) => c.numero).join(", ")}</p>
       <div className="space-y-5">
         {chamados.map((c) => (
           <Card key={c.id} className="p-5">
             <div className="text-sm mb-3">
               <div><b className="text-slate-200">Protocolo:</b> <span className="text-slate-400">#{c.numero}</span></div>
+              <div><b className="text-slate-200">Tipo:</b> <span className="text-slate-400">{c.tipo === "pedagogico" ? "Pedagógico" : "Sistema"}</span></div>
               <div><b className="text-slate-200">Assunto:</b> <span className="text-slate-400">{c.assunto}</span></div>
-              <div><b className="text-slate-200">Autor(a):</b> <span className="text-slate-400">{c.autorNome}</span></div>
+              <div><b className="text-slate-200">Autor(a):</b> <span className="text-slate-400">{c.autorNome} ({c.autorPapel === "professor" ? "professor(a)" : "aluno(a)"})</span></div>
+              {c.turmaNome && <div><b className="text-slate-200">Turma:</b> <span className="text-slate-400">{c.turmaNome}</span></div>}
               <div><b className="text-slate-200">Aberto em:</b> <span className="text-slate-400">{new Date(c.criadoEm).toLocaleDateString("pt-BR")}</span></div>
               <div><b className="text-slate-200">Status no momento do relatório:</b> <span className="text-slate-400">{c.status}</span></div>
             </div>
@@ -1121,6 +1167,14 @@ function useSharedObject(key, fallback) {
   const [value, setValue] = useState(undefined);
   const ultimaEdicaoLocalRef = useRef(0);
   const ultimoEscritoRef = useRef(null);
+  // Salvamento com pausa: em vez de gravar no Firestore a cada tecla
+  // digitada, espera ~1s de silêncio antes de gravar de verdade. Reduz
+  // bastante o número de escritas quando várias pessoas usam a plataforma
+  // ao mesmo tempo, sem mudar nada na experiência de quem está digitando
+  // (a tela sempre reflete o que foi digitado na hora — só o envio pro
+  // banco de dados é que espera um instante).
+  const debounceRef = useRef(null);
+  const pendenteRef = useRef(null);
 
   useEffect(() => {
     if (!key) { setValue(undefined); return; }
@@ -1166,13 +1220,36 @@ function useSharedObject(key, fallback) {
     };
   }, [key]);
 
-  const save = useCallback(async (next) => {
+  const gravarPendente = useCallback(async () => {
+    if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
+    const pendente = pendenteRef.current;
+    if (!pendente || pendente.key !== key) return;
+    pendenteRef.current = null;
+    ultimoEscritoRef.current = pendente.json;
+    try { await window.storage.set(key, pendente.json, true); } catch {}
+  }, [key]);
+
+  // Garante que nada fica "perdido" na fila se a pessoa trocar de aba,
+  // minimizar a janela ou sair da página com um salvamento pendente.
+  useEffect(() => {
+    const aoEsconder = () => { if (document.hidden) gravarPendente(); };
+    document.addEventListener("visibilitychange", aoEsconder);
+    window.addEventListener("pagehide", gravarPendente);
+    return () => {
+      document.removeEventListener("visibilitychange", aoEsconder);
+      window.removeEventListener("pagehide", gravarPendente);
+      gravarPendente();
+    };
+  }, [gravarPendente]);
+
+  const save = useCallback((next) => {
     ultimaEdicaoLocalRef.current = Date.now();
     setValue(next);
     const json = JSON.stringify(next);
-    ultimoEscritoRef.current = json;
-    try { await window.storage.set(key, json, true); } catch {}
-  }, [key]);
+    pendenteRef.current = { key, json };
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(gravarPendente, 1000);
+  }, [key, gravarPendente]);
 
   return [value, save];
 }
@@ -2245,6 +2322,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
   const [aba, setAba] = useState("inicio");
   const [menuAberto, setMenuAberto] = useState(false);
   const [confirmSairAberto, setConfirmSairAberto] = useState(false);
+  const [decisaoGestorTomada, setDecisaoGestorTomada] = useState(false);
   const irPara = (id) => { setAba(id); setMenuAberto(false); };
 
   const lanc = mergeLancamentos(dados?.lancamentos);
@@ -2266,14 +2344,58 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aba]);
 
+  // Sinal de vida do Gestor: a cada 60s (só com a aba visível), atualiza
+  // "ultimoPing" para avisar que ainda está ativo. Usa uma ref para sempre
+  // ler o dado mais recente na hora de gravar — evita sobrescrever, por
+  // engano, um lançamento feito nos últimos segundos com uma cópia antiga.
+  const dadosRef = useRef(dados);
+  useEffect(() => { dadosRef.current = dados; }, [dados]);
+  useEffect(() => {
+    const intervalo = setInterval(() => {
+      const d = dadosRef.current;
+      const g = d?.gestor;
+      if (!g || g.uid !== user.uid) return;
+      if (document.visibilityState === "visible") {
+        setDados({ ...d, gestor: { ...g, ultimoPing: Date.now() } });
+      }
+    }, 60000);
+    return () => clearInterval(intervalo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.uid]);
+
   if (dados === undefined) return <LoadingScreen />;
 
+  // ===========================================================================
+  // GESTOR ÚNICO POR EMPRESA — evita que várias pessoas da mesma equipe
+  // gravem dados ao mesmo tempo (o que ajuda bastante o uso do banco de
+  // dados numa turma grande). O primeiro a entrar decide se assume a
+  // gestão; enquanto alguém estiver gerindo, os demais entram como
+  // visualizadores (podem ver tudo, mas não lançar dados). Se o Gestor
+  // ficar mais de 3 minutos sem sinal de vida (aba fechada/minimizada por
+  // muito tempo), a gestão é liberada automaticamente para a próxima
+  // pessoa que decidir.
+  const GESTOR_TIMEOUT_MS = 3 * 60 * 1000;
+  const gestor = dados.gestor || null;
+  const gestorAtivo = !!(gestor && Date.now() - (gestor.ultimoPing || 0) < GESTOR_TIMEOUT_MS);
+  const souGestor = gestorAtivo && gestor.uid === user.uid;
+  const souVisualizador = gestorAtivo && !souGestor;
+  const gestaoLivre = !gestorAtivo;
+
+  const assumirGestao = () => {
+    setDecisaoGestorTomada(true);
+    setDados({ ...dados, gestor: { uid: user.uid, nome: user.nome, ultimoPing: Date.now() } });
+  };
+  const continuarVisualizando = () => setDecisaoGestorTomada(true);
+  const liberarGestao = () => setDados({ ...dados, gestor: null });
+
   const updateModulo = (modId, val) => {
+    if (souVisualizador) return; // trava extra — a tela já fica sem interação para quem visualiza
     const novo = { ...dados, lancamentos: { ...lanc, [modId]: val } };
     setDados(novo);
   };
 
   const salvarVersao = () => {
+    if (souVisualizador) return;
     const nota = prompt("Descreva brevemente o ajuste feito nesta versão (opcional):") || "";
     const snap = { timestamp: Date.now(), indicadores: calc, nota };
     setDados({ ...dados, historico: [...(dados.historico || []), snap] });
@@ -2361,7 +2483,32 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
 
       {onVerNovidades && <NovidadesOverlay perfil={{ ultimaVersaoVista }} onFechar={onVerNovidades} onIrParaHistorico={() => { onVerNovidades(); irPara("novidades"); }} />}
 
+      {gestaoLivre && !decisaoGestorTomada && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-5">
+          <div className="bg-slate-900 border border-amber-500/50 rounded-xl max-w-sm w-full p-6 text-center">
+            <UserCog size={30} className="mx-auto text-amber-500 mb-3" />
+            <h3 className="font-bold text-slate-100 mb-2">Você vai gerir os lançamentos agora?</h3>
+            <p className="text-xs text-slate-400 mb-5">Só uma pessoa da equipe {equipe.nomeNegocio} lança dados por vez — evita que dois integrantes sobrescrevam um ao outro. Os demais acompanham em modo de visualização.</p>
+            <button onClick={assumirGestao} className="w-full bg-amber-500 text-slate-900 font-bold py-2.5 rounded-md hover:bg-amber-400 mb-2">Sim, eu vou lançar agora</button>
+            <button onClick={continuarVisualizando} className="w-full text-sm text-slate-400 hover:text-slate-100 py-1.5">Só visualizar por enquanto</button>
+          </div>
+        </div>
+      )}
+
       <main className="flex-1 overflow-y-auto p-4 pt-20 md:p-8 md:pt-8 max-w-5xl mx-auto w-full">
+        {souVisualizador && (
+          <div className="mb-4 bg-slate-900 border border-sky-800/60 rounded-md px-4 py-2.5 flex items-center gap-2.5 text-sm text-sky-300">
+            <Eye size={16} className="shrink-0" />
+            <span><b>{gestor.nome}</b> está gerindo os lançamentos agora. Você está no modo visualização.</span>
+          </div>
+        )}
+        {souGestor && (
+          <div className="mb-4 bg-slate-900 border border-amber-800/60 rounded-md px-4 py-2.5 flex items-center justify-between gap-2.5 text-sm text-amber-300">
+            <span className="flex items-center gap-2.5"><UserCog size={16} className="shrink-0" /> Você é quem está gerindo os lançamentos agora.</span>
+            <button onClick={liberarGestao} className="text-xs font-semibold text-slate-400 hover:text-slate-100 underline shrink-0">Liberar gestão</button>
+          </div>
+        )}
+
         {aba === "manual" && <ManualAlunoView equipe={equipe} onIrPara={setAba} />}
 
         {aba === "inicio" && (
@@ -2409,7 +2556,10 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
             <SectionTitle icon={m.icon} sub={`Módulo ${m.n} de 13`}>{m.nome}</SectionTitle>
             <TeoriaBox modId={m.id} />
             <ExemploLancamentoBox modId={m.id} />
-            <Card className="p-5">
+            {souVisualizador && (
+              <div className="mb-3 text-xs text-sky-400 flex items-center gap-1.5"><Eye size={13} /> Modo visualização — os campos abaixo estão travados enquanto {gestor.nome} estiver gerindo.</div>
+            )}
+            <Card className={`p-5 ${souVisualizador ? "opacity-70 pointer-events-none select-none" : ""}`}>
               {m.id === "m1" && <M1Form data={lanc.m1} update={(v) => updateModulo("m1", v)} />}
               {m.id === "m2" && <M2Form data={lanc.m2} update={(v) => updateModulo("m2", v)} calc={calc} />}
               {m.id === "m3" && <M3Form data={lanc.m3} update={(v) => updateModulo("m3", v)} />}
@@ -2424,6 +2574,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
               {m.id === "m12" && <M12View calc={calc} />}
               {m.id === "m13" && <M13View calc={calc} />}
             </Card>
+            <NotaModulo nota={dados.notas?.[m.id]} ehFinal={m.id === NOTA_MODULO_FINAL} readOnly />
             <div className="flex justify-between mt-4">
               <button
                 onClick={() => setAba(m.n > 1 ? MODULOS[m.n - 2].id : "inicio")}
@@ -2443,7 +2594,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
           <div>
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
             <SectionTitle icon={TrendingUp} sub="Acompanhe os indicadores consolidados e registre ajustes ao longo do projeto.">Análise do Negócio</SectionTitle>
-            <AnaliseNegocio calc={calc} historico={dados.historico} onSalvarVersao={salvarVersao} />
+            <AnaliseNegocio calc={calc} historico={dados.historico} onSalvarVersao={salvarVersao} readOnly={souVisualizador} />
           </div>
         )}
 
@@ -2451,6 +2602,30 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
           <div>
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
             <SectionTitle icon={MessageSquare} sub="Comentários e ajustes solicitados pelo(a) professor(a).">Feedback do Professor</SectionTitle>
+            {(() => {
+              const notasDadas = NOTA_MODULOS_AVALIAVEIS.map((id) => dados.notas?.[id]).filter((n) => n !== undefined && n !== null && n !== "");
+              const media = notasDadas.length ? (notasDadas.reduce((a, b) => a + Number(b), 0) / notasDadas.length) : null;
+              const notaFinal = dados.notas?.[NOTA_MODULO_FINAL];
+              if (!notasDadas.length && (notaFinal === undefined || notaFinal === null || notaFinal === "")) return null;
+              return (
+                <div className="grid sm:grid-cols-2 gap-3 mb-4">
+                  <div className="bg-slate-900 border border-sky-800/60 rounded-lg p-4 flex items-center justify-between">
+                    <div>
+                      <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide">Média dos módulos avaliados</div>
+                      <div className="text-xs text-slate-500 mt-0.5">{notasDadas.length}/{NOTA_MODULOS_AVALIAVEIS.length} módulos com nota</div>
+                    </div>
+                    <div className="text-2xl font-bold text-sky-400">{media !== null ? media.toFixed(1) : "—"}</div>
+                  </div>
+                  <div className="bg-slate-900 border border-amber-800/60 rounded-lg p-4 flex items-center justify-between">
+                    <div>
+                      <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wide">Nota final (síntese — Módulo 13)</div>
+                      <div className="text-xs text-slate-500 mt-0.5">Conclusão sobre a viabilidade do negócio</div>
+                    </div>
+                    <div className="text-2xl font-bold text-amber-400">{(notaFinal !== undefined && notaFinal !== null && notaFinal !== "") ? notaFinal : "—"}</div>
+                  </div>
+                </div>
+              );
+            })()}
             <ComentariosPanel comentarios={dados.comentarios} onAdd={addComentario} autor={user.nome} readOnlyInput />
           </div>
         )}
@@ -2499,9 +2674,50 @@ function ModuloLeitura({ mId, lanc, calc }) {
   );
 }
 
-function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome }) {
+// Campo de nota (0-10) — usado pelo professor para dar a nota e, em modo
+// somente leitura, para o aluno ver a nota já dada.
+function NotaModulo({ nota, onSetNota, ehFinal, readOnly }) {
+  const [valor, setValor] = useState(nota ?? "");
+  useEffect(() => { setValor(nota ?? ""); }, [nota]);
+
+  if (readOnly) {
+    if (nota === undefined || nota === null || nota === "") return null;
+    return (
+      <div className={`mt-3 flex items-center gap-2 rounded-md px-3 py-2 border ${ehFinal ? "bg-amber-950/30 border-amber-700/60" : "bg-slate-900 border-slate-700"}`}>
+        <Target size={14} className={ehFinal ? "text-amber-400" : "text-sky-400"} />
+        <span className="text-xs text-slate-300">{ehFinal ? "Nota final (síntese)" : "Nota do professor"}:</span>
+        <span className={`text-sm font-bold ${ehFinal ? "text-amber-400" : "text-sky-400"}`}>{nota}/10</span>
+      </div>
+    );
+  }
+
+  const salvar = () => {
+    const n = valor === "" ? null : Math.max(0, Math.min(10, Number(valor)));
+    onSetNota(n);
+  };
+
+  return (
+    <div className="mt-3 flex items-center gap-2">
+      <label className="text-xs text-slate-400 flex items-center gap-1.5">
+        <Target size={13} className={ehFinal ? "text-amber-400" : "text-sky-400"} />
+        {ehFinal ? "Nota final (síntese) — 0 a 10:" : "Nota deste módulo — 0 a 10:"}
+      </label>
+      <input
+        type="number" min="0" max="10" step="0.5" value={valor}
+        onChange={(e) => setValor(e.target.value)}
+        onBlur={salvar}
+        placeholder="—"
+        className="w-16 bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-sm text-slate-100 focus:border-amber-500 focus:outline-none text-center"
+      />
+    </div>
+  );
+}
+
+function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota }) {
   const Icon = m.icon;
   const comentariosModulo = (comentarios || []).filter((c) => c.modulo === `Módulo ${m.n}`);
+  const avaliavel = NOTA_MODULOS_AVALIAVEIS.includes(m.id);
+  const ehFinal = m.id === NOTA_MODULO_FINAL;
   return (
     <Card className="p-0 overflow-hidden" id={`prof-mod-${m.id}`}>
       <button onClick={onToggle} className="w-full flex items-center gap-3 p-4 text-left hover:bg-slate-800/40">
@@ -2510,6 +2726,9 @@ function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentario
         </div>
         <Icon size={16} className="text-sky-400 shrink-0" />
         <span className="text-sm font-semibold text-slate-100 flex-1">{m.nome}</span>
+        {(nota !== undefined && nota !== null && nota !== "") && (
+          <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 border ${ehFinal ? "text-amber-400 bg-amber-950/40 border-amber-500/30" : "text-sky-400 bg-sky-950/40 border-sky-500/30"}`}>{nota}/10</span>
+        )}
         {comentariosModulo.length > 0 && (
           <span className="text-[10px] font-bold text-sky-400 bg-sky-950/40 border border-sky-500/30 rounded-full px-2 py-0.5">{comentariosModulo.length} coment.</span>
         )}
@@ -2518,6 +2737,7 @@ function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentario
       {aberto && (
         <div className="px-4 pb-4 border-t border-slate-800">
           <div className="pt-4"><ModuloLeitura mId={m.id} lanc={lanc} calc={calc} /></div>
+          {(avaliavel || ehFinal) && <NotaModulo nota={nota} onSetNota={onSetNota} ehFinal={ehFinal} />}
           <ComentariosPanel
             comentarios={comentariosModulo}
             onAdd={onAddComentario}
@@ -2540,6 +2760,7 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
   const calc = calcular(lanc);
 
   const addComentario = (c) => setDados({ ...dados, comentarios: [...(dados.comentarios || []), c] });
+  const setNota = (modId, valor) => setDados({ ...dados, notas: { ...(dados.notas || {}), [modId]: valor } });
 
   const toggleModulo = (id) => {
     const next = new Set(modulosAbertos);
@@ -2552,6 +2773,12 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
   };
   const comentariosGerais = (dados.comentarios || []).filter((c) => c.modulo === "Geral");
 
+  const notasDadas = NOTA_MODULOS_AVALIAVEIS
+    .map((id) => dados.notas?.[id])
+    .filter((n) => n !== undefined && n !== null && n !== "");
+  const media = notasDadas.length ? (notasDadas.reduce((a, b) => a + Number(b), 0) / notasDadas.length) : null;
+  const notaFinal = dados.notas?.[NOTA_MODULO_FINAL];
+
   return (
     <div>
       <button onClick={onVoltar} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar para {turma.nome}</button>
@@ -2560,19 +2787,42 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
       <div className="space-y-6">
         <AnaliseNegocio calc={calc} historico={dados.historico} readOnly />
 
+        {(notasDadas.length > 0 || (notaFinal !== undefined && notaFinal !== null && notaFinal !== "")) && (
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="bg-slate-900 border border-sky-800/60 rounded-lg p-4 flex items-center justify-between">
+              <div>
+                <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide">Média dos módulos avaliados</div>
+                <div className="text-xs text-slate-500 mt-0.5">{notasDadas.length}/{NOTA_MODULOS_AVALIAVEIS.length} módulos com nota</div>
+              </div>
+              <div className="text-2xl font-bold text-sky-400">{media !== null ? media.toFixed(1) : "—"}</div>
+            </div>
+            <div className="bg-slate-900 border border-amber-800/60 rounded-lg p-4 flex items-center justify-between">
+              <div>
+                <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wide">Nota final (síntese — Módulo 13)</div>
+                <div className="text-xs text-slate-500 mt-0.5">Conclusão sobre a viabilidade do negócio</div>
+              </div>
+              <div className="text-2xl font-bold text-amber-400">{(notaFinal !== undefined && notaFinal !== null && notaFinal !== "") ? notaFinal : "—"}</div>
+            </div>
+          </div>
+        )}
+
         <Card className="p-4">
           <SectionTitle icon={ClipboardList} sub="Clique em um módulo para abrir e ver o que a equipe preencheu, linha por linha.">Navegar pelos módulos</SectionTitle>
           <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-2">
             {MODULOS.map((m) => {
               const Icon = m.icon;
               const completo = !!calc.preenchidos?.[m.n - 1];
+              const notaM = dados.notas?.[m.id];
               return (
                 <button key={m.id} onClick={() => irEExpandir(m.id)} className="flex items-center gap-2.5 border border-slate-700 rounded-lg p-2.5 text-left hover:border-amber-500 hover:bg-slate-800 transition">
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${completo ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/40" : "bg-slate-900 border border-amber-500/40 text-amber-500"}`}>
                     {completo ? <CheckCircle2 size={12} /> : m.n}
                   </div>
                   <Icon size={14} className="text-sky-400 shrink-0" />
-                  <span className="text-xs font-medium text-slate-200 truncate">{m.nome}</span>
+                  <span className="text-xs font-medium text-slate-200 truncate flex-1">{m.nome}</span>
+                  {(notaM !== undefined && notaM !== null && notaM !== "") && (
+                    <span className="text-[10px] font-bold text-sky-400 shrink-0">{notaM}</span>
+                  )}
                 </button>
               );
             })}
@@ -2592,6 +2842,8 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
               comentarios={dados.comentarios}
               onAddComentario={addComentario}
               professorNome={professorNome}
+              nota={dados.notas?.[m.id]}
+              onSetNota={(valor) => setNota(m.id, valor)}
             />
           ))}
         </div>
@@ -3425,12 +3677,30 @@ function GestaoRelatoriosView({ turmas }) {
   );
 }
 
+async function buscarEquipesComDados(turmaId) {
+  try {
+    const r = await window.storage.get(`equipes_${turmaId}`, true);
+    const equipes = r ? JSON.parse(r.value) : [];
+    return await Promise.all(equipes.map(async (eq) => {
+      let dados = { lancamentos: defaultLancamentos(), historico: [], comentarios: [] };
+      try {
+        const rd = await window.storage.get(`dados_equipe_${eq.id}`, true);
+        if (rd) dados = JSON.parse(rd.value);
+      } catch {}
+      return { equipe: eq, dados };
+    }));
+  } catch { return []; }
+}
+
 function GestaoBackupView({ turmas, setTurmas }) {
   const [turmaId, setTurmaId] = useState("");
   const turma = turmas.find((t) => t.id === turmaId);
   const dadosEquipes = useEquipesComDados(turmaId);
   const [status, setStatus] = useState("");
   const [excluindo, setExcluindo] = useState(false);
+  const [ultimoBackupTurmaId, setUltimoBackupTurmaId] = useState(null);
+  const [periodoSemestre, setPeriodoSemestre] = useState("");
+  const [gerandoSemestre, setGerandoSemestre] = useState(false);
 
   // Apaga permanentemente uma turma: empresas/equipes, lançamentos de cada uma,
   // a lista oficial de alunos importada e as contas dos alunos que estavam
@@ -3438,6 +3708,12 @@ function GestaoBackupView({ turmas, setTurmas }) {
   // sido feito o backup, para abrir espaço para as turmas do próximo período.
   const excluirTurma = async () => {
     if (!turma) return;
+    if (ultimoBackupTurmaId !== turma.id) {
+      const semBackup = window.confirm(
+        `Você ainda não exportou um backup desta turma agora nesta sessão.\n\nRecomendamos clicar em "Exportar backup" antes de continuar. Tem certeza que quer excluir "${turma.nome}" sem baixar o backup agora?`
+      );
+      if (!semBackup) return;
+    }
     const ok = window.confirm(
       `Tem certeza que deseja excluir a turma "${turma.nome}"?\n\nIsso vai apagar permanentemente todas as empresas, lançamentos, a lista oficial de alunos e as contas dos alunos vinculados a ela. Essa ação não pode ser desfeita.`
     );
@@ -3460,7 +3736,30 @@ function GestaoBackupView({ turmas, setTurmas }) {
     if (!turma || !dadosEquipes) return;
     const pacote = { versaoBackup: 1, geradoEm: new Date().toISOString(), turma, equipes: dadosEquipes.map(({ equipe, dados }) => ({ equipe, dados })) };
     baixarArquivo(`backup_${turma.nome.replace(/\s+/g, "_")}.json`, JSON.stringify(pacote, null, 2));
+    setUltimoBackupTurmaId(turma.id);
     setStatus("Backup exportado com sucesso.");
+  };
+
+  // Backup do Semestre: reúne TODAS as turmas do professor num único
+  // arquivo, com nome padronizado — útil no fechamento do período letivo,
+  // para não precisar exportar turma por turma.
+  const exportarBackupSemestre = async () => {
+    if (!turmas.length) return;
+    setGerandoSemestre(true);
+    setStatus("Reunindo os dados de todas as turmas…");
+    try {
+      const porTurma = await Promise.all(turmas.map(async (t) => ({
+        turma: t,
+        equipes: await buscarEquipesComDados(t.id),
+      })));
+      const rotulo = periodoSemestre.trim() || new Date().getFullYear().toString();
+      const pacote = { versaoBackup: 1, tipo: "semestre", periodo: rotulo, geradoEm: new Date().toISOString(), turmas: porTurma };
+      baixarArquivo(`Backup-Semestre-${rotulo.replace(/\s+/g, "_")}.json`, JSON.stringify(pacote, null, 2));
+      setStatus(`Backup do semestre "${rotulo}" gerado com ${turmas.length} turma(s).`);
+    } catch {
+      setStatus("Não foi possível gerar o backup do semestre. Tente novamente.");
+    }
+    setGerandoSemestre(false);
   };
 
   const importarBackup = async (file) => {
@@ -3488,6 +3787,18 @@ function GestaoBackupView({ turmas, setTurmas }) {
   return (
     <div>
       <SectionTitle icon={Save} sub="Exporte os dados de uma turma para guardar uma cópia de segurança, ou restaure um backup anterior.">Backup</SectionTitle>
+
+      <Card className="p-5 mb-5 border-amber-800/50">
+        <h3 className="font-bold text-slate-100 mb-1 flex items-center gap-2"><History size={16} className="text-amber-500" /> Backup do Semestre</h3>
+        <p className="text-sm text-slate-400 mb-3">No fechamento do período letivo, gere um único arquivo com todas as {turmas.length} turma(s) de uma vez, em vez de exportar turma por turma.</p>
+        <div className="flex flex-wrap gap-2">
+          <TxtInput value={periodoSemestre} onChange={setPeriodoSemestre} placeholder="Ex.: 2026-1" />
+          <button onClick={exportarBackupSemestre} disabled={gerandoSemestre || !turmas.length} className="bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40 text-sm whitespace-nowrap">
+            {gerandoSemestre ? "Gerando…" : "Gerar backup do semestre"}
+          </button>
+        </div>
+      </Card>
+
       <SeletorTurma turmas={turmas} value={turmaId} onChange={setTurmaId} />
       {!turmaId && <Card className="p-8 text-center text-slate-500 mt-4">Selecione uma turma para exportar ou importar um backup.</Card>}
       {turmaId && (
@@ -3878,10 +4189,15 @@ function useEquipeSalva(turmaId, equipeId) {
 // professor) ou, alternativamente, o código da turma (para quando o
 // professor ainda não importou a lista). Em qualquer um dos dois casos, o
 // cadastro já entra aprovado na hora.
-function TelaInformarTurma({ perfil, onSair, onResultado }) {
+function TelaInformarTurma({ perfil, onSair, onResultado, onVirarProfessor }) {
   const [valor, setValor] = useState("");
   const [buscando, setBuscando] = useState(false);
   const [erro, setErro] = useState("");
+
+  const [souProfessorAberto, setSouProfessorAberto] = useState(false);
+  const [codigoMestre, setCodigoMestre] = useState("");
+  const [erroMestre, setErroMestre] = useState("");
+  const [verificandoMestre, setVerificandoMestre] = useState(false);
 
   const buscar = async () => {
     setErro(""); setBuscando(true);
@@ -3910,6 +4226,21 @@ function TelaInformarTurma({ perfil, onSair, onResultado }) {
     setBuscando(false);
   };
 
+  // Correção para quem escolheu "Aluno(a)" por engano no primeiro acesso
+  // (deveria ter escolhido "Professor(a)"): digitando o código de Mestre
+  // aqui, a conta vira professor(a)/Usuário Mestre na hora, sem precisar
+  // mexer no Firestore.
+  const virarProfessor = async () => {
+    setErroMestre(""); setVerificandoMestre(true);
+    if (codigoMestre.trim() !== CODIGO_MESTRE) {
+      setErroMestre("Código incorreto.");
+      setVerificandoMestre(false);
+      return;
+    }
+    await onVirarProfessor({ papel: "professor", status: "aprovado", mestre: true, turmaId: null, equipeId: null });
+    setVerificandoMestre(false);
+  };
+
   return (
     <div className="max-w-md mx-auto w-full">
       <button onClick={onSair} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><LogOut size={15} /> Sair</button>
@@ -3924,6 +4255,21 @@ function TelaInformarTurma({ perfil, onSair, onResultado }) {
           </div>
         </Field>
         {erro && <p className="text-sm text-rose-400 mb-2">{erro}</p>}
+
+        {!souProfessorAberto ? (
+          <button onClick={() => setSouProfessorAberto(true)} className="text-xs text-slate-500 hover:text-slate-300 mt-2">Escolhi "Aluno(a)" por engano — na verdade sou professor(a)</button>
+        ) : (
+          <div className="mt-3 bg-slate-900 border border-slate-700 rounded-md p-3">
+            <label className="block text-[11px] text-slate-400 mb-1.5">Digite o código de Usuário Mestre para corrigir seu perfil para Professor(a).</label>
+            <div className="flex gap-2">
+              <TxtInput value={codigoMestre} onChange={setCodigoMestre} placeholder="Código de Mestre" />
+              <button onClick={virarProfessor} disabled={verificandoMestre || !codigoMestre.trim()} className="bg-amber-500 text-slate-900 px-3 rounded-md text-xs font-bold hover:bg-amber-400 disabled:opacity-40 flex-none">
+                {verificandoMestre ? "…" : "Confirmar"}
+              </button>
+            </div>
+            {erroMestre && <p className="text-xs text-rose-400 mt-1.5">{erroMestre}</p>}
+          </div>
+        )}
       </Card>
     </div>
   );
@@ -3987,7 +4333,7 @@ function AlunoWorkspaceCarregado({ userSessao, turmaId, equipeId, onSair, onTroc
   return <AlunoWorkspace user={userSessao} equipe={equipe} equipeKey={`dados_equipe_${equipe.id}`} onSair={onSair} onTrocarEmpresa={() => onTrocarEmpresa(equipe)} professorUid={professorUid} professorNome={professorNome} turmaNome={turmaNome} ultimaVersaoVista={ultimaVersaoVista} onVerNovidades={onVerNovidades} />;
 }
 
-function AlunoRoteador({ perfil, onSair }) {
+function AlunoRoteador({ perfil, onSair, onVirarProfessor }) {
   const [over, setOver] = useState({});
   const efetivo = { ...perfil, ...over };
 
@@ -4003,7 +4349,7 @@ function AlunoRoteador({ perfil, onSair }) {
   if (!efetivo.turmaId) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
-        <TelaInformarTurma perfil={efetivo} onSair={onSair} onResultado={atualizarPerfil} />
+        <TelaInformarTurma perfil={efetivo} onSair={onSair} onResultado={atualizarPerfil} onVirarProfessor={onVirarProfessor} />
       </div>
     );
   }
@@ -4342,7 +4688,10 @@ export default function App() {
   if (!perfil) return <LoadingScreen />;
 
   if (perfil.papel === "aluno") {
-    return <AlunoRoteador perfil={perfil} onSair={efetuarSaida} />;
+    return <AlunoRoteador perfil={perfil} onSair={efetuarSaida} onVirarProfessor={async (mudancas) => {
+      const atualizado = await atualizarUsuario(perfil.uid, mudancas);
+      if (atualizado) setPerfilRecemCriado(atualizado);
+    }} />;
   }
 
   // professor

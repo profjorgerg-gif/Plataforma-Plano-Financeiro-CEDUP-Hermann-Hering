@@ -39,6 +39,16 @@ const MODULOS = [
   { id: "m13", n: 13, nome: "Indicadores de Viabilidade", icon: Target },
 ];
 
+// Módulos onde faz sentido o professor dar uma nota de 0 a 10: são os que
+// exigem pesquisa/decisão real da equipe (o que comprar, que preço cobrar,
+// quantos funcionários...). Os demais (04, 08, 10, 12) só consolidam
+// automaticamente o que já foi decidido nesses módulos, então dar nota ali
+// avaliaria a mesma coisa duas vezes. O Módulo 13 é tratado à parte: não é
+// nota do cálculo (automático), e sim uma "nota final" de síntese sobre a
+// conclusão que a equipe tira da viabilidade do negócio.
+const NOTA_MODULOS_AVALIAVEIS = ["m1", "m2", "m3", "m5", "m6", "m7", "m9", "m11"];
+const NOTA_MODULO_FINAL = "m13";
+
 const TEORIA = {
   m1: { conceito: "Bens que a empresa precisa comprar para funcionar: máquinas, equipamentos, móveis, utensílios e veículos.", formula: "Total = Σ (Quantidade × Valor Unitário)" },
   m2: { conceito: "Recursos necessários para financiar a operação normal: estoque inicial e caixa mínimo (reserva para cobrir o descompasso entre pagar fornecedores e receber de clientes).", formula: "Necessidade Líquida (dias) = Prazo médio de vendas + Prazo de estoque − Prazo médio de compras\nCaixa Mínimo = Custo Total Diário × Necessidade Líquida (dias)" },
@@ -2564,6 +2574,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
               {m.id === "m12" && <M12View calc={calc} />}
               {m.id === "m13" && <M13View calc={calc} />}
             </Card>
+            <NotaModulo nota={dados.notas?.[m.id]} ehFinal={m.id === NOTA_MODULO_FINAL} readOnly />
             <div className="flex justify-between mt-4">
               <button
                 onClick={() => setAba(m.n > 1 ? MODULOS[m.n - 2].id : "inicio")}
@@ -2591,6 +2602,30 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
           <div>
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
             <SectionTitle icon={MessageSquare} sub="Comentários e ajustes solicitados pelo(a) professor(a).">Feedback do Professor</SectionTitle>
+            {(() => {
+              const notasDadas = NOTA_MODULOS_AVALIAVEIS.map((id) => dados.notas?.[id]).filter((n) => n !== undefined && n !== null && n !== "");
+              const media = notasDadas.length ? (notasDadas.reduce((a, b) => a + Number(b), 0) / notasDadas.length) : null;
+              const notaFinal = dados.notas?.[NOTA_MODULO_FINAL];
+              if (!notasDadas.length && (notaFinal === undefined || notaFinal === null || notaFinal === "")) return null;
+              return (
+                <div className="grid sm:grid-cols-2 gap-3 mb-4">
+                  <div className="bg-slate-900 border border-sky-800/60 rounded-lg p-4 flex items-center justify-between">
+                    <div>
+                      <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide">Média dos módulos avaliados</div>
+                      <div className="text-xs text-slate-500 mt-0.5">{notasDadas.length}/{NOTA_MODULOS_AVALIAVEIS.length} módulos com nota</div>
+                    </div>
+                    <div className="text-2xl font-bold text-sky-400">{media !== null ? media.toFixed(1) : "—"}</div>
+                  </div>
+                  <div className="bg-slate-900 border border-amber-800/60 rounded-lg p-4 flex items-center justify-between">
+                    <div>
+                      <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wide">Nota final (síntese — Módulo 13)</div>
+                      <div className="text-xs text-slate-500 mt-0.5">Conclusão sobre a viabilidade do negócio</div>
+                    </div>
+                    <div className="text-2xl font-bold text-amber-400">{(notaFinal !== undefined && notaFinal !== null && notaFinal !== "") ? notaFinal : "—"}</div>
+                  </div>
+                </div>
+              );
+            })()}
             <ComentariosPanel comentarios={dados.comentarios} onAdd={addComentario} autor={user.nome} readOnlyInput />
           </div>
         )}
@@ -2639,9 +2674,50 @@ function ModuloLeitura({ mId, lanc, calc }) {
   );
 }
 
-function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome }) {
+// Campo de nota (0-10) — usado pelo professor para dar a nota e, em modo
+// somente leitura, para o aluno ver a nota já dada.
+function NotaModulo({ nota, onSetNota, ehFinal, readOnly }) {
+  const [valor, setValor] = useState(nota ?? "");
+  useEffect(() => { setValor(nota ?? ""); }, [nota]);
+
+  if (readOnly) {
+    if (nota === undefined || nota === null || nota === "") return null;
+    return (
+      <div className={`mt-3 flex items-center gap-2 rounded-md px-3 py-2 border ${ehFinal ? "bg-amber-950/30 border-amber-700/60" : "bg-slate-900 border-slate-700"}`}>
+        <Target size={14} className={ehFinal ? "text-amber-400" : "text-sky-400"} />
+        <span className="text-xs text-slate-300">{ehFinal ? "Nota final (síntese)" : "Nota do professor"}:</span>
+        <span className={`text-sm font-bold ${ehFinal ? "text-amber-400" : "text-sky-400"}`}>{nota}/10</span>
+      </div>
+    );
+  }
+
+  const salvar = () => {
+    const n = valor === "" ? null : Math.max(0, Math.min(10, Number(valor)));
+    onSetNota(n);
+  };
+
+  return (
+    <div className="mt-3 flex items-center gap-2">
+      <label className="text-xs text-slate-400 flex items-center gap-1.5">
+        <Target size={13} className={ehFinal ? "text-amber-400" : "text-sky-400"} />
+        {ehFinal ? "Nota final (síntese) — 0 a 10:" : "Nota deste módulo — 0 a 10:"}
+      </label>
+      <input
+        type="number" min="0" max="10" step="0.5" value={valor}
+        onChange={(e) => setValor(e.target.value)}
+        onBlur={salvar}
+        placeholder="—"
+        className="w-16 bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-sm text-slate-100 focus:border-amber-500 focus:outline-none text-center"
+      />
+    </div>
+  );
+}
+
+function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota }) {
   const Icon = m.icon;
   const comentariosModulo = (comentarios || []).filter((c) => c.modulo === `Módulo ${m.n}`);
+  const avaliavel = NOTA_MODULOS_AVALIAVEIS.includes(m.id);
+  const ehFinal = m.id === NOTA_MODULO_FINAL;
   return (
     <Card className="p-0 overflow-hidden" id={`prof-mod-${m.id}`}>
       <button onClick={onToggle} className="w-full flex items-center gap-3 p-4 text-left hover:bg-slate-800/40">
@@ -2650,6 +2726,9 @@ function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentario
         </div>
         <Icon size={16} className="text-sky-400 shrink-0" />
         <span className="text-sm font-semibold text-slate-100 flex-1">{m.nome}</span>
+        {(nota !== undefined && nota !== null && nota !== "") && (
+          <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 border ${ehFinal ? "text-amber-400 bg-amber-950/40 border-amber-500/30" : "text-sky-400 bg-sky-950/40 border-sky-500/30"}`}>{nota}/10</span>
+        )}
         {comentariosModulo.length > 0 && (
           <span className="text-[10px] font-bold text-sky-400 bg-sky-950/40 border border-sky-500/30 rounded-full px-2 py-0.5">{comentariosModulo.length} coment.</span>
         )}
@@ -2658,6 +2737,7 @@ function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentario
       {aberto && (
         <div className="px-4 pb-4 border-t border-slate-800">
           <div className="pt-4"><ModuloLeitura mId={m.id} lanc={lanc} calc={calc} /></div>
+          {(avaliavel || ehFinal) && <NotaModulo nota={nota} onSetNota={onSetNota} ehFinal={ehFinal} />}
           <ComentariosPanel
             comentarios={comentariosModulo}
             onAdd={onAddComentario}
@@ -2680,6 +2760,7 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
   const calc = calcular(lanc);
 
   const addComentario = (c) => setDados({ ...dados, comentarios: [...(dados.comentarios || []), c] });
+  const setNota = (modId, valor) => setDados({ ...dados, notas: { ...(dados.notas || {}), [modId]: valor } });
 
   const toggleModulo = (id) => {
     const next = new Set(modulosAbertos);
@@ -2692,6 +2773,12 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
   };
   const comentariosGerais = (dados.comentarios || []).filter((c) => c.modulo === "Geral");
 
+  const notasDadas = NOTA_MODULOS_AVALIAVEIS
+    .map((id) => dados.notas?.[id])
+    .filter((n) => n !== undefined && n !== null && n !== "");
+  const media = notasDadas.length ? (notasDadas.reduce((a, b) => a + Number(b), 0) / notasDadas.length) : null;
+  const notaFinal = dados.notas?.[NOTA_MODULO_FINAL];
+
   return (
     <div>
       <button onClick={onVoltar} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar para {turma.nome}</button>
@@ -2700,19 +2787,42 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
       <div className="space-y-6">
         <AnaliseNegocio calc={calc} historico={dados.historico} readOnly />
 
+        {(notasDadas.length > 0 || (notaFinal !== undefined && notaFinal !== null && notaFinal !== "")) && (
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="bg-slate-900 border border-sky-800/60 rounded-lg p-4 flex items-center justify-between">
+              <div>
+                <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide">Média dos módulos avaliados</div>
+                <div className="text-xs text-slate-500 mt-0.5">{notasDadas.length}/{NOTA_MODULOS_AVALIAVEIS.length} módulos com nota</div>
+              </div>
+              <div className="text-2xl font-bold text-sky-400">{media !== null ? media.toFixed(1) : "—"}</div>
+            </div>
+            <div className="bg-slate-900 border border-amber-800/60 rounded-lg p-4 flex items-center justify-between">
+              <div>
+                <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wide">Nota final (síntese — Módulo 13)</div>
+                <div className="text-xs text-slate-500 mt-0.5">Conclusão sobre a viabilidade do negócio</div>
+              </div>
+              <div className="text-2xl font-bold text-amber-400">{(notaFinal !== undefined && notaFinal !== null && notaFinal !== "") ? notaFinal : "—"}</div>
+            </div>
+          </div>
+        )}
+
         <Card className="p-4">
           <SectionTitle icon={ClipboardList} sub="Clique em um módulo para abrir e ver o que a equipe preencheu, linha por linha.">Navegar pelos módulos</SectionTitle>
           <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-2">
             {MODULOS.map((m) => {
               const Icon = m.icon;
               const completo = !!calc.preenchidos?.[m.n - 1];
+              const notaM = dados.notas?.[m.id];
               return (
                 <button key={m.id} onClick={() => irEExpandir(m.id)} className="flex items-center gap-2.5 border border-slate-700 rounded-lg p-2.5 text-left hover:border-amber-500 hover:bg-slate-800 transition">
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${completo ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/40" : "bg-slate-900 border border-amber-500/40 text-amber-500"}`}>
                     {completo ? <CheckCircle2 size={12} /> : m.n}
                   </div>
                   <Icon size={14} className="text-sky-400 shrink-0" />
-                  <span className="text-xs font-medium text-slate-200 truncate">{m.nome}</span>
+                  <span className="text-xs font-medium text-slate-200 truncate flex-1">{m.nome}</span>
+                  {(notaM !== undefined && notaM !== null && notaM !== "") && (
+                    <span className="text-[10px] font-bold text-sky-400 shrink-0">{notaM}</span>
+                  )}
                 </button>
               );
             })}
@@ -2732,6 +2842,8 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
               comentarios={dados.comentarios}
               onAddComentario={addComentario}
               professorNome={professorNome}
+              nota={dados.notas?.[m.id]}
+              onSetNota={(valor) => setNota(m.id, valor)}
             />
           ))}
         </div>

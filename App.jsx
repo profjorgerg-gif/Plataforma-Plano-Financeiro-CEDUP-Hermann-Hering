@@ -12,7 +12,7 @@ import {
   Save, Copy, ArrowLeft, BookOpen, Building2, KeyRound, Mail, Lock, ShieldCheck,
   Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
   ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
-  LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video,
+  LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
@@ -1935,6 +1935,130 @@ function alertasNegocio(calc) {
   return alerts;
 }
 
+// Aplica variações percentuais (informadas pela equipe) em cima dos números
+// já calculados a partir dos módulos — não altera nenhum lançamento
+// salvo, só projeta "e se". Os valores de partida (faturamento, custos)
+// são os "campos fixos" vindos do sistema; as variações são os "campos
+// editáveis" da simulação.
+function calcularCenario(calc, v) {
+  const faturamento = calc.faturamento * (1 + (Number(v.variacaoFaturamento) || 0) / 100);
+  const custoVariavelTotal = calc.custoVariavelTotal * (1 + (Number(v.variacaoCustoVariavel) || 0) / 100);
+  const custoFixoTotal = calc.custoFixoTotal * (1 + (Number(v.variacaoCustoFixo) || 0) / 100);
+  const margemContribuicao = faturamento - custoVariavelTotal;
+  const resultadoOperacional = margemContribuicao - custoFixoTotal;
+  const receitaAnual = faturamento * 12;
+  const custoVariavelAnual = custoVariavelTotal * 12;
+  const custoFixoAnual = custoFixoTotal * 12;
+  const lucroAnual = resultadoOperacional * 12;
+  const indiceMC = receitaAnual > 0 ? (receitaAnual - custoVariavelAnual) / receitaAnual : 0;
+  const pontoEquilibrio = indiceMC > 0 ? custoFixoAnual / indiceMC : null;
+  const lucratividade = receitaAnual > 0 ? (lucroAnual / receitaAnual) * 100 : 0;
+  return { faturamento, custoVariavelTotal, custoFixoTotal, margemContribuicao, resultadoOperacional, pontoEquilibrio, lucratividade };
+}
+
+const CENARIO_CORES = ["#38bdf8", "#f59e0b", "#a78bfa"];
+
+function AnaliseCenarios({ calc, cenarios, onSetCenarios, readOnly }) {
+  const lista = cenarios || [];
+
+  const atualizar = (id, patch) => {
+    onSetCenarios(lista.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  };
+  const adicionar = () => {
+    if (lista.length >= 3) return;
+    const novo = { id: uid(), nome: `Cenário ${lista.length + 1}`, variacaoFaturamento: 0, variacaoCustoVariavel: 0, variacaoCustoFixo: 0 };
+    onSetCenarios([...lista, novo]);
+  };
+  const remover = (id) => onSetCenarios(lista.filter((c) => c.id !== id));
+
+  const comparativo = [
+    { nome: "Base (atual)", resultado: calc.resultadoOperacional, cor: "#64748b" },
+    ...lista.map((c, i) => ({ nome: c.nome || `Cenário ${i + 1}`, resultado: calcularCenario(calc, c).resultadoOperacional, cor: CENARIO_CORES[i % CENARIO_CORES.length] })),
+  ];
+
+  return (
+    <div>
+      <Card className="p-5 mb-4">
+        <SectionTitle icon={GitCompareArrows} sub='Os valores de partida (faturamento e custos) vêm do que já foi lançado nos módulos — os campos editáveis servem só para simular "e se", sem alterar nada salvo.'>Cenário Base (o que já está lançado)</SectionTitle>
+        <div className="grid sm:grid-cols-3 gap-3">
+          <StatCard label="Faturamento" value={fmtBRL(calc.faturamento)} tone="blue" small />
+          <StatCard label="Custos (variáveis + fixos)" value={fmtBRL(calc.custoVariavelTotal + calc.custoFixoTotal)} tone="slate" small />
+          <StatCard label="Resultado Operacional" value={fmtBRL(calc.resultadoOperacional)} tone={calc.resultadoOperacional >= 0 ? "gold" : "slate"} small />
+        </div>
+      </Card>
+
+      <div className="space-y-4">
+        {lista.map((c, i) => {
+          const r = calcularCenario(calc, c);
+          const cor = CENARIO_CORES[i % CENARIO_CORES.length];
+          return (
+            <Card key={c.id} className="p-5">
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-3 h-3 rounded-full shrink-0" style={{ background: cor }} />
+                  {readOnly ? (
+                    <h3 className="font-bold text-slate-100">{c.nome || `Cenário ${i + 1}`}</h3>
+                  ) : (
+                    <input value={c.nome} onChange={(e) => atualizar(c.id, { nome: e.target.value })} className="font-bold text-slate-100 bg-transparent border-b border-slate-700 focus:border-amber-500 focus:outline-none px-1 py-0.5" placeholder={`Cenário ${i + 1}`} />
+                  )}
+                </div>
+                {!readOnly && (
+                  <button onClick={() => remover(c.id)} className="text-slate-500 hover:text-rose-400 shrink-0"><Trash2 size={15} /></button>
+                )}
+              </div>
+
+              <div className="grid sm:grid-cols-3 gap-3 mb-4">
+                <Field label="Variação no faturamento (%)">
+                  <input type="number" step="1" value={c.variacaoFaturamento} disabled={readOnly} onChange={(e) => atualizar(c.id, { variacaoFaturamento: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-100 disabled:opacity-60" />
+                </Field>
+                <Field label="Variação nos custos variáveis (%)">
+                  <input type="number" step="1" value={c.variacaoCustoVariavel} disabled={readOnly} onChange={(e) => atualizar(c.id, { variacaoCustoVariavel: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-100 disabled:opacity-60" />
+                </Field>
+                <Field label="Variação nos custos fixos (%)">
+                  <input type="number" step="1" value={c.variacaoCustoFixo} disabled={readOnly} onChange={(e) => atualizar(c.id, { variacaoCustoFixo: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-100 disabled:opacity-60" />
+                </Field>
+              </div>
+
+              <div className="grid sm:grid-cols-4 gap-2.5">
+                <StatCard label="Faturamento projetado" value={fmtBRL(r.faturamento)} tone="blue" small />
+                <StatCard label="Custos projetados" value={fmtBRL(r.custoVariavelTotal + r.custoFixoTotal)} tone="slate" small />
+                <StatCard label="Resultado projetado" value={fmtBRL(r.resultadoOperacional)} tone={r.resultadoOperacional >= 0 ? "gold" : "slate"} small />
+                <StatCard label="Ponto de equilíbrio" value={r.pontoEquilibrio !== null ? fmtBRL(r.pontoEquilibrio) : "—"} tone="slate" small />
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      {!readOnly && lista.length < 3 && (
+        <button onClick={adicionar} className="mt-4 flex items-center gap-2 border border-dashed border-slate-600 text-slate-300 px-4 py-2.5 rounded-md hover:border-amber-500 hover:text-amber-400 text-sm font-semibold w-full justify-center">
+          <Plus size={15} /> Adicionar cenário ({lista.length}/3)
+        </button>
+      )}
+      {!readOnly && lista.length === 0 && (
+        <p className="text-xs text-slate-500 mt-2 text-center">Nenhum cenário criado ainda — clique acima para simular o impacto de mudanças (ex.: preço 10% maior, custo de matéria-prima 5% mais caro).</p>
+      )}
+
+      {lista.length > 0 && (
+        <Card className="p-5 mt-4">
+          <SectionTitle icon={FileBarChart} sub="Resultado Operacional mensal — base x cada cenário.">Comparativo</SectionTitle>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={comparativo}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+              <XAxis dataKey="nome" stroke="#94a3b8" fontSize={11} />
+              <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(v) => fmtBRL(v)} />
+              <Tooltip formatter={(v) => fmtBRL(v)} contentStyle={{ background: "#0f172a", border: "1px solid #334155" }} />
+              <Bar dataKey="resultado" radius={[4, 4, 0, 0]}>
+                {comparativo.map((c, i) => <Cell key={i} fill={c.cor} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 function AnaliseNegocio({ calc, historico, onSalvarVersao, readOnly }) {
   const pieData = [
     { name: "Investimentos Fixos", value: calc.investFixo },
@@ -2409,6 +2533,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
     { id: "inicio", label: "Início", icon: LayoutDashboard, num: null },
     ...MODULOS.map((m) => ({ id: m.id, label: m.nome, icon: m.icon, num: String(m.n).padStart(2, "0") })),
     { id: "analise", label: "Análise do Negócio", icon: TrendingUp, num: null },
+    { id: "cenarios", label: "Análise de Cenários", icon: GitCompareArrows, num: null },
     { id: "feedback", label: "Feedback do Professor", icon: MessageSquare, num: null },
     { id: "suporte", label: "Suporte", icon: LifeBuoy, num: null },
     { id: "novidades", label: "Novidades", icon: Megaphone, num: null },
@@ -2595,6 +2720,14 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
             <SectionTitle icon={TrendingUp} sub="Acompanhe os indicadores consolidados e registre ajustes ao longo do projeto.">Análise do Negócio</SectionTitle>
             <AnaliseNegocio calc={calc} historico={dados.historico} onSalvarVersao={salvarVersao} readOnly={souVisualizador} />
+          </div>
+        )}
+
+        {aba === "cenarios" && (
+          <div>
+            <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
+            <SectionTitle icon={GitCompareArrows} sub="Crie até 3 cenários simulando mudanças no faturamento e nos custos, e compare o resultado projetado com o cenário atual.">Análise de Cenários</SectionTitle>
+            <AnaliseCenarios calc={calc} cenarios={dados.cenarios} onSetCenarios={(novos) => setDados({ ...dados, cenarios: novos })} readOnly={souVisualizador} />
           </div>
         )}
 

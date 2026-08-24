@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer, LineChart, Line,
+  Legend, ResponsiveContainer, LineChart, Line, ReferenceLine,
 } from "recharts";
 import {
   GraduationCap, Users, School, LogOut, LayoutDashboard, Wallet, PiggyBank,
@@ -1971,6 +1971,94 @@ function calcularCenario(calc, v) {
 
 const CENARIO_CORES = ["#38bdf8", "#f59e0b", "#a78bfa"];
 
+// Projeta os 12 primeiros meses de operação, mês a mês, a partir dos
+// números já calculados nos módulos. O Mês 0 é o investimento inicial
+// (saída única); dali em diante, cada mês soma o resultado operacional ao
+// saldo acumulado. Uma taxa de crescimento opcional simula um negócio que
+// vai ganhando (ou perdendo) força ao longo do ano: o faturamento e o
+// custo variável escalam juntos (mantendo a margem), e o custo fixo fica
+// constante — é assim que cada um se comporta por definição.
+function projetarFluxoCaixa(calc, taxaCrescimentoMensal) {
+  const taxa = (Number(taxaCrescimentoMensal) || 0) / 100;
+  const meses = [{ mes: 0, label: "Investimento", receita: 0, custoVariavel: 0, custoFixo: 0, resultado: -calc.investimentoTotal, saldo: -calc.investimentoTotal }];
+  let saldo = -calc.investimentoTotal;
+  for (let i = 1; i <= 12; i++) {
+    const fator = Math.pow(1 + taxa, i - 1);
+    const receita = calc.faturamento * fator;
+    const custoVariavel = calc.custoVariavelTotal * fator;
+    const custoFixo = calc.custoFixoTotal;
+    const resultado = receita - custoVariavel - custoFixo;
+    saldo += resultado;
+    meses.push({ mes: i, label: `Mês ${i}`, receita, custoVariavel, custoFixo, resultado, saldo });
+  }
+  return meses;
+}
+
+function FluxoCaixaAnual({ calc, taxaCrescimento, onSetTaxaCrescimento, readOnly }) {
+  const fluxo = projetarFluxoCaixa(calc, taxaCrescimento);
+  const mesPayback = fluxo.find((m) => m.mes > 0 && m.saldo >= 0);
+  const mesesDeficit = fluxo.filter((m) => m.mes > 0 && m.resultado < 0).length;
+
+  return (
+    <div>
+      <Card className="p-5 mb-4">
+        <SectionTitle icon={Wallet} sub="Ponto de partida: o investimento total sai do caixa no Mês 0; a partir daí, cada mês soma (ou subtrai) o resultado operacional ao saldo acumulado.">Premissa da projeção</SectionTitle>
+        <Field label="Taxa de crescimento mensal do faturamento (%, opcional)" hint="0% = repete o mesmo faturamento todo mês. O custo variável acompanha o faturamento na mesma proporção; o custo fixo não muda.">
+          <input type="number" step="1" value={taxaCrescimento} disabled={readOnly} onChange={(e) => onSetTaxaCrescimento(e.target.value)} className="w-40 bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100 disabled:opacity-60" />
+        </Field>
+      </Card>
+
+      <div className="grid sm:grid-cols-3 gap-3 mb-4">
+        <StatCard label="Saldo ao final do Mês 12" value={fmtBRL(fluxo[12].saldo)} tone={fluxo[12].saldo >= 0 ? "gold" : "slate"} small />
+        <StatCard label="Mês em que o caixa fica positivo" value={mesPayback ? mesPayback.label : "Não ocorre em 12 meses"} tone={mesPayback ? "blue" : "slate"} small />
+        <StatCard label="Meses com resultado negativo" value={`${mesesDeficit} de 12`} tone={mesesDeficit > 0 ? "slate" : "gold"} small />
+      </div>
+
+      <Card className="p-5 mb-4">
+        <SectionTitle icon={TrendingUp} sub="A linha cruzando o zero mostra o mês em que o negócio recupera o investimento inicial.">Evolução do saldo de caixa</SectionTitle>
+        <ResponsiveContainer width="100%" height={260}>
+          <LineChart data={fluxo}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+            <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} />
+            <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(v) => fmtBRL(v)} />
+            <Tooltip formatter={(v) => fmtBRL(v)} contentStyle={{ background: "#0f172a", border: "1px solid #334155" }} />
+            <ReferenceLine y={0} stroke="#64748b" strokeDasharray="4 4" />
+            <Line type="monotone" dataKey="saldo" stroke="#f59e0b" strokeWidth={2.5} dot={{ r: 3 }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </Card>
+
+      <Card className="p-5 overflow-x-auto">
+        <SectionTitle icon={ClipboardList}>Tabela mês a mês</SectionTitle>
+        <table className="w-full text-sm min-w-[640px]">
+          <thead>
+            <tr className="text-left text-xs text-slate-500 uppercase tracking-wide border-b border-slate-700">
+              <th className="py-2 pr-3">Mês</th>
+              <th className="py-2 pr-3 text-right">Receita</th>
+              <th className="py-2 pr-3 text-right">Custo Variável</th>
+              <th className="py-2 pr-3 text-right">Custo Fixo</th>
+              <th className="py-2 pr-3 text-right">Resultado do mês</th>
+              <th className="py-2 text-right">Saldo acumulado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fluxo.map((m) => (
+              <tr key={m.mes} className="border-b border-slate-800">
+                <td className="py-2 pr-3 text-slate-300">{m.label}</td>
+                <td className="py-2 pr-3 text-right text-slate-300">{m.mes === 0 ? "—" : fmtBRL(m.receita)}</td>
+                <td className="py-2 pr-3 text-right text-slate-300">{m.mes === 0 ? "—" : fmtBRL(m.custoVariavel)}</td>
+                <td className="py-2 pr-3 text-right text-slate-300">{m.mes === 0 ? "—" : fmtBRL(m.custoFixo)}</td>
+                <td className={`py-2 pr-3 text-right font-semibold ${m.resultado >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{fmtBRL(m.resultado)}</td>
+                <td className={`py-2 text-right font-bold ${m.saldo >= 0 ? "text-amber-400" : "text-slate-400"}`}>{fmtBRL(m.saldo)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
 function AnaliseCenarios({ calc, cenarios, onSetCenarios, readOnly }) {
   const lista = cenarios || [];
 
@@ -2547,6 +2635,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
     ...MODULOS.map((m) => ({ id: m.id, label: m.nome, icon: m.icon, num: String(m.n).padStart(2, "0") })),
     { id: "analise", label: "Análise do Negócio", icon: TrendingUp, num: null },
     { id: "cenarios", label: "Análise de Cenários", icon: GitCompareArrows, num: null },
+    { id: "fluxocaixa", label: "Fluxo de Caixa Anual", icon: Wallet, num: null },
     { id: "feedback", label: "Feedback do Professor", icon: MessageSquare, num: null },
     { id: "suporte", label: "Suporte", icon: LifeBuoy, num: null },
     { id: "novidades", label: "Novidades", icon: Megaphone, num: null },
@@ -2741,6 +2830,14 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
             <SectionTitle icon={GitCompareArrows} sub="Crie até 3 cenários simulando mudanças no faturamento e nos custos, e compare o resultado projetado com o cenário atual.">Análise de Cenários</SectionTitle>
             <AnaliseCenarios calc={calc} cenarios={dados.cenarios} onSetCenarios={(novos) => setDados({ ...dados, cenarios: novos })} readOnly={souVisualizador} />
+          </div>
+        )}
+
+        {aba === "fluxocaixa" && (
+          <div>
+            <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
+            <SectionTitle icon={Wallet} sub="Projeção mês a mês do primeiro ano de operação, a partir dos números já lançados nos módulos.">Fluxo de Caixa Anual</SectionTitle>
+            <FluxoCaixaAnual calc={calc} taxaCrescimento={dados.taxaCrescimentoFluxo ?? 0} onSetTaxaCrescimento={(v) => setDados({ ...dados, taxaCrescimentoFluxo: v })} readOnly={souVisualizador} />
           </div>
         )}
 

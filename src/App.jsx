@@ -2768,6 +2768,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
         )}
 
         {aba === "novidades" && <NovidadesView />}
+        {aba === "tutoriais" && <TutoriaisView categoria="aluno" />}
       </main>
     </div>
   );

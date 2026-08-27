@@ -2999,6 +2999,7 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
   const equipeKey = `dados_equipe_${equipe.id}`;
   const [dados, setDados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
   const [modulosAbertos, setModulosAbertos] = useState(new Set());
+  const [menuAlunoAberto, setMenuAlunoAberto] = useState(false);
   if (dados === undefined) return <LoadingScreen />;
   const lanc = mergeLancamentos(dados.lancamentos);
   const calc = calcular(lanc);
@@ -3049,6 +3050,23 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
             </div>
           </div>
         )}
+
+        {/* Menu do Aluno — só para visualização e acompanhamento pelo
+            professor. Fica recolhido por padrão para não ocupar espaço; ao
+            expandir, mostra as mesmas telas de análise que a equipe vê do
+            lado dela (Cenários e Fluxo de Caixa), sempre em modo leitura. */}
+        <Card className="p-0 overflow-hidden">
+          <button onClick={() => setMenuAlunoAberto((v) => !v)} className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-slate-800/40">
+            <span className="flex items-center gap-2.5 font-bold text-slate-100"><LayoutDashboard size={17} className="text-amber-500" /> Menu do Aluno <span className="text-xs font-normal text-slate-500">— visualização e acompanhamento</span></span>
+            {menuAlunoAberto ? <ChevronDown size={18} className="text-slate-500 shrink-0" /> : <ChevronRight size={18} className="text-slate-500 shrink-0" />}
+          </button>
+          {menuAlunoAberto && (
+            <div className="px-5 pb-5 pt-1 border-t border-slate-800 space-y-5">
+              <AnaliseCenarios calc={calc} cenarios={dados.cenarios} onSetCenarios={() => {}} readOnly />
+              <FluxoCaixaAnual calc={calc} taxaCrescimento={dados.taxaCrescimentoFluxo ?? 0} onSetTaxaCrescimento={() => {}} readOnly />
+            </div>
+          )}
+        </Card>
 
         <Card className="p-4">
           <SectionTitle icon={ClipboardList} sub="Clique em um módulo para abrir e ver o que a equipe preencheu, linha por linha.">Navegar pelos módulos</SectionTitle>

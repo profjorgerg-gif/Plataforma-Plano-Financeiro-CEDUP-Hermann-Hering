@@ -12,7 +12,7 @@ import {
   Save, Copy, ArrowLeft, BookOpen, Building2, KeyRound, Mail, Lock, ShieldCheck,
   Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
   ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
-  LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows,
+  LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows, Monitor,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
@@ -170,6 +170,45 @@ const MANUAIS_PDF = {
   manualAlunoRef: `${import.meta.env.BASE_URL}manual-do-aluno.pdf`,
   manual: `${import.meta.env.BASE_URL}manual-do-aluno.pdf`,
 };
+
+// Guia Pedagógico — a metodologia de aplicação em sala de aula, mais os
+// slides de apoio para cada sessão. Acesso de qualquer professor (não é
+// exclusivo do Mestre); nunca aparece no menu do aluno. Todos abrem/baixam
+// o PDF diretamente — impressão liberada, diferente dos manuais.
+const GUIA_PEDAGOGICO_ITENS = [
+  { id: "metodologia", label: "Metodologia de Aplicação Pedagógica", arquivo: "metodologia-pedagogica.pdf", destaque: true },
+  { id: "slide1", label: "1. Apresentação da plataforma e formação dos grupos", arquivo: "slide-1-apresentacao-da-plataforma-e-formacao-dos-grupos.pdf" },
+  { id: "slide2", label: "2. Bloco 1 — Investimento Inicial", arquivo: "slide-2-bloco-1-investimento-inicial.pdf" },
+  { id: "slide3", label: "3. Bloco 2 — Receitas e Custos", arquivo: "slide-3-bloco-2-receitas-e-custos.pdf" },
+  { id: "slide4", label: "4. Bloco 3 — Custos Fixos", arquivo: "slide-4-bloco-3-custos-fixos.pdf" },
+  { id: "slide5", label: "5. Bloco 4 — Resultado e Viabilidade", arquivo: "slide-5-bloco-4-resultado-e-viabilidade.pdf" },
+  { id: "slide6", label: "6. Cenários e Fluxo de Caixa", arquivo: "slide-6-cenarios-e-fluxo-de-caixa.pdf" },
+  { id: "slide7", label: "7. Apresentações finais", arquivo: "slide-7-apresentacoes-finais.pdf" },
+];
+
+function GuiaPedagogicoView() {
+  return (
+    <div>
+      <SectionTitle icon={GraduationCap} sub="Metodologia de aplicação em sala de aula e slides de apoio para cada sessão — acesso exclusivo do professor, com impressão e download liberados.">Guia Pedagógico</SectionTitle>
+      <div className="space-y-2.5">
+        {GUIA_PEDAGOGICO_ITENS.map((it) => (
+          <a
+            key={it.id}
+            href={`${import.meta.env.BASE_URL}${it.arquivo}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`flex items-center justify-between gap-3 p-4 rounded-lg border transition ${it.destaque ? "bg-amber-950/20 border-amber-500/40 hover:border-amber-400" : "bg-slate-800 border-slate-700 hover:border-slate-500"}`}
+          >
+            <span className={`flex items-center gap-2.5 text-sm font-semibold ${it.destaque ? "text-amber-300" : "text-slate-200"}`}>
+              {it.destaque ? <BookOpen size={16} /> : <Monitor size={16} />} {it.label}
+            </span>
+            <Printer size={15} className="text-slate-500 shrink-0" />
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 const TELAS_MANUAL = {
   aluno_google: "data:image/webp;base64,UklGRvYNAABXRUJQVlA4IOoNAACQYgCdASoIAloBPmEwlUgkIyIhIhOYkIAMCWlu7mBdLL3mWZI7YepXhPXnV7+Mv8969fRh/u93l5gP15/Y73e/RF6AH6gdbN6AH6n+tX6q37a/sh7UerxsK/wPhP4nPa0m24P+V/grD+yBd22S3yqHovEn4z0AvV/6l3x2oj3x80z/hekv+J8Ab7N/oP9v/d/gC/nH9U/4f90/KT6V/6n/1+VD9A/0PsC/zz+xf9jsoei8GrRW9SXH+lb48tfj2QIc5aq3x35Sd5boaSMeI0dR4rtzjq5e+PLdCOlx/ZODiVVUjdERchjiaoIXRNI8+77BQRaPLfvD/St8eW6GZnT/St8eX+GPER0tTlEtYx4jSRjxEdLj+yaqdP9J4O+BbN1kVtWtVd0X3fd933fcZ+/afML59p+nSt8esCoBwT+w0BsLtYOqe9XVak0oKrL8S2oS+euJfYukZrwuP+UQh4jMzicolVPqJ2SPRuNtjF2mI090/PC4or2d87ADwVtP1hl557w/2kzZLCamTnyNdASzLMeUxTR563FC5bfkTHWwQD+wZAWpyiWsY/J1raFYzGqjfRr3aB1YT2Ba5HZXDJxoYtIRcWJDSRjxjooh1ceCMHyWqW/aAFnoJ/3WIYLMIdjjpmUlb480x/Bcf6VvjgLIs9Q8jXcZIhBaE02J2Z1WxjnXR75ljEN84fk6UgDuboDlwuzjMpRE9nLW1vQN9LyMCRi3EaOo8tqTF/5OybM1BzUkQbkOW1L8a6PkgxdF0XRdEefntzo83lfCUDNPrtwCerbkreLXBpYCNITohwzpzQPpKXj/Q+iDnkx9SdNFdT5ayD6zATertYWCzVV6MCK/YmkjHiI6Ws27b+sOz1JluWb5vm+b5vm+5ZvuUc04EcJj+Ymkiv1iZJEQsO3A8TbdFNAYLmsdtCgV8DiV0FxYkNJGLOlbtQFGMDAt0MzOn9k2sY8RpIx4Vzeby2pK3x5Xwlb48t0NJGPCyAuP9KzafsTSRjxGkjHiNHUeW5sfn5boR0uP9K3x5boaOo8t0NJGPEaOn/+gRLWMeIjo+AD+/JkH4C7cJl2bJ846TIcXpjHjjqRAUyW/GEthEfxMoXo2xDLi1QyhznCVwmIsfag7xIIiEd6Z5Dlntgj63WnuQigIVUN0nGf1KGYkFRUZlmJ9G9byhwPyhh1okAcVSFUXe0NfUW12PEUPQHHhxvZdS9pQ/EY7gFmCT4JxbrnYhLgo5FTTsrt8668LaVIHgEn4cq8OgcFH+xmaczMn9Qedlpkzm2ydcEn+qeR1WfOHQpmiSzjj00zzgZ3/+Z/3V0E9//OWaH8X5mf4+t6rG+0y53dqh8q0boHW73D+gswOKeCCpaQUda76syGP/XqRYbC9FuhzQF/7zacjBdirmb5Bp8jlzvWSHJKSwyGfuC2R6AP0o73PSGc3vZQSDVBfG8j9t3n5ftczKH3m4gZ2ooAn5rvQCR9fH5/AvEQPLOSAjjitV8ZKfTdphywOqZDpbgrj65TKKAIRD+uMnARGsQ3CVyz/PPQJ5UKwn2dvW7fafF612sgoIjMQJO5cu/KQB6yKCK77HUXgoEUsIka28Y/l7vWKem5D3b1eALnTvMTNh5zwJ+tQwo2oPegfLN+6p0KNiYMaguPe9XQ+6WcSIsPZvjT7o5ZB8rOrs6uk5KkhMDt6UVqg9YvKDzOvKy28HYSTzIVm8hq6R/J9n7IeRQRn/iOOiGkunMSorumXnQrQooRcB8C77SSbPbUPQ4y3ukwXaHkmFPh9Ji+XN/v4ik1Js+ASJgo21ENH+hUhEvE761PUSzfgkQ4VNLK+HeQB3IMp+gpePEDM2A2Vy/5/+SMa4rW4J6O/YYPGEgBgsI2eiKMiAIYJMXk4qXngz/E2kKfySsvlu/DBIU5trRram4RIyJAYvN7YCKt6MEeiDW/8DbcGPconnXcBjT8zcN9SIjTmVkwsM1dJEmjfRYepcjqouLAWtIUEaSs8gKYMb8JjokpgLInx4ECvmzAQtM0lq+nv+G8zNVpfMRaTzZ3tcpB5ZJZCC0dZIs4rgjwyXJRoSdob1nQKZonzfffRoXsVPCU1mJPR4ccT8bnQ2UqS5yaS2EdncXqaLIWgXhPr/5bq9Ecf33qzlBCVeyzzpBdT6UPgIDRkwpHQmhjX0UekWRfwK0RjYuN7asKhxLQ95agr8dGgCDUZMtCsWQ9jximQRmhV9VGBMhIr5ejLX5x+BrPmIIJeCsqP9NwdbPPy+gZ+U6QXldDrAEN39BULJhzxgzVVEBvL4RfleG4vQulz3JI+kotQZMzKJSxRkuJtZIBkS9USv7/09anGvdLCL4EBrYkq4biGMl1qUQBJmeJL+UM0DBPDmf+oLmZnkmsuXyIqMzN7Ow6nLlzgzWhfz4y+V1/Fs6BEHhEE3K5LW2dLbld+d8IUKH1yW+3dyPYeTEFp3i6skg19t4AYxPu9Rz0IZxHsIeU0ehbBFmB+wSg7pAizBx5tId4yiOj5Hey6fdQl8VP46hz600+u5M1E6jFI5Y73x+avEkgVCTE4w1xDwBz0FKXaiDNasUoCO+Bwe7y1rM3qTeg8AUUGpdHn1RpJEaCpajeVfjIHWOpOzTjguD0c7t6FJ3W/pwRLTF4LZ7DqPykD4jGyLvepuH0ZtS0QpsvCY9pUXpEWu88ey7nbKBQKAAGq/fl16JvXC0XhNXMQevy37yUDSvKdiZODViZyxlWMwmmdhSKCa4Yt5EI+e/vJ0UioL1wmc5caF/XxC9VOzhXRuwY4d/I7TCyZuAbcsfCzhOLlGvhJC1umoulpk+rhxuMJAm/fdl57X1cHPIaN8xY218sJ0tP7C6b2+3E7Q3tGhH5AQ9zMLEk4NHn9PKew6ftxDdvS5PxZMLL84NNiDYmU3ugCVcOavImBS/Boeb4hC3pGteL+hdy68QTHPYnl5wMB7kmkYn+98WdyOYUk5If/+xu/CtPVHg/b1b9UU7/wT/6W7PdNyXb/ejupvez4v1a7/bMG/flmE0f10wLW9DgjCwHhGkFfSGVukJF+eF6mv5ZK6D7Crxy/ApQFuEarc4m5wWfeB4fyPreQruJz06HGYrxxBaXP/xJxf/RIJd88tDhKVZtPG+TaQOb9Tus+XLxmnOGXE1rBgqAHXS7CK7ysXFHDNSZ5d8a1Bm8pY4hSCM0bgs33WwY26CHaCiEWXL/kyqoUjg6C0DWUrxr4KLw9JtAlRcpA7Vhrr74AMtLJDUAvfGGuffzTb5MoPgH36kyR9rbQYS4sHCpM7VrCnAoAT1TqnODHempfAbaRVTP9Mc6v0szeGdGRfqoevnd/mS4enfBdfqqGPcjfVMHEMhOOrqf8PtUTfCVdoaervLUN/o20UBhRCEZCP6VzP24/yfneJCPAD93ssTKU1wvsBMtJEsDm/qayyH5zozzT7S9UH/Ol1n9sWM4Rn7QQ/xdJ6tD4QjFbJIIrwcqDUkW774SvT1ytIODAsi8telnYRKktKnq/KheQS/uDF3D/a9nz70FfYnPTR0TgRvSPkfDkXRZ8MCntw1u2YuhT/4QrCCauaVRtdrOxRE/j+1Rie4z9rPS/4snksbU0DhjX2UWvNilnaxpoSp4oymQ4r3IHNsW2Ra5MjYyjmMcHx7QU+e9bDsSlc3ADY3GDEmW3+L/texX88ibgAqL1FjSlr4z1hbHApqrabJ777v/i6xX9CnsvXh9eoEiOcX/ET1WwFAKkBWTIhvJ44Z1EEx8L3Y/FF1hm+aC+E8KPSflYbdXMXysQpN+S7/LnjYLhzsA9QoqDqg6oOp5svlDu1mfgq3MclsRqJ2qpzPTBmtptBYf4s90ZWoMHBrLOOz1sSSxrY5g/5kmOuYAGFHte9mGIg54TylcrpTBhBcf3r1CLVA24+ZvR5u4KZx/h8tUoI6zc0NWgTCf4Ufx/Y3WDxpwNGe6Exq1BqvpSU6CZn9SgcCc1ZvyCB/nGEhKHkwph/RbmdHM+3ddL3W8mc3RLAnj7qjmK/H/roBz7fiP6pOmLn6WH4wP4J6knPG0HN4ecSfFWhufbYvi2V0rQa8qRDIOmA4XuKfWtGk+zDZrZo9YJqgstgS2D0yvnfaTt94E7f3CRt2yB1DvUysDkEN0AFY/KKxbGPaTi1Pbi77ds8TVDpykDzrq6b19nUQR69QcVeGUzn8HUiSvCVkh4vuz2Cs3G4s58/OF+D3DYT9RMU7/XRRKqjnsxRuxubFHYa5CFjpTJh6DnONh3dZF16yJQUAKeL8cRnhJp10ig/L5tNKrGKdLF8ugUzy3+js56eX0+91Sw2uR0NtisVih2EEeQlFX3io84aI/1LNsv2yfKzKPkX/RsUfejCHvw/r35hXxJDAcCdI0DBUDuq9CHsNOsQeiIT0P+EHhygbDIVLwnqu26I1Zs4ofrZOWEELmF6mAv4sPL/r0bY33Uh2/hGWfXPjAkqkZaT6PaYicd18M0ZAKL0rElWkHQ38UpttcXYXStdJPNqexuydwEMJyye7Kyde1+4TMjIoz5vBEx6+s1lJ/wFevwISHwNENltoI4asPNRF1jyKk8hFONRARJmK4aZbBlAxQ/aHT+eN8lpNxaSDbfM2Hvy27u/8jOg/jIAbdTLVFaQIpRLr7Ogk0T+5QxUvzl3On84tvgFLKBDEm3FfTXDPTWpw/mWBpAY3tKEGStBASWZfyTAtDHF0gJKtfNFLECnLOOx2WfD/Aa4w3wrv5oP8A1PqhZYO+gAYAtbQaVwAAA",
@@ -4314,6 +4353,10 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
               </button>
             );
           })}
+          <div className="px-5 pt-5 pb-2 text-[10px] font-bold tracking-widest text-white/40">PEDAGÓGICO</div>
+          <button onClick={() => irPara("guiaPedagogico")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "guiaPedagogico" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
+            <GraduationCap size={16} className="shrink-0" /> Guia Pedagógico
+          </button>
           <div className="px-5 pt-5 pb-2 text-[10px] font-bold tracking-widest text-white/40">OUTROS</div>
           <button onClick={() => irPara("suporte")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "suporte" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
             <LifeBuoy size={16} className="shrink-0" /> Suporte
@@ -4349,6 +4392,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
         {aba === "manualAlunoRef" && <ManualAlunoView contexto="professor" />}
         {aba === "manualOperacional" && user.mestre && <ManualOperacionalView />}
         {aba === "checklistStatus" && user.mestre && <ChecklistStatusView />}
+        {aba === "guiaPedagogico" && <GuiaPedagogicoView />}
         {aba === "suporte" && (
           <SuporteView ctx={{ uid: user.uid, nome: user.nome, papel: "professor", mestre: !!user.mestre }} />
         )}

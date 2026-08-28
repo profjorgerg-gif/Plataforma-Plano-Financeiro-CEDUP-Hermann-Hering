@@ -1,4 +1,4 @@
-// build: 2026-08-28_12h40m34s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 2026-08-28_12h48m23s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -289,6 +289,7 @@ const OPERACIONAL_SECOES = [
     "28/08: Lista oficial de alunos (Turmas → Lista oficial de alunos) passou a permitir inclusão e exclusão individual de aluno, além da importação em massa por PDF — útil para ajustar um aluno pontual (matrícula corrigida, aluno novo, transferência) sem precisar reimportar a lista inteira. A inclusão individual usa o mesmo índice matrícula → turma da importação em massa, então o aluno incluído também entra direto pela própria matrícula.",
     "28/08: primeiro acesso do aluno passou a ter dois passos em sequência — primeiro a matrícula (confirma o cadastro contra a lista oficial), depois o código da turma (precisa bater com a turma indicada pela matrícula) — só então a escolha da empresa é liberada. A partir do segundo acesso, turma e empresa já ficam salvas e não são pedidas de novo; só a matrícula é reconfirmada a cada login. Quando a matrícula ainda não está na lista oficial, existe uma alternativa para entrar só com o código da turma.",
     "28/08: Módulo 7 (Custos de Comercialização) ganhou o cálculo automático da alíquota do Simples Nacional (Anexos I a III — Comércio, Indústria e Serviços), a partir do tipo de atividade e do faturamento anual do Módulo 5. Continua existindo a opção de informar o percentual manualmente, para atividades fora desses três anexos.",
+    "28/08: Análise do Negócio ganhou o bloco \"Produtos Mais Lucrativos\": ranking dos produtos/serviços do Módulo 5 por margem de contribuição total (usando o custo do Módulo 8 e o imposto/comissão do Módulo 7), e uma calculadora de preço sugerido por margem de contribuição desejada.",
   ]},
   { titulo: "Segurança da plataforma", paragrafos: [
     "Login exclusivo via Google: o provedor \"E-mail/senha\" foi desativado no Console do Firebase; só \"Google\" está ativo. É preciso conferir, em Authentication → Domínios autorizados, se o domínio do GitHub Pages está na lista.",
@@ -313,7 +314,7 @@ const CHECKLIST_SECOES = [
     "Login exclusivo via Google, com seletor de perfil (Aluno/Professor + código de Mestre)",
     "Professor entra direto; aluno confirma matrícula + código de turma no primeiro acesso (nome oficial e turma reconhecidos automaticamente); da segunda vez em diante, só a matrícula é pedida",
     "Os 13 módulos financeiros calculando e passando dados entre si",
-    "Análise do Negócio com gráficos e alertas automáticos",
+    "Análise do Negócio com gráficos, alertas automáticos, ranking de produtos por margem de contribuição e calculadora de preço sugerido",
     "Análise de Cenários: até 3 simulações comparadas com o resultado atual",
     "Fluxo de Caixa Anual Projetado: evolução mês a mês do primeiro ano, com indicador do mês de payback",
     "Módulo 7: cálculo automático da alíquota do Simples Nacional (Anexos I a III) a partir do tipo de atividade e do faturamento anual, com opção de informar manualmente",
@@ -382,6 +383,31 @@ function calcular(lanc) {
   const investPreOp = l.m3.itens.reduce((s, it) => s + (Number(it.valor) || 0), 0);
   const faturamento = l.m5.itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.precoUnit) || 0), 0);
   const custoComercializacao = faturamento * ((Number(l.m7.pctImpostos) || 0) + (Number(l.m7.pctComissao) || 0)) / 100;
+
+  // Análise por produto/serviço: margem de contribuição unitária e total de
+  // cada item do Módulo 5, usando o custo unitário do Módulo 8 e as taxas
+  // (imposto + comissão) do Módulo 7 já lançadas — não pede nenhum dado
+  // novo do aluno. Serve para o ranking de produtos mais lucrativos e para
+  // a calculadora de preço sugerido, na Análise do Negócio.
+  const pctImpostos = Number(l.m7.pctImpostos) || 0;
+  const pctComissao = Number(l.m7.pctComissao) || 0;
+  const produtosAnalise = l.m5.itens.map((it) => {
+    const preco = Number(it.precoUnit) || 0;
+    const qtd = Number(it.qtd) || 0;
+    const custoUnit = Number(l.m8.custosUnit?.[it.id]) || 0;
+    const impostoUnit = (preco * pctImpostos) / 100;
+    const despVarUnit = (preco * pctComissao) / 100;
+    const precoLiquido = preco - impostoUnit - despVarUnit;
+    const margemUnit = precoLiquido - custoUnit;
+    const margemPct = preco > 0 ? (margemUnit / preco) * 100 : 0;
+    const receitaTotal = preco * qtd;
+    const margemTotal = margemUnit * qtd;
+    return { id: it.id, nome: it.nome || "(sem nome)", preco, qtd, custoUnit, impostoUnit, despVarUnit, precoLiquido, margemUnit, margemPct, receitaTotal, margemTotal };
+  });
+  const margemTotalGeral = produtosAnalise.reduce((s, p) => s + p.margemTotal, 0);
+  const produtosRanking = [...produtosAnalise]
+    .sort((a, b) => b.margemTotal - a.margemTotal)
+    .map((p) => ({ ...p, pctDaMargem: margemTotalGeral > 0 ? (p.margemTotal / margemTotalGeral) * 100 : 0 }));
 
   const cmv = l.m5.itens.reduce((s, it) => {
     const cu = Number(l.m8.custosUnit?.[it.id]) || 0;
@@ -459,6 +485,7 @@ function calcular(lanc) {
     investimentoTotal, receitaAnual, custoVariavelAnual, custoFixoAnual, lucroAnual,
     indiceMargemContribuicao, pontoEquilibrio, lucratividade, rentabilidade, prazoRetorno,
     progresso, preenchidos,
+    pctImpostos, pctComissao, produtosAnalise, produtosRanking, margemTotalGeral,
   };
 }
 
@@ -2331,6 +2358,109 @@ function AnaliseCenarios({ calc, cenarios, onSetCenarios, readOnly }) {
   );
 }
 
+// Ranking de produtos/serviços por margem de contribuição total, e
+// calculadora de preço sugerido por markup — usa só dados já lançados nos
+// Módulos 5 (produtos/preços), 7 (impostos/comissão) e 8 (custo unitário).
+function ProdutosMaisLucrativos({ ranking, pctImpostos, pctComissao }) {
+  const [margemAlvo, setMargemAlvo] = useState(30);
+
+  if (!ranking || ranking.length === 0) {
+    return (
+      <Card className="p-4">
+        <SectionTitle icon={Target} sub="Ranking de margem de contribuição e calculadora de preço, a partir do que já foi lançado nos Módulos 5, 7 e 8.">Produtos Mais Lucrativos</SectionTitle>
+        <p className="text-sm text-slate-500 py-6 text-center">Cadastre produtos/serviços no Módulo 5 para ver o ranking aqui.</p>
+      </Card>
+    );
+  }
+
+  const divisorPct = 100 - margemAlvo - pctImpostos - pctComissao;
+  const divisorValido = divisorPct > 0;
+
+  return (
+    <Card className="p-4">
+      <SectionTitle icon={Target} sub="Ranking de margem de contribuição e calculadora de preço, a partir do que já foi lançado nos Módulos 5, 7 e 8.">Produtos Mais Lucrativos</SectionTitle>
+
+      <div className="overflow-x-auto -mx-1">
+        <table className="w-full text-sm min-w-[720px]">
+          <thead>
+            <tr className="text-left text-xs uppercase text-slate-400 border-b border-slate-700">
+              <th className="py-2 px-1 w-8">#</th>
+              <th className="py-2 px-1">Produto/Serviço</th>
+              <th className="py-2 px-1 text-right">Preço</th>
+              <th className="py-2 px-1 text-right">Custo Unit.</th>
+              <th className="py-2 px-1 text-right">Margem Unit.</th>
+              <th className="py-2 px-1 text-right">Margem %</th>
+              <th className="py-2 px-1 text-right">Margem Total</th>
+              <th className="py-2 px-1 text-right">% da Margem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ranking.map((p, i) => (
+              <tr key={p.id} className="border-b border-slate-800">
+                <td className="py-1.5 px-1 text-slate-500">{i + 1}</td>
+                <td className="py-1.5 px-1 text-slate-200">{p.nome}</td>
+                <td className="py-1.5 px-1 text-right text-slate-300">{fmtBRL(p.preco)}</td>
+                <td className="py-1.5 px-1 text-right text-slate-300">{fmtBRL(p.custoUnit)}</td>
+                <td className={`py-1.5 px-1 text-right font-semibold ${p.margemUnit >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{fmtBRL(p.margemUnit)}</td>
+                <td className="py-1.5 px-1 text-right text-slate-300">{fmtNum(p.margemPct, 1)}%</td>
+                <td className={`py-1.5 px-1 text-right font-semibold ${p.margemTotal >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{fmtBRL(p.margemTotal)}</td>
+                <td className="py-1.5 px-1 text-right text-slate-400">{fmtNum(p.pctDaMargem, 1)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-slate-500 mt-2">Ordenado do produto que mais contribui para o resultado (maior Margem Total) para o que menos contribui. Margem Total negativa significa que esse item está dando prejuízo a cada venda.</p>
+
+      <div className="mt-5 pt-4 border-t border-slate-800">
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3 mb-3">
+          <div>
+            <div className="text-xs uppercase text-slate-500 font-semibold mb-1">Calculadora de preço sugerido</div>
+            <p className="text-xs text-slate-500 max-w-md">Informe a margem de contribuição que a equipe quer alcançar, e a plataforma sugere o preço de venda de cada item — já considerando o imposto e a comissão do Módulo 7.</p>
+          </div>
+          <Field label="Margem de contribuição desejada">
+            <NumInput value={margemAlvo} onChange={setMargemAlvo} suffix="%" />
+          </Field>
+        </div>
+
+        {!divisorValido ? (
+          <p className="text-sm text-rose-400">Essa margem desejada, somada ao imposto ({fmtNum(pctImpostos, 1)}%) e à comissão ({fmtNum(pctComissao, 1)}%) do Módulo 7, passa de 100% — reduza a margem desejada para calcular um preço.</p>
+        ) : (
+          <div className="overflow-x-auto -mx-1">
+            <table className="w-full text-sm min-w-[520px]">
+              <thead>
+                <tr className="text-left text-xs uppercase text-slate-400 border-b border-slate-700">
+                  <th className="py-2 px-1">Produto/Serviço</th>
+                  <th className="py-2 px-1 text-right">Custo Unit.</th>
+                  <th className="py-2 px-1 text-right">Preço Atual</th>
+                  <th className="py-2 px-1 text-right">Preço Sugerido</th>
+                  <th className="py-2 px-1 text-right">Diferença</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ranking.map((p) => {
+                  const precoSugerido = p.custoUnit / (divisorPct / 100);
+                  const diferenca = precoSugerido - p.preco;
+                  return (
+                    <tr key={p.id} className="border-b border-slate-800">
+                      <td className="py-1.5 px-1 text-slate-200">{p.nome}</td>
+                      <td className="py-1.5 px-1 text-right text-slate-300">{fmtBRL(p.custoUnit)}</td>
+                      <td className="py-1.5 px-1 text-right text-slate-300">{fmtBRL(p.preco)}</td>
+                      <td className="py-1.5 px-1 text-right font-semibold text-amber-400">{fmtBRL(precoSugerido)}</td>
+                      <td className={`py-1.5 px-1 text-right ${diferenca > 0 ? "text-rose-400" : "text-emerald-400"}`}>{diferenca > 0 ? "+" : ""}{fmtBRL(diferenca)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="text-xs text-slate-500 mt-2">O preço sugerido é apenas uma referência de cálculo — o preço final também depende do que o mercado está disposto a pagar e do preço da concorrência.</p>
+      </div>
+    </Card>
+  );
+}
+
 function AnaliseNegocio({ calc, historico, onSalvarVersao, readOnly }) {
   const pieData = [
     { name: "Investimentos Fixos", value: calc.investFixo },
@@ -2403,6 +2533,8 @@ function AnaliseNegocio({ calc, historico, onSalvarVersao, readOnly }) {
           </ResponsiveContainer>
         </Card>
       </div>
+
+      <ProdutosMaisLucrativos ranking={calc.produtosRanking} pctImpostos={calc.pctImpostos} pctComissao={calc.pctComissao} />
 
       <Card className="p-4">
         <div className="flex items-center justify-between">

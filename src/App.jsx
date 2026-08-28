@@ -4615,10 +4615,20 @@ function TelaConfirmarMatricula({ perfil, onConfirmar, onSair }) {
   const [erro, setErro] = useState("");
   const [verificando, setVerificando] = useState(false);
 
+  // Confirma a matrícula (fluxo principal) ou, para quem entrou pelo código
+  // de turma (sem matrícula cadastrada), o próprio código de turma usado —
+  // assim todo mundo passa por essa checagem a cada login, como pedido.
+  const usaCodigoTurma = !perfil.matricula && !!perfil.codigoTurmaUsado;
+  const credencialCorreta = usaCodigoTurma ? String(perfil.codigoTurmaUsado) : String(perfil.matricula);
+  const rotulo = usaCodigoTurma ? "Seu código de turma" : "Sua matrícula";
+  const placeholder = usaCodigoTurma ? "Digite o código de turma" : "Digite sua matrícula";
+  const mensagemErro = usaCodigoTurma ? "Código de turma não confere. Confira e tente de novo." : "Matrícula não confere. Confira o número e tente de novo.";
+
   const confirmar = () => {
     setErro(""); setVerificando(true);
-    if (valor.trim() !== String(perfil.matricula)) {
-      setErro("Matrícula não confere. Confira o número e tente de novo.");
+    const digitado = usaCodigoTurma ? valor.trim().toUpperCase() : valor.trim();
+    if (digitado !== credencialCorreta) {
+      setErro(mensagemErro);
       setVerificando(false);
       return;
     }
@@ -4629,10 +4639,10 @@ function TelaConfirmarMatricula({ perfil, onConfirmar, onSair }) {
     <div className="max-w-md mx-auto w-full">
       <button onClick={onSair} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><LogOut size={15} /> Sair</button>
       <Card className="p-6">
-        <SectionTitle icon={ShieldCheck} sub={`Olá, ${perfil.nome}! Por segurança, confirme sua matrícula a cada login.`}>Confirme sua identidade</SectionTitle>
-        <Field label="Sua matrícula">
+        <SectionTitle icon={ShieldCheck} sub={`Olá, ${perfil.nome}! Por segurança, confirme sua identidade a cada login.`}>Confirme sua identidade</SectionTitle>
+        <Field label={rotulo}>
           <div className="flex gap-2">
-            <TxtInput value={valor} onChange={setValor} placeholder="Digite sua matrícula" />
+            <TxtInput value={valor} onChange={setValor} placeholder={placeholder} />
             <button onClick={confirmar} disabled={verificando || !valor.trim()} className="bg-amber-500 text-slate-900 px-4 rounded-md text-sm font-semibold hover:bg-amber-400 disabled:opacity-40">
               {verificando ? "…" : "Confirmar"}
             </button>
@@ -4670,7 +4680,7 @@ function TelaInformarTurma({ perfil, onSair, onResultado, onVirarProfessor }) {
       const rt = await window.storage.get(`turma_por_codigo_${termo.toUpperCase()}`, true);
       if (rt) {
         const turma = JSON.parse(rt.value);
-        await onResultado({ turmaId: turma.id, turmaNome: turma.nome, status: "aprovado", professorUid: turma.professorUid || null, professorNome: turma.professor || null });
+        await onResultado({ turmaId: turma.id, turmaNome: turma.nome, status: "aprovado", professorUid: turma.professorUid || null, professorNome: turma.professor || null, codigoTurmaUsado: termo.toUpperCase() });
         setBuscando(false);
         return;
       }
@@ -4791,12 +4801,18 @@ function AlunoWorkspaceCarregado({ userSessao, turmaId, equipeId, onSair, onTroc
 function AlunoRoteador({ perfil, onSair, onVirarProfessor }) {
   const [over, setOver] = useState({});
   const efetivo = { ...perfil, ...over };
-  // Confirmação de matrícula por sessão: fica em estado local (não é salvo
+  // Confirmação de identidade por sessão: fica em estado local (não é salvo
   // no perfil), então volta a pedir automaticamente a cada novo carregamento
   // da página — ou seja, a cada novo login de verdade, como pedido no
-  // chamado. Quem entrou pelo código de turma (sem matrícula) não tem essa
-  // exigência, porque não existe matrícula pra confirmar.
+  // chamado. Quem tem matrícula confirma a matrícula; quem entrou pelo
+  // código de turma (sem matrícula) confirma esse código — buscado ao vivo
+  // da lista de turmas do professor, então funciona mesmo para contas
+  // criadas antes desta atualização.
   const [matriculaConfirmada, setMatriculaConfirmada] = useState(false);
+  const [turmasDoProfessor] = useSharedList(efetivo.professorUid ? `turmas_prof_${efetivo.professorUid}` : null);
+  const turmaAtual = Array.isArray(turmasDoProfessor) ? turmasDoProfessor.find((t) => t.id === efetivo.turmaId) : null;
+  const codigoTurmaAtual = turmaAtual?.codigo || null;
+  const precisaConfirmar = !matriculaConfirmada && (efetivo.matricula || codigoTurmaAtual);
 
   const atualizarPerfil = async (mudancas) => {
     try { await atualizarUsuario(perfil.uid, mudancas); } catch {}
@@ -4818,10 +4834,10 @@ function AlunoRoteador({ perfil, onSair, onVirarProfessor }) {
     );
   }
 
-  if (efetivo.matricula && !matriculaConfirmada) {
+  if (precisaConfirmar) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
-        <TelaConfirmarMatricula perfil={efetivo} onSair={onSair} onConfirmar={() => setMatriculaConfirmada(true)} />
+        <TelaConfirmarMatricula perfil={{ ...efetivo, codigoTurmaUsado: efetivo.matricula ? null : codigoTurmaAtual }} onSair={onSair} onConfirmar={() => setMatriculaConfirmada(true)} />
       </div>
     );
   }

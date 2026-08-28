@@ -1,4 +1,4 @@
-// build: 2026-08-28_11h15m42s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 2026-08-28_12h40m34s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -56,7 +56,7 @@ const TEORIA = {
   m4: { conceito: "Soma dos três blocos de investimento e definição das fontes de recursos (próprios x terceiros).", formula: "Investimento Total = Invest. Fixos + Capital de Giro + Invest. Pré-Operacionais" },
   m5: { conceito: "Estimativa de receita mensal, baseada na quantidade vendida e no preço de mercado.", formula: "Faturamento = Σ (Quantidade × Preço de Venda Unitário)" },
   m6: { conceito: "Custo de materiais para cada unidade fabricada — detalhamento opcional, útil para negócios industriais.", formula: "Custo Unitário = Σ (Quantidade do material × Custo Unitário do material)" },
-  m7: { conceito: "Gastos variáveis que incidem diretamente sobre as vendas: impostos e comissões.", formula: "Custo de Comercialização = Faturamento × (% Impostos + % Comissão)" },
+  m7: { conceito: "Gastos variáveis que incidem diretamente sobre as vendas: impostos e comissões. O imposto pode ser calculado automaticamente pela tabela do Simples Nacional, a partir do tipo de atividade e do faturamento anual.", formula: "Custo de Comercialização = Faturamento × (% Impostos + % Comissão)\nAlíquota efetiva do Simples = (RBT12 × Alíquota nominal − Parcela a deduzir) ÷ RBT12" },
   m8: { conceito: "Valor baixado do estoque em função da venda efetiva (CMD para indústria, CMV para comércio).", formula: "CMD/CMV = Σ (Quantidade Vendida × Custo Unitário de Aquisição/Produção)" },
   m9: { conceito: "Custo com salários e encargos sociais (FGTS, férias, 13º, INSS etc.) da equipe contratada.", formula: "Custo com Mão de Obra = Σ [ Salário × (1 + % Encargos Sociais) ]" },
   m10: { conceito: "Perda de valor dos bens do ativo fixo pelo uso ao longo do tempo.", formula: "Depreciação Mensal = (Valor do Bem ÷ Vida Útil em anos) ÷ 12" },
@@ -94,8 +94,8 @@ const GUIA_MODULOS_EXTRA = {
     exemplo: "1 pão usa 0,5 kg de farinha a R$ 4,50/kg → custo de matéria-prima de R$ 2,25 por pão.",
   },
   m7: {
-    lancamento: "Percentual de impostos sobre vendas (Simples, ICMS, ISS…) e percentual de comissões/gastos com vendas (comissão, propaganda, taxa de cartão) — aplicados sobre o Faturamento do Módulo 5.",
-    exemplo: "8% de impostos + 3% de comissão = 11% sobre R$ 8.940 de faturamento = R$ 983,40 de Custo de Comercialização.",
+    lancamento: "Escolha o tipo de atividade (Comércio, Indústria ou Serviços) e a plataforma calcula sozinha a alíquota efetiva do Simples Nacional, com base no faturamento anual do Módulo 5. Se a atividade não se enquadrar nos Anexos I a III, use \"Informar manualmente\" com a alíquota confirmada por um contador. Informe também o percentual de comissões/gastos com vendas.",
+    exemplo: "Padaria (Comércio), faturamento de R$ 8.940/mês → RBT12 de R$ 107.280 → 1ª faixa do Anexo I (até R$ 180.000) → alíquota efetiva de 4,00% → R$ 357,60/mês de imposto, mais as comissões informadas.",
   },
   m8: {
     lancamento: "Não precisa digitar de novo — a plataforma calcula automaticamente a partir da quantidade vendida (Módulo 5) e do custo de matéria-prima por unidade (Módulo 6).",
@@ -288,6 +288,7 @@ const OPERACIONAL_SECOES = [
     "27/08: confirmação de matrícula exigida a cada login (reforço de segurança, não só no primeiro acesso); painel \"Menu do Aluno\" recolhível na revisão do professor, mostrando Cenários e Fluxo de Caixa da equipe em modo leitura; Manual do Aluno e Manual do Professor reformulados no padrão formal (capa, sumário, telas reais no estilo da própria plataforma); os dois manuais passaram a ser PDFs estáticos publicados na pasta public/ do projeto, abertos direto pelos botões do menu; impressão/download desses PDFs restrita ao Usuário Mestre — professores e alunos abrem em modo leitura, sem os controles nativos de imprimir/baixar do navegador.",
     "28/08: Lista oficial de alunos (Turmas → Lista oficial de alunos) passou a permitir inclusão e exclusão individual de aluno, além da importação em massa por PDF — útil para ajustar um aluno pontual (matrícula corrigida, aluno novo, transferência) sem precisar reimportar a lista inteira. A inclusão individual usa o mesmo índice matrícula → turma da importação em massa, então o aluno incluído também entra direto pela própria matrícula.",
     "28/08: primeiro acesso do aluno passou a ter dois passos em sequência — primeiro a matrícula (confirma o cadastro contra a lista oficial), depois o código da turma (precisa bater com a turma indicada pela matrícula) — só então a escolha da empresa é liberada. A partir do segundo acesso, turma e empresa já ficam salvas e não são pedidas de novo; só a matrícula é reconfirmada a cada login. Quando a matrícula ainda não está na lista oficial, existe uma alternativa para entrar só com o código da turma.",
+    "28/08: Módulo 7 (Custos de Comercialização) ganhou o cálculo automático da alíquota do Simples Nacional (Anexos I a III — Comércio, Indústria e Serviços), a partir do tipo de atividade e do faturamento anual do Módulo 5. Continua existindo a opção de informar o percentual manualmente, para atividades fora desses três anexos.",
   ]},
   { titulo: "Segurança da plataforma", paragrafos: [
     "Login exclusivo via Google: o provedor \"E-mail/senha\" foi desativado no Console do Firebase; só \"Google\" está ativo. É preciso conferir, em Authentication → Domínios autorizados, se o domínio do GitHub Pages está na lista.",
@@ -315,6 +316,7 @@ const CHECKLIST_SECOES = [
     "Análise do Negócio com gráficos e alertas automáticos",
     "Análise de Cenários: até 3 simulações comparadas com o resultado atual",
     "Fluxo de Caixa Anual Projetado: evolução mês a mês do primeiro ano, com indicador do mês de payback",
+    "Módulo 7: cálculo automático da alíquota do Simples Nacional (Anexos I a III) a partir do tipo de atividade e do faturamento anual, com opção de informar manualmente",
     "Confirmação de matrícula a cada login, não só no primeiro acesso",
     "Feedback do Professor por módulo, com nota de 0 a 10 em 8 módulos + nota final no Módulo 13",
     "Painel \"Menu do Aluno\" recolhível na revisão do professor (Cenários e Fluxo de Caixa, em modo leitura)",
@@ -351,7 +353,7 @@ function defaultLancamentos() {
     m4: { pctProprio: 100 },
     m5: { itens: [] },
     m6: { itens: [] },
-    m7: { pctImpostos: 0, pctComissao: 0 },
+    m7: { pctImpostos: 0, pctComissao: 0, modoImposto: "simples", tipoAtividade: "" },
     m8: { custosUnit: {} },
     m9: { itens: [] },
     m10: { vidasUteis: {} },
@@ -1779,16 +1781,124 @@ function M6Form({ data, update, m5itens }) {
   );
 }
 
+// Tabela do Simples Nacional (Lei Complementar 123/2006, Anexos I a III —
+// Comércio, Indústria e Serviços). Cobre as atividades mais comuns entre os
+// negócios que os alunos costumam simular; atividades de Anexo IV ou V
+// (construção civil, advocacia, medicina, etc.) exigem consulta a um
+// contador e usam o modo manual. Fonte: Receita Federal — RBT12 é a Receita
+// Bruta acumulada nos 12 meses anteriores (aqui, o faturamento mensal do
+// Módulo 5 × 12).
+const TABELA_SIMPLES = {
+  comercio: { nome: "Comércio", anexo: "Anexo I", faixas: [
+    { ate: 180000, aliquota: 0.040, deduzir: 0 },
+    { ate: 360000, aliquota: 0.073, deduzir: 5940 },
+    { ate: 720000, aliquota: 0.095, deduzir: 13860 },
+    { ate: 1800000, aliquota: 0.107, deduzir: 22500 },
+    { ate: 3600000, aliquota: 0.143, deduzir: 87300 },
+    { ate: 4800000, aliquota: 0.190, deduzir: 378000 },
+  ]},
+  industria: { nome: "Indústria", anexo: "Anexo II", faixas: [
+    { ate: 180000, aliquota: 0.045, deduzir: 0 },
+    { ate: 360000, aliquota: 0.078, deduzir: 5940 },
+    { ate: 720000, aliquota: 0.100, deduzir: 13860 },
+    { ate: 1800000, aliquota: 0.112, deduzir: 22500 },
+    { ate: 3600000, aliquota: 0.147, deduzir: 85500 },
+    { ate: 4800000, aliquota: 0.300, deduzir: 720000 },
+  ]},
+  servicos: { nome: "Serviços", anexo: "Anexo III", faixas: [
+    { ate: 180000, aliquota: 0.060, deduzir: 0 },
+    { ate: 360000, aliquota: 0.112, deduzir: 9360 },
+    { ate: 720000, aliquota: 0.135, deduzir: 17640 },
+    { ate: 1800000, aliquota: 0.160, deduzir: 35640 },
+    { ate: 3600000, aliquota: 0.210, deduzir: 125640 },
+    { ate: 4800000, aliquota: 0.330, deduzir: 648000 },
+  ]},
+};
+
+// Alíquota efetiva = (RBT12 × Alíquota nominal da faixa − Parcela a deduzir) ÷ RBT12
+function calcularSimples(tipoAtividade, rbt12) {
+  const tabela = TABELA_SIMPLES[tipoAtividade];
+  if (!tabela || !(rbt12 > 0)) return null;
+  const idx = tabela.faixas.findIndex((f) => rbt12 <= f.ate);
+  const faixa = idx === -1 ? tabela.faixas[tabela.faixas.length - 1] : tabela.faixas[idx];
+  const faixaIndice = (idx === -1 ? tabela.faixas.length : idx + 1);
+  const aliquotaEfetiva = Math.max(0, (rbt12 * faixa.aliquota - faixa.deduzir) / rbt12);
+  return { nome: tabela.nome, anexo: tabela.anexo, faixaIndice, totalFaixas: tabela.faixas.length, aliquotaNominal: faixa.aliquota, deduzir: faixa.deduzir, aliquotaEfetiva, acimaDoLimite: idx === -1 && rbt12 > tabela.faixas[tabela.faixas.length - 1].ate };
+}
+
 function M7Form({ data, update, faturamento }) {
+  const modoImposto = data.modoImposto || "simples";
+  const tipoAtividade = data.tipoAtividade || "";
+  const rbt12 = faturamento * 12;
+  const simples = modoImposto === "simples" && tipoAtividade ? calcularSimples(tipoAtividade, rbt12) : null;
+
+  // Mantém pctImpostos sempre sincronizado com o resultado do Simples,
+  // enquanto o modo automático estiver ativo — assim o resto da plataforma
+  // (DRE, indicadores) continua usando o mesmo campo de sempre, sem precisar
+  // saber como ele foi calculado.
+  useEffect(() => {
+    if (modoImposto !== "simples" || !simples) return;
+    const novoPct = Number((simples.aliquotaEfetiva * 100).toFixed(2));
+    if (novoPct !== Number(data.pctImpostos)) update({ ...data, pctImpostos: novoPct });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modoImposto, tipoAtividade, rbt12]);
+
   const pct = (Number(data.pctImpostos) || 0) + (Number(data.pctComissao) || 0);
   const total = (faturamento * pct) / 100;
+
   return (
     <div className="grid md:grid-cols-2 gap-6">
       <div>
-        <Field label="Impostos sobre vendas (SIMPLES, ICMS, ISS...)"><NumInput value={data.pctImpostos} onChange={(v) => update({ ...data, pctImpostos: v })} suffix="%" /></Field>
+        <Field label="Como calcular o imposto sobre vendas?">
+          <div className="flex gap-2 mb-1">
+            <button type="button" onClick={() => update({ ...data, modoImposto: "simples" })}
+              className={`flex-1 text-sm font-semibold px-3 py-2 rounded-md border transition ${modoImposto === "simples" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300 hover:border-slate-400"}`}>
+              Simples Nacional (automático)
+            </button>
+            <button type="button" onClick={() => update({ ...data, modoImposto: "manual" })}
+              className={`flex-1 text-sm font-semibold px-3 py-2 rounded-md border transition ${modoImposto === "manual" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300 hover:border-slate-400"}`}>
+              Informar manualmente
+            </button>
+          </div>
+        </Field>
+
+        {modoImposto === "simples" ? (
+          <>
+            <Field label="Tipo de atividade" hint="Define o Anexo do Simples Nacional aplicável">
+              <select value={tipoAtividade} onChange={(e) => update({ ...data, tipoAtividade: e.target.value })} className="w-full border border-slate-600 rounded-md px-3 py-2 text-sm bg-white">
+                <option value="">Selecione…</option>
+                <option value="comercio">Comércio (Anexo I)</option>
+                <option value="industria">Indústria (Anexo II)</option>
+                <option value="servicos">Serviços (Anexo III)</option>
+              </select>
+            </Field>
+            {!tipoAtividade && (
+              <p className="text-xs text-slate-500 -mt-2 mb-3">Selecione o tipo de atividade para calcular a alíquota automaticamente a partir do faturamento anual (Módulo 5).</p>
+            )}
+            {tipoAtividade && rbt12 <= 0 && (
+              <p className="text-xs text-slate-500 -mt-2 mb-3">Cadastre os produtos/serviços no Módulo 5 para a plataforma calcular a alíquota.</p>
+            )}
+            <p className="text-xs text-slate-500 -mt-1">Cobre os Anexos I a III (comércio, indústria e a maioria dos serviços). Atividades de Anexo IV ou V (ex.: construção civil, advocacia, medicina) devem usar "Informar manualmente" com a alíquota confirmada por um contador.</p>
+          </>
+        ) : (
+          <Field label="Impostos sobre vendas (SIMPLES, ICMS, ISS...)"><NumInput value={data.pctImpostos} onChange={(v) => update({ ...data, pctImpostos: v })} suffix="%" /></Field>
+        )}
+
         <Field label="Comissões / gastos com vendas (comissão, propaganda, taxa de cartão)"><NumInput value={data.pctComissao} onChange={(v) => update({ ...data, pctComissao: v })} suffix="%" /></Field>
       </div>
       <div className="space-y-3">
+        {modoImposto === "simples" && simples && (
+          <Card className="p-3 bg-slate-900 border border-slate-700">
+            <div className="text-xs uppercase text-slate-500 font-semibold mb-1.5">Cálculo do Simples Nacional</div>
+            <div className="text-sm text-slate-300 space-y-1">
+              <div>Receita Bruta em 12 meses (RBT12): <b className="text-slate-100">{fmtBRL(rbt12)}</b></div>
+              <div>{simples.nome} — {simples.anexo}, faixa {simples.faixaIndice} de {simples.totalFaixas}</div>
+              <div>Alíquota nominal da faixa: {(simples.aliquotaNominal * 100).toFixed(1)}% &nbsp;·&nbsp; Parcela a deduzir: {fmtBRL(simples.deduzir)}</div>
+              <div className="font-bold text-amber-400 text-base pt-1">Alíquota efetiva: {(simples.aliquotaEfetiva * 100).toFixed(2)}%</div>
+              {simples.acimaDoLimite && <div className="text-rose-400 text-xs pt-1">Faturamento acima do limite do Simples Nacional (R$ 4,8 milhões/ano) — nesse caso a empresa não poderia optar pelo Simples na vida real. Considere revisar o faturamento do Módulo 5 ou usar o modo manual.</div>}
+            </div>
+          </Card>
+        )}
         <StatCard label="Faturamento do Módulo 5" value={fmtBRL(faturamento)} tone="slate" small />
         <StatCard label="Custo de Comercialização" value={fmtBRL(total)} tone="blue" />
       </div>

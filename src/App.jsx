@@ -1,4 +1,4 @@
-// build: 2026-08-28_10h40m45s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 2026-08-28_11h15m42s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -4667,35 +4667,57 @@ function useEquipeSalva(turmaId, equipeId) {
 
 // A partir do segundo acesso: turma e empresa já ficaram salvas no cadastro
 // do aluno desde o primeiro acesso (ver TelaPrimeiroAcessoAluno, mais
-// abaixo), então não são pedidas de novo. Só a matrícula é solicitada, a
-// cada login, como confirmação de identidade — mesmo já tendo turma/empresa
-// escolhidas. É uma camada extra de segurança contra acesso indevido num
+// abaixo), então não são pedidas de novo. A cada login, é pedida uma
+// confirmação de identidade: quem tem matrícula cadastrada confirma a
+// matrícula (comparação direta); quem entrou pelo código de turma no
+// primeiro acesso (sem matrícula validada na lista oficial) confirma esse
+// código, verificado ao vivo — sem depender de nenhum outro campo salvo no
+// cadastro, então funciona também para contas criadas antes desta
+// atualização. É uma camada extra de segurança contra acesso indevido num
 // aparelho onde a conta Google já esteja logada por outra pessoa; não
-// substitui o login do Google, só reforça. Quem entrou pelo código de turma
-// no primeiro acesso (sem matrícula validada na lista oficial) confirma
-// esse mesmo código aqui, pois não tem matrícula pra confirmar.
+// substitui o login do Google, só reforça.
 function TelaConfirmarMatricula({ perfil, onConfirmar, onSair }) {
   const [valor, setValor] = useState("");
   const [erro, setErro] = useState("");
   const [verificando, setVerificando] = useState(false);
 
-  // Confirma a matrícula (fluxo principal) ou, para quem entrou pelo código
-  // de turma (sem matrícula cadastrada), o próprio código de turma usado —
-  // assim todo mundo passa por essa checagem a cada login, como pedido.
-  const usaCodigoTurma = !perfil.matricula && !!perfil.codigoTurmaUsado;
-  const credencialCorreta = usaCodigoTurma ? String(perfil.codigoTurmaUsado) : String(perfil.matricula);
+  // Confirma a matrícula (fluxo principal, comparação direta com o valor
+  // salvo no cadastro) ou, para quem entrou pelo código de turma (sem
+  // matrícula cadastrada), o próprio código de turma — verificado ao vivo,
+  // buscando esse código na mesma tabela usada no primeiro acesso e
+  // conferindo se ele aponta para a turma deste aluno. Verificar ao vivo (em
+  // vez de comparar com um valor pré-buscado) evita depender de outros
+  // campos do cadastro que contas mais antigas podem não ter.
+  const usaCodigoTurma = !perfil.matricula;
   const rotulo = usaCodigoTurma ? "Seu código de turma" : "Sua matrícula";
   const placeholder = usaCodigoTurma ? "Digite o código de turma" : "Digite sua matrícula";
-  const mensagemErro = usaCodigoTurma ? "Código de turma não confere. Confira e tente de novo." : "Matrícula não confere. Confira o número e tente de novo.";
 
-  const confirmar = () => {
+  const confirmar = async () => {
     setErro(""); setVerificando(true);
-    const digitado = usaCodigoTurma ? valor.trim().toUpperCase() : valor.trim();
-    if (digitado !== credencialCorreta) {
-      setErro(mensagemErro);
-      setVerificando(false);
-      return;
+    if (usaCodigoTurma) {
+      const digitado = valor.trim().toUpperCase();
+      try {
+        const rt = await window.storage.get(`turma_por_codigo_${digitado}`, true);
+        const turma = rt ? JSON.parse(rt.value) : null;
+        if (!turma || turma.id !== perfil.turmaId) {
+          setErro("Código de turma não confere. Confira e tente de novo.");
+          setVerificando(false);
+          return;
+        }
+      } catch {
+        setErro("Não foi possível concluir. Tente novamente.");
+        setVerificando(false);
+        return;
+      }
+    } else {
+      const digitado = valor.trim();
+      if (digitado !== String(perfil.matricula)) {
+        setErro("Matrícula não confere. Confira o número e tente de novo.");
+        setVerificando(false);
+        return;
+      }
     }
+    setVerificando(false);
     onConfirmar();
   };
 
@@ -4973,19 +4995,11 @@ function AlunoRoteador({ perfil, onSair, onVirarProfessor }) {
   // Confirmação de identidade por sessão: fica em estado local (não é salvo
   // no perfil), então volta a pedir automaticamente a cada novo carregamento
   // da página — ou seja, a cada novo login de verdade, como pedido no
-  // chamado. Quem tem matrícula confirma a matrícula; quem entrou pelo
-  // código de turma (sem matrícula) confirma esse código. Buscamos o código
-  // atualizado na lista de turmas do professor (cobre o caso raro do código
-  // da turma ter mudado), mas caímos para o código que ficou salvo no
-  // próprio cadastro do aluno desde o primeiro acesso se essa busca não
-  // encontrar nada — por exemplo, quando o cadastro é antigo e não tem
-  // professorUid associado. Isso evita que o aluno fique travado sem
-  // conseguir confirmar a identidade.
+  // chamado. Basta ter turma vinculada para precisar confirmar; a própria
+  // TelaConfirmarMatricula decide, na hora, se a checagem é por matrícula ou
+  // por código de turma (ver comentário lá).
   const [matriculaConfirmada, setMatriculaConfirmada] = useState(false);
-  const [turmasDoProfessor] = useSharedList(efetivo.professorUid ? `turmas_prof_${efetivo.professorUid}` : null);
-  const turmaAtual = Array.isArray(turmasDoProfessor) ? turmasDoProfessor.find((t) => t.id === efetivo.turmaId) : null;
-  const codigoTurmaAtual = turmaAtual?.codigo || efetivo.codigoTurmaUsado || null;
-  const precisaConfirmar = !matriculaConfirmada && (efetivo.matricula || codigoTurmaAtual);
+  const precisaConfirmar = !matriculaConfirmada && !!efetivo.turmaId;
 
   const atualizarPerfil = async (mudancas) => {
     try { await atualizarUsuario(perfil.uid, mudancas); } catch {}
@@ -5010,7 +5024,7 @@ function AlunoRoteador({ perfil, onSair, onVirarProfessor }) {
   if (precisaConfirmar) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
-        <TelaConfirmarMatricula perfil={{ ...efetivo, codigoTurmaUsado: efetivo.matricula ? null : codigoTurmaAtual }} onSair={onSair} onConfirmar={() => setMatriculaConfirmada(true)} />
+        <TelaConfirmarMatricula perfil={efetivo} onSair={onSair} onConfirmar={() => setMatriculaConfirmada(true)} />
       </div>
     );
   }

@@ -1,4 +1,4 @@
-// build: 2026-08-28_07h19m41s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 2026-08-28_10h28m31s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -287,6 +287,7 @@ const OPERACIONAL_SECOES = [
     "24/08: Fluxo de Caixa Anual Projetado — projeção mês a mês do primeiro ano de operação, com taxa de crescimento opcional e indicador do mês em que o caixa fica positivo (payback).",
     "27/08: confirmação de matrícula exigida a cada login (reforço de segurança, não só no primeiro acesso); painel \"Menu do Aluno\" recolhível na revisão do professor, mostrando Cenários e Fluxo de Caixa da equipe em modo leitura; Manual do Aluno e Manual do Professor reformulados no padrão formal (capa, sumário, telas reais no estilo da própria plataforma); os dois manuais passaram a ser PDFs estáticos publicados na pasta public/ do projeto, abertos direto pelos botões do menu; impressão/download desses PDFs restrita ao Usuário Mestre — professores e alunos abrem em modo leitura, sem os controles nativos de imprimir/baixar do navegador.",
     "28/08: Lista oficial de alunos (Turmas → Lista oficial de alunos) passou a permitir inclusão e exclusão individual de aluno, além da importação em massa por PDF — útil para ajustar um aluno pontual (matrícula corrigida, aluno novo, transferência) sem precisar reimportar a lista inteira. A inclusão individual usa o mesmo índice matrícula → turma da importação em massa, então o aluno incluído também entra direto pela própria matrícula.",
+    "28/08: primeiro acesso do aluno passou a ter dois passos em sequência — primeiro a matrícula (confirma o cadastro contra a lista oficial), depois o código da turma (precisa bater com a turma indicada pela matrícula) — só então a escolha da empresa é liberada. A partir do segundo acesso, turma e empresa já ficam salvas e não são pedidas de novo; só a matrícula é reconfirmada a cada login. Quando a matrícula ainda não está na lista oficial, existe uma alternativa para entrar só com o código da turma.",
   ]},
   { titulo: "Segurança da plataforma", paragrafos: [
     "Login exclusivo via Google: o provedor \"E-mail/senha\" foi desativado no Console do Firebase; só \"Google\" está ativo. É preciso conferir, em Authentication → Domínios autorizados, se o domínio do GitHub Pages está na lista.",
@@ -309,7 +310,7 @@ const OPERACIONAL_SECOES = [
 const CHECKLIST_SECOES = [
   { titulo: "O que já temos (funcionalidade confirmada)", tom: "ok", itens: [
     "Login exclusivo via Google, com seletor de perfil (Aluno/Professor + código de Mestre)",
-    "Professor entra direto; aluno entra direto com a própria matrícula (nome oficial e turma reconhecidos automaticamente)",
+    "Professor entra direto; aluno confirma matrícula + código de turma no primeiro acesso (nome oficial e turma reconhecidos automaticamente); da segunda vez em diante, só a matrícula é pedida",
     "Os 13 módulos financeiros calculando e passando dados entre si",
     "Análise do Negócio com gráficos e alertas automáticos",
     "Análise de Cenários: até 3 simulações comparadas com o resultado atual",
@@ -4664,18 +4665,15 @@ function useEquipeSalva(turmaId, equipeId) {
   return estado;
 }
 
-// Passo 1 do fluxo do aluno: informar a matrícula (o jeito preferido — já
-// identifica a turma certa e traz o nome oficial da lista importada pelo
-// professor) ou, alternativamente, o código da turma (para quando o
-// professor ainda não importou a lista). Em qualquer um dos dois casos, o
-// cadastro já entra aprovado na hora.
-// Confirmação de identidade a cada login (não só no primeiro acesso): quem
-// entrou pela matrícula precisa digitá-la de novo toda vez que abrir a
-// plataforma — mesmo já tendo turma/empresa escolhidas. É uma camada extra
-// de segurança contra acesso indevido num aparelho onde a conta Google já
-// esteja logada por outra pessoa; não substitui o login do Google, só
-// reforça. Quem entrou pelo código de turma (sem matrícula cadastrada) não
-// passa por essa tela, pois não tem matrícula pra confirmar.
+// A partir do segundo acesso: turma e empresa já ficaram salvas no cadastro
+// do aluno desde o primeiro acesso (ver TelaPrimeiroAcessoAluno, mais
+// abaixo), então não são pedidas de novo. Só a matrícula é solicitada, a
+// cada login, como confirmação de identidade — mesmo já tendo turma/empresa
+// escolhidas. É uma camada extra de segurança contra acesso indevido num
+// aparelho onde a conta Google já esteja logada por outra pessoa; não
+// substitui o login do Google, só reforça. Quem entrou pelo código de turma
+// no primeiro acesso (sem matrícula validada na lista oficial) confirma
+// esse mesmo código aqui, pois não tem matrícula pra confirmar.
 function TelaConfirmarMatricula({ perfil, onConfirmar, onSair }) {
   const [valor, setValor] = useState("");
   const [erro, setErro] = useState("");
@@ -4720,41 +4718,101 @@ function TelaConfirmarMatricula({ perfil, onConfirmar, onSair }) {
   );
 }
 
-function TelaInformarTurma({ perfil, onSair, onResultado, onVirarProfessor }) {
-  const [valor, setValor] = useState("");
-  const [buscando, setBuscando] = useState(false);
-  const [erro, setErro] = useState("");
+// Passo 1 do fluxo do aluno no primeiro acesso: confirmar a matrícula.
+// Isso já valida que o aluno está oficialmente matriculado (contra a Lista
+// oficial de alunos, importada em massa por PDF ou incluída individualmente
+// pelo professor em Turmas → Lista oficial de alunos) e identifica a turma
+// à qual essa matrícula pertence.
+// Passo 2: informar o código da turma. É conferido contra a turma indicada
+// pela matrícula do passo 1 — os dois precisam bater — e só depois disso a
+// escolha da empresa/grupo é liberada. Esse cruzamento evita que o aluno
+// acabe vinculado, por engano, a uma turma ou empresa diferente da que
+// deveria.
+// Se a matrícula ainda não constar na lista oficial (professor ainda não
+// importou/cadastrou), existe uma alternativa: entrar só com o código da
+// turma, sem a validação cruzada.
+function TelaPrimeiroAcessoAluno({ perfil, onSair, onResultado, onVirarProfessor }) {
+  const [etapa, setEtapa] = useState("matricula"); // "matricula" | "turma" | "semMatricula"
+  const [registroMatricula, setRegistroMatricula] = useState(null);
+
+  const [matriculaValor, setMatriculaValor] = useState("");
+  const [matriculaErro, setMatriculaErro] = useState("");
+  const [verificandoMatricula, setVerificandoMatricula] = useState(false);
+
+  const [turmaValor, setTurmaValor] = useState("");
+  const [turmaErro, setTurmaErro] = useState("");
+  const [verificandoTurma, setVerificandoTurma] = useState(false);
 
   const [souProfessorAberto, setSouProfessorAberto] = useState(false);
   const [codigoMestre, setCodigoMestre] = useState("");
   const [erroMestre, setErroMestre] = useState("");
   const [verificandoMestre, setVerificandoMestre] = useState(false);
 
-  const buscar = async () => {
-    setErro(""); setBuscando(true);
-    const termo = valor.trim();
+  const confirmarMatricula = async () => {
+    setMatriculaErro(""); setVerificandoMatricula(true);
+    const termo = matriculaValor.trim();
     try {
-      // 1) tenta como matrícula — resolve turma e nome oficial de uma vez.
       const rm = await window.storage.get(`matricula_${termo}`, true);
       if (rm) {
         const registro = JSON.parse(rm.value);
-        await onResultado({ turmaId: registro.turmaId, turmaNome: registro.turmaNome, nome: registro.nome, status: "aprovado", professorUid: registro.professorUid || null, professorNome: registro.professorNome || null, matricula: termo });
-        setBuscando(false);
-        return;
+        setRegistroMatricula({ ...registro, matricula: termo });
+        setEtapa("turma");
+      } else {
+        setMatriculaErro("Não encontramos essa matrícula na lista oficial. Confira o número com o professor(a), ou use a opção abaixo se a lista ainda não foi importada/cadastrada.");
       }
-      // 2) alternativa: código da turma (6 caracteres).
-      const rt = await window.storage.get(`turma_por_codigo_${termo.toUpperCase()}`, true);
-      if (rt) {
-        const turma = JSON.parse(rt.value);
-        await onResultado({ turmaId: turma.id, turmaNome: turma.nome, status: "aprovado", professorUid: turma.professorUid || null, professorNome: turma.professor || null, codigoTurmaUsado: termo.toUpperCase() });
-        setBuscando(false);
-        return;
-      }
-      setErro("Não encontramos essa matrícula nem esse código de turma. Confira com o professor.");
     } catch {
-      setErro("Não foi possível concluir. Tente novamente.");
+      setMatriculaErro("Não foi possível concluir. Tente novamente.");
     }
-    setBuscando(false);
+    setVerificandoMatricula(false);
+  };
+
+  const confirmarTurma = async () => {
+    setTurmaErro(""); setVerificandoTurma(true);
+    const termo = turmaValor.trim().toUpperCase();
+    try {
+      const rt = await window.storage.get(`turma_por_codigo_${termo}`, true);
+      if (!rt) {
+        setTurmaErro("Código de turma não encontrado. Confira com o professor(a).");
+        setVerificandoTurma(false);
+        return;
+      }
+      const turma = JSON.parse(rt.value);
+      if (turma.id !== registroMatricula.turmaId) {
+        setTurmaErro("Esse código de turma não corresponde à sua matrícula. Confira o código com o professor(a).");
+        setVerificandoTurma(false);
+        return;
+      }
+      await onResultado({
+        turmaId: turma.id, turmaNome: turma.nome, nome: registroMatricula.nome,
+        status: "aprovado",
+        professorUid: turma.professorUid || registroMatricula.professorUid || null,
+        professorNome: turma.professor || registroMatricula.professorNome || null,
+        matricula: registroMatricula.matricula,
+      });
+    } catch {
+      setTurmaErro("Não foi possível concluir. Tente novamente.");
+    }
+    setVerificandoTurma(false);
+  };
+
+  // Alternativa para quando a matrícula ainda não está na lista oficial:
+  // entra só com o código da turma, sem validação cruzada com a matrícula.
+  const confirmarTurmaSemMatricula = async () => {
+    setTurmaErro(""); setVerificandoTurma(true);
+    const termo = turmaValor.trim().toUpperCase();
+    try {
+      const rt = await window.storage.get(`turma_por_codigo_${termo}`, true);
+      if (!rt) {
+        setTurmaErro("Código de turma não encontrado. Confira com o professor(a).");
+        setVerificandoTurma(false);
+        return;
+      }
+      const turma = JSON.parse(rt.value);
+      await onResultado({ turmaId: turma.id, turmaNome: turma.nome, status: "aprovado", professorUid: turma.professorUid || null, professorNome: turma.professor || null, codigoTurmaUsado: termo });
+    } catch {
+      setTurmaErro("Não foi possível concluir. Tente novamente.");
+    }
+    setVerificandoTurma(false);
   };
 
   // Correção para quem escolheu "Aluno(a)" por engano no primeiro acesso
@@ -4772,20 +4830,65 @@ function TelaInformarTurma({ perfil, onSair, onResultado, onVirarProfessor }) {
     setVerificandoMestre(false);
   };
 
+  if (etapa === "turma") {
+    return (
+      <div className="max-w-md mx-auto w-full">
+        <button onClick={() => setEtapa("matricula")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ChevronRight size={15} className="rotate-180" /> Voltar</button>
+        <Card className="p-6">
+          <SectionTitle icon={KeyRound} sub={`Matrícula confirmada, ${registroMatricula.nome}! Agora informe o código da turma para concluir seu acesso.`}>Código da turma</SectionTitle>
+          <Field label="Código da turma (peça ao professor)">
+            <div className="flex gap-2">
+              <TxtInput value={turmaValor} onChange={setTurmaValor} placeholder="Ex.: A1B2C3" />
+              <button onClick={confirmarTurma} disabled={verificandoTurma || !turmaValor.trim()} className="bg-amber-500 text-slate-900 px-4 rounded-md text-sm font-semibold hover:bg-amber-400 disabled:opacity-40">
+                {verificandoTurma ? "…" : "Confirmar"}
+              </button>
+            </div>
+          </Field>
+          {turmaErro && <p className="text-sm text-rose-400">{turmaErro}</p>}
+        </Card>
+      </div>
+    );
+  }
+
+  if (etapa === "semMatricula") {
+    return (
+      <div className="max-w-md mx-auto w-full">
+        <button onClick={() => setEtapa("matricula")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ChevronRight size={15} className="rotate-180" /> Voltar</button>
+        <Card className="p-6">
+          <SectionTitle icon={KeyRound} sub="Sua matrícula ainda não está na lista oficial. Informe o código da turma para entrar — confirme com o professor(a) assim que possível.">Código da turma</SectionTitle>
+          <Field label="Código da turma">
+            <div className="flex gap-2">
+              <TxtInput value={turmaValor} onChange={setTurmaValor} placeholder="Ex.: A1B2C3" />
+              <button onClick={confirmarTurmaSemMatricula} disabled={verificandoTurma || !turmaValor.trim()} className="bg-slate-900 text-white px-4 rounded-md text-sm font-semibold hover:bg-slate-800 disabled:opacity-40">
+                {verificandoTurma ? "…" : "Confirmar"}
+              </button>
+            </div>
+          </Field>
+          {turmaErro && <p className="text-sm text-rose-400">{turmaErro}</p>}
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-md mx-auto w-full">
       <button onClick={onSair} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><LogOut size={15} /> Sair</button>
       <Card className="p-6">
-        <SectionTitle icon={KeyRound} sub={`Olá, ${perfil.nome}! Informe sua matrícula para continuar.`}>Entrar em uma turma</SectionTitle>
-        <Field label="Matrícula (ou, se não tiver, o código da turma)">
+        <SectionTitle icon={ShieldCheck} sub={`Olá, ${perfil.nome}! Confirme sua matrícula para começarmos.`}>Confirme sua matrícula</SectionTitle>
+        <Field label="Matrícula">
           <div className="flex gap-2">
-            <TxtInput value={valor} onChange={setValor} placeholder="Ex.: 2024001 ou A1B2C3" />
-            <button onClick={buscar} disabled={buscando || !valor.trim()} className="bg-slate-900 text-white px-4 rounded-md text-sm font-semibold hover:bg-slate-800 disabled:opacity-40">
-              {buscando ? "Buscando…" : "Buscar"}
+            <TxtInput value={matriculaValor} onChange={setMatriculaValor} placeholder="Digite sua matrícula" />
+            <button onClick={confirmarMatricula} disabled={verificandoMatricula || !matriculaValor.trim()} className="bg-amber-500 text-slate-900 px-4 rounded-md text-sm font-semibold hover:bg-amber-400 disabled:opacity-40">
+              {verificandoMatricula ? "…" : "Confirmar"}
             </button>
           </div>
         </Field>
-        {erro && <p className="text-sm text-rose-400 mb-2">{erro}</p>}
+        {matriculaErro && (
+          <div className="mb-2">
+            <p className="text-sm text-rose-400 mb-1.5">{matriculaErro}</p>
+            <button onClick={() => setEtapa("semMatricula")} className="text-xs text-slate-500 hover:text-slate-300 underline">Ainda não estou na lista oficial — entrar com o código da turma</button>
+          </div>
+        )}
 
         {!souProfessorAberto ? (
           <button onClick={() => setSouProfessorAberto(true)} className="text-xs text-slate-500 hover:text-slate-300 mt-2">Escolhi "Aluno(a)" por engano — na verdade sou professor(a)</button>
@@ -4883,7 +4986,7 @@ function AlunoRoteador({ perfil, onSair, onVirarProfessor }) {
   const atualizarPerfil = async (mudancas) => {
     try { await atualizarUsuario(perfil.uid, mudancas); } catch {}
     setOver((prev) => ({ ...prev, ...mudancas }));
-    // Quem acabou de digitar a matrícula agora (TelaInformarTurma) já
+    // Quem acabou de confirmar a matrícula agora (TelaPrimeiroAcessoAluno) já
     // confirmou a identidade nesta sessão — evita pedir de novo na sequência.
     if (mudancas.matricula) setMatriculaConfirmada(true);
   };
@@ -4895,7 +4998,7 @@ function AlunoRoteador({ perfil, onSair, onVirarProfessor }) {
   if (!efetivo.turmaId) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
-        <TelaInformarTurma perfil={efetivo} onSair={onSair} onResultado={atualizarPerfil} onVirarProfessor={onVirarProfessor} />
+        <TelaPrimeiroAcessoAluno perfil={efetivo} onSair={onSair} onResultado={atualizarPerfil} onVirarProfessor={onVirarProfessor} />
       </div>
     );
   }

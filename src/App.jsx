@@ -1,4 +1,4 @@
-// build: 2026-08-21_11h37m02s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 2026-08-28_07h19m41s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -286,6 +286,7 @@ const OPERACIONAL_SECOES = [
     "23/08: Análise de Cenários (até 3 simulações de \"e se\", comparando resultado projetado com o cenário atual, sem alterar os lançamentos salvos); correção de um bug que deixava o menu Tutoriais do Aluno em branco.",
     "24/08: Fluxo de Caixa Anual Projetado — projeção mês a mês do primeiro ano de operação, com taxa de crescimento opcional e indicador do mês em que o caixa fica positivo (payback).",
     "27/08: confirmação de matrícula exigida a cada login (reforço de segurança, não só no primeiro acesso); painel \"Menu do Aluno\" recolhível na revisão do professor, mostrando Cenários e Fluxo de Caixa da equipe em modo leitura; Manual do Aluno e Manual do Professor reformulados no padrão formal (capa, sumário, telas reais no estilo da própria plataforma); os dois manuais passaram a ser PDFs estáticos publicados na pasta public/ do projeto, abertos direto pelos botões do menu; impressão/download desses PDFs restrita ao Usuário Mestre — professores e alunos abrem em modo leitura, sem os controles nativos de imprimir/baixar do navegador.",
+    "28/08: Lista oficial de alunos (Turmas → Lista oficial de alunos) passou a permitir inclusão e exclusão individual de aluno, além da importação em massa por PDF — útil para ajustar um aluno pontual (matrícula corrigida, aluno novo, transferência) sem precisar reimportar a lista inteira. A inclusão individual usa o mesmo índice matrícula → turma da importação em massa, então o aluno incluído também entra direto pela própria matrícula.",
   ]},
   { titulo: "Segurança da plataforma", paragrafos: [
     "Login exclusivo via Google: o provedor \"E-mail/senha\" foi desativado no Console do Firebase; só \"Google\" está ativo. É preciso conferir, em Authentication → Domínios autorizados, se o domínio do GitHub Pages está na lista.",
@@ -318,7 +319,7 @@ const CHECKLIST_SECOES = [
     "Painel \"Menu do Aluno\" recolhível na revisão do professor (Cenários e Fluxo de Caixa, em modo leitura)",
     "Central de Suporte (chamados de Sistema e Pedagógico) e menu Novidades/Tutoriais",
     "Gestor único por empresa e salvamento com pausa — reduzem o volume de uso do banco de dados",
-    "Relatórios, Backup do Semestre e importação de lista de alunos em PDF",
+    "Relatórios, Backup do Semestre e Lista oficial de alunos (importação em massa por PDF + inclusão/exclusão individual)",
     "Manual do Aluno e Manual do Professor em PDF formal, com impressão/download restrita ao Usuário Mestre",
     "Painel GESTÃO completo: Turmas, Usuários, Relatórios, Backup, Auditoria, Aprovações",
     "Regras de segurança do Firestore exigindo login",
@@ -3282,7 +3283,41 @@ function PainelRoster({ turmaId, turmaNome, professorUid, professorNome }) {
   const [processando, setProcessando] = useState(false);
   const [erro, setErro] = useState("");
   const [aberto, setAberto] = useState(false);
+  const [nomeNovo, setNomeNovo] = useState("");
+  const [matriculaNovo, setMatriculaNovo] = useState("");
+  const [erroForm, setErroForm] = useState("");
   const inputRef = useRef(null);
+
+  const adicionarAlunoIndividual = async () => {
+    const nome = nomeNovo.trim();
+    const matricula = matriculaNovo.trim();
+    setErroForm("");
+    if (!nome || !matricula) {
+      setErroForm("Preencha o nome e a matrícula.");
+      return;
+    }
+    if ((roster || []).some((a) => a.matricula === matricula)) {
+      setErroForm("Já existe um aluno com essa matrícula nesta turma.");
+      return;
+    }
+    const novo = { nome: nome.toUpperCase(), matricula };
+    await setRoster([...(roster || []), novo]);
+    // Mesmo índice matrícula → turma usado na importação em massa, para que
+    // este aluno também consiga entrar direto pela própria matrícula.
+    try {
+      await window.storage.set(`matricula_${matricula}`, JSON.stringify({
+        turmaId, turmaNome, nome: novo.nome, matricula, professorUid, professorNome,
+      }), true);
+    } catch {}
+    setNomeNovo("");
+    setMatriculaNovo("");
+  };
+
+  const removerAlunoIndividual = async (matricula) => {
+    if (!confirm("Remover este aluno da lista oficial da turma? A aprovação automática por matrícula deixa de valer para ele(a); um cadastro já aprovado não é desfeito.")) return;
+    await setRoster((roster || []).filter((a) => a.matricula !== matricula));
+    try { await window.storage.delete(`matricula_${matricula}`, true); } catch {}
+  };
 
   const aoSelecionarArquivo = async (e) => {
     const file = e.target.files?.[0];
@@ -3346,12 +3381,38 @@ function PainelRoster({ turmaId, turmaNome, professorUid, professorNome }) {
                 <Upload size={15} /> {processando ? "Lendo PDF…" : "Importar lista (PDF)"}
               </button>
               {erro && <p className="text-sm text-rose-400 mt-2">{erro}</p>}
+
+              <div className="mt-4 pt-4 border-t border-slate-800">
+                <p className="text-xs uppercase text-slate-500 font-semibold mb-2">Incluir um aluno individualmente</p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    value={nomeNovo}
+                    onChange={(e) => setNomeNovo(e.target.value)}
+                    placeholder="Nome do aluno"
+                    className="flex-1 bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100"
+                  />
+                  <input
+                    value={matriculaNovo}
+                    onChange={(e) => setMatriculaNovo(e.target.value)}
+                    placeholder="Matrícula"
+                    className="sm:w-40 bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100 font-mono"
+                  />
+                  <button
+                    onClick={adicionarAlunoIndividual}
+                    className="flex items-center justify-center gap-2 bg-slate-900 border border-slate-700 hover:border-amber-500 text-slate-100 text-sm font-semibold px-4 py-2 rounded-md shrink-0"
+                  >
+                    <UserPlus size={15} /> Adicionar
+                  </button>
+                </div>
+                {erroForm && <p className="text-sm text-rose-400 mt-2">{erroForm}</p>}
+              </div>
+
               {roster.length > 0 && (
-                <div className="mt-3 max-h-52 overflow-y-auto">
+                <div className="mt-4 max-h-52 overflow-y-auto">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="text-left text-slate-500 border-b border-slate-700">
-                        <th className="py-1.5 pr-2">Nome</th><th className="py-1.5 pr-2">Matrícula</th>
+                        <th className="py-1.5 pr-2">Nome</th><th className="py-1.5 pr-2">Matrícula</th><th className="w-8"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3359,6 +3420,11 @@ function PainelRoster({ turmaId, turmaNome, professorUid, professorNome }) {
                         <tr key={a.matricula} className="border-b border-slate-800">
                           <td className="py-1 pr-2 text-slate-300">{a.nome}</td>
                           <td className="py-1 pr-2 text-slate-500 font-mono">{a.matricula}</td>
+                          <td className="py-1 pr-1 text-right">
+                            <button onClick={() => removerAlunoIndividual(a.matricula)} className="text-slate-500 hover:text-rose-400">
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

@@ -1,4 +1,4 @@
-// build: 2026-08-28_10h28m31s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 2026-08-28_10h40m45s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -4974,13 +4974,17 @@ function AlunoRoteador({ perfil, onSair, onVirarProfessor }) {
   // no perfil), então volta a pedir automaticamente a cada novo carregamento
   // da página — ou seja, a cada novo login de verdade, como pedido no
   // chamado. Quem tem matrícula confirma a matrícula; quem entrou pelo
-  // código de turma (sem matrícula) confirma esse código — buscado ao vivo
-  // da lista de turmas do professor, então funciona mesmo para contas
-  // criadas antes desta atualização.
+  // código de turma (sem matrícula) confirma esse código. Buscamos o código
+  // atualizado na lista de turmas do professor (cobre o caso raro do código
+  // da turma ter mudado), mas caímos para o código que ficou salvo no
+  // próprio cadastro do aluno desde o primeiro acesso se essa busca não
+  // encontrar nada — por exemplo, quando o cadastro é antigo e não tem
+  // professorUid associado. Isso evita que o aluno fique travado sem
+  // conseguir confirmar a identidade.
   const [matriculaConfirmada, setMatriculaConfirmada] = useState(false);
   const [turmasDoProfessor] = useSharedList(efetivo.professorUid ? `turmas_prof_${efetivo.professorUid}` : null);
   const turmaAtual = Array.isArray(turmasDoProfessor) ? turmasDoProfessor.find((t) => t.id === efetivo.turmaId) : null;
-  const codigoTurmaAtual = turmaAtual?.codigo || null;
+  const codigoTurmaAtual = turmaAtual?.codigo || efetivo.codigoTurmaUsado || null;
   const precisaConfirmar = !matriculaConfirmada && (efetivo.matricula || codigoTurmaAtual);
 
   const atualizarPerfil = async (mudancas) => {

@@ -2557,6 +2557,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
   const [menuAberto, setMenuAberto] = useState(false);
   const [confirmSairAberto, setConfirmSairAberto] = useState(false);
   const [decisaoGestorTomada, setDecisaoGestorTomada] = useState(false);
+  const [pdfAberto, setPdfAberto] = useState(null);
   const irPara = (id) => { setAba(id); setMenuAberto(false); };
 
   const lanc = mergeLancamentos(dados?.lancamentos);
@@ -2682,18 +2683,31 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
             const active = aba === it.id;
             const pdfUrl = MANUAIS_PDF[it.id];
             if (pdfUrl) {
+              if (user.mestre) {
+                return (
+                  <a
+                    key={it.id}
+                    href={pdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setMenuAberto(false)}
+                    className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent"
+                  >
+                    {it.num && <span className="text-[10px] font-mono w-5 shrink-0 text-white/30">{it.num}</span>}
+                    <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
+                    <Printer size={13} className="shrink-0 text-slate-500" />
+                  </a>
+                );
+              }
               return (
-                <a
+                <button
                   key={it.id}
-                  href={pdfUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => setMenuAberto(false)}
+                  onClick={() => { setPdfAberto({ url: pdfUrl, titulo: it.label }); setMenuAberto(false); }}
                   className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent"
                 >
                   {it.num && <span className="text-[10px] font-mono w-5 shrink-0 text-white/30">{it.num}</span>}
                   <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
-                </a>
+                </button>
               );
             }
             return (
@@ -2905,6 +2919,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
         {aba === "novidades" && <NovidadesView />}
         {aba === "tutoriais" && <TutoriaisView categoria="aluno" />}
       </main>
+      {pdfAberto && <VisualizadorManualPDF url={pdfAberto.url} titulo={pdfAberto.titulo} onFechar={() => setPdfAberto(null)} />}
     </div>
   );
 }
@@ -4210,6 +4225,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
   const [aba, setAba] = useState("inicio");
   const [turmaAtivaId, setTurmaAtivaId] = useState(null);
   const [menuAberto, setMenuAberto] = useState(false);
+  const [pdfAberto, setPdfAberto] = useState(null);
 
   if (turmas === null) return <LoadingScreen />;
 
@@ -4273,10 +4289,17 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
             const active = aba === it.id;
             const pdfUrl = MANUAIS_PDF[it.id];
             if (pdfUrl) {
+              if (user.mestre) {
+                return (
+                  <a key={it.id} href={pdfUrl} target="_blank" rel="noopener noreferrer" onClick={() => setMenuAberto(false)} className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent">
+                    <Icon size={16} className="shrink-0" /> <span className="flex-1">{it.label}</span> <Printer size={13} className="shrink-0 text-slate-500" />
+                  </a>
+                );
+              }
               return (
-                <a key={it.id} href={pdfUrl} target="_blank" rel="noopener noreferrer" onClick={() => setMenuAberto(false)} className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent">
+                <button key={it.id} onClick={() => { setPdfAberto({ url: pdfUrl, titulo: it.label }); setMenuAberto(false); }} className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent">
                   <Icon size={16} className="shrink-0" /> {it.label}
-                </a>
+                </button>
               );
             }
             return (
@@ -4326,6 +4349,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
         {aba === "novidades" && <NovidadesView />}
         {aba === "tutoriais" && <TutoriaisView categoria="professor" />}
       </main>
+      {pdfAberto && <VisualizadorManualPDF url={pdfAberto.url} titulo={pdfAberto.titulo} onFechar={() => setPdfAberto(null)} />}
     </div>
   );
 }
@@ -4455,6 +4479,32 @@ function GestaoAprovacoesView({ usuarioAtualUid }) {
 // ============================================================================
 // LOGIN / CADASTRO / APROVAÇÃO
 // ============================================================================
+
+// Visualizador controlado de PDF — usado para Manual do Aluno/Professor e
+// Checklist quando quem está olhando NÃO é Usuário Mestre. Abre dentro do
+// próprio app (não em nova aba) e some com a barra de ferramentas nativa do
+// navegador (que normalmente traz os botões de imprimir/baixar), reduzindo
+// bastante o acesso fácil a essas ações.
+// Aviso honesto: como quem desenha a tela do PDF é o próprio navegador, não
+// existe um jeito 100% garantido de bloquear impressão (ex.: atalho de
+// teclado do sistema, ou um print de tela) — isso aqui remove os botões
+// visíveis, não é uma trava de segurança à prova de tudo.
+function VisualizadorManualPDF({ url, titulo, onFechar }) {
+  return (
+    <div className="fixed inset-0 bg-black/80 z-50 flex flex-col">
+      <div className="flex items-center justify-between gap-3 bg-slate-900 border-b border-slate-700 px-4 py-3 shrink-0">
+        <div className="flex items-center gap-2 text-slate-100 font-semibold text-sm"><Eye size={16} className="text-sky-400" /> {titulo} <span className="text-xs font-normal text-slate-500">— somente leitura</span></div>
+        <button onClick={onFechar} className="text-slate-400 hover:text-slate-100 flex items-center gap-1.5 text-sm"><X size={18} /> Fechar</button>
+      </div>
+      <iframe
+        title={titulo}
+        src={`${url}#toolbar=0&navpanes=0&scrollbar=1`}
+        className="flex-1 w-full bg-slate-200"
+        onContextMenu={(e) => e.preventDefault()}
+      />
+    </div>
+  );
+}
 
 function LoadingScreen() {
   return <div className="min-h-screen flex items-center justify-center text-slate-500 text-sm bg-slate-950">Carregando…</div>;

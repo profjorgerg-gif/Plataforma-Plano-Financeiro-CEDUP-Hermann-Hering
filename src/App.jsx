@@ -12,7 +12,7 @@ import {
   Save, Copy, ArrowLeft, BookOpen, Building2, KeyRound, Mail, Lock, ShieldCheck,
   Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
   ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
-  LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows, Monitor,
+  LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows, Monitor, FileDown,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
@@ -170,6 +170,11 @@ const MANUAIS_PDF = {
   manualAlunoRef: `${import.meta.env.BASE_URL}manual-do-aluno.pdf`,
   manual: `${import.meta.env.BASE_URL}manual-do-aluno.pdf`,
 };
+
+// Modelo de apresentação (PPTX) que a equipe baixa para preencher com os
+// próprios resultados — download direto, sem restrição de impressão (é
+// pra ser editado livremente pelo aluno, diferente dos manuais).
+const MODELO_APRESENTACAO_URL = `${import.meta.env.BASE_URL}modelo-apresentacao.pptx`;
 
 // Guia Pedagógico — a metodologia de aplicação em sala de aula, mais os
 // slides de apoio para cada sessão. Acesso de qualquer professor (não é
@@ -2691,6 +2696,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
     { id: "analise", label: "Análise do Negócio", icon: TrendingUp, num: null },
     { id: "cenarios", label: "Análise de Cenários", icon: GitCompareArrows, num: null },
     { id: "fluxocaixa", label: "Fluxo de Caixa Anual", icon: Wallet, num: null },
+    { id: "modeloApresentacao", label: "Baixar Modelo de Apresentação", icon: FileDown, num: null },
     { id: "feedback", label: "Feedback do Professor", icon: MessageSquare, num: null },
     { id: "suporte", label: "Suporte", icon: LifeBuoy, num: null },
     { id: "novidades", label: "Novidades", icon: Megaphone, num: null },
@@ -2726,6 +2732,19 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
           {menuItems.map((it) => {
             const Icon = it.icon;
             const active = aba === it.id;
+            if (it.id === "modeloApresentacao") {
+              return (
+                <a
+                  key={it.id}
+                  href={MODELO_APRESENTACAO_URL}
+                  download
+                  onClick={() => setMenuAberto(false)}
+                  className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent"
+                >
+                  <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
+                </a>
+              );
+            }
             const pdfUrl = MANUAIS_PDF[it.id];
             if (pdfUrl) {
               if (user.mestre) {

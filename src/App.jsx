@@ -1,4 +1,4 @@
-// build: 2026-08-28_12h48m23s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 2026-08-28_12h56m42s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -290,6 +290,7 @@ const OPERACIONAL_SECOES = [
     "28/08: primeiro acesso do aluno passou a ter dois passos em sequência — primeiro a matrícula (confirma o cadastro contra a lista oficial), depois o código da turma (precisa bater com a turma indicada pela matrícula) — só então a escolha da empresa é liberada. A partir do segundo acesso, turma e empresa já ficam salvas e não são pedidas de novo; só a matrícula é reconfirmada a cada login. Quando a matrícula ainda não está na lista oficial, existe uma alternativa para entrar só com o código da turma.",
     "28/08: Módulo 7 (Custos de Comercialização) ganhou o cálculo automático da alíquota do Simples Nacional (Anexos I a III — Comércio, Indústria e Serviços), a partir do tipo de atividade e do faturamento anual do Módulo 5. Continua existindo a opção de informar o percentual manualmente, para atividades fora desses três anexos.",
     "28/08: Análise do Negócio ganhou o bloco \"Produtos Mais Lucrativos\": ranking dos produtos/serviços do Módulo 5 por margem de contribuição total (usando o custo do Módulo 8 e o imposto/comissão do Módulo 7), e uma calculadora de preço sugerido por margem de contribuição desejada.",
+    "28/08: Fluxo de Caixa Anual ganhou VPL (Valor Presente Líquido) e TIR (Taxa Interna de Retorno), com TMA (Taxa Mínima de Atratividade) informada pela equipe — indicadores opcionais e mais avançados, para equipes que já dominam o Ponto de Equilíbrio e o Payback simples e querem aprofundar a análise de investimento.",
   ]},
   { titulo: "Segurança da plataforma", paragrafos: [
     "Login exclusivo via Google: o provedor \"E-mail/senha\" foi desativado no Console do Firebase; só \"Google\" está ativo. É preciso conferir, em Authentication → Domínios autorizados, se o domínio do GitHub Pages está na lista.",
@@ -316,7 +317,7 @@ const CHECKLIST_SECOES = [
     "Os 13 módulos financeiros calculando e passando dados entre si",
     "Análise do Negócio com gráficos, alertas automáticos, ranking de produtos por margem de contribuição e calculadora de preço sugerido",
     "Análise de Cenários: até 3 simulações comparadas com o resultado atual",
-    "Fluxo de Caixa Anual Projetado: evolução mês a mês do primeiro ano, com indicador do mês de payback",
+    "Fluxo de Caixa Anual Projetado: evolução mês a mês do primeiro ano, com indicador do mês de payback, VPL e TIR (opcionais, com TMA informada pela equipe)",
     "Módulo 7: cálculo automático da alíquota do Simples Nacional (Anexos I a III) a partir do tipo de atividade e do faturamento anual, com opção de informar manualmente",
     "Confirmação de matrícula a cada login, não só no primeiro acesso",
     "Feedback do Professor por módulo, com nota de 0 a 10 em 8 módulos + nota final no Módulo 13",
@@ -2192,10 +2193,50 @@ function projetarFluxoCaixa(calc, taxaCrescimentoMensal) {
   return meses;
 }
 
-function FluxoCaixaAnual({ calc, taxaCrescimento, onSetTaxaCrescimento, readOnly }) {
+// VPL (Valor Presente Líquido): traz cada resultado mensal do fluxo de
+// caixa a valor presente, descontado pela TMA mensal, e soma tudo — o
+// Mês 0 (investimento) já entra negativo. VPL > 0 significa que o negócio,
+// além de pagar a TMA exigida, ainda gera valor extra.
+function calcularVPL(fluxo, tmaMensal) {
+  const i = tmaMensal;
+  return fluxo.reduce((s, m) => s + m.resultado / Math.pow(1 + i, m.mes), 0);
+}
+
+// TIR (Taxa Interna de Retorno) mensal: a taxa de desconto que zera o VPL.
+// Sem fórmula fechada — busca por bisseção no intervalo de -99% a 1000% ao
+// mês. Antes de buscar, confere se a soma (sem desconto) dos resultados
+// mensais sequer supera o investimento — se não superar, o projeto não se
+// paga em 12 meses de jeito nenhum, e não existe TIR economicamente
+// significativa nesse horizonte (evita uma raiz matemática "fantasma" em
+// taxas negativas extremas, que não tem leitura de negócio real).
+function calcularTIRMensal(fluxo) {
+  const investimento = -fluxo[0].resultado;
+  const totalNominal = fluxo.filter((m) => m.mes > 0).reduce((s, m) => s + m.resultado, 0);
+  if (totalNominal <= investimento) return null;
+  const f = (i) => calcularVPL(fluxo, i);
+  let lo = -0.99, hi = 10;
+  let flo = f(lo), fhi = f(hi);
+  if (!Number.isFinite(flo) || !Number.isFinite(fhi) || flo * fhi > 0) return null;
+  for (let iter = 0; iter < 100; iter++) {
+    const mid = (lo + hi) / 2;
+    const fmid = f(mid);
+    if (Math.abs(fmid) < 0.01) return mid;
+    if (flo * fmid < 0) { hi = mid; fhi = fmid; } else { lo = mid; flo = fmid; }
+  }
+  return (lo + hi) / 2;
+}
+
+function FluxoCaixaAnual({ calc, taxaCrescimento, onSetTaxaCrescimento, tmaAnual, onSetTmaAnual, readOnly }) {
   const fluxo = projetarFluxoCaixa(calc, taxaCrescimento);
   const mesPayback = fluxo.find((m) => m.mes > 0 && m.saldo >= 0);
   const mesesDeficit = fluxo.filter((m) => m.mes > 0 && m.resultado < 0).length;
+
+  const tmaAnualNum = Number(tmaAnual) || 0;
+  const tmaMensal = Math.pow(1 + tmaAnualNum / 100, 1 / 12) - 1;
+  const vpl = calcularVPL(fluxo, tmaMensal);
+  const tirMensal = calcularTIRMensal(fluxo);
+  const tirAnual = tirMensal !== null ? (Math.pow(1 + tirMensal, 12) - 1) * 100 : null;
+
 
   return (
     <div>
@@ -2211,6 +2252,25 @@ function FluxoCaixaAnual({ calc, taxaCrescimento, onSetTaxaCrescimento, readOnly
         <StatCard label="Mês em que o caixa fica positivo" value={mesPayback ? mesPayback.label : "Não ocorre em 12 meses"} tone={mesPayback ? "blue" : "slate"} small />
         <StatCard label="Meses com resultado negativo" value={`${mesesDeficit} de 12`} tone={mesesDeficit > 0 ? "slate" : "gold"} small />
       </div>
+
+      <Card className="p-5 mb-4">
+        <SectionTitle icon={Target} sub="Indicadores mais avançados, que levam em conta o valor do dinheiro no tempo — opcionais, para equipes que querem aprofundar a análise de investimento.">VPL e TIR</SectionTitle>
+        <Field label="Taxa Mínima de Atratividade — TMA (% ao ano)" hint="O retorno mínimo que os sócios exigem para valer a pena investir nesse negócio em vez de aplicar o dinheiro em outro lugar (ex.: poupança, CDB, outro investimento).">
+          <input type="number" step="1" value={tmaAnual} disabled={readOnly} onChange={(e) => onSetTmaAnual(e.target.value)} className="w-40 bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100 disabled:opacity-60" />
+        </Field>
+        <div className="grid sm:grid-cols-2 gap-3 mt-3">
+          <StatCard label="VPL (Valor Presente Líquido)" value={fmtBRL(vpl)} tone={vpl >= 0 ? "emerald" : "rose"} />
+          <StatCard label="TIR (Taxa Interna de Retorno, ao ano)" value={tirAnual !== null ? `${fmtNum(tirAnual, 1)}%` : "Não recupera em 12 meses"} tone={tirAnual !== null && tirAnual >= tmaAnualNum ? "emerald" : "rose"} />
+        </div>
+        <p className="text-xs text-slate-500 mt-3">
+          {vpl >= 0
+            ? `VPL positivo: descontando a TMA de ${fmtNum(tmaAnualNum, 1)}% ao ano, o negócio ainda gera ${fmtBRL(vpl)} de valor além do que os sócios exigiam como retorno mínimo.`
+            : `VPL negativo: nos 12 meses projetados, o negócio não gera valor suficiente para cobrir a TMA de ${fmtNum(tmaAnualNum, 1)}% ao ano exigida pelos sócios.`}
+          {" "}{tirAnual !== null
+            ? (tirAnual >= tmaAnualNum ? "A TIR está acima da TMA, o que também indica um investimento vantajoso nesse horizonte de 12 meses." : "A TIR está abaixo da TMA, o que também indica que o investimento não se paga nesse horizonte de 12 meses.")
+            : "Sem TIR calculável: o negócio não chega a recuperar o investimento dentro dos 12 meses projetados, então não existe uma taxa de retorno nesse período."}
+        </p>
+      </Card>
 
       <Card className="p-5 mb-4">
         <SectionTitle icon={TrendingUp} sub="A linha cruzando o zero mostra o mês em que o negócio recupera o investimento inicial.">Evolução do saldo de caixa</SectionTitle>
@@ -3184,7 +3244,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
           <div>
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
             <SectionTitle icon={Wallet} sub="Projeção mês a mês do primeiro ano de operação, a partir dos números já lançados nos módulos.">Fluxo de Caixa Anual</SectionTitle>
-            <FluxoCaixaAnual calc={calc} taxaCrescimento={dados.taxaCrescimentoFluxo ?? 0} onSetTaxaCrescimento={(v) => setDados({ ...dados, taxaCrescimentoFluxo: v })} readOnly={souVisualizador} />
+            <FluxoCaixaAnual calc={calc} taxaCrescimento={dados.taxaCrescimentoFluxo ?? 0} onSetTaxaCrescimento={(v) => setDados({ ...dados, taxaCrescimentoFluxo: v })} tmaAnual={dados.tmaAnualFluxo ?? 12} onSetTmaAnual={(v) => setDados({ ...dados, tmaAnualFluxo: v })} readOnly={souVisualizador} />
           </div>
         )}
 
@@ -3411,7 +3471,7 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
           {menuAlunoAberto && (
             <div className="px-5 pb-5 pt-1 border-t border-slate-800 space-y-5">
               <AnaliseCenarios calc={calc} cenarios={dados.cenarios} onSetCenarios={() => {}} readOnly />
-              <FluxoCaixaAnual calc={calc} taxaCrescimento={dados.taxaCrescimentoFluxo ?? 0} onSetTaxaCrescimento={() => {}} readOnly />
+              <FluxoCaixaAnual calc={calc} taxaCrescimento={dados.taxaCrescimentoFluxo ?? 0} onSetTaxaCrescimento={() => {}} tmaAnual={dados.tmaAnualFluxo ?? 12} onSetTmaAnual={() => {}} readOnly />
             </div>
           )}
         </Card>

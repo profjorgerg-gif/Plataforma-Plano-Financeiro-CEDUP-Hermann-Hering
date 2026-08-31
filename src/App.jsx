@@ -1,4 +1,4 @@
-// build: 2026-08-30_23h52m55s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 2026-08-31_00h13m51s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -145,27 +145,19 @@ function estadoModulo(fluxo, modId) {
 }
 
 // Fluxo inicial de uma equipe: só o Módulo 1 liberado, os demais pendentes.
-// Times que já vinham usando a plataforma ANTES desta atualização não ficam
-// travados retroativamente — usamos o mesmo "já preenchido" que já orienta
-// o check verde de cada módulo (calc.preenchidos) para considerar como já
-// corrigido tudo que a equipe já tinha feito, e liberar exatamente o
-// primeiro módulo ainda não preenchido. Isso só entra em vigor enquanto
-// dados.fluxoModulos ainda não existir de verdade (nunca é salvo sozinho;
-// só passa a existir de fato na primeira ação de enviar/corrigir/reabrir).
-function fluxoModulosPadrao(calc) {
+// Um módulo só vira "corrigido" por uma ação explícita do professor (depois
+// do envio da equipe) — nunca por inferência automática. A primeira versão
+// desta função tentava adivinhar módulos "já prontos" usando o mesmo
+// indicador do check verde (calc.preenchidos), para não travar retroativamente
+// equipes que já vinham em andamento antes desta atualização — mas esse
+// indicador dispara com qualquer linha adicionada, mesmo zerada (ex.: clicar
+// em "Adicionar bem" sem preencher nada), o que marcava o Módulo 1 como
+// "corrigido" mesmo em uma equipe recém-criada. Como não há mais equipes
+// antigas a proteger, a regra agora é simples e sempre previsível.
+function fluxoModulosPadrao() {
   const resultado = {};
-  let aindaLiberando = true;
   MODULOS.forEach((m, i) => {
-    if (aindaLiberando) {
-      if (calc.preenchidos?.[i]) {
-        resultado[m.id] = { ...ESTADO_MODULO_PADRAO, status: "corrigido" };
-      } else {
-        resultado[m.id] = { ...ESTADO_MODULO_PADRAO, status: "liberado" };
-        aindaLiberando = false;
-      }
-    } else {
-      resultado[m.id] = { ...ESTADO_MODULO_PADRAO };
-    }
+    resultado[m.id] = { ...ESTADO_MODULO_PADRAO, status: i === 0 ? "liberado" : "pendente" };
   });
   return resultado;
 }
@@ -351,6 +343,7 @@ const OPERACIONAL_SECOES = [
     "30/08: modelo de avaliação da equipe implementado conforme o Guia Pedagógico (slide \"Como vocês serão avaliados\"): 40% média dos 8 módulos avaliáveis + 20% Módulo 13 + 20% Cenários e Fluxo de Caixa (nota nova) + 20% Apresentação da empresa (nota nova), com a nota final ponderada calculada automaticamente assim que todos os componentes estiverem lançados. Aparece tanto na revisão do professor (com os dois campos novos editáveis) quanto no Feedback do Professor visto pela equipe.",
     "30/08: liberação sequencial dos módulos — só o Módulo 1 vem liberado; os demais aparecem no índice (visíveis, com o número da sequência) mas travados para preenchimento até a equipe enviar o módulo atual para correção e o professor confirmar. Cada módulo tem um campo de Prazo de Entrega definido pelo professor; passado o prazo sem envio, o módulo trava automaticamente e só o professor consegue reabrir — obrigatoriamente com um novo prazo —, ficando registrado que houve atraso (para o desconto de 2,0 pontos por pontualidade, aplicado manualmente pelo professor na nota). Equipes que já vinham usando a plataforma antes desta atualização não foram travadas retroativamente: o que já estava preenchido conta como corrigido, e o fluxo novo passa a valer a partir do primeiro módulo ainda não preenchido.",
     "30/08: Manual do Aluno e Manual do Professor (conteúdo dentro da própria plataforma) revisados e atualizados para refletir todas as mudanças de agosto — login em dois passos, liberação sequencial dos módulos com prazo de entrega, e o modelo de avaliação ponderada. Com essa atualização, a plataforma está pronta para o uso em sala com a turma.",
+    "31/08: correção na liberação sequencial dos módulos — o Módulo 1 podia aparecer como \"Corrigido\" em vez de \"Liberado\" numa equipe recém-criada, se alguém tivesse clicado em \"Adicionar bem\" sem preencher nada (uma linha vazia já contava como \"módulo já preenchido\" na regra antiga, pensada para não travar retroativamente equipes que já estavam em andamento antes da atualização anterior). Como não há mais equipes antigas a proteger, a regra ficou mais simples e direta: toda equipe nova começa só com o Módulo 1 liberado, e nenhum módulo vira \"corrigido\" sem passar pelo envio da equipe e a correção do professor.",
   ]},
   { titulo: "Segurança da plataforma", paragrafos: [
     "Login exclusivo via Google: o provedor \"E-mail/senha\" foi desativado no Console do Firebase; só \"Google\" está ativo. É preciso conferir, em Authentication → Domínios autorizados, se o domínio do GitHub Pages está na lista.",
@@ -3099,7 +3092,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
 
   const lanc = mergeLancamentos(dados?.lancamentos);
   const calc = useMemo(() => calcular(lanc), [JSON.stringify(lanc)]);
-  const fluxo = dados?.fluxoModulos || fluxoModulosPadrao(calc);
+  const fluxo = dados?.fluxoModulos || fluxoModulosPadrao();
   const enviarModulo = (modId) => {
     const estadoAtual = estadoModulo(fluxo, modId);
     const jaAtrasado = moduloAtrasadoSemEnvio(estadoAtual);
@@ -3786,7 +3779,7 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
   const addComentario = (c) => setDados({ ...dados, comentarios: [...(dados.comentarios || []), c] });
   const setNota = (modId, valor) => setDados({ ...dados, notas: { ...(dados.notas || {}), [modId]: valor } });
 
-  const fluxo = dados.fluxoModulos || fluxoModulosPadrao(calc);
+  const fluxo = dados.fluxoModulos || fluxoModulosPadrao();
   const setPrazoModulo = (modId, novoPrazo) => {
     const atual = estadoModulo(fluxo, modId);
     setDados({ ...dados, fluxoModulos: { ...fluxo, [modId]: { ...atual, prazo: novoPrazo } } });

@@ -1,4 +1,4 @@
-// build: 2026-08-30_23h10m12s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 2026-08-30_23h23m36s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -293,6 +293,7 @@ const OPERACIONAL_SECOES = [
     "28/08: Fluxo de Caixa Anual ganhou VPL (Valor Presente Líquido) e TIR (Taxa Interna de Retorno), com TMA (Taxa Mínima de Atratividade) informada pela equipe — indicadores opcionais e mais avançados, para equipes que já dominam o Ponto de Equilíbrio e o Payback simples e querem aprofundar a análise de investimento.",
     "28/08: Módulo 9 (Mão de Obra) ganhou o cálculo automático de encargos sociais por grupo (A — básicos/legais, B — período não trabalhado, C — pagos em dinheiro, D — incidências cruzadas), conforme o regime tributário (Simples Nacional ou Lucro Real/Presumido). Continua existindo a opção de informar um percentual manual por função.",
     "30/08: Manual do Professor e Manual do Aluno, no perfil do professor, agora abrem sempre imprimíveis/baixáveis diretamente pelo navegador — antes essa opção era restrita ao Usuário Mestre. A visão do aluno continua em modo leitura, sem os controles nativos de imprimir/baixar. Módulo 7 ganhou também um aviso educativo sobre a Reforma Tributária (CBS/IBS) em curso no país, sem afetar nenhum cálculo — 2026 é o ano de testes da reforma, e empresas do Simples Nacional (regime coberto pela tabela automática do módulo) seguem normalmente pelo DAS.",
+    "30/08: modelo de avaliação da equipe implementado conforme o Guia Pedagógico (slide \"Como vocês serão avaliados\"): 40% média dos 8 módulos avaliáveis + 20% Módulo 13 + 20% Cenários e Fluxo de Caixa (nota nova) + 20% Apresentação da empresa (nota nova), com a nota final ponderada calculada automaticamente assim que todos os componentes estiverem lançados. Aparece tanto na revisão do professor (com os dois campos novos editáveis) quanto no Feedback do Professor visto pela equipe.",
   ]},
   { titulo: "Segurança da plataforma", paragrafos: [
     "Login exclusivo via Google: o provedor \"E-mail/senha\" foi desativado no Console do Firebase; só \"Google\" está ativo. É preciso conferir, em Authentication → Domínios autorizados, se o domínio do GitHub Pages está na lista.",
@@ -318,6 +319,7 @@ const CHECKLIST_SECOES = [
     "Professor entra direto; aluno confirma matrícula + código de turma no primeiro acesso (nome oficial e turma reconhecidos automaticamente); da segunda vez em diante, só a matrícula é pedida",
     "Os 13 módulos financeiros calculando e passando dados entre si",
     "Análise do Negócio com gráficos, alertas automáticos, ranking de produtos por margem de contribuição e calculadora de preço sugerido",
+    "Modelo de avaliação da equipe (40% módulos + 20% Módulo 13 + 20% Cenários/Fluxo de Caixa + 20% Apresentação), com nota final ponderada automática",
     "Análise de Cenários: até 3 simulações comparadas com o resultado atual",
     "Fluxo de Caixa Anual Projetado: evolução mês a mês do primeiro ano, com indicador do mês de payback, VPL e TIR (opcionais, com TMA informada pela equipe)",
     "Módulo 9: encargos sociais calculados automaticamente por grupo A/B/C/D, conforme o regime tributário (Simples ou Lucro Real/Presumido), com opção de percentual manual por função",
@@ -3376,27 +3378,17 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
           <div>
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
             <SectionTitle icon={MessageSquare} sub="Comentários e ajustes solicitados pelo(a) professor(a).">Feedback do Professor</SectionTitle>
-            {(() => {
+        {(() => {
               const notasDadas = NOTA_MODULOS_AVALIAVEIS.map((id) => dados.notas?.[id]).filter((n) => n !== undefined && n !== null && n !== "");
               const media = notasDadas.length ? (notasDadas.reduce((a, b) => a + Number(b), 0) / notasDadas.length) : null;
               const notaFinal = dados.notas?.[NOTA_MODULO_FINAL];
-              if (!notasDadas.length && (notaFinal === undefined || notaFinal === null || notaFinal === "")) return null;
+              const notaCenariosFluxo = dados.notas?.cenariosFluxo;
+              const notaApresentacao = dados.notas?.apresentacao;
+              if (!notasDadas.length && vazio(notaFinal) && vazio(notaCenariosFluxo) && vazio(notaApresentacao)) return null;
+              const notaPonderada = calcularNotaPonderada({ media, notaFinal, notaCenariosFluxo, notaApresentacao, totalModulos: NOTA_MODULOS_AVALIAVEIS.length, notasDadasLength: notasDadas.length });
               return (
-                <div className="grid sm:grid-cols-2 gap-3 mb-4">
-                  <div className="bg-slate-900 border border-sky-800/60 rounded-lg p-4 flex items-center justify-between">
-                    <div>
-                      <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide">Média dos módulos avaliados</div>
-                      <div className="text-xs text-slate-500 mt-0.5">{notasDadas.length}/{NOTA_MODULOS_AVALIAVEIS.length} módulos com nota</div>
-                    </div>
-                    <div className="text-2xl font-bold text-sky-400">{media !== null ? media.toFixed(1) : "—"}</div>
-                  </div>
-                  <div className="bg-slate-900 border border-amber-800/60 rounded-lg p-4 flex items-center justify-between">
-                    <div>
-                      <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wide">Nota final (síntese — Módulo 13)</div>
-                      <div className="text-xs text-slate-500 mt-0.5">Conclusão sobre a viabilidade do negócio</div>
-                    </div>
-                    <div className="text-2xl font-bold text-amber-400">{(notaFinal !== undefined && notaFinal !== null && notaFinal !== "") ? notaFinal : "—"}</div>
-                  </div>
+                <div className="mb-4">
+                  <PainelAvaliacao media={media} notasDadasLength={notasDadas.length} totalModulos={NOTA_MODULOS_AVALIAVEIS.length} notaFinal={notaFinal} notaCenariosFluxo={notaCenariosFluxo} notaApresentacao={notaApresentacao} notaPonderada={notaPonderada} readOnly />
                 </div>
               );
             })()}
@@ -3452,6 +3444,98 @@ function ModuloLeitura({ mId, lanc, calc }) {
 
 // Campo de nota (0-10) — usado pelo professor para dar a nota e, em modo
 // somente leitura, para o aluno ver a nota já dada.
+const vazio = (v) => v === undefined || v === null || v === "";
+
+// Nota final ponderada: 40% média dos 8 módulos avaliáveis + 20% Módulo 13
+// (síntese/viabilidade) + 20% Cenários e Fluxo de Caixa + 20% Apresentação
+// da empresa — o mesmo modelo do slide 9 do Guia Pedagógico ("Como vocês
+// serão avaliados"). Só calcula quando os 4 componentes estiverem completos
+// (a média dos módulos exige os 8 preenchidos), para nunca mostrar uma nota
+// parcial como se fosse definitiva.
+function calcularNotaPonderada({ media, notaFinal, notaCenariosFluxo, notaApresentacao, totalModulos, notasDadasLength }) {
+  if (notasDadasLength !== totalModulos || media === null) return null;
+  if (vazio(notaFinal) || vazio(notaCenariosFluxo) || vazio(notaApresentacao)) return null;
+  return 0.4 * media + 0.2 * Number(notaFinal) + 0.2 * Number(notaCenariosFluxo) + 0.2 * Number(notaApresentacao);
+}
+
+// Cores por variante escritas por extenso (não interpoladas) — o Tailwind
+// só gera CSS para classes que aparecem literalmente no código-fonte;
+// `text-${cor}-400` dinâmico simplesmente não funcionaria em produção.
+const CORES_NOTA_EXTRA = {
+  emerald: { texto: "text-emerald-400", foco: "focus:border-emerald-500" },
+  violet: { texto: "text-violet-400", foco: "focus:border-violet-500" },
+};
+
+function CampoNotaExtra({ valor, onSetValor, cor, readOnly }) {
+  const [texto, setTexto] = useState(valor ?? "");
+  useEffect(() => { setTexto(valor ?? ""); }, [valor]);
+  const c = CORES_NOTA_EXTRA[cor];
+  if (readOnly) return <div className={`text-2xl font-bold ${c.texto}`}>{!vazio(valor) ? valor : "—"}</div>;
+  return (
+    <input
+      type="number" min="0" max="10" step="0.5" value={texto} placeholder="—"
+      onChange={(e) => setTexto(e.target.value)}
+      onBlur={() => onSetValor(texto === "" ? null : Math.max(0, Math.min(10, Number(texto))))}
+      className={`w-16 bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-lg font-bold ${c.texto} text-center ${c.foco} focus:outline-none`}
+    />
+  );
+}
+
+// Painel de avaliação — usado tanto na tela do professor (EquipeReview,
+// onde os dois campos extras são editáveis) quanto na tela do aluno
+// (Feedback do Professor, tudo em modo leitura). As notas dos 8 módulos e
+// do Módulo 13 continuam sendo lançadas em cada accordion (NotaModulo);
+// aqui só entram os dois componentes que não têm um módulo próprio.
+function PainelAvaliacao({ media, notasDadasLength, totalModulos, notaFinal, notaCenariosFluxo, notaApresentacao, notaPonderada, onSetCenariosFluxo, onSetApresentacao, readOnly }) {
+  const editavel = !readOnly;
+  return (
+    <Card className="p-4">
+      <SectionTitle icon={Target} sub="Modelo de avaliação: 40% média dos módulos + 20% Módulo 13 + 20% Cenários/Fluxo de Caixa + 20% Apresentação da empresa.">Avaliação da equipe</SectionTitle>
+      <div className="grid sm:grid-cols-2 gap-3 mb-3">
+        <div className="bg-slate-900 border border-sky-800/60 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide">Média dos módulos (40%)</div>
+            <div className="text-xs text-slate-500 mt-0.5">{notasDadasLength}/{totalModulos} módulos com nota</div>
+          </div>
+          <div className="text-2xl font-bold text-sky-400">{media !== null ? media.toFixed(1) : "—"}</div>
+        </div>
+        <div className="bg-slate-900 border border-amber-800/60 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wide">Módulo 13 (20%)</div>
+            <div className="text-xs text-slate-500 mt-0.5">Conclusão sobre a viabilidade do negócio</div>
+          </div>
+          <div className="text-2xl font-bold text-amber-400">{!vazio(notaFinal) ? notaFinal : "—"}</div>
+        </div>
+        <div className="bg-slate-900 border border-emerald-800/60 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-bold text-emerald-400 uppercase tracking-wide">Cenários e Fluxo de Caixa (20%)</div>
+            <div className="text-xs text-slate-500 mt-0.5">Qualidade da análise de cenários e do fluxo de caixa</div>
+          </div>
+          {editavel
+            ? <CampoNotaExtra valor={notaCenariosFluxo} onSetValor={onSetCenariosFluxo} cor="emerald" />
+            : <CampoNotaExtra valor={notaCenariosFluxo} cor="emerald" readOnly />}
+        </div>
+        <div className="bg-slate-900 border border-violet-800/60 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-bold text-violet-400 uppercase tracking-wide">Apresentação da empresa (20%)</div>
+            <div className="text-xs text-slate-500 mt-0.5">Apresentação final da equipe</div>
+          </div>
+          {editavel
+            ? <CampoNotaExtra valor={notaApresentacao} onSetValor={onSetApresentacao} cor="violet" />
+            : <CampoNotaExtra valor={notaApresentacao} cor="violet" readOnly />}
+        </div>
+      </div>
+      <div className="bg-slate-950 border-2 border-amber-500/60 rounded-lg p-4 flex items-center justify-between">
+        <div>
+          <div className="text-xs font-bold text-amber-400 uppercase tracking-wide">Nota final ponderada</div>
+          <div className="text-xs text-slate-500 mt-0.5">{notaPonderada !== null ? "40% módulos + 20% Módulo 13 + 20% Cenários/Fluxo + 20% Apresentação" : "Aguardando todas as notas para calcular"}</div>
+        </div>
+        <div className="text-3xl font-bold text-amber-400">{notaPonderada !== null ? notaPonderada.toFixed(1) : "—"}</div>
+      </div>
+    </Card>
+  );
+}
+
 function NotaModulo({ nota, onSetNota, ehFinal, readOnly }) {
   const [valor, setValor] = useState(nota ?? "");
   useEffect(() => { setValor(nota ?? ""); }, [nota]);
@@ -3555,6 +3639,9 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
     .filter((n) => n !== undefined && n !== null && n !== "");
   const media = notasDadas.length ? (notasDadas.reduce((a, b) => a + Number(b), 0) / notasDadas.length) : null;
   const notaFinal = dados.notas?.[NOTA_MODULO_FINAL];
+  const notaCenariosFluxo = dados.notas?.cenariosFluxo;
+  const notaApresentacao = dados.notas?.apresentacao;
+  const notaPonderada = calcularNotaPonderada({ media, notaFinal, notaCenariosFluxo, notaApresentacao, totalModulos: NOTA_MODULOS_AVALIAVEIS.length, notasDadasLength: notasDadas.length });
 
   return (
     <div>
@@ -3564,23 +3651,9 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
       <div className="space-y-6">
         <AnaliseNegocio calc={calc} historico={dados.historico} readOnly />
 
-        {(notasDadas.length > 0 || (notaFinal !== undefined && notaFinal !== null && notaFinal !== "")) && (
-          <div className="grid sm:grid-cols-2 gap-3">
-            <div className="bg-slate-900 border border-sky-800/60 rounded-lg p-4 flex items-center justify-between">
-              <div>
-                <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide">Média dos módulos avaliados</div>
-                <div className="text-xs text-slate-500 mt-0.5">{notasDadas.length}/{NOTA_MODULOS_AVALIAVEIS.length} módulos com nota</div>
-              </div>
-              <div className="text-2xl font-bold text-sky-400">{media !== null ? media.toFixed(1) : "—"}</div>
-            </div>
-            <div className="bg-slate-900 border border-amber-800/60 rounded-lg p-4 flex items-center justify-between">
-              <div>
-                <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wide">Nota final (síntese — Módulo 13)</div>
-                <div className="text-xs text-slate-500 mt-0.5">Conclusão sobre a viabilidade do negócio</div>
-              </div>
-              <div className="text-2xl font-bold text-amber-400">{(notaFinal !== undefined && notaFinal !== null && notaFinal !== "") ? notaFinal : "—"}</div>
-            </div>
-          </div>
+        {(notasDadas.length > 0 || !vazio(notaFinal) || !vazio(notaCenariosFluxo) || !vazio(notaApresentacao)) && (
+          <PainelAvaliacao media={media} notasDadasLength={notasDadas.length} totalModulos={NOTA_MODULOS_AVALIAVEIS.length} notaFinal={notaFinal} notaCenariosFluxo={notaCenariosFluxo} notaApresentacao={notaApresentacao} notaPonderada={notaPonderada}
+            onSetCenariosFluxo={(v) => setNota("cenariosFluxo", v)} onSetApresentacao={(v) => setNota("apresentacao", v)} />
         )}
 
         {/* Menu do Aluno — só para visualização e acompanhamento pelo

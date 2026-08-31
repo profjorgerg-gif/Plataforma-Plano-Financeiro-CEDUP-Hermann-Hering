@@ -1,4 +1,4 @@
-// build: 2026-08-28_12h56m42s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 2026-08-30_23h01m53s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -58,7 +58,7 @@ const TEORIA = {
   m6: { conceito: "Custo de materiais para cada unidade fabricada — detalhamento opcional, útil para negócios industriais.", formula: "Custo Unitário = Σ (Quantidade do material × Custo Unitário do material)" },
   m7: { conceito: "Gastos variáveis que incidem diretamente sobre as vendas: impostos e comissões. O imposto pode ser calculado automaticamente pela tabela do Simples Nacional, a partir do tipo de atividade e do faturamento anual.", formula: "Custo de Comercialização = Faturamento × (% Impostos + % Comissão)\nAlíquota efetiva do Simples = (RBT12 × Alíquota nominal − Parcela a deduzir) ÷ RBT12" },
   m8: { conceito: "Valor baixado do estoque em função da venda efetiva (CMD para indústria, CMV para comércio).", formula: "CMD/CMV = Σ (Quantidade Vendida × Custo Unitário de Aquisição/Produção)" },
-  m9: { conceito: "Custo com salários e encargos sociais (FGTS, férias, 13º, INSS etc.) da equipe contratada.", formula: "Custo com Mão de Obra = Σ [ Salário × (1 + % Encargos Sociais) ]" },
+  m9: { conceito: "Custo com salários e encargos sociais (FGTS, férias, 13º, INSS etc.) da equipe contratada. Os encargos podem ser calculados automaticamente por grupo (A: básicos/legais, B: período não trabalhado, C: pagos em dinheiro, D: incidências cruzadas), conforme o regime tributário da empresa.", formula: "Custo com Mão de Obra = Σ [ Salário × (1 + % Encargos Sociais) ]\n% Encargos (por grupos) = Σ Grupo A + Σ Grupo B + Σ Grupo C + Σ Grupo D" },
   m10: { conceito: "Perda de valor dos bens do ativo fixo pelo uso ao longo do tempo.", formula: "Depreciação Mensal = (Valor do Bem ÷ Vida Útil em anos) ÷ 12" },
   m11: { conceito: "Gastos que não variam com o volume de produção/vendas: aluguel, energia, pró-labore etc. — inclui automaticamente a mão de obra e a depreciação.", formula: "Custo Fixo Total = Σ custos fixos + Mão de Obra + Depreciação" },
   m12: { conceito: "Consolida faturamento e custos para apurar se a empresa projeta lucro ou prejuízo.", formula: "Resultado Operacional = (Receita − Custos Variáveis) − Custos Fixos" },
@@ -102,8 +102,8 @@ const GUIA_MODULOS_EXTRA = {
     exemplo: "600 pães vendidos × R$ 2,25 de custo de matéria-prima cada = R$ 1.350 de CMD no mês.",
   },
   m9: {
-    lancamento: "Para cada função/cargo da equipe: nome da função, quantidade de pessoas, salário e percentual de encargos sociais (FGTS, férias, 13º, INSS…).",
-    exemplo: "1 padeiro, salário R$ 1.800, encargos de 35% → custo real de R$ 2.430/mês com essa função.",
+    lancamento: "Para cada função/cargo da equipe: nome, quantidade de pessoas e salário. Os encargos sociais podem ser calculados automaticamente por grupo (A/B/C/D), bastando escolher o regime tributário (Simples Nacional ou Lucro Real/Presumido) — ou, se preferir, informar um percentual manual por função.",
+    exemplo: "1 padeiro, salário R$ 1.800, no Simples Nacional (encargos de 33,00% pelo cálculo por grupos) → custo real de R$ 2.394/mês com essa função.",
   },
   m10: {
     lancamento: "Não precisa digitar de novo — usa os bens já lançados no Módulo 1. Só é preciso informar a vida útil (em anos) de cada categoria de bem.",
@@ -291,6 +291,7 @@ const OPERACIONAL_SECOES = [
     "28/08: Módulo 7 (Custos de Comercialização) ganhou o cálculo automático da alíquota do Simples Nacional (Anexos I a III — Comércio, Indústria e Serviços), a partir do tipo de atividade e do faturamento anual do Módulo 5. Continua existindo a opção de informar o percentual manualmente, para atividades fora desses três anexos.",
     "28/08: Análise do Negócio ganhou o bloco \"Produtos Mais Lucrativos\": ranking dos produtos/serviços do Módulo 5 por margem de contribuição total (usando o custo do Módulo 8 e o imposto/comissão do Módulo 7), e uma calculadora de preço sugerido por margem de contribuição desejada.",
     "28/08: Fluxo de Caixa Anual ganhou VPL (Valor Presente Líquido) e TIR (Taxa Interna de Retorno), com TMA (Taxa Mínima de Atratividade) informada pela equipe — indicadores opcionais e mais avançados, para equipes que já dominam o Ponto de Equilíbrio e o Payback simples e querem aprofundar a análise de investimento.",
+    "28/08: Módulo 9 (Mão de Obra) ganhou o cálculo automático de encargos sociais por grupo (A — básicos/legais, B — período não trabalhado, C — pagos em dinheiro, D — incidências cruzadas), conforme o regime tributário (Simples Nacional ou Lucro Real/Presumido). Continua existindo a opção de informar um percentual manual por função.",
   ]},
   { titulo: "Segurança da plataforma", paragrafos: [
     "Login exclusivo via Google: o provedor \"E-mail/senha\" foi desativado no Console do Firebase; só \"Google\" está ativo. É preciso conferir, em Authentication → Domínios autorizados, se o domínio do GitHub Pages está na lista.",
@@ -318,6 +319,7 @@ const CHECKLIST_SECOES = [
     "Análise do Negócio com gráficos, alertas automáticos, ranking de produtos por margem de contribuição e calculadora de preço sugerido",
     "Análise de Cenários: até 3 simulações comparadas com o resultado atual",
     "Fluxo de Caixa Anual Projetado: evolução mês a mês do primeiro ano, com indicador do mês de payback, VPL e TIR (opcionais, com TMA informada pela equipe)",
+    "Módulo 9: encargos sociais calculados automaticamente por grupo A/B/C/D, conforme o regime tributário (Simples ou Lucro Real/Presumido), com opção de percentual manual por função",
     "Módulo 7: cálculo automático da alíquota do Simples Nacional (Anexos I a III) a partir do tipo de atividade e do faturamento anual, com opção de informar manualmente",
     "Confirmação de matrícula a cada login, não só no primeiro acesso",
     "Feedback do Professor por módulo, com nota de 0 a 10 em 8 módulos + nota final no Módulo 13",
@@ -357,7 +359,7 @@ function defaultLancamentos() {
     m6: { itens: [] },
     m7: { pctImpostos: 0, pctComissao: 0, modoImposto: "simples", tipoAtividade: "" },
     m8: { custosUnit: {} },
-    m9: { itens: [] },
+    m9: { itens: [], modoEncargos: "grupos", regimeEncargos: "simples" },
     m10: { vidasUteis: {} },
     m11: { itens: [] },
   };
@@ -417,7 +419,7 @@ function calcular(lanc) {
 
   const maoDeObra = l.m9.itens.reduce((s, it) => {
     const sal = Number(it.salario) || 0;
-    const enc = Number(it.pctEncargos) || 0;
+    const enc = (l.m9.modoEncargos || "grupos") === "grupos" ? totalEncargosGrupo(l.m9.regimeEncargos || "simples") : (Number(it.pctEncargos) || 0);
     return s + (Number(it.qtd) || 0) * sal * (1 + enc / 100);
   }, 0);
 
@@ -1970,12 +1972,120 @@ function M8Form({ data, update, m5itens }) {
   );
 }
 
+// Encargos sociais por grupo (A: básicos/legais, B: período não trabalhado,
+// C: pagos em dinheiro, D: incidências cruzadas), para os dois regimes mais
+// comuns entre pequenos negócios. Percentuais de referência sobre o
+// salário — a diferença principal entre os regimes é que, no Simples
+// Nacional, boa parte da Previdência Social patronal, o RAT e os "Terceiros"
+// (Sistema S) já ficam embutidos no próprio DAS, então não entram aqui.
+const ENCARGOS_GRUPOS = {
+  simples: {
+    nome: "Simples Nacional",
+    grupoA: [
+      { nome: "Previdência Social (INSS patronal)", pct: 0 },
+      { nome: "FGTS", pct: 8 },
+      { nome: "FGTS — provisão de multa rescisória", pct: 4 },
+      { nome: "RAT — Risco de Acidente do Trabalho", pct: 0 },
+      { nome: "Terceiros (Incra, Sesc, Sesi, Senai, Senac, Sebrae...)", pct: 0 },
+    ],
+    grupoB: [
+      { nome: "Férias", pct: 8.3333 },
+      { nome: "Adicional de Férias (1/3)", pct: 2.7778 },
+    ],
+    grupoC: [{ nome: "Décimo Terceiro Salário", pct: 8.3333 }],
+    grupoD: [
+      { nome: "FGTS sobre 13º Salário e Férias", pct: 1.5556 },
+      { nome: "Previdência Social sobre 13º Salário e Férias", pct: 0 },
+    ],
+  },
+  lucroReal: {
+    nome: "Lucro Real / Presumido",
+    grupoA: [
+      { nome: "Previdência Social (INSS patronal)", pct: 20 },
+      { nome: "FGTS", pct: 8 },
+      { nome: "FGTS — provisão de multa rescisória", pct: 4 },
+      { nome: "RAT — Risco de Acidente do Trabalho", pct: 3 },
+      { nome: "Terceiros (Incra, Sesc, Sesi, Senai, Senac, Sebrae...)", pct: 5.8 },
+    ],
+    grupoB: [
+      { nome: "Férias", pct: 8.3333 },
+      { nome: "Adicional de Férias (1/3)", pct: 2.7778 },
+    ],
+    grupoC: [{ nome: "Décimo Terceiro Salário", pct: 8.3333 }],
+    grupoD: [
+      { nome: "FGTS sobre 13º Salário e Férias", pct: 1.5556 },
+      { nome: "Previdência Social sobre 13º Salário e Férias", pct: 3.8889 },
+    ],
+  },
+};
+
+function totalEncargosGrupo(regime) {
+  const r = ENCARGOS_GRUPOS[regime] || ENCARGOS_GRUPOS.simples;
+  const soma = (lista) => lista.reduce((s, i) => s + i.pct, 0);
+  return soma(r.grupoA) + soma(r.grupoB) + soma(r.grupoC) + soma(r.grupoD);
+}
+
 function M9Form({ data, update }) {
   const itens = data.itens;
   const setItens = (next) => update({ ...data, itens: next });
-  const total = itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.salario) || 0) * (1 + (Number(it.pctEncargos) || 0) / 100), 0);
+  const modoEncargos = data.modoEncargos || "grupos";
+  const regimeEncargos = data.regimeEncargos || "simples";
+  const pctGrupos = totalEncargosGrupo(regimeEncargos);
+  const regimeInfo = ENCARGOS_GRUPOS[regimeEncargos] || ENCARGOS_GRUPOS.simples;
+  const pctEfetivo = (it) => (modoEncargos === "grupos" ? pctGrupos : (Number(it.pctEncargos) || 0));
+  const total = itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.salario) || 0) * (1 + pctEfetivo(it) / 100), 0);
+
   return (
     <div>
+      <Field label="Como calcular os encargos sociais?">
+        <div className="flex gap-2 mb-1">
+          <button type="button" onClick={() => update({ ...data, modoEncargos: "grupos" })}
+            className={`flex-1 text-sm font-semibold px-3 py-2 rounded-md border transition ${modoEncargos === "grupos" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300 hover:border-slate-400"}`}>
+            Calcular por grupos (A/B/C/D)
+          </button>
+          <button type="button" onClick={() => update({ ...data, modoEncargos: "manual" })}
+            className={`flex-1 text-sm font-semibold px-3 py-2 rounded-md border transition ${modoEncargos === "manual" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300 hover:border-slate-400"}`}>
+            Informar um % por função
+          </button>
+        </div>
+      </Field>
+
+      {modoEncargos === "grupos" && (
+        <>
+          <Field label="Regime dos encargos">
+            <select value={regimeEncargos} onChange={(e) => update({ ...data, regimeEncargos: e.target.value })} className="w-full max-w-xs border border-slate-600 rounded-md px-3 py-2 text-sm bg-white mb-3">
+              <option value="simples">Simples Nacional</option>
+              <option value="lucroReal">Lucro Real / Presumido</option>
+            </select>
+          </Field>
+          <Card className="p-3 bg-slate-900 border border-slate-700 mb-4">
+            <div className="text-xs uppercase text-slate-500 font-semibold mb-2">Composição dos encargos — {regimeInfo.nome}</div>
+            <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3 text-sm text-slate-300">
+              {[
+                ["Grupo A — Básicos/Legais", regimeInfo.grupoA],
+                ["Grupo B — Período não trabalhado", regimeInfo.grupoB],
+                ["Grupo C — Pagos em dinheiro", regimeInfo.grupoC],
+                ["Grupo D — Incidências cruzadas", regimeInfo.grupoD],
+              ].map(([titulo, lista]) => (
+                <div key={titulo}>
+                  <div className="text-xs font-bold text-slate-400 mb-1">{titulo}</div>
+                  {lista.map((i) => (
+                    <div key={i.nome} className="flex justify-between text-xs py-0.5">
+                      <span className="text-slate-400 pr-2">{i.nome}</span>
+                      <span className="text-slate-300 shrink-0">{fmtNum(i.pct, 2)}%</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between items-center mt-3 pt-2 border-t border-slate-700">
+              <span className="text-xs uppercase text-slate-500 font-semibold">Total dos encargos</span>
+              <span className="font-bold text-amber-400 text-lg">{fmtNum(pctGrupos, 2)}%</span>
+            </div>
+          </Card>
+        </>
+      )}
+
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -1994,8 +2104,12 @@ function M9Form({ data, update }) {
                 <td className="py-1.5 pr-2"><TxtInput value={it.funcao} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, funcao: v } : r)))} placeholder="Ex.: Vendedor" /></td>
                 <td className="py-1.5 pr-2"><NumInput value={it.qtd} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, qtd: v } : r)))} /></td>
                 <td className="py-1.5 pr-2"><NumInput value={it.salario} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, salario: v } : r)))} /></td>
-                <td className="py-1.5 pr-2"><NumInput value={it.pctEncargos} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, pctEncargos: v } : r)))} /></td>
-                <td className="py-1.5 pr-2 font-semibold text-slate-200">{fmtBRL((Number(it.qtd) || 0) * (Number(it.salario) || 0) * (1 + (Number(it.pctEncargos) || 0) / 100))}</td>
+                <td className="py-1.5 pr-2">
+                  {modoEncargos === "grupos"
+                    ? <span className="text-slate-400">{fmtNum(pctGrupos, 2)}%</span>
+                    : <NumInput value={it.pctEncargos} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, pctEncargos: v } : r)))} />}
+                </td>
+                <td className="py-1.5 pr-2 font-semibold text-slate-200">{fmtBRL((Number(it.qtd) || 0) * (Number(it.salario) || 0) * (1 + pctEfetivo(it) / 100))}</td>
                 <td><RemoveBtn onClick={() => setItens(itens.filter((r) => r.id !== it.id))} /></td>
               </tr>
             ))}

@@ -1,4 +1,4 @@
-// build: 2026-08-31_00h13m51s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 2026-08-31_12h15m50s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -344,6 +344,7 @@ const OPERACIONAL_SECOES = [
     "30/08: liberação sequencial dos módulos — só o Módulo 1 vem liberado; os demais aparecem no índice (visíveis, com o número da sequência) mas travados para preenchimento até a equipe enviar o módulo atual para correção e o professor confirmar. Cada módulo tem um campo de Prazo de Entrega definido pelo professor; passado o prazo sem envio, o módulo trava automaticamente e só o professor consegue reabrir — obrigatoriamente com um novo prazo —, ficando registrado que houve atraso (para o desconto de 2,0 pontos por pontualidade, aplicado manualmente pelo professor na nota). Equipes que já vinham usando a plataforma antes desta atualização não foram travadas retroativamente: o que já estava preenchido conta como corrigido, e o fluxo novo passa a valer a partir do primeiro módulo ainda não preenchido.",
     "30/08: Manual do Aluno e Manual do Professor (conteúdo dentro da própria plataforma) revisados e atualizados para refletir todas as mudanças de agosto — login em dois passos, liberação sequencial dos módulos com prazo de entrega, e o modelo de avaliação ponderada. Com essa atualização, a plataforma está pronta para o uso em sala com a turma.",
     "31/08: correção na liberação sequencial dos módulos — o Módulo 1 podia aparecer como \"Corrigido\" em vez de \"Liberado\" numa equipe recém-criada, se alguém tivesse clicado em \"Adicionar bem\" sem preencher nada (uma linha vazia já contava como \"módulo já preenchido\" na regra antiga, pensada para não travar retroativamente equipes que já estavam em andamento antes da atualização anterior). Como não há mais equipes antigas a proteger, a regra ficou mais simples e direta: toda equipe nova começa só com o Módulo 1 liberado, e nenhum módulo vira \"corrigido\" sem passar pelo envio da equipe e a correção do professor.",
+    "31/08: novo Relatório de Notas em GESTÃO → Relatórios: uma linha por aluno (não por empresa) — a nota de cada módulo, de Cenários/Fluxo de Caixa, de Apresentação e a nota final ponderada da equipe aparecem replicadas para cada integrante vinculado a ela, com botão para baixar em CSV.",
   ]},
   { titulo: "Segurança da plataforma", paragrafos: [
     "Login exclusivo via Google: o provedor \"E-mail/senha\" foi desativado no Console do Firebase; só \"Google\" está ativo. É preciso conferir, em Authentication → Domínios autorizados, se o domínio do GitHub Pages está na lista.",
@@ -380,7 +381,7 @@ const CHECKLIST_SECOES = [
     "Painel \"Menu do Aluno\" recolhível na revisão do professor (Cenários e Fluxo de Caixa, em modo leitura)",
     "Central de Suporte (chamados de Sistema e Pedagógico) e menu Novidades/Tutoriais",
     "Gestor único por empresa e salvamento com pausa — reduzem o volume de uso do banco de dados",
-    "Relatórios, Backup do Semestre e Lista oficial de alunos (importação em massa por PDF + inclusão/exclusão individual)",
+    "Relatórios (Resumo Comparativo, por Empresa, de Notas por aluno com exportação em CSV, e Pendências), Backup do Semestre e Lista oficial de alunos (importação em massa por PDF + inclusão/exclusão individual)",
     "Manual do Aluno e Manual do Professor em PDF formal, imprimíveis/baixáveis no perfil do professor; visão do aluno em modo leitura",
     "Painel GESTÃO completo: Turmas, Usuários, Relatórios, Backup, Auditoria, Aprovações",
     "Regras de segurança do Firestore exigindo login",
@@ -4747,9 +4748,92 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
   );
 }
 
+// Relatório de Notas: uma linha por aluno (não por empresa) — a nota de
+// cada módulo é a mesma nota da empresa/equipe à qual o aluno está
+// vinculado, replicada individualmente para cada integrante, como pedido no
+// chamado. Reaproveita a mesma fórmula de nota final ponderada usada na
+// revisão da equipe e no Feedback do Professor.
+function RelatorioNotas({ dadosEquipes }) {
+  if (dadosEquipes === null) return <LoadingScreen />;
+  if (dadosEquipes.length === 0) return <Card className="p-8 text-center text-slate-500">Nenhuma empresa nesta turma ainda.</Card>;
+
+  const modulosColuna = MODULOS.filter((m) => NOTA_MODULOS_AVALIAVEIS.includes(m.id) || m.id === NOTA_MODULO_FINAL);
+
+  const linhas = [];
+  dadosEquipes.forEach(({ equipe, dados }) => {
+    const notas = dados.notas || {};
+    const notasDadas = NOTA_MODULOS_AVALIAVEIS.map((id) => notas[id]).filter((n) => !vazio(n));
+    const media = notasDadas.length ? notasDadas.reduce((a, b) => a + Number(b), 0) / notasDadas.length : null;
+    const notaFinal = notas[NOTA_MODULO_FINAL];
+    const notaCenariosFluxo = notas.cenariosFluxo;
+    const notaApresentacao = notas.apresentacao;
+    const notaPonderada = calcularNotaPonderada({ media, notaFinal, notaCenariosFluxo, notaApresentacao, totalModulos: NOTA_MODULOS_AVALIAVEIS.length, notasDadasLength: notasDadas.length });
+    const integrantes = (equipe.integrantes && equipe.integrantes.length > 0) ? equipe.integrantes : ["(sem integrantes ainda)"];
+    integrantes.forEach((nomeAluno) => {
+      linhas.push({ nomeAluno, empresa: equipe.nomeNegocio, notas, notaCenariosFluxo, notaApresentacao, notaPonderada });
+    });
+  });
+  linhas.sort((a, b) => a.nomeAluno.localeCompare(b.nomeAluno, "pt-BR"));
+
+  const baixarCSV = () => {
+    const cabecalho = ["Aluno", "Empresa", ...modulosColuna.map((m) => `Módulo ${m.n}`), "Cenários/Fluxo de Caixa", "Apresentação", "Nota Final Ponderada"];
+    const linhasCsv = linhas.map((l) => [
+      l.nomeAluno, l.empresa,
+      ...modulosColuna.map((m) => (vazio(l.notas[m.id]) ? "" : l.notas[m.id])),
+      vazio(l.notaCenariosFluxo) ? "" : l.notaCenariosFluxo,
+      vazio(l.notaApresentacao) ? "" : l.notaApresentacao,
+      l.notaPonderada !== null ? l.notaPonderada.toFixed(1) : "",
+    ]);
+    const csv = [cabecalho, ...linhasCsv].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";")).join("\n");
+    baixarArquivo("relatorio_notas.csv", csv, "text/csv");
+  };
+
+  return (
+    <div>
+      <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
+        <p className="text-xs text-slate-500 max-w-md">A nota de cada módulo é a mesma da empresa, replicada para cada aluno vinculado a ela. A coluna Final só aparece quando todos os componentes da equipe já foram lançados (40% módulos + 20% Módulo 13 + 20% Cenários/Fluxo + 20% Apresentação).</p>
+        <button onClick={baixarCSV} className="flex items-center gap-2 text-xs font-semibold border border-slate-600 text-slate-100 px-3 py-2 rounded-md hover:bg-slate-800 shrink-0">
+          <FileDown size={14} /> Baixar CSV
+        </button>
+      </div>
+      <Card className="p-0 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[900px]">
+            <thead>
+              <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40">
+                <th className="py-2 px-3">Aluno</th>
+                <th className="py-2 px-3">Empresa</th>
+                {modulosColuna.map((m) => <th key={m.id} className="py-2 px-2 text-center" title={m.nome}>M{m.n}</th>)}
+                <th className="py-2 px-2 text-center">Cen./Fluxo</th>
+                <th className="py-2 px-2 text-center">Apres.</th>
+                <th className="py-2 px-3 text-center">Final</th>
+              </tr>
+            </thead>
+            <tbody>
+              {linhas.map((l, i) => (
+                <tr key={i} className="border-b border-slate-800">
+                  <td className="py-2 px-3 text-slate-100 font-medium">{l.nomeAluno}</td>
+                  <td className="py-2 px-3 text-slate-400">{l.empresa}</td>
+                  {modulosColuna.map((m) => (
+                    <td key={m.id} className="py-2 px-2 text-center text-slate-300">{!vazio(l.notas[m.id]) ? l.notas[m.id] : "—"}</td>
+                  ))}
+                  <td className="py-2 px-2 text-center text-slate-300">{!vazio(l.notaCenariosFluxo) ? l.notaCenariosFluxo : "—"}</td>
+                  <td className="py-2 px-2 text-center text-slate-300">{!vazio(l.notaApresentacao) ? l.notaApresentacao : "—"}</td>
+                  <td className="py-2 px-3 text-center font-bold text-amber-400">{l.notaPonderada !== null ? l.notaPonderada.toFixed(1) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 const ABAS_RELATORIO = [
   { id: "resumo", label: "Resumo Comparativo", icon: FileBarChart },
   { id: "empresa", label: "Relatório por Empresa", icon: Building2 },
+  { id: "notas", label: "Relatório de Notas", icon: GraduationCap },
   { id: "pendencias", label: "Pendências", icon: ClipboardCheck },
 ];
 
@@ -4784,6 +4868,7 @@ function GestaoRelatoriosView({ turmas }) {
           </div>
           {aba === "resumo" && <ResumoComparativo turma={turma} dadosEquipes={dadosEquipes} />}
           {aba === "empresa" && <RelatorioPorEmpresa dadosEquipes={dadosEquipes} />}
+          {aba === "notas" && <RelatorioNotas dadosEquipes={dadosEquipes} />}
           {aba === "pendencias" && <RelatorioPendencias turma={turma} dadosEquipes={dadosEquipes} />}
         </div>
       )}

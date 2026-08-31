@@ -1,4 +1,4 @@
-// build: 2026-08-30_23h01m53s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 2026-08-30_23h10m12s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -12,7 +12,7 @@ import {
   Save, Copy, ArrowLeft, BookOpen, Building2, KeyRound, Mail, Lock, ShieldCheck,
   Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
   ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
-  LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows, Monitor, FileDown,
+  LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows, Monitor, FileDown, Info,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
@@ -292,6 +292,7 @@ const OPERACIONAL_SECOES = [
     "28/08: Análise do Negócio ganhou o bloco \"Produtos Mais Lucrativos\": ranking dos produtos/serviços do Módulo 5 por margem de contribuição total (usando o custo do Módulo 8 e o imposto/comissão do Módulo 7), e uma calculadora de preço sugerido por margem de contribuição desejada.",
     "28/08: Fluxo de Caixa Anual ganhou VPL (Valor Presente Líquido) e TIR (Taxa Interna de Retorno), com TMA (Taxa Mínima de Atratividade) informada pela equipe — indicadores opcionais e mais avançados, para equipes que já dominam o Ponto de Equilíbrio e o Payback simples e querem aprofundar a análise de investimento.",
     "28/08: Módulo 9 (Mão de Obra) ganhou o cálculo automático de encargos sociais por grupo (A — básicos/legais, B — período não trabalhado, C — pagos em dinheiro, D — incidências cruzadas), conforme o regime tributário (Simples Nacional ou Lucro Real/Presumido). Continua existindo a opção de informar um percentual manual por função.",
+    "30/08: Manual do Professor e Manual do Aluno, no perfil do professor, agora abrem sempre imprimíveis/baixáveis diretamente pelo navegador — antes essa opção era restrita ao Usuário Mestre. A visão do aluno continua em modo leitura, sem os controles nativos de imprimir/baixar. Módulo 7 ganhou também um aviso educativo sobre a Reforma Tributária (CBS/IBS) em curso no país, sem afetar nenhum cálculo — 2026 é o ano de testes da reforma, e empresas do Simples Nacional (regime coberto pela tabela automática do módulo) seguem normalmente pelo DAS.",
   ]},
   { titulo: "Segurança da plataforma", paragrafos: [
     "Login exclusivo via Google: o provedor \"E-mail/senha\" foi desativado no Console do Firebase; só \"Google\" está ativo. É preciso conferir, em Authentication → Domínios autorizados, se o domínio do GitHub Pages está na lista.",
@@ -327,7 +328,7 @@ const CHECKLIST_SECOES = [
     "Central de Suporte (chamados de Sistema e Pedagógico) e menu Novidades/Tutoriais",
     "Gestor único por empresa e salvamento com pausa — reduzem o volume de uso do banco de dados",
     "Relatórios, Backup do Semestre e Lista oficial de alunos (importação em massa por PDF + inclusão/exclusão individual)",
-    "Manual do Aluno e Manual do Professor em PDF formal, com impressão/download restrita ao Usuário Mestre",
+    "Manual do Aluno e Manual do Professor em PDF formal, imprimíveis/baixáveis no perfil do professor; visão do aluno em modo leitura",
     "Painel GESTÃO completo: Turmas, Usuários, Relatórios, Backup, Auditoria, Aprovações",
     "Regras de segurança do Firestore exigindo login",
   ]},
@@ -1931,6 +1932,15 @@ function M7Form({ data, update, faturamento }) {
         )}
         <StatCard label="Faturamento do Módulo 5" value={fmtBRL(faturamento)} tone="slate" small />
         <StatCard label="Custo de Comercialização" value={fmtBRL(total)} tone="blue" />
+
+        <Card className="p-3 bg-sky-950/30 border border-sky-800/50">
+          <div className="flex items-start gap-2">
+            <Info size={15} className="text-sky-400 mt-0.5 shrink-0" />
+            <div className="text-xs text-slate-400">
+              <b className="text-sky-400">Reforma Tributária em andamento:</b> o Brasil está trocando PIS, Cofins, IPI, ICMS e ISS por dois novos tributos — CBS e IBS. 2026 é o "ano de testes": eles já aparecem nas notas fiscais, mas ainda sem cobrança real, e empresas do Simples Nacional (como as calculadas acima) seguem normalmente pelo DAS, sem mudança nenhuma este ano. A cobrança da CBS começa em 2027, e a troca do ICMS/ISS pelo IBS acontece aos poucos até 2033. A tabela do Simples Nacional acima é a que vale hoje.
+            </div>
+          </div>
+        </Card>
       </div>
     </div>
   );
@@ -4836,17 +4846,15 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
             const active = aba === it.id;
             const pdfUrl = MANUAIS_PDF[it.id];
             if (pdfUrl) {
-              if (user.mestre) {
-                return (
-                  <a key={it.id} href={pdfUrl} target="_blank" rel="noopener noreferrer" onClick={() => setMenuAberto(false)} className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent">
-                    <Icon size={16} className="shrink-0" /> <span className="flex-1">{it.label}</span> <Printer size={13} className="shrink-0 text-slate-500" />
-                  </a>
-                );
-              }
+              // Manual do Professor e Manual do Aluno, aqui no perfil do
+              // professor, abrem sempre imprimíveis/baixáveis — diferente da
+              // visão do aluno (mais abaixo, componente PainelAluno), que
+              // continua restrita, para não circular impresso fora do
+              // controle do professor.
               return (
-                <button key={it.id} onClick={() => { setPdfAberto({ url: pdfUrl, titulo: it.label }); setMenuAberto(false); }} className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent">
-                  <Icon size={16} className="shrink-0" /> {it.label}
-                </button>
+                <a key={it.id} href={pdfUrl} target="_blank" rel="noopener noreferrer" onClick={() => setMenuAberto(false)} className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent">
+                  <Icon size={16} className="shrink-0" /> <span className="flex-1">{it.label}</span> <Printer size={13} className="shrink-0 text-slate-500" />
+                </a>
               );
             }
             return (

@@ -154,6 +154,19 @@ const ETAPAS_CRONOGRAMA_BASE = [
   { ordem: 7, semana: "Semana 8", etapa: "Apresentações finais", dias: 7 },
 ];
 
+// Liga cada módulo numerado ao bloco do cronograma que o contém — é daí que
+// vem o prazo de entrega padrão de cada módulo (a data de entrega da linha
+// correspondente), sempre que o cronograma da turma é calculado ou
+// recalculado. Um módulo cujo prazo tenha sido digitado manualmente pelo
+// professor (fluxoModulos[id].prazoManual === true) nunca é sobrescrito por
+// essa propagação automática.
+const CRONOGRAMA_ORDEM_POR_MODULO = {
+  m1: 2, m2: 2, m3: 2, m4: 2,
+  m5: 3, m6: 3, m7: 3, m8: 3, m9: 3,
+  m10: 4, m11: 4,
+  m12: 5, m13: 5,
+};
+
 const addDiasISO = (isoDate, n) => {
   const d = new Date(isoDate + "T00:00:00");
   d.setDate(d.getDate() + n);
@@ -211,7 +224,7 @@ function BadgeSituacaoCronograma({ status }) {
 // "pendente" (ainda não liberado), "liberado" (a equipe pode preencher),
 // "enviado" (encaminhado para correção, travado para a equipe) ou
 // "corrigido" (avaliado pelo professor — libera o próximo automaticamente).
-const ESTADO_MODULO_PADRAO = { status: "pendente", prazo: null, enviadoEm: null, corrigidoEm: null, atraso: false };
+const ESTADO_MODULO_PADRAO = { status: "pendente", prazo: null, prazoManual: false, enviadoEm: null, corrigidoEm: null, atraso: false };
 
 function estadoModulo(fluxo, modId) {
   return (fluxo && fluxo[modId]) || ESTADO_MODULO_PADRAO;
@@ -3886,7 +3899,7 @@ function NotaModulo({ nota, onSetNota, ehFinal, readOnly }) {
   );
 }
 
-function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir }) {
+function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico }) {
   const [prazoInput, setPrazoInput] = useState(estado.prazo || "");
   useEffect(() => { setPrazoInput(estado.prazo || ""); }, [estado.prazo]);
   const [novoPrazoReabrir, setNovoPrazoReabrir] = useState("");
@@ -3908,6 +3921,16 @@ function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrec
         <div className="flex items-center gap-2">
           <label className="text-[11px] text-slate-400">Prazo de entrega:</label>
           <input type="date" value={prazoInput} onChange={(e) => { setPrazoInput(e.target.value); onSetPrazo(e.target.value || null); }} className="bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-100" />
+          {estado.prazoManual ? (
+            <span className="flex items-center gap-1">
+              <span className="text-[10px] font-semibold text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-full px-1.5 py-0.5">Manual</span>
+              <button onClick={onRestaurarPrazoAutomatico} className="text-slate-500 hover:text-amber-400" title="Voltar a seguir o cronograma da turma">
+                <Undo2 size={12} />
+              </button>
+            </span>
+          ) : (
+            <span className="text-[10px] text-slate-500 flex items-center gap-1" title="Segue automaticamente o cronograma do projeto"><Lock size={10} /> segue o cronograma</span>
+          )}
         </div>
       </div>
 
@@ -3930,7 +3953,7 @@ function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrec
   );
 }
 
-function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir }) {
+function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico }) {
   const Icon = m.icon;
   const comentariosModulo = (comentarios || []).filter((c) => c.modulo === `Módulo ${m.n}`);
   const avaliavel = NOTA_MODULOS_AVALIAVEIS.includes(m.id);
@@ -3956,7 +3979,7 @@ function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentario
       </button>
       {aberto && (
         <div className="px-4 pb-4 border-t border-slate-800">
-          <PainelFluxoModulo estado={estado} ultimoModulo={ultimoModulo} onSetPrazo={onSetPrazo} onConfirmarCorrecao={onConfirmarCorrecao} onReabrir={onReabrir} />
+          <PainelFluxoModulo estado={estado} ultimoModulo={ultimoModulo} onSetPrazo={onSetPrazo} onConfirmarCorrecao={onConfirmarCorrecao} onReabrir={onReabrir} onRestaurarPrazoAutomatico={onRestaurarPrazoAutomatico} />
           <div className="pt-4"><ModuloLeitura mId={m.id} lanc={lanc} calc={calc} /></div>
           {(avaliavel || ehFinal) && <NotaModulo nota={nota} onSetNota={onSetNota} ehFinal={ehFinal} />}
           <ComentariosPanel
@@ -3987,7 +4010,19 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
   const fluxo = dados.fluxoModulos || fluxoModulosPadrao();
   const setPrazoModulo = (modId, novoPrazo) => {
     const atual = estadoModulo(fluxo, modId);
-    setDados({ ...dados, fluxoModulos: { ...fluxo, [modId]: { ...atual, prazo: novoPrazo } } });
+    setDados({ ...dados, fluxoModulos: { ...fluxo, [modId]: { ...atual, prazo: novoPrazo, prazoManual: true } } });
+  };
+  const restaurarPrazoAutomatico = async (modId) => {
+    const atual = estadoModulo(fluxo, modId);
+    let novoPrazo = atual.prazo;
+    try {
+      const ordem = CRONOGRAMA_ORDEM_POR_MODULO[modId];
+      const r = await window.storage.get(`cronograma_${turma.id}`, true);
+      const cronograma = r ? JSON.parse(r.value) : null;
+      const linha = cronograma?.linhas?.find((l) => l.ordem === ordem);
+      if (linha) novoPrazo = linha.dataEntrega;
+    } catch {}
+    setDados({ ...dados, fluxoModulos: { ...fluxo, [modId]: { ...atual, prazo: novoPrazo, prazoManual: false } } });
   };
   const confirmarCorrecaoELiberarProximo = (modId) => {
     const atual = estadoModulo(fluxo, modId);
@@ -4002,7 +4037,7 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
   };
   const reabrirModulo = (modId, novoPrazo) => {
     const atual = estadoModulo(fluxo, modId);
-    setDados({ ...dados, fluxoModulos: { ...fluxo, [modId]: { ...atual, status: "liberado", prazo: novoPrazo, atraso: true } } });
+    setDados({ ...dados, fluxoModulos: { ...fluxo, [modId]: { ...atual, status: "liberado", prazo: novoPrazo, prazoManual: true, atraso: true } } });
   };
 
   const toggleModulo = (id) => {
@@ -4057,18 +4092,28 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
 
         <Card className="p-4">
           <SectionTitle icon={ClipboardList} sub="Clique em um módulo para abrir e ver o que a equipe preencheu, linha por linha.">Navegar pelos módulos</SectionTitle>
+          {MODULOS.some((m) => estadoModulo(fluxo, m.id).status === "enviado") && (
+            <div className="flex items-center gap-2 text-xs font-semibold text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-md px-3 py-2 mb-3">
+              <Clock size={13} className="shrink-0" />
+              {MODULOS.filter((m) => estadoModulo(fluxo, m.id).status === "enviado").length} módulo(s) enviado(s) pela equipe, aguardando sua correção.
+            </div>
+          )}
           <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-2">
             {MODULOS.map((m) => {
               const Icon = m.icon;
               const completo = !!calc.preenchidos?.[m.n - 1];
+              const statusMod = estadoModulo(fluxo, m.id).status;
               const notaM = dados.notas?.[m.id];
               return (
-                <button key={m.id} onClick={() => irEExpandir(m.id)} className="flex items-center gap-2.5 border border-slate-700 rounded-lg p-2.5 text-left hover:border-amber-500 hover:bg-slate-800 transition">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${completo ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/40" : "bg-slate-900 border border-amber-500/40 text-amber-500"}`}>
-                    {completo ? <CheckCircle2 size={12} /> : m.n}
+                <button key={m.id} onClick={() => irEExpandir(m.id)} className={`flex items-center gap-2.5 border rounded-lg p-2.5 text-left hover:border-amber-500 hover:bg-slate-800 transition ${statusMod === "enviado" ? "border-sky-500/50 bg-sky-500/5" : "border-slate-700"}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${statusMod === "enviado" ? "bg-sky-950/40 text-sky-400 border border-sky-500/40" : completo ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/40" : "bg-slate-900 border border-amber-500/40 text-amber-500"}`}>
+                    {statusMod === "enviado" ? <Clock size={12} /> : completo ? <CheckCircle2 size={12} /> : m.n}
                   </div>
                   <Icon size={14} className="text-sky-400 shrink-0" />
                   <span className="text-xs font-medium text-slate-200 truncate flex-1">{m.nome}</span>
+                  {statusMod === "enviado" && (
+                    <span className="text-[9px] font-bold text-sky-400 bg-sky-950/40 border border-sky-500/30 rounded-full px-1.5 py-0.5 shrink-0">Em correção</span>
+                  )}
                   {(notaM !== undefined && notaM !== null && notaM !== "") && (
                     <span className="text-[10px] font-bold text-sky-400 shrink-0">{notaM}</span>
                   )}
@@ -4098,6 +4143,7 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
               onSetPrazo={(v) => setPrazoModulo(m.id, v)}
               onConfirmarCorrecao={() => confirmarCorrecaoELiberarProximo(m.id)}
               onReabrir={(novoPrazo) => reabrirModulo(m.id, novoPrazo)}
+              onRestaurarPrazoAutomatico={() => restaurarPrazoAutomatico(m.id)}
             />
           ))}
         </div>
@@ -4437,11 +4483,79 @@ function LinhaCronogramaProfessor({ linha, onChangeCampo, onRestaurar }) {
 // ----------------------------------------------------------------------------
 // Cronograma — card completo (visão do professor), embutido em TurmaDetail
 // ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// Propagação do cronograma para o prazo de entrega de cada módulo, em todas
+// as equipes da turma. Só atualiza módulos cujo prazo NÃO foi digitado
+// manualmente pelo professor para aquela equipe (fluxoModulos[id].prazoManual)
+// — esses ficam preservados, mesmo com um cronograma diferente.
+// ----------------------------------------------------------------------------
+async function propagarPrazoCronogramaTurma(turmaId, linhas) {
+  const mapaOrdemParaEntrega = {};
+  linhas.forEach((l) => { mapaOrdemParaEntrega[l.ordem] = l.dataEntrega; });
+  let equipesAtualizadas = 0;
+  let prazosManuaisPreservados = 0;
+  try {
+    const r = await window.storage.get(`equipes_${turmaId}`, true);
+    const equipes = r ? JSON.parse(r.value) : [];
+    for (const eq of equipes) {
+      const key = `dados_equipe_${eq.id}`;
+      let rd;
+      try { rd = await window.storage.get(key, true); } catch { continue; }
+      if (!rd) continue;
+      const dados = JSON.parse(rd.value);
+      const fluxo = dados.fluxoModulos || fluxoModulosPadrao();
+      let mudou = false;
+      const novoFluxo = { ...fluxo };
+      Object.entries(CRONOGRAMA_ORDEM_POR_MODULO).forEach(([modId, ordem]) => {
+        const estado = estadoModulo(fluxo, modId);
+        const novoPrazo = mapaOrdemParaEntrega[ordem];
+        if (!novoPrazo) return;
+        if (estado.prazoManual) { prazosManuaisPreservados++; return; }
+        if (estado.prazo !== novoPrazo) {
+          novoFluxo[modId] = { ...estado, prazo: novoPrazo };
+          mudou = true;
+        }
+      });
+      if (mudou) {
+        try {
+          await window.storage.set(key, JSON.stringify({ ...dados, fluxoModulos: novoFluxo }), true);
+          equipesAtualizadas++;
+        } catch {}
+      }
+    }
+  } catch {}
+  return { equipesAtualizadas, prazosManuaisPreservados };
+}
+
+// Contagem "somente leitura", usada para avisar o professor, ANTES de
+// recalcular, que existem prazos de módulo digitados manualmente para
+// equipes específicas — eles serão mantidos, não sobrescritos.
+async function contarPrazosManuaisDaTurma(turmaId) {
+  let total = 0;
+  try {
+    const r = await window.storage.get(`equipes_${turmaId}`, true);
+    const equipes = r ? JSON.parse(r.value) : [];
+    for (const eq of equipes) {
+      let rd;
+      try { rd = await window.storage.get(`dados_equipe_${eq.id}`, true); } catch { continue; }
+      if (!rd) continue;
+      const dados = JSON.parse(rd.value);
+      const fluxo = dados.fluxoModulos || {};
+      Object.keys(CRONOGRAMA_ORDEM_POR_MODULO).forEach((modId) => {
+        if (fluxo[modId]?.prazoManual) total++;
+      });
+    }
+  } catch {}
+  return total;
+}
+
 function CronogramaTurmaCard({ turmaId }) {
   const [cronograma, setCronograma] = useSharedObject(`cronograma_${turmaId}`, null);
   const [dataInicioS1, setDataInicioS1] = useState("");
   const [horaInicioS1, setHoraInicioS1] = useState(HORARIO_CRONOGRAMA_PADRAO);
   const [pendenteRecalculo, setPendenteRecalculo] = useState(false);
+  const [prazosManuaisCount, setPrazosManuaisCount] = useState(0);
+  const [propagando, setPropagando] = useState(false);
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
@@ -4453,20 +4567,37 @@ function CronogramaTurmaCard({ turmaId }) {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 4000);
+    const t = setTimeout(() => setToast(null), 5000);
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Assim que a alteração da Semana 1 fica pendente de recálculo, verifica em
+  // segundo plano se alguma equipe da turma tem prazo de módulo digitado à
+  // mão — para avisar o professor ANTES de recalcular, como pedido.
+  useEffect(() => {
+    if (!pendenteRecalculo) return;
+    let vivo = true;
+    contarPrazosManuaisDaTurma(turmaId).then((n) => { if (vivo) setPrazosManuaisCount(n); });
+    return () => { vivo = false; };
+  }, [pendenteRecalculo, turmaId]);
+
   if (cronograma === undefined) return null;
 
-  const calcularInicial = () => {
+  const propagarEAvisar = async (linhas, mensagemBase) => {
+    setPropagando(true);
+    const { equipesAtualizadas, prazosManuaisPreservados } = await propagarPrazoCronogramaTurma(turmaId, linhas);
+    setPropagando(false);
+    const complemento = prazosManuaisPreservados > 0
+      ? ` ${prazosManuaisPreservados} prazo(s) de módulo definidos manualmente por equipe foram mantidos.`
+      : (equipesAtualizadas > 0 ? ` Prazos de módulo atualizados em ${equipesAtualizadas} equipe(s).` : "");
+    setToast(mensagemBase + complemento);
+  };
+
+  const calcularInicial = async () => {
     if (!dataInicioS1) return;
-    setCronograma({
-      dataInicioS1,
-      horaInicioS1,
-      linhas: calcularCronograma(dataInicioS1, horaInicioS1),
-      atualizadoEm: Date.now(),
-    });
+    const linhas = calcularCronograma(dataInicioS1, horaInicioS1);
+    setCronograma({ dataInicioS1, horaInicioS1, linhas, atualizadoEm: Date.now() });
+    await propagarEAvisar(linhas, "Cronograma calculado.");
   };
 
   const handleAlterarDataS1 = (novaData, novaHora) => {
@@ -4475,22 +4606,19 @@ function CronogramaTurmaCard({ turmaId }) {
     setPendenteRecalculo(true);
   };
 
-  const recalcularTudo = () => {
-    setCronograma({
-      dataInicioS1, horaInicioS1,
-      linhas: calcularCronograma(dataInicioS1, horaInicioS1),
-      atualizadoEm: Date.now(),
-    });
+  const recalcularTudo = async () => {
+    const linhas = calcularCronograma(dataInicioS1, horaInicioS1);
+    setCronograma({ dataInicioS1, horaInicioS1, linhas, atualizadoEm: Date.now() });
     setPendenteRecalculo(false);
-    setToast("Cronograma recalculado a partir da nova data da Semana 1.");
+    await propagarEAvisar(linhas, "Cronograma recalculado a partir da nova data da Semana 1.");
   };
 
-  const recalcularRespeitandoManuais = () => {
+  const recalcularRespeitandoManuais = async () => {
     const base = calcularCronograma(dataInicioS1, horaInicioS1);
     const novasLinhas = base.map((nova, i) => (cronograma.linhas[i]?.manual ? cronograma.linhas[i] : nova));
     setCronograma({ dataInicioS1, horaInicioS1, linhas: novasLinhas, atualizadoEm: Date.now() });
     setPendenteRecalculo(false);
-    setToast("Semanas automáticas recalculadas. Os ajustes manuais foram mantidos.");
+    await propagarEAvisar(novasLinhas, "Semanas automáticas recalculadas. Os ajustes manuais do cronograma foram mantidos.");
   };
 
   const onChangeCampo = (ordem, campo, valor) => {
@@ -4561,12 +4689,17 @@ function CronogramaTurmaCard({ turmaId }) {
                 Deseja recalcular as semanas seguintes, mantendo os intervalos previstos no cronograma?
                 {nManuais > 0 && ` Você tem ${nManuais} semana(s) com data ajustada manualmente.`}
               </p>
+              {prazosManuaisCount > 0 && (
+                <p className="text-xs text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-md px-2.5 py-1.5 mt-2 flex items-center gap-1.5">
+                  <Info size={12} className="shrink-0" /> {prazosManuaisCount} prazo(s) de módulo, em equipes específicas, foram digitados manualmente e têm data diferente do cronograma — eles serão mantidos, o recálculo não vai sobrescrevê-los.
+                </p>
+              )}
               <div className="flex flex-wrap gap-2 mt-3">
-                <button onClick={recalcularTudo} className="text-xs font-bold bg-amber-500 text-slate-900 px-3 py-1.5 rounded-md hover:bg-amber-400">
-                  Recalcular tudo
+                <button onClick={recalcularTudo} disabled={propagando} className="text-xs font-bold bg-amber-500 text-slate-900 px-3 py-1.5 rounded-md hover:bg-amber-400 disabled:opacity-40">
+                  {propagando ? "Recalculando…" : "Recalcular tudo"}
                 </button>
                 {nManuais > 0 && (
-                  <button onClick={recalcularRespeitandoManuais} className="text-xs font-bold border border-amber-500/40 text-amber-300 px-3 py-1.5 rounded-md hover:border-amber-400">
+                  <button onClick={recalcularRespeitandoManuais} disabled={propagando} className="text-xs font-bold border border-amber-500/40 text-amber-300 px-3 py-1.5 rounded-md hover:border-amber-400 disabled:opacity-40">
                     Recalcular, mantendo meus ajustes manuais
                   </button>
                 )}
@@ -4609,6 +4742,8 @@ function CronogramaTurmaCard({ turmaId }) {
           <div className="flex items-start gap-2 text-xs text-slate-500 bg-slate-900/60 border border-slate-800 rounded-lg p-3 mt-3">
             <Info size={14} className="shrink-0 mt-0.5" />
             Clique na data de entrega ou no nome da etapa para editar. Alterações manuais ficam marcadas com "Ajustado manualmente" e podem ser desfeitas pelo ícone ao lado.
+            <br />
+            Estas datas viram automaticamente o prazo de entrega de cada módulo, em todas as equipes da turma (Bloco 1 → Módulos 1-4, Bloco 2 → Módulos 5-9, e assim por diante). Um prazo digitado manualmente para uma equipe específica (na revisão da equipe) nunca é sobrescrito por essa propagação.
           </div>
         </>
       )}
@@ -4746,6 +4881,8 @@ function EquipeCard({ equipe, onClick, onRenomear, onExcluir }) {
   const equipeKey = `dados_equipe_${equipe.id}`;
   const [dados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [] });
   const calc = dados ? calcular(dados.lancamentos) : null;
+  const fluxo = dados?.fluxoModulos || {};
+  const aguardandoCorrecao = MODULOS.filter((m) => estadoModulo(fluxo, m.id).status === "enviado").length;
   return (
     <div className="relative bg-slate-800 border border-slate-700 rounded-xl hover:border-amber-500 transition">
       {(onRenomear || onExcluir) && (
@@ -4768,6 +4905,11 @@ function EquipeCard({ equipe, onClick, onRenomear, onExcluir }) {
         <span className="font-bold text-slate-100 truncate">{equipe.nomeNegocio}</span>
       </div>
       <div className="text-xs text-slate-500 mb-3">{equipe.integrantes.join(", ") || "sem integrantes"}</div>
+      {aguardandoCorrecao > 0 && (
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-md px-2 py-1 mb-3 w-fit">
+          <Clock size={11} className="shrink-0" /> {aguardandoCorrecao} módulo(s) aguardando correção
+        </div>
+      )}
       {calc ? (
         <>
           <div className="w-full bg-slate-700 rounded-full h-1.5 mb-2">

@@ -1,4 +1,4 @@
-// build: 2026-08-31_12h15m50s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 2026-09-01_05h33m12s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -345,6 +345,7 @@ const OPERACIONAL_SECOES = [
     "30/08: Manual do Aluno e Manual do Professor (conteúdo dentro da própria plataforma) revisados e atualizados para refletir todas as mudanças de agosto — login em dois passos, liberação sequencial dos módulos com prazo de entrega, e o modelo de avaliação ponderada. Com essa atualização, a plataforma está pronta para o uso em sala com a turma.",
     "31/08: correção na liberação sequencial dos módulos — o Módulo 1 podia aparecer como \"Corrigido\" em vez de \"Liberado\" numa equipe recém-criada, se alguém tivesse clicado em \"Adicionar bem\" sem preencher nada (uma linha vazia já contava como \"módulo já preenchido\" na regra antiga, pensada para não travar retroativamente equipes que já estavam em andamento antes da atualização anterior). Como não há mais equipes antigas a proteger, a regra ficou mais simples e direta: toda equipe nova começa só com o Módulo 1 liberado, e nenhum módulo vira \"corrigido\" sem passar pelo envio da equipe e a correção do professor.",
     "31/08: novo Relatório de Notas em GESTÃO → Relatórios: uma linha por aluno (não por empresa) — a nota de cada módulo, de Cenários/Fluxo de Caixa, de Apresentação e a nota final ponderada da equipe aparecem replicadas para cada integrante vinculado a ela, com botão para baixar em CSV.",
+    "31/08: domínio próprio ppfn.com.br configurado (DNS no Registro.br, domínio personalizado no GitHub Pages com HTTPS, domínio autorizado no Firebase Authentication). Foi preciso também ajustar o vite.config.js (base: \"/\" em vez de \"/Plataforma-Plano-Financeiro-CEDUP-Hermann-Hering/\"), já que o site passou a ser servido pela raiz do domínio, não mais por uma subpasta — sem esse ajuste, a página carregava em branco. O link antigo (profjorgerg-gif.github.io/...) continua funcionando, redirecionado automaticamente pelo GitHub Pages para o domínio novo.",
   ]},
   { titulo: "Segurança da plataforma", paragrafos: [
     "Login exclusivo via Google: o provedor \"E-mail/senha\" foi desativado no Console do Firebase; só \"Google\" está ativo. É preciso conferir, em Authentication → Domínios autorizados, se o domínio do GitHub Pages está na lista.",
@@ -357,7 +358,7 @@ const OPERACIONAL_SECOES = [
   ]},
   { titulo: "Referências do projeto", lista: [
     "Repositório: github.com/profjorgerg-gif/Plataforma-Plano-Financeiro-CEDUP-Hermann-Hering",
-    "Site publicado: profjorgerg-gif.github.io/Plataforma-Plano-Financeiro-CEDUP-Hermann-Hering/",
+    "Site publicado: ppfn.com.br (domínio próprio, desde 31/08/2026; o link antigo profjorgerg-gif.github.io/Plataforma-Plano-Financeiro-CEDUP-Hermann-Hering/ continua funcionando, redirecionando automaticamente para o novo)",
     "Projeto Firebase: plataforma-plano-financeiro (Firestore + Authentication, southamerica-east1)",
     "Canal de tutoriais no YouTube: youtube.com/@PPFPlataformaPlanoFinanceiro",
     "Metodologia de referência: elaboração de plano de negócios, por módulos financeiros sequenciais.",

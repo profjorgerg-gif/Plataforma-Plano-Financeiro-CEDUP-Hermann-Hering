@@ -256,6 +256,7 @@ const CHART_TOOLTIP_STYLE = { background: "#0f1e30", border: "1px solid #22344a"
 
 const GESTAO_ITENS = [
   { id: "turmas", label: "Turmas", icon: School },
+  { id: "cronograma", label: "Cronograma", icon: Calendar },
   { id: "usuarios", label: "Usuários", icon: Users },
   { id: "relatorios", label: "Relatórios", icon: FileBarChart },
   { id: "backup", label: "Backup", icon: Save },
@@ -4609,6 +4610,41 @@ function CronogramaTurmaCard({ turmaId }) {
   );
 }
 
+function GestaoCronogramaView({ turmas }) {
+  const [turmaSelId, setTurmaSelId] = useState(turmas.length === 1 ? turmas[0].id : null);
+  const turmaSel = turmas.find((t) => t.id === turmaSelId) || null;
+
+  if (turmaSel) {
+    return (
+      <div className="space-y-4">
+        {turmas.length > 1 && (
+          <button onClick={() => setTurmaSelId(null)} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Escolher outra turma</button>
+        )}
+        <SectionTitle icon={Calendar} sub={`Gerenciando o cronograma de ${turmaSel.nome}.`}>Cronograma</SectionTitle>
+        <CronogramaTurmaCard turmaId={turmaSel.id} />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <SectionTitle icon={Calendar} sub="Escolha a turma para definir ou ajustar o cronograma do projeto.">Cronograma</SectionTitle>
+      {turmas.length === 0 ? (
+        <Card className="p-10 text-center text-slate-500">Você ainda não criou nenhuma turma. Crie uma em Gestão → Turmas primeiro.</Card>
+      ) : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {turmas.map((t) => (
+            <button key={t.id} onClick={() => setTurmaSelId(t.id)} className="text-left bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-amber-500 transition">
+              <div className="flex items-center gap-2 mb-2"><School size={16} className="text-sky-400 shrink-0" /><span className="font-bold text-slate-100 truncate">{t.nome}</span></div>
+              <div className="flex items-center gap-2 text-xs text-slate-400"><KeyRound size={13} /> Código: <span className="font-mono font-bold text-amber-400">{t.codigo}</span></div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TurmaDetail({ turma, onVoltar, professorNome }) {
   const [equipes, setEquipes] = useSharedList(`equipes_${turma.id}`);
   const [equipeSel, setEquipeSel] = useState(null);
@@ -5690,6 +5726,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
             : <GestaoTurmasView turmas={turmas} onCriar={criarTurma} onAbrir={setTurmaAtivaId} setTurmas={setTurmas} />
         )}
         {aba === "usuarios" && <GestaoUsuariosView turmas={turmas} />}
+        {aba === "cronograma" && <GestaoCronogramaView turmas={turmas} />}
         {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}
         {aba === "backup" && <GestaoBackupView turmas={turmas} setTurmas={setTurmas} />}
         {aba === "auditoria" && <GestaoAuditoriaView turmas={turmas} />}

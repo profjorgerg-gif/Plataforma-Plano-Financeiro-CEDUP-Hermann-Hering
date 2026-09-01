@@ -1,4 +1,4 @@
-// build: 2026-09-01_05h33m12s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 2026-09-01_06h35m39s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -12,7 +12,7 @@ import {
   Save, Copy, ArrowLeft, BookOpen, Building2, KeyRound, Mail, Lock, ShieldCheck,
   Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
   ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
-  LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows, Monitor, FileDown, Info,
+  LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows, Monitor, FileDown, Info, Library,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
@@ -346,6 +346,7 @@ const OPERACIONAL_SECOES = [
     "31/08: correção na liberação sequencial dos módulos — o Módulo 1 podia aparecer como \"Corrigido\" em vez de \"Liberado\" numa equipe recém-criada, se alguém tivesse clicado em \"Adicionar bem\" sem preencher nada (uma linha vazia já contava como \"módulo já preenchido\" na regra antiga, pensada para não travar retroativamente equipes que já estavam em andamento antes da atualização anterior). Como não há mais equipes antigas a proteger, a regra ficou mais simples e direta: toda equipe nova começa só com o Módulo 1 liberado, e nenhum módulo vira \"corrigido\" sem passar pelo envio da equipe e a correção do professor.",
     "31/08: novo Relatório de Notas em GESTÃO → Relatórios: uma linha por aluno (não por empresa) — a nota de cada módulo, de Cenários/Fluxo de Caixa, de Apresentação e a nota final ponderada da equipe aparecem replicadas para cada integrante vinculado a ela, com botão para baixar em CSV.",
     "31/08: domínio próprio ppfn.com.br configurado (DNS no Registro.br, domínio personalizado no GitHub Pages com HTTPS, domínio autorizado no Firebase Authentication). Foi preciso também ajustar o vite.config.js (base: \"/\" em vez de \"/Plataforma-Plano-Financeiro-CEDUP-Hermann-Hering/\"), já que o site passou a ser servido pela raiz do domínio, não mais por uma subpasta — sem esse ajuste, a página carregava em branco. O link antigo (profjorgerg-gif.github.io/...) continua funcionando, redirecionado automaticamente pelo GitHub Pages para o domínio novo.",
+    "01/09: novo item de menu para o aluno — Referências Bibliográficas, com 10 fontes agrupadas em 4 categorias (Plano de Negócios e Empreendedorismo, Administração Financeira, Legislação Tributária, Normalização ABNT), como ponto de partida para a bibliografia do próprio trabalho final. Os manuais (Aluno e Professor) também tiveram os Glossários ampliados: de 11 para 24 termos no do Aluno, e de 9 para 17 no do Professor.",
   ]},
   { titulo: "Segurança da plataforma", paragrafos: [
     "Login exclusivo via Google: o provedor \"E-mail/senha\" foi desativado no Console do Firebase; só \"Google\" está ativo. É preciso conferir, em Authentication → Domínios autorizados, se o domínio do GitHub Pages está na lista.",
@@ -383,6 +384,7 @@ const CHECKLIST_SECOES = [
     "Central de Suporte (chamados de Sistema e Pedagógico) e menu Novidades/Tutoriais",
     "Gestor único por empresa e salvamento com pausa — reduzem o volume de uso do banco de dados",
     "Relatórios (Resumo Comparativo, por Empresa, de Notas por aluno com exportação em CSV, e Pendências), Backup do Semestre e Lista oficial de alunos (importação em massa por PDF + inclusão/exclusão individual)",
+    "Referências Bibliográficas no menu do aluno — 10 fontes em 4 categorias, como apoio para a bibliografia do trabalho final",
     "Manual do Aluno e Manual do Professor em PDF formal, imprimíveis/baixáveis no perfil do professor; visão do aluno em modo leitura",
     "Painel GESTÃO completo: Turmas, Usuários, Relatórios, Backup, Auditoria, Aprovações",
     "Regras de segurança do Firestore exigindo login",
@@ -711,6 +713,54 @@ function NovidadesOverlay({ perfil, onFechar, onIrParaHistorico }) {
         </div>
         <button onClick={onFechar} className="w-full bg-amber-500 text-slate-900 font-bold py-2.5 rounded-md hover:bg-amber-400">Entendi</button>
         <button onClick={onIrParaHistorico} className="w-full text-sm text-slate-400 hover:text-slate-100 mt-2">Ver histórico completo</button>
+      </div>
+    </div>
+  );
+}
+
+const REFERENCIAS_BIBLIOGRAFICAS = [
+  { grupo: "Plano de Negócios e Empreendedorismo", itens: [
+    "SEBRAE. Como elaborar um plano de negócios. Brasília: SEBRAE, [s.d.]. Disponível em: sebrae.com.br.",
+    "DOLABELA, Fernando. O Segredo de Luísa. São Paulo: Cultura, 2008.",
+    "CHIAVENATO, Idalberto. Empreendedorismo: dando asas ao espírito empreendedor. São Paulo: Manole, 2012.",
+  ]},
+  { grupo: "Administração Financeira", itens: [
+    "ASSAF NETO, Alexandre. Administração Financeira: Empresas, Fluxo de Caixa e Valor. São Paulo: Atlas.",
+    "GITMAN, Lawrence J. Princípios de Administração Financeira. São Paulo: Pearson.",
+    "SILVA, José Pereira da. Análise Financeira das Empresas. São Paulo: Atlas.",
+  ]},
+  { grupo: "Legislação Tributária", itens: [
+    "BRASIL. Lei Complementar nº 123, de 14 de dezembro de 2006 (institui o Simples Nacional).",
+    "BRASIL. Lei Complementar nº 214, de 16 de janeiro de 2025 (institui a CBS e o IBS).",
+    "RECEITA FEDERAL DO BRASIL. Portal do Simples Nacional. Disponível em: gov.br/receitafederal.",
+  ]},
+  { grupo: "Normalização (ABNT)", itens: [
+    "ASSOCIAÇÃO BRASILEIRA DE NORMAS TÉCNICAS. NBR 6023: informação e documentação — referências — elaboração. Rio de Janeiro: ABNT.",
+  ]},
+];
+
+// Referências de apoio pedagógico para o aluno usar na bibliografia do
+// próprio trabalho — cobre a metodologia que os 13 módulos seguem (SEBRAE),
+// a base teórica de administração financeira, a legislação tributária por
+// trás dos cálculos automáticos (Módulo 7), e a norma da ABNT para o aluno
+// formatar corretamente as próprias referências.
+function ReferenciasBibliograficasView() {
+  return (
+    <div>
+      <div className="mb-8">
+        <div className="text-xs font-bold tracking-widest text-amber-500 mb-2">APOIO AO TRABALHO FINAL</div>
+        <h1 className="text-3xl font-bold text-slate-50 mb-3">Referências Bibliográficas</h1>
+        <p className="text-slate-400 max-w-2xl">Fontes que sustentam a metodologia e os cálculos da plataforma — usem como ponto de partida para a bibliografia do próprio Plano de Negócio.</p>
+      </div>
+      <div className="space-y-4">
+        {REFERENCIAS_BIBLIOGRAFICAS.map((g, i) => (
+          <Card key={i} className="p-5">
+            <h3 className="font-bold text-slate-100 mb-3">{g.grupo}</h3>
+            <ul className="space-y-2">
+              {g.itens.map((it, j) => <li key={j} className="text-sm text-slate-300 leading-relaxed">{it}</li>)}
+            </ul>
+          </Card>
+        ))}
       </div>
     </div>
   );
@@ -3186,6 +3236,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
     { id: "fluxocaixa", label: "Fluxo de Caixa Anual", icon: Wallet, num: null },
     { id: "modeloApresentacao", label: "Baixar Modelo de Apresentação", icon: FileDown, num: null },
     { id: "feedback", label: "Feedback do Professor", icon: MessageSquare, num: null },
+    { id: "referencias", label: "Referências Bibliográficas", icon: Library, num: null },
     { id: "suporte", label: "Suporte", icon: LifeBuoy, num: null },
     { id: "novidades", label: "Novidades", icon: Megaphone, num: null },
     { id: "tutoriais", label: "Tutoriais", icon: Video, num: null },
@@ -3510,6 +3561,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
           <SuporteView ctx={{ uid: user.uid, nome: user.nome, papel: "aluno", mestre: false, professorUid, professorNome, turmaNome }} />
         )}
 
+        {aba === "referencias" && <ReferenciasBibliograficasView />}
         {aba === "novidades" && <NovidadesView />}
         {aba === "tutoriais" && <TutoriaisView categoria="aluno" />}
       </main>

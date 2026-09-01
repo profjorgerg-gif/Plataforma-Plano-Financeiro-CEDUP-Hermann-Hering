@@ -217,6 +217,19 @@ function estadoModulo(fluxo, modId) {
   return (fluxo && fluxo[modId]) || ESTADO_MODULO_PADRAO;
 }
 
+// Ícone de status ao lado do nome do módulo, no menu lateral do aluno — leitura
+// rápida do que está bloqueado/liberado/enviado/corrigido, sem precisar abrir
+// o Índice de módulos. Usa as mesmas cores já usadas nos badges "Bloqueado" /
+// "Em correção" / "Corrigido" da tela Início, para não introduzir uma
+// paleta nova.
+function BadgeStatusModuloMenu({ status }) {
+  if (status === "pendente") return <Lock size={12} className="text-slate-600 shrink-0" title="Bloqueado" />;
+  if (status === "enviado") return <Clock size={12} className="text-sky-400 shrink-0" title="Enviado — em correção" />;
+  if (status === "corrigido") return <CheckCircle2 size={12} className="text-emerald-400 shrink-0" title="Corrigido" />;
+  // liberado
+  return <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_5px_rgba(52,211,153,0.7)]" title="Liberado" />;
+}
+
 // Fluxo inicial de uma equipe: só o Módulo 1 liberado, os demais pendentes.
 // Um módulo só vira "corrigido" por uma ação explícita do professor (depois
 // do envio da equipe) — nunca por inferência automática. A primeira versão
@@ -3365,7 +3378,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
     { id: "manual", label: "Manual do Aluno", icon: BookOpen, num: "00" },
     { id: "inicio", label: "Início", icon: LayoutDashboard, num: null },
     { id: "cronograma", label: "Cronograma do projeto", icon: Calendar, num: null },
-    ...MODULOS.map((m) => ({ id: m.id, label: m.nome, icon: m.icon, num: String(m.n).padStart(2, "0") })),
+    ...MODULOS.map((m) => ({ id: m.id, label: m.nome, icon: m.icon, num: String(m.n).padStart(2, "0"), moduloStatus: estadoModulo(fluxo, m.id).status })),
     { id: "analise", label: "Análise do Negócio", icon: TrendingUp, num: null },
     { id: "cenarios", label: "Análise de Cenários", icon: GitCompareArrows, num: null },
     { id: "fluxocaixa", label: "Fluxo de Caixa Anual", icon: Wallet, num: null },
@@ -3456,6 +3469,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
               >
                 {it.num && <span className={`text-[10px] font-mono w-5 shrink-0 ${active ? "text-amber-500" : "text-white/30"}`}>{it.num}</span>}
                 <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
+                {it.moduloStatus && <BadgeStatusModuloMenu status={it.moduloStatus} />}
                 {it.id === "feedback" && naoLidos > 0 && (
                   <span className="text-[10px] font-bold bg-amber-500 text-slate-900 rounded-full px-1.5 py-0.5 shrink-0">{naoLidos}</span>
                 )}

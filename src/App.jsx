@@ -13,6 +13,7 @@ import {
   Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
   ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
   LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows, Monitor, FileDown, Info, Library,
+  Calendar, RefreshCw, Undo2, CircleDot,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
@@ -133,6 +134,78 @@ const fmtDataCurta = (isoDate) => {
   const [ano, mes, dia] = isoDate.split("-");
   return `${dia}/${mes}/${ano}`;
 };
+
+// ============================================================================
+// CRONOGRAMA DO PROJETO (por turma) — Semana 1 definida pelo professor;
+// as semanas seguintes são calculadas automaticamente somando a duração de
+// cada etapa (a mesma sequência didática do Guia Pedagógico). O professor
+// pode ajustar manualmente o prazo de entrega de qualquer semana; a
+// plataforma marca a linha como "ajustada" e não a sobrescreve num
+// recálculo geral, a menos que o professor peça "Recalcular tudo".
+// ============================================================================
+const HORARIO_CRONOGRAMA_PADRAO = "13:30";
+const ETAPAS_CRONOGRAMA_BASE = [
+  { ordem: 1, semana: "Semana 1", etapa: "Apresentação da plataforma e formação dos grupos", dias: 7 },
+  { ordem: 2, semana: "Semana 2", etapa: "Bloco 1 — Investimento Inicial", dias: 7 },
+  { ordem: 3, semana: "Semanas 3-4", etapa: "Bloco 2 — Receitas e Custos", dias: 14 },
+  { ordem: 4, semana: "Semana 5", etapa: "Bloco 3 — Custos Fixos", dias: 7 },
+  { ordem: 5, semana: "Semana 6", etapa: "Bloco 4 — Resultado e Viabilidade", dias: 7 },
+  { ordem: 6, semana: "Semana 7", etapa: "Cenários e Fluxo de Caixa", dias: 7 },
+  { ordem: 7, semana: "Semana 8", etapa: "Apresentações finais", dias: 7 },
+];
+
+const addDiasISO = (isoDate, n) => {
+  const d = new Date(isoDate + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+
+function calcularCronograma(dataInicioS1, horaInicioS1) {
+  let cursor = dataInicioS1;
+  return ETAPAS_CRONOGRAMA_BASE.map((et, i) => {
+    const inicio = i === 0 ? dataInicioS1 : cursor;
+    const entrega = addDiasISO(inicio, et.dias);
+    cursor = entrega;
+    return {
+      ordem: et.ordem,
+      semana: et.semana,
+      etapa: et.etapa,
+      dataInicio: inicio,
+      horaInicio: i === 0 ? horaInicioS1 : HORARIO_CRONOGRAMA_PADRAO,
+      dataEntrega: entrega,
+      horaEntrega: HORARIO_CRONOGRAMA_PADRAO,
+      manual: false,
+    };
+  });
+}
+
+const SITUACAO_CRONOGRAMA_INFO = {
+  nao_iniciada: { label: "Não iniciada", icon: Circle, cls: "text-slate-400 bg-slate-800 border-slate-700" },
+  em_andamento: { label: "Em andamento", icon: CircleDot, cls: "text-amber-400 bg-amber-500/10 border-amber-500/30" },
+  encerrada: { label: "Encerrada", icon: CheckCircle2, cls: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30" },
+};
+
+function situacaoCronograma(linha) {
+  const agora = new Date();
+  const hojeISO = agora.toISOString().slice(0, 10);
+  const horaAgora = agora.toTimeString().slice(0, 5);
+  const inicio = linha.dataInicio + " " + (linha.horaInicio || "00:00");
+  const entrega = linha.dataEntrega + " " + (linha.horaEntrega || "23:59");
+  const agoraCmp = hojeISO + " " + horaAgora;
+  if (agoraCmp < inicio) return "nao_iniciada";
+  if (agoraCmp > entrega) return "encerrada";
+  return "em_andamento";
+}
+
+function BadgeSituacaoCronograma({ status }) {
+  const s = SITUACAO_CRONOGRAMA_INFO[status];
+  const Icone = s.icon;
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${s.cls}`}>
+      <Icone size={12} /> {s.label}
+    </span>
+  );
+}
 
 // Estado padrão de um módulo dentro do fluxo (novo campo dados.fluxoModulos):
 // "pendente" (ainda não liberado), "liberado" (a equipe pode preencher),
@@ -3133,7 +3206,67 @@ function ChecklistStatusView() {
   );
 }
 
-function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades }) {
+function CronogramaAlunoView({ turmaId }) {
+  const [cronograma] = useSharedObject(`cronograma_${turmaId}`, null);
+
+  if (cronograma === undefined) return <LoadingScreen />;
+
+  if (!cronograma) {
+    return (
+      <div>
+        <SectionTitle icon={Calendar} sub="O(a) professor(a) ainda não definiu as datas do cronograma.">Cronograma do projeto</SectionTitle>
+        <Card className="p-8 text-center text-slate-500">Assim que o(a) professor(a) configurar a Semana 1, o cronograma completo aparece aqui.</Card>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <SectionTitle icon={Calendar} sub="Acompanhe as datas de cada semana — só o(a) professor(a) pode alterar.">Cronograma do projeto</SectionTitle>
+      <Card className="p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Eye size={13} className="text-slate-500" />
+          <span className="text-[10px] font-semibold text-slate-500 bg-slate-800 border border-slate-700 rounded-full px-2 py-0.5">somente visualização</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="text-left text-[11px] font-bold tracking-wide text-slate-500">
+                <th className="py-2 pr-3">SEMANA</th>
+                <th className="py-2 pr-3">ETAPA / ATIVIDADE</th>
+                <th className="py-2 pr-3">DATA DE INÍCIO</th>
+                <th className="py-2 pr-3">HORÁRIO</th>
+                <th className="py-2 pr-3">PRAZO DE ENTREGA</th>
+                <th className="py-2">SITUAÇÃO</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cronograma.linhas.map((linha) => (
+                <tr key={linha.ordem} className="border-t border-slate-800">
+                  <td className="py-3 pr-3 text-sm font-semibold text-slate-200 whitespace-nowrap">{linha.semana}</td>
+                  <td className="py-3 pr-3 text-sm text-slate-200">{linha.etapa}</td>
+                  <td className="py-3 pr-3 text-sm text-slate-400 whitespace-nowrap">{fmtDataCurta(linha.dataInicio)}</td>
+                  <td className="py-3 pr-3 text-sm text-slate-400 whitespace-nowrap">{linha.horaInicio}</td>
+                  <td className="py-3 pr-3 text-sm text-slate-200 font-medium whitespace-nowrap">{fmtDataCurta(linha.dataEntrega)} · {linha.horaEntrega}</td>
+                  <td className="py-3 text-sm"><BadgeSituacaoCronograma status={situacaoCronograma(linha)} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex flex-wrap gap-3 mt-4 pt-3 border-t border-slate-800">
+          {Object.entries(SITUACAO_CRONOGRAMA_INFO).map(([k, v]) => (
+            <span key={k} className="flex items-center gap-1.5 text-[11px] text-slate-500">
+              <v.icon size={11} className={v.cls.split(" ")[0]} /> {v.label}
+            </span>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades }) {
   const [dados, setDados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
   const [aba, setAba] = useState("inicio");
   const [menuAberto, setMenuAberto] = useState(false);
@@ -3230,6 +3363,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
   const menuItems = [
     { id: "manual", label: "Manual do Aluno", icon: BookOpen, num: "00" },
     { id: "inicio", label: "Início", icon: LayoutDashboard, num: null },
+    { id: "cronograma", label: "Cronograma do projeto", icon: Calendar, num: null },
     ...MODULOS.map((m) => ({ id: m.id, label: m.nome, icon: m.icon, num: String(m.n).padStart(2, "0") })),
     { id: "analise", label: "Análise do Negócio", icon: TrendingUp, num: null },
     { id: "cenarios", label: "Análise de Cenários", icon: GitCompareArrows, num: null },
@@ -3379,6 +3513,8 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
         )}
 
         {aba === "manual" && <ManualAlunoView equipe={equipe} onIrPara={setAba} />}
+
+        {aba === "cronograma" && <CronogramaAlunoView turmaId={turmaId} />}
 
         {aba === "inicio" && (
           <div>
@@ -4208,6 +4344,271 @@ function PainelRoster({ turmaId, turmaNome, professorUid, professorNome }) {
   );
 }
 
+// ----------------------------------------------------------------------------
+// Cronograma — linha editável (visão do professor)
+// ----------------------------------------------------------------------------
+function LinhaCronogramaProfessor({ linha, onChangeCampo, onRestaurar }) {
+  const [editando, setEditando] = useState(null); // 'entrega' | 'etapa' | null
+  const status = situacaoCronograma(linha);
+
+  return (
+    <tr className="border-t border-slate-800 align-top">
+      <td className="py-3 pr-3 text-sm font-semibold text-slate-200 whitespace-nowrap">{linha.semana}</td>
+      <td className="py-3 pr-3 text-sm text-slate-200 min-w-[220px]">
+        {editando === "etapa" ? (
+          <input
+            autoFocus
+            defaultValue={linha.etapa}
+            onBlur={(e) => { onChangeCampo(linha.ordem, "etapa", e.target.value); setEditando(null); }}
+            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+            className="w-full bg-slate-900 border border-amber-500 rounded-md px-2 py-1 text-sm text-slate-100 focus:outline-none"
+          />
+        ) : (
+          <button onClick={() => setEditando("etapa")} className="group flex items-center gap-1.5 text-left hover:text-amber-400">
+            {linha.etapa}
+            <Pencil size={12} className="opacity-0 group-hover:opacity-70 shrink-0" />
+          </button>
+        )}
+      </td>
+      <td className="py-3 pr-3 text-sm text-slate-400 whitespace-nowrap">
+        <span className="inline-flex items-center gap-1.5" title="Calculado automaticamente">
+          <Lock size={11} className="text-slate-600" />
+          {fmtDataCurta(linha.dataInicio)}
+        </span>
+      </td>
+      <td className="py-3 pr-3 text-sm text-slate-400 whitespace-nowrap">
+        <span className="inline-flex items-center gap-1.5">
+          <Lock size={11} className="text-slate-600" />
+          {linha.horaInicio}
+        </span>
+      </td>
+      <td className="py-3 pr-3 text-sm whitespace-nowrap">
+        {editando === "entrega" ? (
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              defaultValue={linha.dataEntrega}
+              autoFocus
+              onBlur={(e) => { onChangeCampo(linha.ordem, "dataEntrega", e.target.value); setEditando(null); }}
+              className="bg-slate-900 border border-amber-500 rounded-md px-2 py-1 text-xs text-slate-100 focus:outline-none"
+            />
+            <input
+              type="time"
+              defaultValue={linha.horaEntrega}
+              onBlur={(e) => onChangeCampo(linha.ordem, "horaEntrega", e.target.value)}
+              className="bg-slate-900 border border-amber-500 rounded-md px-2 py-1 text-xs text-slate-100 focus:outline-none w-[85px]"
+            />
+          </div>
+        ) : (
+          <button onClick={() => setEditando("entrega")} className="group flex items-center gap-1.5 text-left text-slate-200 hover:text-amber-400">
+            <span className="font-medium">{fmtDataCurta(linha.dataEntrega)} · {linha.horaEntrega}</span>
+            <Pencil size={12} className="opacity-0 group-hover:opacity-70 shrink-0" />
+          </button>
+        )}
+        {linha.manual && (
+          <div className="flex items-center gap-1 mt-1">
+            <span className="text-[10px] font-semibold text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-full px-1.5 py-0.5">Ajustado manualmente</span>
+            <button onClick={() => onRestaurar(linha.ordem)} className="text-slate-500 hover:text-amber-400" title="Restaurar cálculo automático">
+              <Undo2 size={12} />
+            </button>
+          </div>
+        )}
+      </td>
+      <td className="py-3 text-sm"><BadgeSituacaoCronograma status={status} /></td>
+    </tr>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Cronograma — card completo (visão do professor), embutido em TurmaDetail
+// ----------------------------------------------------------------------------
+function CronogramaTurmaCard({ turmaId }) {
+  const [cronograma, setCronograma] = useSharedObject(`cronograma_${turmaId}`, null);
+  const [dataInicioS1, setDataInicioS1] = useState("");
+  const [horaInicioS1, setHoraInicioS1] = useState(HORARIO_CRONOGRAMA_PADRAO);
+  const [pendenteRecalculo, setPendenteRecalculo] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    if (cronograma) {
+      setDataInicioS1(cronograma.dataInicioS1);
+      setHoraInicioS1(cronograma.horaInicioS1);
+    }
+  }, [cronograma?.dataInicioS1, cronograma?.horaInicioS1]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  if (cronograma === undefined) return null;
+
+  const calcularInicial = () => {
+    if (!dataInicioS1) return;
+    setCronograma({
+      dataInicioS1,
+      horaInicioS1,
+      linhas: calcularCronograma(dataInicioS1, horaInicioS1),
+      atualizadoEm: Date.now(),
+    });
+  };
+
+  const handleAlterarDataS1 = (novaData, novaHora) => {
+    setDataInicioS1(novaData);
+    setHoraInicioS1(novaHora);
+    setPendenteRecalculo(true);
+  };
+
+  const recalcularTudo = () => {
+    setCronograma({
+      dataInicioS1, horaInicioS1,
+      linhas: calcularCronograma(dataInicioS1, horaInicioS1),
+      atualizadoEm: Date.now(),
+    });
+    setPendenteRecalculo(false);
+    setToast("Cronograma recalculado a partir da nova data da Semana 1.");
+  };
+
+  const recalcularRespeitandoManuais = () => {
+    const base = calcularCronograma(dataInicioS1, horaInicioS1);
+    const novasLinhas = base.map((nova, i) => (cronograma.linhas[i]?.manual ? cronograma.linhas[i] : nova));
+    setCronograma({ dataInicioS1, horaInicioS1, linhas: novasLinhas, atualizadoEm: Date.now() });
+    setPendenteRecalculo(false);
+    setToast("Semanas automáticas recalculadas. Os ajustes manuais foram mantidos.");
+  };
+
+  const onChangeCampo = (ordem, campo, valor) => {
+    const novasLinhas = cronograma.linhas.map((l) => {
+      if (l.ordem !== ordem) return l;
+      if (campo === "etapa") return { ...l, etapa: valor };
+      if (campo === "dataEntrega") return { ...l, dataEntrega: valor, manual: true };
+      if (campo === "horaEntrega") return { ...l, horaEntrega: valor, manual: true };
+      return l;
+    });
+    setCronograma({ ...cronograma, linhas: novasLinhas, atualizadoEm: Date.now() });
+  };
+
+  const onRestaurar = (ordem) => {
+    const base = calcularCronograma(cronograma.dataInicioS1, cronograma.horaInicioS1);
+    const novasLinhas = cronograma.linhas.map((l, i) => (l.ordem === ordem ? { ...base[i], manual: false } : l));
+    setCronograma({ ...cronograma, linhas: novasLinhas, atualizadoEm: Date.now() });
+  };
+
+  const nManuais = cronograma?.linhas?.filter((l) => l.manual).length || 0;
+
+  return (
+    <Card className="p-4 relative">
+      <SectionTitle icon={Calendar} sub="Defina a data de início da Semana 1 — as demais semanas são calculadas automaticamente. A turma vê este cronograma em modo de visualização.">
+        Cronograma do projeto
+      </SectionTitle>
+
+      <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-4 mb-4">
+        <div className="flex items-center gap-2 mb-1">
+          <Pencil size={13} className="text-amber-500" />
+          <h3 className="text-sm font-bold text-slate-100">Início da Semana 1</h3>
+        </div>
+        <p className="text-xs text-slate-400 mb-3">
+          Único campo de data livre — a partir dele, o sistema soma os dias previstos em cada etapa para preencher as semanas seguintes.
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-[11px] text-slate-500 mb-1">Data de início</label>
+            <input
+              type="date"
+              value={dataInicioS1}
+              onChange={(e) => handleAlterarDataS1(e.target.value, horaInicioS1)}
+              className="bg-slate-950 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100 focus:border-amber-500 focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] text-slate-500 mb-1">Horário</label>
+            <input
+              type="time"
+              value={horaInicioS1}
+              onChange={(e) => handleAlterarDataS1(dataInicioS1, e.target.value)}
+              className="bg-slate-950 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100 focus:border-amber-500 focus:outline-none w-[110px]"
+            />
+          </div>
+          {!cronograma && (
+            <button onClick={calcularInicial} disabled={!dataInicioS1} className="flex items-center gap-2 bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm disabled:opacity-40">
+              <RefreshCw size={14} /> Calcular cronograma
+            </button>
+          )}
+        </div>
+
+        {pendenteRecalculo && cronograma && (
+          <div className="mt-4 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3.5 flex items-start gap-3">
+            <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm text-amber-200 font-semibold">A data de início da Semana 1 mudou.</p>
+              <p className="text-xs text-amber-200/80 mt-0.5">
+                Deseja recalcular as semanas seguintes, mantendo os intervalos previstos no cronograma?
+                {nManuais > 0 && ` Você tem ${nManuais} semana(s) com data ajustada manualmente.`}
+              </p>
+              <div className="flex flex-wrap gap-2 mt-3">
+                <button onClick={recalcularTudo} className="text-xs font-bold bg-amber-500 text-slate-900 px-3 py-1.5 rounded-md hover:bg-amber-400">
+                  Recalcular tudo
+                </button>
+                {nManuais > 0 && (
+                  <button onClick={recalcularRespeitandoManuais} className="text-xs font-bold border border-amber-500/40 text-amber-300 px-3 py-1.5 rounded-md hover:border-amber-400">
+                    Recalcular, mantendo meus ajustes manuais
+                  </button>
+                )}
+                <button onClick={() => setPendenteRecalculo(false)} className="text-xs font-semibold text-slate-400 px-3 py-1.5 rounded-md hover:text-slate-200">
+                  Ignorar por enquanto
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {cronograma && (
+        <>
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+            <div className="flex items-center gap-3 text-[11px] text-slate-500">
+              <span className="flex items-center gap-1"><Lock size={11} className="text-slate-600" /> calculado automaticamente</span>
+              <span className="flex items-center gap-1"><Pencil size={11} className="text-amber-500" /> editável</span>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="text-left text-[11px] font-bold tracking-wide text-slate-500">
+                  <th className="py-2 pr-3">SEMANA</th>
+                  <th className="py-2 pr-3">ETAPA / ATIVIDADE</th>
+                  <th className="py-2 pr-3">DATA DE INÍCIO</th>
+                  <th className="py-2 pr-3">HORÁRIO</th>
+                  <th className="py-2 pr-3">PRAZO DE ENTREGA</th>
+                  <th className="py-2">SITUAÇÃO</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cronograma.linhas.map((linha) => (
+                  <LinhaCronogramaProfessor key={linha.ordem} linha={linha} onChangeCampo={onChangeCampo} onRestaurar={onRestaurar} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex items-start gap-2 text-xs text-slate-500 bg-slate-900/60 border border-slate-800 rounded-lg p-3 mt-3">
+            <Info size={14} className="shrink-0 mt-0.5" />
+            Clique na data de entrega ou no nome da etapa para editar. Alterações manuais ficam marcadas com "Ajustado manualmente" e podem ser desfeitas pelo ícone ao lado.
+          </div>
+        </>
+      )}
+
+      {toast && (
+        <div className="absolute -bottom-3 right-4 translate-y-full bg-slate-900 border border-amber-500/40 rounded-lg shadow-2xl px-4 py-3 flex items-center gap-3 max-w-sm z-10">
+          <CheckCircle2 size={16} className="text-amber-500 shrink-0" />
+          <span className="text-sm text-slate-200">{toast}</span>
+          <button onClick={() => setToast(null)} className="text-slate-500 hover:text-slate-300"><X size={14} /></button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function TurmaDetail({ turma, onVoltar, professorNome }) {
   const [equipes, setEquipes] = useSharedList(`equipes_${turma.id}`);
   const [equipeSel, setEquipeSel] = useState(null);
@@ -4247,6 +4648,8 @@ function TurmaDetail({ turma, onVoltar, professorNome }) {
           <span className="font-mono font-bold tracking-widest text-slate-100">{turma.codigo}</span>
         </div>
       </div>
+
+      <CronogramaTurmaCard turmaId={turma.id} />
 
       <PainelRoster turmaId={turma.id} turmaNome={turma.nome} professorUid={turma.professorUid} professorNome={turma.professor} />
 
@@ -5803,7 +6206,7 @@ function EscolherEmpresa({ perfil, turmaId, turmaNome, onSair, onEscolhida }) {
 function AlunoWorkspaceCarregado({ userSessao, turmaId, equipeId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades }) {
   const equipe = useEquipeSalva(turmaId, equipeId);
   if (!equipe) return <LoadingScreen />;
-  return <AlunoWorkspace user={userSessao} equipe={equipe} equipeKey={`dados_equipe_${equipe.id}`} onSair={onSair} onTrocarEmpresa={() => onTrocarEmpresa(equipe)} professorUid={professorUid} professorNome={professorNome} turmaNome={turmaNome} ultimaVersaoVista={ultimaVersaoVista} onVerNovidades={onVerNovidades} />;
+  return <AlunoWorkspace user={userSessao} equipe={equipe} equipeKey={`dados_equipe_${equipe.id}`} turmaId={turmaId} onSair={onSair} onTrocarEmpresa={() => onTrocarEmpresa(equipe)} professorUid={professorUid} professorNome={professorNome} turmaNome={turmaNome} ultimaVersaoVista={ultimaVersaoVista} onVerNovidades={onVerNovidades} />;
 }
 
 function AlunoRoteador({ perfil, onSair, onVirarProfessor }) {

@@ -1,11 +1,12 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// IMPORTANTE: "base" precisa ser "/nome-exato-do-repositorio/" para o
-// GitHub Pages servir os arquivos corretamente (o site fica em
-// https://<usuario>.github.io/<repositorio>/, não na raiz do domínio).
-// Se você renomear o repositório, atualize esta linha também.
+// IMPORTANTE: "base" define de onde o site carrega os arquivos.
+// "/" = raiz do domínio (usado com domínio próprio, ex.: ppfn.com.br/).
+// Se algum dia voltar a depender só do link padrão do GitHub Pages
+// (usuario.github.io/repositorio/), essa linha precisaria voltar a ser
+// "/Plataforma-Plano-Financeiro-CEDUP-Hermann-Hering/".
 export default defineConfig({
   plugins: [react()],
-  base: "/Plataforma-Plano-Financeiro-CEDUP-Hermann-Hering/",
+  base: "/",
 });

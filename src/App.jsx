@@ -224,7 +224,14 @@ function BadgeSituacaoCronograma({ status }) {
 // "pendente" (ainda não liberado), "liberado" (a equipe pode preencher),
 // "enviado" (encaminhado para correção, travado para a equipe) ou
 // "corrigido" (avaliado pelo professor — libera o próximo automaticamente).
-const ESTADO_MODULO_PADRAO = { status: "pendente", prazo: null, prazoManual: false, enviadoEm: null, corrigidoEm: null, atraso: false };
+const ESTADO_MODULO_PADRAO = {
+  status: "pendente", prazo: null, prazoManual: false,
+  enviadoEm: null, corrigidoEm: null, atraso: false,
+  // fluxo de correção/devolução/reenvio:
+  feedback: null,     // texto do feedback mais recente do professor (fica visível enquanto status === "ajustes")
+  ciclo: 1,           // conta quantos envios já ocorreram (incrementa a cada devolução)
+  historico: [],       // [{ tipo: 'envio'|'devolucao'|'reenvio'|'aprovacao'|'reabertura', data, feedback? }] — nunca é apagado
+};
 
 function estadoModulo(fluxo, modId) {
   return (fluxo && fluxo[modId]) || ESTADO_MODULO_PADRAO;
@@ -238,9 +245,62 @@ function estadoModulo(fluxo, modId) {
 function BadgeStatusModuloMenu({ status }) {
   if (status === "pendente") return <Lock size={12} className="text-slate-600 shrink-0" title="Bloqueado" />;
   if (status === "enviado") return <Clock size={12} className="text-sky-400 shrink-0" title="Enviado — em correção" />;
+  if (status === "ajustes") return <RotateCcw size={12} className="text-amber-400 shrink-0" title="Ajustes solicitados pelo professor" />;
   if (status === "corrigido") return <CheckCircle2 size={12} className="text-emerald-400 shrink-0" title="Corrigido" />;
   // liberado
   return <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_5px_rgba(52,211,153,0.7)]" title="Liberado" />;
+}
+
+// Histórico de envios/devoluções/reenvios/aprovações de um módulo — usado
+// tanto na tela do professor quanto na do aluno. Nada é apagado; cada
+// devolução fica registrada com o feedback exato dado naquele momento.
+const HISTORICO_EVENTO_INFO = {
+  envio: { label: "Enviado para correção", Icon: Send, cor: "text-sky-400" },
+  reenvio: { label: "Reenviado para correção", Icon: Send, cor: "text-sky-400" },
+  devolucao: { label: "Devolvido para ajustes", Icon: RotateCcw, cor: "text-amber-400" },
+  aprovacao: { label: "Aprovado e concluído", Icon: CheckCircle2, cor: "text-emerald-400" },
+  reabertura: { label: "Reaberto pelo professor (prazo esgotado)", Icon: RotateCcw, cor: "text-rose-400" },
+};
+
+function HistoricoCorrecaoModulo({ historico }) {
+  const [aberto, setAberto] = useState(false);
+  const eventos = historico || [];
+  if (eventos.length === 0) return null;
+  return (
+    <div className="mt-3 bg-slate-900/60 border border-slate-800 rounded-md overflow-hidden">
+      <button onClick={() => setAberto((v) => !v)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-slate-800/40">
+        <span className="flex items-center gap-2 text-xs font-bold text-slate-300">
+          <History size={13} className="text-amber-500" /> Histórico de correção
+          <span className="text-[11px] font-normal text-slate-500">({eventos.length})</span>
+        </span>
+        {aberto ? <ChevronDown size={14} className="text-slate-500" /> : <ChevronRight size={14} className="text-slate-500" />}
+      </button>
+      {aberto && (
+        <div className="px-3 pb-3 space-y-2.5">
+          {eventos.map((ev, i) => {
+            const info = HISTORICO_EVENTO_INFO[ev.tipo] || HISTORICO_EVENTO_INFO.envio;
+            const Icon = info.Icon;
+            return (
+              <div key={i} className="flex gap-2.5">
+                <div className={`w-5 h-5 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 ${info.cor}`}>
+                  <Icon size={10} />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-bold text-slate-300">{info.label}</span>
+                    <span className="text-[10px] text-slate-500">{fmtData(ev.data)}</span>
+                  </div>
+                  {ev.feedback && (
+                    <div className="mt-1 text-[11px] text-slate-300 bg-slate-800/60 border border-slate-700 rounded-md p-2">{ev.feedback}</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // Fluxo inicial de uma equipe: só o Módulo 1 liberado, os demais pendentes.
@@ -265,7 +325,7 @@ function fluxoModulosPadrao() {
 // precisar de nenhuma tarefa rodando em segundo plano — é só uma conta feita
 // na hora, toda vez que a tela renderiza, comparando o prazo com agora.
 function moduloAtrasadoSemEnvio(estado) {
-  if (estado.status !== "liberado" || !estado.prazo) return false;
+  if ((estado.status !== "liberado" && estado.status !== "ajustes") || !estado.prazo) return false;
   return Date.now() > new Date(`${estado.prazo}T23:59:59`).getTime();
 }
 
@@ -3308,7 +3368,21 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   const enviarModulo = (modId) => {
     const estadoAtual = estadoModulo(fluxo, modId);
     const jaAtrasado = moduloAtrasadoSemEnvio(estadoAtual);
-    setDados({ ...dados, fluxoModulos: { ...fluxo, [modId]: { ...estadoAtual, status: "enviado", enviadoEm: Date.now(), atraso: estadoAtual.atraso || jaAtrasado } } });
+    const primeiraVez = !(estadoAtual.historico || []).length;
+    const evento = { tipo: primeiraVez ? "envio" : "reenvio", data: Date.now() };
+    setDados({
+      ...dados,
+      fluxoModulos: {
+        ...fluxo,
+        [modId]: {
+          ...estadoAtual,
+          status: "enviado",
+          enviadoEm: Date.now(),
+          atraso: estadoAtual.atraso || jaAtrasado,
+          historico: [...(estadoAtual.historico || []), evento],
+        },
+      },
+    });
   };
 
   // Contador de feedback novo: compara a data de cada comentário com a última
@@ -3575,6 +3649,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
                     ? { texto: "Prazo esgotado", cor: "text-rose-400 bg-rose-950/40 border-rose-500/30" }
                     : estado.status === "pendente" ? { texto: "Bloqueado", cor: "text-slate-500 bg-slate-900 border-slate-700" }
                     : estado.status === "enviado" ? { texto: "Em correção", cor: "text-sky-400 bg-sky-950/40 border-sky-500/30" }
+                    : estado.status === "ajustes" ? { texto: "Ajustes solicitados", cor: "text-amber-400 bg-amber-950/40 border-amber-500/30" }
                     : estado.status === "corrigido" ? { texto: "Corrigido", cor: "text-emerald-400 bg-emerald-950/40 border-emerald-500/30" }
                     : null;
                   return (
@@ -3597,7 +3672,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
         {MODULOS.map((m) => aba === m.id && (() => {
           const estado = estadoModulo(fluxo, m.id);
           const atrasadoSemEnvio = moduloAtrasadoSemEnvio(estado);
-          const podeEditar = !souVisualizador && estado.status === "liberado" && !atrasadoSemEnvio;
+          const podeEditar = !souVisualizador && (estado.status === "liberado" || estado.status === "ajustes") && !atrasadoSemEnvio;
           return (
           <div key={m.id}>
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
@@ -3613,7 +3688,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
                 <Lock size={16} className="text-slate-500 mt-0.5 shrink-0" /> Este módulo ainda não foi liberado. Concluam e enviem o Módulo {m.n - 1} para o(a) professor(a) corrigir e liberar este aqui.
               </div>
             )}
-            {estado.status === "liberado" && atrasadoSemEnvio && (
+            {(estado.status === "liberado" || estado.status === "ajustes") && atrasadoSemEnvio && (
               <div className="mb-3 text-sm text-rose-400 flex items-start gap-2 bg-rose-950/30 border border-rose-800/50 rounded-lg p-3">
                 <Clock size={16} className="mt-0.5 shrink-0" /> O prazo de entrega deste módulo ({fmtDataCurta(estado.prazo)}) terminou sem envio. Falem com o(a) professor(a) para reabrir o módulo — a entrega ficará registrada como em atraso (desconto de 2,0 pontos por pontualidade).
               </div>
@@ -3621,6 +3696,15 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
             {estado.status === "liberado" && !atrasadoSemEnvio && estado.prazo && (
               <div className="mb-3 text-sm text-amber-400 flex items-start gap-2 bg-amber-950/30 border border-amber-800/50 rounded-lg p-3">
                 <Clock size={16} className="mt-0.5 shrink-0" /> Prazo de entrega: <b className="ml-1">{fmtDataCurta(estado.prazo)}</b>. Atividades entregues fora do prazo estarão sujeitas ao desconto de 2,0 pontos por pontualidade — entrega em atraso.
+              </div>
+            )}
+            {estado.status === "ajustes" && (
+              <div className="mb-3 text-sm text-amber-300 flex items-start gap-2 bg-amber-950/30 border border-amber-800/50 rounded-lg p-3">
+                <RotateCcw size={16} className="mt-0.5 shrink-0" />
+                <div>
+                  <b>O(a) professor(a) devolveu este módulo para ajustes.</b> Corrijam o que for indicado abaixo e enviem novamente.
+                  {estado.feedback && <div className="mt-2 bg-slate-900/60 border border-amber-800/40 rounded-md p-2.5 text-amber-100">{estado.feedback}</div>}
+                </div>
               </div>
             )}
             {estado.status === "enviado" && (
@@ -3653,11 +3737,13 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
 
             {podeEditar && (
               <div className="mt-4 flex justify-end">
-                <button onClick={() => { if (confirm("Enviar este módulo para correção? Ele ficará travado para edição até o professor(a) avaliar.")) enviarModulo(m.id); }} className="flex items-center gap-2 bg-emerald-600 text-white text-sm font-bold px-4 py-2 rounded-md hover:bg-emerald-500">
-                  <Send size={15} /> Enviar para correção
+                <button onClick={() => { if (confirm(`${estado.status === "ajustes" ? "Reenviar" : "Enviar"} este módulo para correção? Ele ficará travado para edição até o professor(a) avaliar.`)) enviarModulo(m.id); }} className="flex items-center gap-2 bg-emerald-600 text-white text-sm font-bold px-4 py-2 rounded-md hover:bg-emerald-500">
+                  <Send size={15} /> {estado.status === "ajustes" ? "Reenviar para correção" : "Enviar para correção"}
                 </button>
               </div>
             )}
+
+            <HistoricoCorrecaoModulo historico={estado.historico} />
 
             <div className="flex justify-between mt-4">
               <button
@@ -3899,25 +3985,27 @@ function NotaModulo({ nota, onSetNota, ehFinal, readOnly }) {
   );
 }
 
-function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico }) {
+function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes }) {
   const [prazoInput, setPrazoInput] = useState(estado.prazo || "");
   useEffect(() => { setPrazoInput(estado.prazo || ""); }, [estado.prazo]);
   const [novoPrazoReabrir, setNovoPrazoReabrir] = useState("");
+  const [feedbackInput, setFeedbackInput] = useState("");
   const atrasadoSemEnvio = moduloAtrasadoSemEnvio(estado);
 
   const statusInfo = atrasadoSemEnvio
     ? { texto: "Prazo esgotado sem envio", cor: "text-rose-400" }
     : {
         pendente: { texto: "Bloqueado — aguardando módulo anterior", cor: "text-slate-400" },
-        liberado: { texto: "Liberado — a equipe pode preencher", cor: "text-amber-400" },
-        enviado: { texto: "Enviado para correção", cor: "text-sky-400" },
-        corrigido: { texto: `Corrigido${estado.corrigidoEm ? ` em ${fmtData(estado.corrigidoEm)}` : ""}`, cor: "text-emerald-400" },
+        liberado: { texto: "Em desenvolvimento — a equipe pode preencher", cor: "text-amber-400" },
+        enviado: { texto: "Enviada para correção — em análise", cor: "text-sky-400" },
+        ajustes: { texto: "Ajustes solicitados — aguardando reenvio da equipe", cor: "text-amber-400" },
+        corrigido: { texto: `Módulo concluído${estado.corrigidoEm ? ` em ${fmtData(estado.corrigidoEm)}` : ""}`, cor: "text-emerald-400" },
       }[estado.status];
 
   return (
     <div className="mt-3 bg-slate-900 border border-slate-700 rounded-md p-3 space-y-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <span className={`text-xs font-bold ${statusInfo.cor}`}>{statusInfo.texto}{estado.atraso ? " · entregue com atraso (desconto de 2,0 pts)" : ""}</span>
+        <span className={`text-xs font-bold ${statusInfo.cor}`}>{statusInfo.texto}{estado.atraso ? " · entregue com atraso (desconto de 2,0 pts)" : ""}{estado.ciclo > 1 ? ` · ciclo ${estado.ciclo}` : ""}</span>
         <div className="flex items-center gap-2">
           <label className="text-[11px] text-slate-400">Prazo de entrega:</label>
           <input type="date" value={prazoInput} onChange={(e) => { setPrazoInput(e.target.value); onSetPrazo(e.target.value || null); }} className="bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-100" />
@@ -3935,9 +4023,37 @@ function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrec
       </div>
 
       {estado.status === "enviado" && (
-        <button onClick={onConfirmarCorrecao} className="flex items-center gap-2 bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-md hover:bg-emerald-500">
-          <CheckCircle2 size={13} /> Confirmar correção{ultimoModulo ? "" : " e liberar próximo módulo"}
-        </button>
+        <div className="space-y-2.5">
+          <div>
+            <label className="flex items-center gap-1.5 text-[11px] text-slate-400 mb-1"><Pencil size={12} /> Feedback orientativo (obrigatório para devolver)</label>
+            <textarea
+              value={feedbackInput}
+              onChange={(e) => setFeedbackInput(e.target.value)}
+              rows={2}
+              placeholder="O que a equipe precisa rever ou corrigir antes de avançar?"
+              className="w-full bg-slate-950 border border-slate-700 rounded-md px-2.5 py-1.5 text-xs text-slate-100 focus:border-amber-500 focus:outline-none"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => { if (feedbackInput.trim()) { onDevolverAjustes(feedbackInput.trim()); setFeedbackInput(""); } }}
+              disabled={!feedbackInput.trim()}
+              className="flex items-center gap-2 border border-amber-500/50 text-amber-300 text-xs font-bold px-3 py-1.5 rounded-md hover:border-amber-400 disabled:opacity-40"
+            >
+              <RotateCcw size={13} /> Devolver para ajustes
+            </button>
+            <button onClick={onConfirmarCorrecao} className="flex items-center gap-2 bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-md hover:bg-emerald-500">
+              <CheckCircle2 size={13} /> Aprovar e concluir módulo{ultimoModulo ? "" : " (libera o próximo)"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {estado.status === "ajustes" && estado.feedback && (
+        <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/30 rounded-md p-2.5">
+          <MessageSquare size={13} className="text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-xs text-amber-100"><b>Feedback enviado à equipe:</b> {estado.feedback}</div>
+        </div>
       )}
 
       {atrasadoSemEnvio && (
@@ -3949,11 +4065,13 @@ function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrec
           </button>
         </div>
       )}
+
+      <HistoricoCorrecaoModulo historico={estado.historico} />
     </div>
   );
 }
 
-function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico }) {
+function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes }) {
   const Icon = m.icon;
   const comentariosModulo = (comentarios || []).filter((c) => c.modulo === `Módulo ${m.n}`);
   const avaliavel = NOTA_MODULOS_AVALIAVEIS.includes(m.id);
@@ -3971,6 +4089,7 @@ function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentario
           <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 border ${ehFinal ? "text-amber-400 bg-amber-950/40 border-amber-500/30" : "text-sky-400 bg-sky-950/40 border-sky-500/30"}`}>{nota}/10</span>
         )}
         {estado.status === "enviado" && <span className="text-[10px] font-bold text-sky-400 bg-sky-950/40 border border-sky-500/30 rounded-full px-2 py-0.5">Aguardando correção</span>}
+        {estado.status === "ajustes" && <span className="text-[10px] font-bold text-amber-400 bg-amber-950/40 border border-amber-500/30 rounded-full px-2 py-0.5">Devolvido — aguardando reenvio</span>}
         {moduloAtrasadoSemEnvio(estado) && <span className="text-[10px] font-bold text-rose-400 bg-rose-950/40 border border-rose-500/30 rounded-full px-2 py-0.5">Prazo esgotado</span>}
         {comentariosModulo.length > 0 && (
           <span className="text-[10px] font-bold text-sky-400 bg-sky-950/40 border border-sky-500/30 rounded-full px-2 py-0.5">{comentariosModulo.length} coment.</span>
@@ -3979,7 +4098,7 @@ function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentario
       </button>
       {aberto && (
         <div className="px-4 pb-4 border-t border-slate-800">
-          <PainelFluxoModulo estado={estado} ultimoModulo={ultimoModulo} onSetPrazo={onSetPrazo} onConfirmarCorrecao={onConfirmarCorrecao} onReabrir={onReabrir} onRestaurarPrazoAutomatico={onRestaurarPrazoAutomatico} />
+          <PainelFluxoModulo estado={estado} ultimoModulo={ultimoModulo} onSetPrazo={onSetPrazo} onConfirmarCorrecao={onConfirmarCorrecao} onReabrir={onReabrir} onRestaurarPrazoAutomatico={onRestaurarPrazoAutomatico} onDevolverAjustes={onDevolverAjustes} />
           <div className="pt-4"><ModuloLeitura mId={m.id} lanc={lanc} calc={calc} /></div>
           {(avaliavel || ehFinal) && <NotaModulo nota={nota} onSetNota={onSetNota} ehFinal={ehFinal} />}
           <ComentariosPanel
@@ -4028,16 +4147,54 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
     const atual = estadoModulo(fluxo, modId);
     const idx = MODULOS.findIndex((m) => m.id === modId);
     const proximo = MODULOS[idx + 1];
-    const novoFluxo = { ...fluxo, [modId]: { ...atual, status: "corrigido", corrigidoEm: Date.now() } };
+    const novoFluxo = {
+      ...fluxo,
+      [modId]: {
+        ...atual,
+        status: "corrigido",
+        corrigidoEm: Date.now(),
+        feedback: null,
+        historico: [...(atual.historico || []), { tipo: "aprovacao", data: Date.now() }],
+      },
+    };
     if (proximo) {
       const estadoProximo = estadoModulo(fluxo, proximo.id);
       if (estadoProximo.status === "pendente") novoFluxo[proximo.id] = { ...estadoProximo, status: "liberado" };
     }
     setDados({ ...dados, fluxoModulos: novoFluxo });
   };
+  const devolverParaAjustes = (modId, textoFeedback) => {
+    const atual = estadoModulo(fluxo, modId);
+    setDados({
+      ...dados,
+      fluxoModulos: {
+        ...fluxo,
+        [modId]: {
+          ...atual,
+          status: "ajustes",
+          feedback: textoFeedback,
+          ciclo: (atual.ciclo || 1) + 1,
+          historico: [...(atual.historico || []), { tipo: "devolucao", data: Date.now(), feedback: textoFeedback }],
+        },
+      },
+    });
+  };
   const reabrirModulo = (modId, novoPrazo) => {
     const atual = estadoModulo(fluxo, modId);
-    setDados({ ...dados, fluxoModulos: { ...fluxo, [modId]: { ...atual, status: "liberado", prazo: novoPrazo, prazoManual: true, atraso: true } } });
+    setDados({
+      ...dados,
+      fluxoModulos: {
+        ...fluxo,
+        [modId]: {
+          ...atual,
+          status: "liberado",
+          prazo: novoPrazo,
+          prazoManual: true,
+          atraso: true,
+          historico: [...(atual.historico || []), { tipo: "reabertura", data: Date.now() }],
+        },
+      },
+    });
   };
 
   const toggleModulo = (id) => {
@@ -4105,14 +4262,17 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
               const statusMod = estadoModulo(fluxo, m.id).status;
               const notaM = dados.notas?.[m.id];
               return (
-                <button key={m.id} onClick={() => irEExpandir(m.id)} className={`flex items-center gap-2.5 border rounded-lg p-2.5 text-left hover:border-amber-500 hover:bg-slate-800 transition ${statusMod === "enviado" ? "border-sky-500/50 bg-sky-500/5" : "border-slate-700"}`}>
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${statusMod === "enviado" ? "bg-sky-950/40 text-sky-400 border border-sky-500/40" : completo ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/40" : "bg-slate-900 border border-amber-500/40 text-amber-500"}`}>
-                    {statusMod === "enviado" ? <Clock size={12} /> : completo ? <CheckCircle2 size={12} /> : m.n}
+                <button key={m.id} onClick={() => irEExpandir(m.id)} className={`flex items-center gap-2.5 border rounded-lg p-2.5 text-left hover:border-amber-500 hover:bg-slate-800 transition ${statusMod === "enviado" ? "border-sky-500/50 bg-sky-500/5" : statusMod === "ajustes" ? "border-amber-500/50 bg-amber-500/5" : "border-slate-700"}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${statusMod === "enviado" ? "bg-sky-950/40 text-sky-400 border border-sky-500/40" : statusMod === "ajustes" ? "bg-amber-950/40 text-amber-400 border border-amber-500/40" : completo ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/40" : "bg-slate-900 border border-amber-500/40 text-amber-500"}`}>
+                    {statusMod === "enviado" ? <Clock size={12} /> : statusMod === "ajustes" ? <RotateCcw size={12} /> : completo ? <CheckCircle2 size={12} /> : m.n}
                   </div>
                   <Icon size={14} className="text-sky-400 shrink-0" />
                   <span className="text-xs font-medium text-slate-200 truncate flex-1">{m.nome}</span>
                   {statusMod === "enviado" && (
                     <span className="text-[9px] font-bold text-sky-400 bg-sky-950/40 border border-sky-500/30 rounded-full px-1.5 py-0.5 shrink-0">Em correção</span>
+                  )}
+                  {statusMod === "ajustes" && (
+                    <span className="text-[9px] font-bold text-amber-400 bg-amber-950/40 border border-amber-500/30 rounded-full px-1.5 py-0.5 shrink-0">Com a equipe</span>
                   )}
                   {(notaM !== undefined && notaM !== null && notaM !== "") && (
                     <span className="text-[10px] font-bold text-sky-400 shrink-0">{notaM}</span>
@@ -4144,6 +4304,7 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
               onConfirmarCorrecao={() => confirmarCorrecaoELiberarProximo(m.id)}
               onReabrir={(novoPrazo) => reabrirModulo(m.id, novoPrazo)}
               onRestaurarPrazoAutomatico={() => restaurarPrazoAutomatico(m.id)}
+              onDevolverAjustes={(feedback) => devolverParaAjustes(m.id, feedback)}
             />
           ))}
         </div>

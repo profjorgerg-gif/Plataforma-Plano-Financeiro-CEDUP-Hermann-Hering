@@ -13,7 +13,7 @@ import {
   Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
   ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
   LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows, Monitor, FileDown, Info, Library,
-  Calendar, RefreshCw, Undo2, CircleDot,
+  Calendar, RefreshCw, Undo2, CircleDot, Inbox,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
@@ -342,6 +342,7 @@ const CHART_TOOLTIP_STYLE = { background: "#0f1e30", border: "1px solid #22344a"
 
 const GESTAO_ITENS = [
   { id: "turmas", label: "Turmas", icon: School },
+  { id: "correcoes", label: "Correções pendentes", icon: Inbox },
   { id: "cronograma", label: "Cronograma", icon: Calendar },
   { id: "usuarios", label: "Usuários", icon: Users },
   { id: "relatorios", label: "Relatórios", icon: FileBarChart },
@@ -4114,11 +4115,21 @@ function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentario
   );
 }
 
-function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
+function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
   const equipeKey = `dados_equipe_${equipe.id}`;
   const [dados, setDados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
   const [modulosAbertos, setModulosAbertos] = useState(new Set());
   const [menuAlunoAberto, setMenuAlunoAberto] = useState(false);
+
+  // veio direto de "Correções pendentes" — expande e rola até o módulo assim
+  // que os dados da equipe terminarem de carregar.
+  useEffect(() => {
+    if (!moduloAlvo?.moduloId || dados === undefined) return;
+    setModulosAbertos((prev) => new Set(prev).add(moduloAlvo.moduloId));
+    const t = setTimeout(() => document.getElementById(`prof-mod-${moduloAlvo.moduloId}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+    return () => clearTimeout(t);
+  }, [moduloAlvo?.moduloId, moduloAlvo?.trigger, dados === undefined]);
+
   if (dados === undefined) return <LoadingScreen />;
   const lanc = mergeLancamentos(dados.lancamentos);
   const calc = calcular(lanc);
@@ -4920,6 +4931,110 @@ function CronogramaTurmaCard({ turmaId }) {
   );
 }
 
+// ----------------------------------------------------------------------------
+// Correções pendentes — varre todas as turmas do professor em busca de
+// módulos com status "enviado" (aguardando análise), para alimentar o
+// contador no menu e a lista clicável que leva direto à correção.
+// ----------------------------------------------------------------------------
+function usePendentesCorrecao(turmas) {
+  const [pendentes, setPendentes] = useState(null); // null = carregando
+
+  useEffect(() => {
+    if (!turmas) return;
+    let vivo = true;
+
+    const carregar = async () => {
+      const lista = [];
+      for (const turma of turmas) {
+        let equipes = [];
+        try {
+          const r = await window.storage.get(`equipes_${turma.id}`, true);
+          equipes = r ? JSON.parse(r.value) : [];
+        } catch { continue; }
+        for (const equipe of equipes) {
+          let dados;
+          try {
+            const rd = await window.storage.get(`dados_equipe_${equipe.id}`, true);
+            dados = rd ? JSON.parse(rd.value) : null;
+          } catch { continue; }
+          if (!dados) continue;
+          const fluxo = dados.fluxoModulos || {};
+          MODULOS.forEach((m) => {
+            const estado = estadoModulo(fluxo, m.id);
+            if (estado.status === "enviado") {
+              lista.push({
+                turmaId: turma.id,
+                turmaNome: turma.nome,
+                equipeId: equipe.id,
+                equipeNome: equipe.nomeNegocio,
+                moduloId: m.id,
+                moduloNome: m.nome,
+                moduloN: m.n,
+                enviadoEm: estado.enviadoEm,
+              });
+            }
+          });
+        }
+      }
+      lista.sort((a, b) => (a.enviadoEm || 0) - (b.enviadoEm || 0));
+      if (vivo) setPendentes(lista);
+    };
+
+    carregar();
+    const intervalo = setInterval(carregar, 20000);
+    const aoFocar = () => carregar();
+    window.addEventListener("focus", aoFocar);
+    document.addEventListener("visibilitychange", aoFocar);
+    return () => {
+      vivo = false;
+      clearInterval(intervalo);
+      window.removeEventListener("focus", aoFocar);
+      document.removeEventListener("visibilitychange", aoFocar);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify((turmas || []).map((t) => t.id))]);
+
+  return pendentes;
+}
+
+function CorrecoesPendentesView({ pendentes, onAbrir }) {
+  if (pendentes === null) return <LoadingScreen />;
+
+  return (
+    <div>
+      <SectionTitle icon={Inbox} sub="Módulos enviados pelas equipes, de todas as turmas, aguardando sua análise — clique para corrigir.">
+        Correções pendentes
+      </SectionTitle>
+      {pendentes.length === 0 ? (
+        <Card className="p-10 text-center text-slate-500">Nenhuma correção pendente no momento. 🎉</Card>
+      ) : (
+        <div className="space-y-2.5">
+          {pendentes.map((p, i) => (
+            <button
+              key={`${p.equipeId}-${p.moduloId}-${i}`}
+              onClick={() => onAbrir(p.turmaId, p.equipeId, p.moduloId)}
+              className="w-full flex items-center gap-3 bg-slate-800 border border-slate-700 rounded-lg p-4 text-left hover:border-amber-500 hover:bg-slate-800/80 transition"
+            >
+              <div className="w-9 h-9 rounded-full bg-sky-950/40 border border-sky-500/40 text-sky-400 flex items-center justify-center shrink-0 text-xs font-bold">
+                {String(p.moduloN).padStart(2, "0")}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-slate-100 truncate">{p.equipeNome} <span className="text-slate-500 font-normal">· {p.turmaNome}</span></div>
+                <div className="text-xs text-slate-400 truncate">Módulo {p.moduloN} — {p.moduloNome}</div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-[11px] text-slate-500 flex items-center gap-1 justify-end"><Clock size={11} /> {p.enviadoEm ? fmtData(p.enviadoEm) : "—"}</div>
+                <div className="text-[10px] font-bold text-sky-400 bg-sky-950/40 border border-sky-500/30 rounded-full px-2 py-0.5 mt-1 inline-block">Corrigir agora</div>
+              </div>
+              <ChevronRight size={16} className="text-slate-600 shrink-0" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GestaoCronogramaView({ turmas }) {
   const [turmaSelId, setTurmaSelId] = useState(turmas.length === 1 ? turmas[0].id : null);
   const turmaSel = turmas.find((t) => t.id === turmaSelId) || null;
@@ -4955,13 +5070,18 @@ function GestaoCronogramaView({ turmas }) {
   );
 }
 
-function TurmaDetail({ turma, onVoltar, professorNome }) {
+function TurmaDetail({ turma, onVoltar, professorNome, alvoCorrecao }) {
   const [equipes, setEquipes] = useSharedList(`equipes_${turma.id}`);
-  const [equipeSel, setEquipeSel] = useState(null);
+  const [equipeSel, setEquipeSel] = useState(alvoCorrecao?.equipeId || null);
+
+  useEffect(() => {
+    if (alvoCorrecao?.equipeId) setEquipeSel(alvoCorrecao.equipeId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alvoCorrecao?.trigger]);
 
   if (equipeSel) {
     const eq = equipes.find((e) => e.id === equipeSel);
-    return <EquipeReview turma={turma} equipe={eq} professorNome={professorNome} onVoltar={() => setEquipeSel(null)} />;
+    return <EquipeReview turma={turma} equipe={eq} professorNome={professorNome} onVoltar={() => setEquipeSel(null)} moduloAlvo={alvoCorrecao?.equipeId === equipeSel ? alvoCorrecao : null} />;
   }
 
   const renomearEmpresa = async (equipe) => {
@@ -5932,6 +6052,9 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
   const [turmaAtivaId, setTurmaAtivaId] = useState(null);
   const [menuAberto, setMenuAberto] = useState(false);
   const [pdfAberto, setPdfAberto] = useState(null);
+  const [alvoCorrecao, setAlvoCorrecao] = useState(null); // { equipeId, moduloId, trigger }
+
+  const pendentesCorrecao = usePendentesCorrecao(turmas);
 
   if (turmas === null) return <LoadingScreen />;
 
@@ -5944,6 +6067,12 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
 
   const turmaAtiva = turmas.find((t) => t.id === turmaAtivaId) || null;
   const irPara = (id) => { setAba(id); if (id !== "turmas") setTurmaAtivaId(null); setMenuAberto(false); };
+  const abrirCorrecao = (turmaId, equipeId, moduloId) => {
+    setTurmaAtivaId(turmaId);
+    setAlvoCorrecao({ equipeId, moduloId, trigger: Date.now() });
+    setAba("turmas");
+    setMenuAberto(false);
+  };
 
   const itensMenu = user.mestre ? [...GESTAO_ITENS, ITEM_APROVACOES] : GESTAO_ITENS;
   const itensManuais = user.mestre ? [...MANUAIS_ITENS_BASE, ...MANUAIS_ITENS_MESTRE] : MANUAIS_ITENS_BASE;
@@ -5983,9 +6112,13 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
           {itensMenu.map((it) => {
             const Icon = it.icon;
             const active = aba === it.id;
+            const contagem = it.id === "correcoes" ? (pendentesCorrecao?.length || 0) : 0;
             return (
               <button key={it.id} onClick={() => irPara(it.id)} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${active ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
-                <Icon size={16} className="shrink-0" /> {it.label}
+                <Icon size={16} className="shrink-0" /> <span className="flex-1">{it.label}</span>
+                {contagem > 0 && (
+                  <span className="bg-amber-500 text-slate-900 text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center shrink-0">{contagem}</span>
+                )}
               </button>
             );
           })}
@@ -6039,9 +6172,10 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
         {aba === "turmas" && (
           turmaAtiva
 
-            ? <TurmaDetail turma={turmaAtiva} professorNome={user.nome} onVoltar={() => setTurmaAtivaId(null)} />
+            ? <TurmaDetail turma={turmaAtiva} professorNome={user.nome} onVoltar={() => { setTurmaAtivaId(null); setAlvoCorrecao(null); }} alvoCorrecao={alvoCorrecao} />
             : <GestaoTurmasView turmas={turmas} onCriar={criarTurma} onAbrir={setTurmaAtivaId} setTurmas={setTurmas} />
         )}
+        {aba === "correcoes" && <CorrecoesPendentesView pendentes={pendentesCorrecao} onAbrir={abrirCorrecao} />}
         {aba === "usuarios" && <GestaoUsuariosView turmas={turmas} />}
         {aba === "cronograma" && <GestaoCronogramaView turmas={turmas} />}
         {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}

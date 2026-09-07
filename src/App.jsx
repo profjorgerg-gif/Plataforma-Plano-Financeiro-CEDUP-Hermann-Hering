@@ -5080,7 +5080,16 @@ function TurmaDetail({ turma, onVoltar, professorNome, alvoCorrecao }) {
   }, [alvoCorrecao?.trigger]);
 
   if (equipeSel) {
+    if (equipes === null) return <LoadingScreen />;
     const eq = equipes.find((e) => e.id === equipeSel);
+    if (!eq) {
+      return (
+        <div>
+          <button onClick={() => { setEquipeSel(null); onVoltar?.(); }} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar</button>
+          <Card className="p-8 text-center text-slate-500">Não foi possível encontrar essa equipe — ela pode ter sido removida.</Card>
+        </div>
+      );
+    }
     return <EquipeReview turma={turma} equipe={eq} professorNome={professorNome} onVoltar={() => setEquipeSel(null)} moduloAlvo={alvoCorrecao?.equipeId === equipeSel ? alvoCorrecao : null} />;
   }
 

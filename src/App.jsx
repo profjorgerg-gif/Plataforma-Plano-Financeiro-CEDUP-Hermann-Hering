@@ -3472,6 +3472,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
     { id: "fluxocaixa", label: "Fluxo de Caixa Anual", icon: Wallet, num: null },
     { id: "modeloApresentacao", label: "Baixar Modelo de Apresentação", icon: FileDown, num: null },
     { id: "feedback", label: "Feedback do Professor", icon: MessageSquare, num: null },
+    { id: "notas", label: "Minhas Notas", icon: Target, num: null },
     { id: "referencias", label: "Referências Bibliográficas", icon: Library, num: null },
     { id: "suporte", label: "Suporte", icon: LifeBuoy, num: null },
     { id: "novidades", label: "Novidades", icon: Megaphone, num: null },
@@ -3805,6 +3806,59 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
               );
             })()}
             <ComentariosPanel comentarios={dados.comentarios} onAdd={addComentario} autor={user.nome} readOnlyInput />
+          </div>
+        )}
+
+        {aba === "notas" && (
+          <div>
+            <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
+            <SectionTitle icon={Target} sub="Notas por módulo e a nota final ponderada da empresa — as mesmas notas aparecem para todos os integrantes vinculados a esta empresa.">Minhas Notas</SectionTitle>
+
+            <div className="flex items-start gap-2 text-xs text-slate-400 bg-slate-900/60 border border-slate-800 rounded-lg p-3 mb-4">
+              <Info size={14} className="text-sky-400 shrink-0 mt-0.5" />
+              A nota é da empresa, não da pessoa: quando o(a) professor(a) avalia um módulo, todos os integrantes desta equipe veem a mesma nota aqui.
+            </div>
+
+            {(() => {
+              const notasDadas = NOTA_MODULOS_AVALIAVEIS.map((id) => dados.notas?.[id]).filter((n) => n !== undefined && n !== null && n !== "");
+              const media = notasDadas.length ? (notasDadas.reduce((a, b) => a + Number(b), 0) / notasDadas.length) : null;
+              const notaFinal = dados.notas?.[NOTA_MODULO_FINAL];
+              const notaCenariosFluxo = dados.notas?.cenariosFluxo;
+              const notaApresentacao = dados.notas?.apresentacao;
+              const notaPonderada = calcularNotaPonderada({ media, notaFinal, notaCenariosFluxo, notaApresentacao, totalModulos: NOTA_MODULOS_AVALIAVEIS.length, notasDadasLength: notasDadas.length });
+              return (
+                <div className="mb-5">
+                  <PainelAvaliacao media={media} notasDadasLength={notasDadas.length} totalModulos={NOTA_MODULOS_AVALIAVEIS.length} notaFinal={notaFinal} notaCenariosFluxo={notaCenariosFluxo} notaApresentacao={notaApresentacao} notaPonderada={notaPonderada} readOnly />
+                </div>
+              );
+            })()}
+
+            <Card className="p-4">
+              <SectionTitle icon={ClipboardList} sub="Cada módulo avaliável recebe uma nota de 0 a 10, assim que o(a) professor(a) aprova. Clique para revisitar o módulo.">Notas por módulo</SectionTitle>
+              <div className="space-y-2">
+                {NOTA_MODULOS_AVALIAVEIS.map((modId) => {
+                  const m = MODULOS.find((mm) => mm.id === modId);
+                  const Icon = m.icon;
+                  const nota = dados.notas?.[modId];
+                  const estadoM = estadoModulo(fluxo, modId);
+                  return (
+                    <button key={modId} onClick={() => setAba(modId)} className="w-full flex items-center gap-3 border border-slate-700 rounded-lg p-3 text-left hover:border-amber-500 hover:bg-slate-800 transition">
+                      <div className="w-8 h-8 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center text-xs font-bold text-slate-400 shrink-0">
+                        {String(m.n).padStart(2, "0")}
+                      </div>
+                      <Icon size={16} className="text-sky-400 shrink-0" />
+                      <span className="text-sm font-medium text-slate-200 flex-1">{m.nome}</span>
+                      {estadoM.status === "corrigido" ? (
+                        <span className="text-lg font-bold text-emerald-400">{!vazio(nota) ? nota : "—"}</span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-800 border border-slate-700 rounded-full px-2 py-0.5">Ainda não corrigido</span>
+                      )}
+                      <ChevronRight size={15} className="text-slate-600 shrink-0" />
+                    </button>
+                  );
+                })}
+              </div>
+            </Card>
           </div>
         )}
 

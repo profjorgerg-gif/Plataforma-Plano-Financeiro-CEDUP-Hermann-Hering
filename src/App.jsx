@@ -4386,31 +4386,44 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
 function FormNovaEmpresa({ turmaId, equipes, setEquipes }) {
   const [nome, setNome] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState(null);
 
   const adicionar = async () => {
     const limpo = nome.trim();
     if (!limpo) return;
     if ((equipes || []).some((e) => e.nomeNegocio.toLowerCase() === limpo.toLowerCase())) {
-      setNome("");
+      setErro(`Já existe uma empresa chamada "${limpo}" nesta turma. Escolha outro nome, ou edite a existente (ícone de lápis no card dela).`);
       return;
     }
+    setErro(null);
     setSalvando(true);
-    const nova = { id: uid(), turmaId, nomeNegocio: limpo, integrantes: [] };
-    await setEquipes([...(equipes || []), nova]);
-    setNome("");
+    try {
+      const nova = { id: uid(), turmaId, nomeNegocio: limpo, integrantes: [] };
+      await setEquipes([...(equipes || []), nova]);
+      setNome("");
+    } catch {
+      setErro("Não foi possível salvar agora — verifique sua conexão e tente novamente.");
+    }
     setSalvando(false);
   };
 
   return (
-    <div className="flex gap-2">
-      <TxtInput value={nome} onChange={setNome} placeholder="Nome da empresa/negócio" />
-      <button
-        onClick={adicionar}
-        disabled={!nome.trim() || salvando}
-        className="bg-amber-500 text-slate-900 font-bold px-4 rounded-md text-sm hover:bg-amber-400 disabled:opacity-40 flex items-center gap-1.5 shrink-0"
-      >
-        <Plus size={15} /> Adicionar
-      </button>
+    <div>
+      <div className="flex gap-2">
+        <TxtInput value={nome} onChange={(v) => { setNome(v); if (erro) setErro(null); }} placeholder="Nome da empresa/negócio" />
+        <button
+          onClick={adicionar}
+          disabled={!nome.trim() || salvando}
+          className="bg-amber-500 text-slate-900 font-bold px-4 rounded-md text-sm hover:bg-amber-400 disabled:opacity-40 flex items-center gap-1.5 shrink-0"
+        >
+          <Plus size={15} /> {salvando ? "Salvando…" : "Adicionar"}
+        </button>
+      </div>
+      {erro && (
+        <div className="flex items-start gap-2 text-xs text-rose-400 bg-rose-950/30 border border-rose-800/50 rounded-md p-2.5 mt-2">
+          <AlertTriangle size={13} className="shrink-0 mt-0.5" /> {erro}
+        </div>
+      )}
     </div>
   );
 }

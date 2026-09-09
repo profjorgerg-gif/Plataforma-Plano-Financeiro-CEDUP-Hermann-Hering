@@ -556,6 +556,14 @@ const CHECKLIST_SECOES = [
   ]},
 ];
 
+// Sufixo de data/hora para nomes de arquivo de backup — assim cada exportação
+// fica identificável (e nunca sobrescreve a anterior no histórico de
+// downloads), ex.: "2026-09-09_19h45m00s".
+function sufixoDataHoraArquivo(data = new Date()) {
+  const p2 = (n) => String(n).padStart(2, "0");
+  return `${data.getFullYear()}-${p2(data.getMonth() + 1)}-${p2(data.getDate())}_${p2(data.getHours())}h${p2(data.getMinutes())}m${p2(data.getSeconds())}s`;
+}
+
 function baixarArquivo(nome, conteudo, mime = "application/json") {
   try {
     const blob = new Blob([conteudo], { type: mime });
@@ -3480,8 +3488,9 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   ];
 
   const baixarBackupEquipe = () => {
-    const pacote = { versaoBackup: 1, geradoEm: new Date().toISOString(), equipe, dados };
-    baixarArquivo(`backup_${equipe.nomeNegocio.replace(/\s+/g, "_")}.json`, JSON.stringify(pacote, null, 2));
+    const agora = new Date();
+    const pacote = { versaoBackup: 1, geradoEm: agora.toISOString(), equipe, dados };
+    baixarArquivo(`backup_${equipe.nomeNegocio.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo(agora)}.json`, JSON.stringify(pacote, null, 2));
   };
 
   return (
@@ -5938,8 +5947,9 @@ function GestaoBackupView({ turmas, setTurmas }) {
 
   const exportarBackup = () => {
     if (!turma || !dadosEquipes) return;
-    const pacote = { versaoBackup: 1, geradoEm: new Date().toISOString(), turma, equipes: dadosEquipes.map(({ equipe, dados }) => ({ equipe, dados })) };
-    baixarArquivo(`backup_${turma.nome.replace(/\s+/g, "_")}.json`, JSON.stringify(pacote, null, 2));
+    const agora = new Date();
+    const pacote = { versaoBackup: 1, geradoEm: agora.toISOString(), turma, equipes: dadosEquipes.map(({ equipe, dados }) => ({ equipe, dados })) };
+    baixarArquivo(`backup_${turma.nome.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo(agora)}.json`, JSON.stringify(pacote, null, 2));
     setUltimoBackupTurmaId(turma.id);
     setStatus("Backup exportado com sucesso.");
   };
@@ -5957,8 +5967,9 @@ function GestaoBackupView({ turmas, setTurmas }) {
         equipes: await buscarEquipesComDados(t.id),
       })));
       const rotulo = periodoSemestre.trim() || new Date().getFullYear().toString();
-      const pacote = { versaoBackup: 1, tipo: "semestre", periodo: rotulo, geradoEm: new Date().toISOString(), turmas: porTurma };
-      baixarArquivo(`Backup-Semestre-${rotulo.replace(/\s+/g, "_")}.json`, JSON.stringify(pacote, null, 2));
+      const agora = new Date();
+      const pacote = { versaoBackup: 1, tipo: "semestre", periodo: rotulo, geradoEm: agora.toISOString(), turmas: porTurma };
+      baixarArquivo(`Backup-Semestre-${rotulo.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo(agora)}.json`, JSON.stringify(pacote, null, 2));
       setStatus(`Backup do semestre "${rotulo}" gerado com ${turmas.length} turma(s).`);
     } catch {
       setStatus("Não foi possível gerar o backup do semestre. Tente novamente.");

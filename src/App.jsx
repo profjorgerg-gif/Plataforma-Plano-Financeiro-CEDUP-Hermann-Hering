@@ -1745,6 +1745,35 @@ function TxtInput({ value, onChange, placeholder }) {
   );
 }
 
+// Campo do Código de Mestre — mascarado como senha por padrão, com um
+// ícone de olho para revelar/ocultar sob controle da própria pessoa (evita
+// que o código fique visível na tela "de graça", por cima do ombro ou em
+// print/gravação de tela).
+function CampoSenha({ value, onChange, placeholder }) {
+  const [visivel, setVisivel] = useState(false);
+  return (
+    <div className="relative">
+      <input
+        type={visivel ? "text" : "password"}
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete="off"
+        className="w-full border border-slate-600 rounded-md pl-3 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+      />
+      <button
+        type="button"
+        onClick={() => setVisivel((v) => !v)}
+        tabIndex={-1}
+        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+        title={visivel ? "Ocultar código" : "Mostrar código"}
+      >
+        {visivel ? <EyeOff size={15} /> : <Eye size={15} />}
+      </button>
+    </div>
+  );
+}
+
 function Card({ children, className = "" }) {
   return <div className={`bg-slate-800 rounded-xl border border-slate-700 shadow-sm ${className}`}>{children}</div>;
 }
@@ -6856,7 +6885,7 @@ function TelaPrimeiroAcessoAluno({ perfil, onSair, onResultado, onVirarProfessor
           <div className="mt-3 bg-slate-900 border border-slate-700 rounded-md p-3">
             <label className="block text-[11px] text-slate-400 mb-1.5">Digite o código de Usuário Mestre para corrigir seu perfil para Professor(a).</label>
             <div className="flex gap-2">
-              <TxtInput value={codigoMestre} onChange={setCodigoMestre} placeholder="Código de Mestre" />
+              <CampoSenha value={codigoMestre} onChange={setCodigoMestre} placeholder="Código de Mestre" />
               <button onClick={virarProfessor} disabled={verificandoMestre || !codigoMestre.trim()} className="bg-amber-500 text-slate-900 px-3 rounded-md text-xs font-bold hover:bg-amber-400 disabled:opacity-40 flex-none">
                 {verificandoMestre ? "…" : "Confirmar"}
               </button>
@@ -7053,7 +7082,7 @@ function TelaAguardandoAprovacao({ perfil, onSair, rejeitado, onTrocarTurma, onV
               <div className="text-left bg-slate-900 border border-slate-700 rounded-md p-3 mb-3">
                 <label className="block text-[11px] text-slate-400 mb-1.5">Tem um código de Usuário Mestre? Digite aqui para liberar seu acesso na hora.</label>
                 <div className="flex gap-2">
-                  <TxtInput value={codigoMestre} onChange={setCodigoMestre} placeholder="Código de Mestre" />
+                  <CampoSenha value={codigoMestre} onChange={setCodigoMestre} placeholder="Código de Mestre" />
                   <button onClick={tentarVirarMestre} disabled={verificando || !codigoMestre.trim()} className="bg-amber-500 text-slate-900 px-3 rounded-md text-xs font-bold hover:bg-amber-400 disabled:opacity-40 flex-none">
                     {verificando ? "…" : "Confirmar"}
                   </button>
@@ -7128,7 +7157,7 @@ function TelaLogin({ onEscolherPerfil }) {
 
       {papel === "professor" && (
         <Field label="Código de Mestre (opcional)" hint="Só preencha se você recebeu um código de Usuário Mestre. Deixe em branco para entrar direto como professor(a) comum, sem privilégios de Usuário Mestre.">
-          <TxtInput value={codigoMestre} onChange={setCodigoMestre} placeholder="Deixe em branco se não tiver" />
+          <CampoSenha value={codigoMestre} onChange={setCodigoMestre} placeholder="Deixe em branco se não tiver" />
         </Field>
       )}
 

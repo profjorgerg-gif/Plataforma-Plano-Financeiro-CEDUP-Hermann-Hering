@@ -13,7 +13,7 @@ import {
   Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
   ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
   LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows, Monitor, FileDown, Info, Library,
-  Calendar, RefreshCw, Undo2, CircleDot, Inbox,
+  Calendar, RefreshCw, Undo2, CircleDot, Inbox, LogIn,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
@@ -345,6 +345,7 @@ const GESTAO_ITENS = [
   { id: "correcoes", label: "Correções pendentes", icon: Inbox },
   { id: "cronograma", label: "Cronograma", icon: Calendar },
   { id: "usuarios", label: "Usuários", icon: Users },
+  { id: "acessos", label: "Acessos de usuários", icon: LogIn },
   { id: "relatorios", label: "Relatórios", icon: FileBarChart },
   { id: "backup", label: "Backup", icon: Save },
   { id: "auditoria", label: "Auditoria", icon: History },
@@ -555,6 +556,44 @@ const CHECKLIST_SECOES = [
     "Gravar os vídeos do canal do YouTube para o menu Tutoriais",
   ]},
 ];
+
+// ============================================================================
+// LOG DE ACESSOS (entrada/saída) — lista global compartilhada, uma linha por
+// evento de login/logout. O professor só vê os eventos ligados às próprias
+// turmas (mais os próprios); o Usuário Mestre vê tudo, de todo mundo.
+// "Saída" só é registrada quando a pessoa clica em "Sair" — fechar a aba
+// sem clicar em "Sair" não garante o registro (limitação do navegador).
+// ============================================================================
+const CHAVE_LOG_ACESSOS = "log_acessos";
+const LOG_ACESSOS_MAX = 500;
+
+async function registrarAcesso({ uid: uidPessoa, nome, papel, turmaId, turmaNome, tipo }) {
+  try {
+    const r = await window.storage.get(CHAVE_LOG_ACESSOS, true);
+    const lista = r ? JSON.parse(r.value) : [];
+    lista.push({ id: uid(), uid: uidPessoa, nome, papel, turmaId: turmaId || null, turmaNome: turmaNome || null, tipo, timestamp: Date.now() });
+    const cortada = lista.slice(-LOG_ACESSOS_MAX);
+    await window.storage.set(CHAVE_LOG_ACESSOS, JSON.stringify(cortada), true);
+  } catch {}
+}
+
+function useLogAcessos(refreshKey) {
+  const [lista, setLista] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLista(null);
+      try {
+        const r = await window.storage.get(CHAVE_LOG_ACESSOS, true);
+        if (alive) setLista(r ? JSON.parse(r.value) : []);
+      } catch {
+        if (alive) setLista([]);
+      }
+    })();
+    return () => { alive = false; };
+  }, [refreshKey]);
+  return lista;
+}
 
 // Sufixo de data/hora para nomes de arquivo de backup — assim cada exportação
 // fica identificável (e nunca sobrescreve a anterior no histórico de
@@ -6051,6 +6090,90 @@ function GestaoBackupView({ turmas, setTurmas }) {
   );
 }
 
+function GestaoAcessosView({ turmas, user }) {
+  const [refreshKey, setRefreshKey] = useState(0);
+  const eventos = useLogAcessos(refreshKey);
+  const [busca, setBusca] = useState("");
+  const [filtroPapel, setFiltroPapel] = useState("todos"); // todos | aluno | professor
+
+  if (eventos === null) return <LoadingScreen />;
+
+  const turmaIds = new Set((turmas || []).map((t) => t.id));
+  // Professor comum só vê os próprios acessos e os das equipes ligadas às
+  // suas turmas; o Usuário Mestre vê tudo, de todo mundo.
+  const visiveis = user.mestre ? eventos : eventos.filter((ev) => ev.uid === user.uid || (ev.turmaId && turmaIds.has(ev.turmaId)));
+
+  const filtrados = visiveis
+    .filter((ev) => filtroPapel === "todos" || ev.papel === filtroPapel)
+    .filter((ev) => !busca.trim() || (ev.nome || "").toLowerCase().includes(busca.trim().toLowerCase()))
+    .sort((a, b) => b.timestamp - a.timestamp);
+
+  // Último evento de cada pessoa indica se está com sessão em aberto agora
+  // (heurística simples — fechar a aba sem clicar em "Sair" não é detectado).
+  const ultimoPorUid = new Map();
+  visiveis.slice().sort((a, b) => a.timestamp - b.timestamp).forEach((ev) => ultimoPorUid.set(ev.uid, ev));
+  const sessoesAbertas = [...ultimoPorUid.values()].filter((ev) => ev.tipo === "entrada");
+
+  return (
+    <div>
+      <SectionTitle icon={LogIn} sub={user.mestre ? "Entradas e saídas de todos os usuários da plataforma — alunos e professores." : "Entradas e saídas dos usuários vinculados às suas turmas (e as suas próprias)."}>
+        Acessos de usuários
+      </SectionTitle>
+
+      <div className="flex items-start gap-2 text-xs text-slate-400 bg-slate-900/60 border border-slate-800 rounded-lg p-3 mb-4">
+        <Info size={14} className="text-sky-400 shrink-0 mt-0.5" />
+        A "saída" só é registrada quando a pessoa clica em "Sair" — se só fechar a aba ou o navegador, esse encerramento não fica registrado (limitação do navegador).
+      </div>
+
+      <div className="grid sm:grid-cols-3 gap-3 mb-4">
+        <StatCard label="Eventos visíveis" value={visiveis.length} tone="blue" small />
+        <StatCard label="Sessões em aberto agora" value={sessoesAbertas.length} tone="gold" small />
+        <StatCard label="Pessoas distintas" value={new Set(visiveis.map((e) => e.uid)).size} tone="slate" small />
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        <TxtInput value={busca} onChange={setBusca} placeholder="Buscar por nome…" />
+        <select value={filtroPapel} onChange={(e) => setFiltroPapel(e.target.value)} className="border border-slate-600 bg-slate-900 rounded-md px-3 text-sm text-slate-200">
+          <option value="todos">Todos os papéis</option>
+          <option value="aluno">Só alunos</option>
+          <option value="professor">Só professores</option>
+        </select>
+        <button onClick={() => setRefreshKey((k) => k + 1)} className="flex items-center gap-1.5 border border-slate-600 text-slate-200 px-3 rounded-md text-sm hover:bg-slate-800 shrink-0"><RefreshCw size={13} /> Atualizar</button>
+      </div>
+
+      {filtrados.length === 0 ? (
+        <Card className="p-8 text-center text-slate-500">Nenhum acesso registrado ainda{busca || filtroPapel !== "todos" ? " com esses filtros" : ""}.</Card>
+      ) : (
+        <Card className="p-4 max-h-[36rem] overflow-y-auto">
+          <div className="space-y-2.5">
+            {filtrados.map((ev) => {
+              const emAberto = ultimoPorUid.get(ev.uid)?.id === ev.id && ev.tipo === "entrada";
+              return (
+                <div key={ev.id} className="flex items-center gap-3 border-b border-slate-800 pb-2.5 last:border-0">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${ev.tipo === "entrada" ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/40" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
+                    {ev.tipo === "entrada" ? <LogIn size={14} /> : <LogOut size={14} />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-slate-100 truncate">{ev.nome || "—"}</span>
+                      <span className="text-[10px] font-bold text-slate-500 bg-slate-800 border border-slate-700 rounded-full px-1.5 py-0.5">{ev.papel === "professor" ? "Professor(a)" : "Aluno(a)"}</span>
+                      {emAberto && <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 rounded-full px-1.5 py-0.5">sessão em aberto</span>}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {ev.tipo === "entrada" ? "Entrou" : "Saiu"}{ev.turmaNome ? ` — ${ev.turmaNome}` : ""}
+                    </div>
+                  </div>
+                  <div className="text-xs text-slate-400 shrink-0">{fmtData(ev.timestamp)}</div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 function GestaoAuditoriaView({ turmas }) {
   const [turmaId, setTurmaId] = useState("");
   const turma = turmas.find((t) => t.id === turmaId);
@@ -6284,6 +6407,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
         {aba === "correcoes" && <CorrecoesPendentesView pendentes={pendentesCorrecao} onAbrir={abrirCorrecao} />}
         {aba === "usuarios" && <GestaoUsuariosView turmas={turmas} />}
         {aba === "cronograma" && <GestaoCronogramaView turmas={turmas} />}
+        {aba === "acessos" && <GestaoAcessosView turmas={turmas} user={user} />}
         {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}
         {aba === "backup" && <GestaoBackupView turmas={turmas} setTurmas={setTurmas} />}
         {aba === "auditoria" && <GestaoAuditoriaView turmas={turmas} />}
@@ -7112,6 +7236,12 @@ export default function App() {
   // de login, ANTES de entrar com o Google — só é usado se for a primeira
   // vez que essa conta acessa o sistema (ver useEffect abaixo).
   const escolhaRef = useRef({ papel: "aluno", codigoMestre: "" });
+  // true só entre o clique em "Continuar com Google" e o registro da
+  // "entrada" no log de acessos — evita logar uma entrada nova toda vez que
+  // a página é recarregada com uma sessão já existente (o Firebase dispara o
+  // mesmo evento de sessão tanto para login novo quanto para sessão restaurada).
+  const loginRecenteRef = useRef(false);
+  const ultimoUidComEntradaRegistradaRef = useRef(null);
 
   useEffect(() => {
     const cancelar = observarSessao((u) => setFirebaseUser(u || null));
@@ -7125,6 +7255,22 @@ export default function App() {
   };
 
   const perfilCarregado = useUsuario(firebaseUser?.uid);
+
+  // Registra a "entrada" no log de acessos assim que o perfil da conta que
+  // acabou de entrar (via clique em "Continuar com Google") estiver
+  // disponível — nunca ao recarregar a página com uma sessão já existente.
+  const perfilParaLogEntrada = (perfilRecemCriado?.uid === firebaseUser?.uid ? perfilRecemCriado : null) || perfilCarregado || null;
+  useEffect(() => {
+    if (!perfilParaLogEntrada || !loginRecenteRef.current) return;
+    if (ultimoUidComEntradaRegistradaRef.current === perfilParaLogEntrada.uid) return;
+    ultimoUidComEntradaRegistradaRef.current = perfilParaLogEntrada.uid;
+    loginRecenteRef.current = false;
+    registrarAcesso({
+      uid: perfilParaLogEntrada.uid, nome: perfilParaLogEntrada.nome, papel: perfilParaLogEntrada.papel,
+      turmaId: perfilParaLogEntrada.turmaId, turmaNome: perfilParaLogEntrada.turmaNome, tipo: "entrada",
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perfilParaLogEntrada?.uid]);
 
   // Primeiro acesso: assim que confirmamos que essa conta Google ainda não
   // tem cadastro na plataforma, criamos o perfil automaticamente com o
@@ -7161,7 +7307,7 @@ export default function App() {
   if (firebaseUser === undefined) return <LoadingScreen />;
 
   if (!firebaseUser) {
-    return <TelaEntrada onEscolherPerfil={(papel, codigoMestre) => { escolhaRef.current = { papel, codigoMestre }; }} />;
+    return <TelaEntrada onEscolherPerfil={(papel, codigoMestre) => { escolhaRef.current = { papel, codigoMestre }; loginRecenteRef.current = true; }} />;
   }
 
   if (perfilCarregado === undefined) return <LoadingScreen />;
@@ -7176,8 +7322,13 @@ export default function App() {
 
   if (!perfil) return <LoadingScreen />;
 
+  const efetuarSaidaComLog = () => {
+    registrarAcesso({ uid: perfil.uid, nome: perfil.nome, papel: perfil.papel, turmaId: perfil.turmaId, turmaNome: perfil.turmaNome, tipo: "saida" });
+    efetuarSaida();
+  };
+
   if (perfil.papel === "aluno") {
-    return <AlunoRoteador perfil={perfil} onSair={efetuarSaida} onVirarProfessor={async (mudancas) => {
+    return <AlunoRoteador perfil={perfil} onSair={efetuarSaidaComLog} onVirarProfessor={async (mudancas) => {
       const atualizado = await atualizarUsuario(perfil.uid, mudancas);
       if (atualizado) setPerfilRecemCriado(atualizado);
     }} />;
@@ -7189,16 +7340,16 @@ export default function App() {
       const atualizado = await atualizarUsuario(perfil.uid, { status: "aprovado", mestre: true });
       if (atualizado) setPerfilRecemCriado(atualizado);
     };
-    return <TelaAguardandoAprovacao perfil={perfil} onSair={efetuarSaida} onVirarMestre={virarMestre} />;
+    return <TelaAguardandoAprovacao perfil={perfil} onSair={efetuarSaidaComLog} onVirarMestre={virarMestre} />;
   }
   if (perfil.status === "rejeitado") {
-    return <TelaAguardandoAprovacao perfil={perfil} onSair={efetuarSaida} rejeitado />;
+    return <TelaAguardandoAprovacao perfil={perfil} onSair={efetuarSaidaComLog} rejeitado />;
   }
 
   const userSessao = { uid: perfil.uid, nome: perfil.nome, email: perfil.email, papel: perfil.papel, mestre: !!perfil.mestre };
   return (
     <ProfessorDashboard
-      user={userSessao} onSair={efetuarSaida}
+      user={userSessao} onSair={efetuarSaidaComLog}
       ultimaVersaoVista={perfil.ultimaVersaoVista}
       onVerNovidades={() => atualizarUsuario(perfil.uid, { ultimaVersaoVista: APP_VERSION }).then((p) => p && setPerfilRecemCriado(p))}
     />

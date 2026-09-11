@@ -1,8 +1,8 @@
-// build: 2026-08-21_11h37m02s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 2026-09-01_06h35m39s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer, LineChart, Line,
+  Legend, ResponsiveContainer, LineChart, Line, ReferenceLine,
 } from "recharts";
 import {
   GraduationCap, Users, School, LogOut, LayoutDashboard, Wallet, PiggyBank,
@@ -12,7 +12,8 @@ import {
   Save, Copy, ArrowLeft, BookOpen, Building2, KeyRound, Mail, Lock, ShieldCheck,
   Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
   ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
-  LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows,
+  LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows, Monitor, FileDown, Info, Library,
+  Calendar, RefreshCw, Undo2, CircleDot, Inbox, LogIn,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
@@ -56,9 +57,9 @@ const TEORIA = {
   m4: { conceito: "Soma dos três blocos de investimento e definição das fontes de recursos (próprios x terceiros).", formula: "Investimento Total = Invest. Fixos + Capital de Giro + Invest. Pré-Operacionais" },
   m5: { conceito: "Estimativa de receita mensal, baseada na quantidade vendida e no preço de mercado.", formula: "Faturamento = Σ (Quantidade × Preço de Venda Unitário)" },
   m6: { conceito: "Custo de materiais para cada unidade fabricada — detalhamento opcional, útil para negócios industriais.", formula: "Custo Unitário = Σ (Quantidade do material × Custo Unitário do material)" },
-  m7: { conceito: "Gastos variáveis que incidem diretamente sobre as vendas: impostos e comissões.", formula: "Custo de Comercialização = Faturamento × (% Impostos + % Comissão)" },
+  m7: { conceito: "Gastos variáveis que incidem diretamente sobre as vendas: impostos e comissões. O imposto pode ser calculado automaticamente pela tabela do Simples Nacional, a partir do tipo de atividade e do faturamento anual.", formula: "Custo de Comercialização = Faturamento × (% Impostos + % Comissão)\nAlíquota efetiva do Simples = (RBT12 × Alíquota nominal − Parcela a deduzir) ÷ RBT12" },
   m8: { conceito: "Valor baixado do estoque em função da venda efetiva (CMD para indústria, CMV para comércio).", formula: "CMD/CMV = Σ (Quantidade Vendida × Custo Unitário de Aquisição/Produção)" },
-  m9: { conceito: "Custo com salários e encargos sociais (FGTS, férias, 13º, INSS etc.) da equipe contratada.", formula: "Custo com Mão de Obra = Σ [ Salário × (1 + % Encargos Sociais) ]" },
+  m9: { conceito: "Custo com salários e encargos sociais (FGTS, férias, 13º, INSS etc.) da equipe contratada. Os encargos podem ser calculados automaticamente por grupo (A: básicos/legais, B: período não trabalhado, C: pagos em dinheiro, D: incidências cruzadas), conforme o regime tributário da empresa.", formula: "Custo com Mão de Obra = Σ [ Salário × (1 + % Encargos Sociais) ]\n% Encargos (por grupos) = Σ Grupo A + Σ Grupo B + Σ Grupo C + Σ Grupo D" },
   m10: { conceito: "Perda de valor dos bens do ativo fixo pelo uso ao longo do tempo.", formula: "Depreciação Mensal = (Valor do Bem ÷ Vida Útil em anos) ÷ 12" },
   m11: { conceito: "Gastos que não variam com o volume de produção/vendas: aluguel, energia, pró-labore etc. — inclui automaticamente a mão de obra e a depreciação.", formula: "Custo Fixo Total = Σ custos fixos + Mão de Obra + Depreciação" },
   m12: { conceito: "Consolida faturamento e custos para apurar se a empresa projeta lucro ou prejuízo.", formula: "Resultado Operacional = (Receita − Custos Variáveis) − Custos Fixos" },
@@ -94,16 +95,16 @@ const GUIA_MODULOS_EXTRA = {
     exemplo: "1 pão usa 0,5 kg de farinha a R$ 4,50/kg → custo de matéria-prima de R$ 2,25 por pão.",
   },
   m7: {
-    lancamento: "Percentual de impostos sobre vendas (Simples, ICMS, ISS…) e percentual de comissões/gastos com vendas (comissão, propaganda, taxa de cartão) — aplicados sobre o Faturamento do Módulo 5.",
-    exemplo: "8% de impostos + 3% de comissão = 11% sobre R$ 8.940 de faturamento = R$ 983,40 de Custo de Comercialização.",
+    lancamento: "Escolha o tipo de atividade (Comércio, Indústria ou Serviços) e a plataforma calcula sozinha a alíquota efetiva do Simples Nacional, com base no faturamento anual do Módulo 5. Se a atividade não se enquadrar nos Anexos I a III, use \"Informar manualmente\" com a alíquota confirmada por um contador. Informe também o percentual de comissões/gastos com vendas.",
+    exemplo: "Padaria (Comércio), faturamento de R$ 8.940/mês → RBT12 de R$ 107.280 → 1ª faixa do Anexo I (até R$ 180.000) → alíquota efetiva de 4,00% → R$ 357,60/mês de imposto, mais as comissões informadas.",
   },
   m8: {
     lancamento: "Não precisa digitar de novo — a plataforma calcula automaticamente a partir da quantidade vendida (Módulo 5) e do custo de matéria-prima por unidade (Módulo 6).",
     exemplo: "600 pães vendidos × R$ 2,25 de custo de matéria-prima cada = R$ 1.350 de CMD no mês.",
   },
   m9: {
-    lancamento: "Para cada função/cargo da equipe: nome da função, quantidade de pessoas, salário e percentual de encargos sociais (FGTS, férias, 13º, INSS…).",
-    exemplo: "1 padeiro, salário R$ 1.800, encargos de 35% → custo real de R$ 2.430/mês com essa função.",
+    lancamento: "Para cada função/cargo da equipe: nome, quantidade de pessoas e salário. Os encargos sociais podem ser calculados automaticamente por grupo (A/B/C/D), bastando escolher o regime tributário (Simples Nacional ou Lucro Real/Presumido) — ou, se preferir, informar um percentual manual por função.",
+    exemplo: "1 padeiro, salário R$ 1.800, no Simples Nacional (encargos de 33,00% pelo cálculo por grupos) → custo real de R$ 2.394/mês com essa função.",
   },
   m10: {
     lancamento: "Não precisa digitar de novo — usa os bens já lançados no Módulo 1. Só é preciso informar a vida útil (em anos) de cada categoria de bem.",
@@ -128,7 +129,208 @@ const codigoTurma = () => Math.random().toString(36).slice(2, 8).toUpperCase();
 
 const fmtBRL = (n) =>
   (Number.isFinite(n) ? n : 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const fmtDataCurta = (isoDate) => {
+  if (!isoDate) return "";
+  const [ano, mes, dia] = isoDate.split("-");
+  return `${dia}/${mes}/${ano}`;
+};
+
+// ============================================================================
+// CRONOGRAMA DO PROJETO (por turma) — Semana 1 definida pelo professor;
+// as semanas seguintes são calculadas automaticamente somando a duração de
+// cada etapa (a mesma sequência didática do Guia Pedagógico). O professor
+// pode ajustar manualmente o prazo de entrega de qualquer semana; a
+// plataforma marca a linha como "ajustada" e não a sobrescreve num
+// recálculo geral, a menos que o professor peça "Recalcular tudo".
+// ============================================================================
+const HORARIO_CRONOGRAMA_PADRAO = "13:30";
+const ETAPAS_CRONOGRAMA_BASE = [
+  { ordem: 1, semana: "Semana 1", etapa: "Apresentação da plataforma e formação dos grupos", dias: 7 },
+  { ordem: 2, semana: "Semana 2", etapa: "Bloco 1 — Investimento Inicial", dias: 7 },
+  { ordem: 3, semana: "Semanas 3-4", etapa: "Bloco 2 — Receitas e Custos", dias: 14 },
+  { ordem: 4, semana: "Semana 5", etapa: "Bloco 3 — Custos Fixos", dias: 7 },
+  { ordem: 5, semana: "Semana 6", etapa: "Bloco 4 — Resultado e Viabilidade", dias: 7 },
+  { ordem: 6, semana: "Semana 7", etapa: "Cenários e Fluxo de Caixa", dias: 7 },
+  { ordem: 7, semana: "Semana 8", etapa: "Apresentações finais", dias: 7 },
+];
+
+// Liga cada módulo numerado ao bloco do cronograma que o contém — é daí que
+// vem o prazo de entrega padrão de cada módulo (a data de entrega da linha
+// correspondente), sempre que o cronograma da turma é calculado ou
+// recalculado. Um módulo cujo prazo tenha sido digitado manualmente pelo
+// professor (fluxoModulos[id].prazoManual === true) nunca é sobrescrito por
+// essa propagação automática.
+const CRONOGRAMA_ORDEM_POR_MODULO = {
+  m1: 2, m2: 2, m3: 2, m4: 2,
+  m5: 3, m6: 3, m7: 3, m8: 3, m9: 3,
+  m10: 4, m11: 4,
+  m12: 5, m13: 5,
+};
+
+const addDiasISO = (isoDate, n) => {
+  const d = new Date(isoDate + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+
+function calcularCronograma(dataInicioS1, horaInicioS1) {
+  let cursor = dataInicioS1;
+  return ETAPAS_CRONOGRAMA_BASE.map((et, i) => {
+    const inicio = i === 0 ? dataInicioS1 : cursor;
+    const entrega = addDiasISO(inicio, et.dias);
+    cursor = entrega;
+    return {
+      ordem: et.ordem,
+      semana: et.semana,
+      etapa: et.etapa,
+      dataInicio: inicio,
+      horaInicio: i === 0 ? horaInicioS1 : HORARIO_CRONOGRAMA_PADRAO,
+      dataEntrega: entrega,
+      horaEntrega: HORARIO_CRONOGRAMA_PADRAO,
+      manual: false,
+    };
+  });
+}
+
+const SITUACAO_CRONOGRAMA_INFO = {
+  nao_iniciada: { label: "Não iniciada", icon: Circle, cls: "text-slate-400 bg-slate-800 border-slate-700" },
+  em_andamento: { label: "Em andamento", icon: CircleDot, cls: "text-amber-400 bg-amber-500/10 border-amber-500/30" },
+  encerrada: { label: "Encerrada", icon: CheckCircle2, cls: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30" },
+};
+
+function situacaoCronograma(linha) {
+  const agora = new Date();
+  const hojeISO = agora.toISOString().slice(0, 10);
+  const horaAgora = agora.toTimeString().slice(0, 5);
+  const inicio = linha.dataInicio + " " + (linha.horaInicio || "00:00");
+  const entrega = linha.dataEntrega + " " + (linha.horaEntrega || "23:59");
+  const agoraCmp = hojeISO + " " + horaAgora;
+  if (agoraCmp < inicio) return "nao_iniciada";
+  if (agoraCmp > entrega) return "encerrada";
+  return "em_andamento";
+}
+
+function BadgeSituacaoCronograma({ status }) {
+  const s = SITUACAO_CRONOGRAMA_INFO[status];
+  const Icone = s.icon;
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${s.cls}`}>
+      <Icone size={12} /> {s.label}
+    </span>
+  );
+}
+
+// Estado padrão de um módulo dentro do fluxo (novo campo dados.fluxoModulos):
+// "pendente" (ainda não liberado), "liberado" (a equipe pode preencher),
+// "enviado" (encaminhado para correção, travado para a equipe) ou
+// "corrigido" (avaliado pelo professor — libera o próximo automaticamente).
+const ESTADO_MODULO_PADRAO = {
+  status: "pendente", prazo: null, prazoManual: false,
+  enviadoEm: null, corrigidoEm: null, atraso: false,
+  // fluxo de correção/devolução/reenvio:
+  feedback: null,     // texto do feedback mais recente do professor (fica visível enquanto status === "ajustes")
+  ciclo: 1,           // conta quantos envios já ocorreram (incrementa a cada devolução)
+  historico: [],       // [{ tipo: 'envio'|'devolucao'|'reenvio'|'aprovacao'|'reabertura', data, feedback? }] — nunca é apagado
+};
+
+function estadoModulo(fluxo, modId) {
+  return (fluxo && fluxo[modId]) || ESTADO_MODULO_PADRAO;
+}
+
+// Ícone de status ao lado do nome do módulo, no menu lateral do aluno — leitura
+// rápida do que está bloqueado/liberado/enviado/corrigido, sem precisar abrir
+// o Índice de módulos. Usa as mesmas cores já usadas nos badges "Bloqueado" /
+// "Em correção" / "Corrigido" da tela Início, para não introduzir uma
+// paleta nova.
+function BadgeStatusModuloMenu({ status }) {
+  if (status === "pendente") return <Lock size={12} className="text-slate-600 shrink-0" title="Bloqueado" />;
+  if (status === "enviado") return <Clock size={12} className="text-sky-400 shrink-0" title="Enviado — em correção" />;
+  if (status === "ajustes") return <RotateCcw size={12} className="text-amber-400 shrink-0" title="Ajustes solicitados pelo professor" />;
+  if (status === "corrigido") return <CheckCircle2 size={12} className="text-emerald-400 shrink-0" title="Corrigido" />;
+  // liberado
+  return <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_5px_rgba(52,211,153,0.7)]" title="Liberado" />;
+}
+
+// Histórico de envios/devoluções/reenvios/aprovações de um módulo — usado
+// tanto na tela do professor quanto na do aluno. Nada é apagado; cada
+// devolução fica registrada com o feedback exato dado naquele momento.
+const HISTORICO_EVENTO_INFO = {
+  envio: { label: "Enviado para correção", Icon: Send, cor: "text-sky-400" },
+  reenvio: { label: "Reenviado para correção", Icon: Send, cor: "text-sky-400" },
+  devolucao: { label: "Devolvido para ajustes", Icon: RotateCcw, cor: "text-amber-400" },
+  aprovacao: { label: "Aprovado e concluído", Icon: CheckCircle2, cor: "text-emerald-400" },
+  reabertura: { label: "Reaberto pelo professor (prazo esgotado)", Icon: RotateCcw, cor: "text-rose-400" },
+};
+
+function HistoricoCorrecaoModulo({ historico }) {
+  const [aberto, setAberto] = useState(false);
+  const eventos = historico || [];
+  if (eventos.length === 0) return null;
+  return (
+    <div className="mt-3 bg-slate-900/60 border border-slate-800 rounded-md overflow-hidden">
+      <button onClick={() => setAberto((v) => !v)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-slate-800/40">
+        <span className="flex items-center gap-2 text-xs font-bold text-slate-300">
+          <History size={13} className="text-amber-500" /> Histórico de correção
+          <span className="text-[11px] font-normal text-slate-500">({eventos.length})</span>
+        </span>
+        {aberto ? <ChevronDown size={14} className="text-slate-500" /> : <ChevronRight size={14} className="text-slate-500" />}
+      </button>
+      {aberto && (
+        <div className="px-3 pb-3 space-y-2.5">
+          {eventos.map((ev, i) => {
+            const info = HISTORICO_EVENTO_INFO[ev.tipo] || HISTORICO_EVENTO_INFO.envio;
+            const Icon = info.Icon;
+            return (
+              <div key={i} className="flex gap-2.5">
+                <div className={`w-5 h-5 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 ${info.cor}`}>
+                  <Icon size={10} />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-bold text-slate-300">{info.label}</span>
+                    <span className="text-[10px] text-slate-500">{fmtData(ev.data)}</span>
+                  </div>
+                  {ev.feedback && (
+                    <div className="mt-1 text-[11px] text-slate-300 bg-slate-800/60 border border-slate-700 rounded-md p-2">{ev.feedback}</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Fluxo inicial de uma equipe: só o Módulo 1 liberado, os demais pendentes.
+// Um módulo só vira "corrigido" por uma ação explícita do professor (depois
+// do envio da equipe) — nunca por inferência automática. A primeira versão
+// desta função tentava adivinhar módulos "já prontos" usando o mesmo
+// indicador do check verde (calc.preenchidos), para não travar retroativamente
+// equipes que já vinham em andamento antes desta atualização — mas esse
+// indicador dispara com qualquer linha adicionada, mesmo zerada (ex.: clicar
+// em "Adicionar bem" sem preencher nada), o que marcava o Módulo 1 como
+// "corrigido" mesmo em uma equipe recém-criada. Como não há mais equipes
+// antigas a proteger, a regra agora é simples e sempre previsível.
+function fluxoModulosPadrao() {
+  const resultado = {};
+  MODULOS.forEach((m, i) => {
+    resultado[m.id] = { ...ESTADO_MODULO_PADRAO, status: i === 0 ? "liberado" : "pendente" };
+  });
+  return resultado;
+}
+
+// Um módulo liberado com prazo vencido fica bloqueado automaticamente, sem
+// precisar de nenhuma tarefa rodando em segundo plano — é só uma conta feita
+// na hora, toda vez que a tela renderiza, comparando o prazo com agora.
+function moduloAtrasadoSemEnvio(estado) {
+  if ((estado.status !== "liberado" && estado.status !== "ajustes") || !estado.prazo) return false;
+  return Date.now() > new Date(`${estado.prazo}T23:59:59`).getTime();
+}
+
 const fmtNum = (n, d = 1) => (Number.isFinite(n) ? n : 0).toLocaleString("pt-BR", { maximumFractionDigits: d });
+
 const fmtPct = (n) => `${fmtNum(n, 1)}%`;
 const fmtData = (ts) => new Date(ts).toLocaleString("pt-BR");
 
@@ -140,7 +342,10 @@ const CHART_TOOLTIP_STYLE = { background: "#0f1e30", border: "1px solid #22344a"
 
 const GESTAO_ITENS = [
   { id: "turmas", label: "Turmas", icon: School },
+  { id: "correcoes", label: "Correções pendentes", icon: Inbox },
+  { id: "cronograma", label: "Cronograma", icon: Calendar },
   { id: "usuarios", label: "Usuários", icon: Users },
+  { id: "acessos", label: "Acessos de usuários", icon: LogIn },
   { id: "relatorios", label: "Relatórios", icon: FileBarChart },
   { id: "backup", label: "Backup", icon: Save },
   { id: "auditoria", label: "Auditoria", icon: History },
@@ -161,6 +366,59 @@ const MANUAIS_ITENS_MESTRE = [
   { id: "manualOperacional", label: "Manual de Operacionalização", icon: ScrollText },
   { id: "checklistStatus", label: "Checklist de Status", icon: ClipboardCheck },
 ];
+
+// PDFs oficiais dos manuais — arquivos estáticos publicados junto com o
+// site (pasta /public do projeto). Os manuais do Professor e do Aluno
+// abrem/baixam esse PDF diretamente, em vez de mostrar a tela ao vivo.
+const MANUAIS_PDF = {
+  manualProfessor: `${import.meta.env.BASE_URL}manual-do-professor.pdf`,
+  manualAlunoRef: `${import.meta.env.BASE_URL}manual-do-aluno.pdf`,
+  manual: `${import.meta.env.BASE_URL}manual-do-aluno.pdf`,
+};
+
+// Modelo de apresentação (PPTX) que a equipe baixa para preencher com os
+// próprios resultados — download direto, sem restrição de impressão (é
+// pra ser editado livremente pelo aluno, diferente dos manuais).
+const MODELO_APRESENTACAO_URL = `${import.meta.env.BASE_URL}modelo-apresentacao.pptx`;
+
+// Guia Pedagógico — a metodologia de aplicação em sala de aula, mais os
+// slides de apoio para cada sessão. Acesso de qualquer professor (não é
+// exclusivo do Mestre); nunca aparece no menu do aluno. Todos abrem/baixam
+// o PDF diretamente — impressão liberada, diferente dos manuais.
+const GUIA_PEDAGOGICO_ITENS = [
+  { id: "metodologia", label: "Metodologia de Aplicação Pedagógica", arquivo: "metodologia-pedagogica.pdf", destaque: true },
+  { id: "slide1", label: "1. Apresentação da plataforma e formação dos grupos", arquivo: "slide-1-apresentacao-da-plataforma-e-formacao-dos-grupos.pdf" },
+  { id: "slide2", label: "2. Bloco 1 — Investimento Inicial", arquivo: "slide-2-bloco-1-investimento-inicial.pdf" },
+  { id: "slide3", label: "3. Bloco 2 — Receitas e Custos", arquivo: "slide-3-bloco-2-receitas-e-custos.pdf" },
+  { id: "slide4", label: "4. Bloco 3 — Custos Fixos", arquivo: "slide-4-bloco-3-custos-fixos.pdf" },
+  { id: "slide5", label: "5. Bloco 4 — Resultado e Viabilidade", arquivo: "slide-5-bloco-4-resultado-e-viabilidade.pdf" },
+  { id: "slide6", label: "6. Cenários e Fluxo de Caixa", arquivo: "slide-6-cenarios-e-fluxo-de-caixa.pdf" },
+  { id: "slide7", label: "7. Apresentações finais", arquivo: "slide-7-apresentacoes-finais.pdf" },
+];
+
+function GuiaPedagogicoView() {
+  return (
+    <div>
+      <SectionTitle icon={GraduationCap} sub="Metodologia de aplicação em sala de aula e slides de apoio para cada sessão — acesso exclusivo do professor, com impressão e download liberados.">Guia Pedagógico</SectionTitle>
+      <div className="space-y-2.5">
+        {GUIA_PEDAGOGICO_ITENS.map((it) => (
+          <a
+            key={it.id}
+            href={`${import.meta.env.BASE_URL}${it.arquivo}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`flex items-center justify-between gap-3 p-4 rounded-lg border transition ${it.destaque ? "bg-amber-950/20 border-amber-500/40 hover:border-amber-400" : "bg-slate-800 border-slate-700 hover:border-slate-500"}`}
+          >
+            <span className={`flex items-center gap-2.5 text-sm font-semibold ${it.destaque ? "text-amber-300" : "text-slate-200"}`}>
+              {it.destaque ? <BookOpen size={16} /> : <Monitor size={16} />} {it.label}
+            </span>
+            <Printer size={15} className="text-slate-500 shrink-0" />
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 const TELAS_MANUAL = {
   aluno_google: "data:image/webp;base64,UklGRvYNAABXRUJQVlA4IOoNAACQYgCdASoIAloBPmEwlUgkIyIhIhOYkIAMCWlu7mBdLL3mWZI7YepXhPXnV7+Mv8969fRh/u93l5gP15/Y73e/RF6AH6gdbN6AH6n+tX6q37a/sh7UerxsK/wPhP4nPa0m24P+V/grD+yBd22S3yqHovEn4z0AvV/6l3x2oj3x80z/hekv+J8Ab7N/oP9v/d/gC/nH9U/4f90/KT6V/6n/1+VD9A/0PsC/zz+xf9jsoei8GrRW9SXH+lb48tfj2QIc5aq3x35Sd5boaSMeI0dR4rtzjq5e+PLdCOlx/ZODiVVUjdERchjiaoIXRNI8+77BQRaPLfvD/St8eW6GZnT/St8eX+GPER0tTlEtYx4jSRjxEdLj+yaqdP9J4O+BbN1kVtWtVd0X3fd933fcZ+/afML59p+nSt8esCoBwT+w0BsLtYOqe9XVak0oKrL8S2oS+euJfYukZrwuP+UQh4jMzicolVPqJ2SPRuNtjF2mI090/PC4or2d87ADwVtP1hl557w/2kzZLCamTnyNdASzLMeUxTR563FC5bfkTHWwQD+wZAWpyiWsY/J1raFYzGqjfRr3aB1YT2Ba5HZXDJxoYtIRcWJDSRjxjooh1ceCMHyWqW/aAFnoJ/3WIYLMIdjjpmUlb480x/Bcf6VvjgLIs9Q8jXcZIhBaE02J2Z1WxjnXR75ljEN84fk6UgDuboDlwuzjMpRE9nLW1vQN9LyMCRi3EaOo8tqTF/5OybM1BzUkQbkOW1L8a6PkgxdF0XRdEefntzo83lfCUDNPrtwCerbkreLXBpYCNITohwzpzQPpKXj/Q+iDnkx9SdNFdT5ayD6zATertYWCzVV6MCK/YmkjHiI6Ws27b+sOz1JluWb5vm+b5vm+5ZvuUc04EcJj+Ymkiv1iZJEQsO3A8TbdFNAYLmsdtCgV8DiV0FxYkNJGLOlbtQFGMDAt0MzOn9k2sY8RpIx4Vzeby2pK3x5Xwlb48t0NJGPCyAuP9KzafsTSRjxGkjHiNHUeW5sfn5boR0uP9K3x5boaOo8t0NJGPEaOn/+gRLWMeIjo+AD+/JkH4C7cJl2bJ846TIcXpjHjjqRAUyW/GEthEfxMoXo2xDLi1QyhznCVwmIsfag7xIIiEd6Z5Dlntgj63WnuQigIVUN0nGf1KGYkFRUZlmJ9G9byhwPyhh1okAcVSFUXe0NfUW12PEUPQHHhxvZdS9pQ/EY7gFmCT4JxbrnYhLgo5FTTsrt8668LaVIHgEn4cq8OgcFH+xmaczMn9Qedlpkzm2ydcEn+qeR1WfOHQpmiSzjj00zzgZ3/+Z/3V0E9//OWaH8X5mf4+t6rG+0y53dqh8q0boHW73D+gswOKeCCpaQUda76syGP/XqRYbC9FuhzQF/7zacjBdirmb5Bp8jlzvWSHJKSwyGfuC2R6AP0o73PSGc3vZQSDVBfG8j9t3n5ftczKH3m4gZ2ooAn5rvQCR9fH5/AvEQPLOSAjjitV8ZKfTdphywOqZDpbgrj65TKKAIRD+uMnARGsQ3CVyz/PPQJ5UKwn2dvW7fafF612sgoIjMQJO5cu/KQB6yKCK77HUXgoEUsIka28Y/l7vWKem5D3b1eALnTvMTNh5zwJ+tQwo2oPegfLN+6p0KNiYMaguPe9XQ+6WcSIsPZvjT7o5ZB8rOrs6uk5KkhMDt6UVqg9YvKDzOvKy28HYSTzIVm8hq6R/J9n7IeRQRn/iOOiGkunMSorumXnQrQooRcB8C77SSbPbUPQ4y3ukwXaHkmFPh9Ji+XN/v4ik1Js+ASJgo21ENH+hUhEvE761PUSzfgkQ4VNLK+HeQB3IMp+gpePEDM2A2Vy/5/+SMa4rW4J6O/YYPGEgBgsI2eiKMiAIYJMXk4qXngz/E2kKfySsvlu/DBIU5trRram4RIyJAYvN7YCKt6MEeiDW/8DbcGPconnXcBjT8zcN9SIjTmVkwsM1dJEmjfRYepcjqouLAWtIUEaSs8gKYMb8JjokpgLInx4ECvmzAQtM0lq+nv+G8zNVpfMRaTzZ3tcpB5ZJZCC0dZIs4rgjwyXJRoSdob1nQKZonzfffRoXsVPCU1mJPR4ccT8bnQ2UqS5yaS2EdncXqaLIWgXhPr/5bq9Ecf33qzlBCVeyzzpBdT6UPgIDRkwpHQmhjX0UekWRfwK0RjYuN7asKhxLQ95agr8dGgCDUZMtCsWQ9jximQRmhV9VGBMhIr5ejLX5x+BrPmIIJeCsqP9NwdbPPy+gZ+U6QXldDrAEN39BULJhzxgzVVEBvL4RfleG4vQulz3JI+kotQZMzKJSxRkuJtZIBkS9USv7/09anGvdLCL4EBrYkq4biGMl1qUQBJmeJL+UM0DBPDmf+oLmZnkmsuXyIqMzN7Ow6nLlzgzWhfz4y+V1/Fs6BEHhEE3K5LW2dLbld+d8IUKH1yW+3dyPYeTEFp3i6skg19t4AYxPu9Rz0IZxHsIeU0ehbBFmB+wSg7pAizBx5tId4yiOj5Hey6fdQl8VP46hz600+u5M1E6jFI5Y73x+avEkgVCTE4w1xDwBz0FKXaiDNasUoCO+Bwe7y1rM3qTeg8AUUGpdHn1RpJEaCpajeVfjIHWOpOzTjguD0c7t6FJ3W/pwRLTF4LZ7DqPykD4jGyLvepuH0ZtS0QpsvCY9pUXpEWu88ey7nbKBQKAAGq/fl16JvXC0XhNXMQevy37yUDSvKdiZODViZyxlWMwmmdhSKCa4Yt5EI+e/vJ0UioL1wmc5caF/XxC9VOzhXRuwY4d/I7TCyZuAbcsfCzhOLlGvhJC1umoulpk+rhxuMJAm/fdl57X1cHPIaN8xY218sJ0tP7C6b2+3E7Q3tGhH5AQ9zMLEk4NHn9PKew6ftxDdvS5PxZMLL84NNiDYmU3ugCVcOavImBS/Boeb4hC3pGteL+hdy68QTHPYnl5wMB7kmkYn+98WdyOYUk5If/+xu/CtPVHg/b1b9UU7/wT/6W7PdNyXb/ejupvez4v1a7/bMG/flmE0f10wLW9DgjCwHhGkFfSGVukJF+eF6mv5ZK6D7Crxy/ApQFuEarc4m5wWfeB4fyPreQruJz06HGYrxxBaXP/xJxf/RIJd88tDhKVZtPG+TaQOb9Tus+XLxmnOGXE1rBgqAHXS7CK7ysXFHDNSZ5d8a1Bm8pY4hSCM0bgs33WwY26CHaCiEWXL/kyqoUjg6C0DWUrxr4KLw9JtAlRcpA7Vhrr74AMtLJDUAvfGGuffzTb5MoPgH36kyR9rbQYS4sHCpM7VrCnAoAT1TqnODHempfAbaRVTP9Mc6v0szeGdGRfqoevnd/mS4enfBdfqqGPcjfVMHEMhOOrqf8PtUTfCVdoaervLUN/o20UBhRCEZCP6VzP24/yfneJCPAD93ssTKU1wvsBMtJEsDm/qayyH5zozzT7S9UH/Ol1n9sWM4Rn7QQ/xdJ6tD4QjFbJIIrwcqDUkW774SvT1ytIODAsi8telnYRKktKnq/KheQS/uDF3D/a9nz70FfYnPTR0TgRvSPkfDkXRZ8MCntw1u2YuhT/4QrCCauaVRtdrOxRE/j+1Rie4z9rPS/4snksbU0DhjX2UWvNilnaxpoSp4oymQ4r3IHNsW2Ra5MjYyjmMcHx7QU+e9bDsSlc3ADY3GDEmW3+L/texX88ibgAqL1FjSlr4z1hbHApqrabJ777v/i6xX9CnsvXh9eoEiOcX/ET1WwFAKkBWTIhvJ44Z1EEx8L3Y/FF1hm+aC+E8KPSflYbdXMXysQpN+S7/LnjYLhzsA9QoqDqg6oOp5svlDu1mfgq3MclsRqJ2qpzPTBmtptBYf4s90ZWoMHBrLOOz1sSSxrY5g/5kmOuYAGFHte9mGIg54TylcrpTBhBcf3r1CLVA24+ZvR5u4KZx/h8tUoI6zc0NWgTCf4Ufx/Y3WDxpwNGe6Exq1BqvpSU6CZn9SgcCc1ZvyCB/nGEhKHkwph/RbmdHM+3ddL3W8mc3RLAnj7qjmK/H/roBz7fiP6pOmLn6WH4wP4J6knPG0HN4ecSfFWhufbYvi2V0rQa8qRDIOmA4XuKfWtGk+zDZrZo9YJqgstgS2D0yvnfaTt94E7f3CRt2yB1DvUysDkEN0AFY/KKxbGPaTi1Pbi77ds8TVDpykDzrq6b19nUQR69QcVeGUzn8HUiSvCVkh4vuz2Cs3G4s58/OF+D3DYT9RMU7/XRRKqjnsxRuxubFHYa5CFjpTJh6DnONh3dZF16yJQUAKeL8cRnhJp10ig/L5tNKrGKdLF8ugUzy3+js56eX0+91Sw2uR0NtisVih2EEeQlFX3io84aI/1LNsv2yfKzKPkX/RsUfejCHvw/r35hXxJDAcCdI0DBUDuq9CHsNOsQeiIT0P+EHhygbDIVLwnqu26I1Zs4ofrZOWEELmF6mAv4sPL/r0bY33Uh2/hGWfXPjAkqkZaT6PaYicd18M0ZAKL0rElWkHQ38UpttcXYXStdJPNqexuydwEMJyye7Kyde1+4TMjIoz5vBEx6+s1lJ/wFevwISHwNENltoI4asPNRF1jyKk8hFONRARJmK4aZbBlAxQ/aHT+eN8lpNxaSDbfM2Hvy27u/8jOg/jIAbdTLVFaQIpRLr7Ogk0T+5QxUvzl3On84tvgFLKBDEm3FfTXDPTWpw/mWBpAY3tKEGStBASWZfyTAtDHF0gJKtfNFLECnLOOx2WfD/Aa4w3wrv5oP8A1PqhZYO+gAYAtbQaVwAAA",
@@ -185,22 +443,27 @@ const TELAS_MANUAL = {
 
 const MANUAL_ALUNO_PASSOS = [
   { titulo: "Entrem com a conta Google", texto: "Na tela inicial, escolham o perfil \"Aluno(a)\" e cliquem em \"Continuar com o Google\". Pode ser qualquer conta Google que vocês tiverem — não precisa ser uma conta específica da escola.", imagem: "aluno_google" },
-  { titulo: "Informem sua matrícula", texto: "Digitem o número de matrícula de vocês (o mesmo da lista oficial da escola). A plataforma já reconhece automaticamente a turma certa e o nome oficial de vocês — não precisa mais de código de turma nem de digitar o nome.", imagem: "aluno_codigo" },
+  { titulo: "Confirmem a matrícula", texto: "Digitem o número de matrícula de vocês (o mesmo da lista oficial da escola). A plataforma já reconhece automaticamente o nome oficial de vocês e a turma a que a matrícula pertence." },
+  { titulo: "Informem o código da turma", texto: "Em seguida, digitem o código de 6 caracteres que o(a) professor(a) passar em sala — ele precisa corresponder à turma da matrícula informada no passo anterior. A partir do segundo acesso, turma e empresa já ficam salvas: só a matrícula é pedida de novo, a cada login, como confirmação de identidade." },
   { titulo: "Escolham a empresa da equipe", texto: "Escolham, na lista de empresas já cadastradas pelo professor, o negócio da equipe de vocês. Se um colega já entrou na mesma empresa, vocês se juntam automaticamente a ela — combinem com o grupo qual escolher, para não se dividirem por engano.", imagem: "aluno_team" },
   { titulo: "Sigam a ordem dos 13 módulos", texto: "Preencham os módulos na sequência 1 a 13: cada um utiliza dados calculados no módulo anterior — por exemplo, o Módulo 8 usa os produtos cadastrados no Módulo 5, e o Módulo 11 já soma automaticamente os totais dos Módulos 9 e 10.", imagem: "aluno_steps13" },
+  { titulo: "Os módulos são liberados um a um", texto: "No início, só o Módulo 1 vem liberado — os demais aparecem na lista, mas travados. Preencham o módulo atual e cliquem em \"Enviar para correção\": ele trava para edição e o(a) professor(a) libera o seguinte depois de corrigir. Fiquem de olho no Prazo de Entrega de cada módulo — entregas fora do prazo têm desconto de 2,0 pontos por pontualidade, e um módulo com prazo vencido sem envio só é reaberto pelo(a) professor(a)." },
   { titulo: "Leiam a teoria antes de lançar dados", texto: "Todo módulo tem uma caixa \"Teoria do módulo\" — abram-na antes de preencher. Ela traz o conceito e a fórmula que a plataforma está usando nos cálculos.", imagem: "aluno_theory" },
-  { titulo: "Acompanhem a Análise do Negócio", texto: "A cada rodada de ajustes, confiram os gráficos e os alertas automáticos dessa aba para entender se o negócio está indo bem — ela reúne o que foi lançado em todos os módulos.", imagem: "aluno_chart" },
+  { titulo: "Acompanhem a Análise do Negócio", texto: "A cada rodada de ajustes, confiram os gráficos, os alertas automáticos e o ranking \"Produtos Mais Lucrativos\" — essa aba reúne o que foi lançado em todos os módulos e mostra quais produtos/serviços mais contribuem para o resultado." },
+  { titulo: "Explorem a Análise de Cenários e o Fluxo de Caixa", texto: "Na aba \"Análise de Cenários\", criem até 3 simulações de \"e se\" (ex.: preço 10% maior, custo de matéria-prima 5% mais caro) sem alterar nada do que já foi lançado. No Fluxo de Caixa Anual, vejam a projeção mês a mês do primeiro ano — e, se quiserem se aprofundar, o VPL e a TIR, indicadores opcionais que avaliam o investimento levando em conta o valor do dinheiro no tempo." },
   { titulo: "Salvem versões ao longo do projeto", texto: "Sempre que fizerem um ajuste relevante (novo preço, novo custo, nova equipe de trabalho), cliquem em \"Salvar versão\" na Análise do Negócio. Isso registra a evolução do projeto para vocês e para o professor.", imagem: "aluno_versions" },
-  { titulo: "Leiam o feedback do professor", texto: "Verifiquem regularmente a aba \"Feedback do Professor\": lá aparecem os comentários e ajustes solicitados, organizados por módulo.", imagem: "aluno_feedback" },
-  { titulo: "Finalizem o projeto", texto: "O plano financeiro está concluído quando os 13 módulos estiverem preenchidos, o resultado operacional analisado e pelo menos duas versões salvas mostrando a evolução dos ajustes feitos pela equipe.", imagem: "aluno_finish" },
+  { titulo: "Leiam o feedback do professor", texto: "Verifiquem regularmente a aba \"Feedback do Professor\": além dos comentários organizados por módulo, é lá que aparece a nota final ponderada (média dos módulos + Módulo 13 + Cenários/Fluxo de Caixa + Apresentação) assim que todos os componentes forem lançados." },
+  { titulo: "Finalizem o projeto", texto: "O plano financeiro está concluído quando os 13 módulos estiverem preenchidos, enviados e corrigidos, o resultado operacional analisado e pelo menos duas versões salvas mostrando a evolução dos ajustes feitos pela equipe.", imagem: "aluno_finish" },
 ];
 
 const MANUAL_PROFESSOR_PASSOS = [
-  { titulo: "Criem a turma", texto: "Em GESTÃO → Turmas, cadastrem o nome da turma e o período letivo. A plataforma gera um código de 6 caracteres — é ele que os alunos vão usar para entrar.", imagem: "prof_login" },
-  { titulo: "Importem a lista de alunos", texto: "Em GESTÃO → Usuários (ou dentro da turma), usem o botão de importar PDF para subir a lista oficial de alunos da turma. Isso é o que permite cada aluno entrar direto com a própria matrícula — sem isso, eles só conseguem entrar pelo código da turma.", imagem: "prof_upload" },
-  { titulo: "Pré-cadastrem as empresas", texto: "Ainda em GESTÃO, cadastrem os nomes dos negócios que as equipes vão trabalhar. Isso faz com que, na hora de entrar na plataforma, o aluno escolha a empresa numa lista pronta em vez de digitar o nome livremente.", imagem: "prof_companies" },
-  { titulo: "Aprovações (uso raro agora)", texto: "Em GESTÃO → Aprovações, fiquem de olho só por precaução: como o código da turma já libera o aluno na hora, essa tela normalmente fica vazia. Ainda serve para corrigir o papel de alguém ou excluir um cadastro feito por engano.", imagem: "prof_approve" },
+  { titulo: "Criem a turma", texto: "Em GESTÃO → Turmas, cadastrem o nome da turma e o período letivo. A plataforma gera um código de 6 caracteres — é ele que os alunos vão usar no segundo passo do primeiro acesso, depois de confirmar a matrícula.", imagem: "prof_login" },
+  { titulo: "Importem ou cadastrem os alunos", texto: "Em Turmas → Lista oficial de alunos, importem a lista oficial em PDF para agilizar a aprovação automática — ou incluam/excluam um aluno individualmente, para ajustes pontuais sem reimportar a lista inteira. É essa lista que permite cada aluno confirmar a própria matrícula no primeiro acesso." },
+  { titulo: "Pré-cadastrem as empresas", texto: "Ainda na turma, cadastrem os nomes dos negócios que as equipes vão trabalhar. Isso faz com que, na hora de entrar na plataforma, o aluno escolha a empresa numa lista pronta em vez de digitar o nome livremente.", imagem: "prof_companies" },
+  { titulo: "Aprovações (uso raro agora)", texto: "Em GESTÃO → Aprovações, fiquem de olho só por precaução: como matrícula + código de turma já aprovam o aluno na hora, essa tela normalmente fica vazia. Ainda serve para corrigir o papel de alguém ou excluir um cadastro feito por engano.", imagem: "prof_approve" },
   { titulo: "Gerenciem os usuários", texto: "Em GESTÃO → Usuários, acompanhem a lista de alunos com a empresa atual de cada um. Usem o botão \"Editar\" para corrigir a turma ou a empresa de um aluno a qualquer momento.", imagem: "prof_team" },
+  { titulo: "Liberem os módulos e definam prazos", texto: "Cada equipe começa só com o Módulo 1 liberado. Definam o Prazo de Entrega de cada módulo na revisão da equipe; quando a equipe enviar um módulo para correção, avaliem e cliquem em \"Confirmar correção\" para liberar o seguinte automaticamente. Se o prazo vencer sem envio, o módulo trava sozinho — só vocês conseguem reabrir, e é obrigatório definir um novo prazo; fica registrado que houve atraso, para aplicar o desconto de 2,0 pontos na nota." },
+  { titulo: "Avaliem com o modelo ponderado", texto: "Além da nota de cada módulo, lancem também Cenários e Fluxo de Caixa e Apresentação da empresa na revisão da equipe. A nota final sai sozinha: 40% média dos módulos + 20% Módulo 13 + 20% Cenários/Fluxo de Caixa + 20% Apresentação — a equipe vê o resultado no Feedback do Professor assim que todos os componentes forem lançados." },
   { titulo: "Revisem os módulos e comentem", texto: "Abram o painel de revisão por módulo de cada equipe (modo somente leitura) e deixem comentários e ajustes solicitados. Os alunos veem esse feedback organizado por módulo na aba \"Feedback do Professor\" deles.", imagem: "prof_feedback" },
   { titulo: "Consultem os relatórios", texto: "Em GESTÃO → Relatórios, acompanhem a visão consolidada da turma: um relatório de pendências e outros três relatórios complementares por empresa.", imagem: "prof_chart" },
   { titulo: "Exportem um backup", texto: "Em GESTÃO → Backup, gerem um backup dos dados da turma sempre que quiserem guardar um retrato do trabalho.", imagem: "prof_download" },
@@ -226,16 +489,41 @@ const OPERACIONAL_SECOES = [
     "03/08: categorias ilimitadas, menu mobile em gaveta, coluna \"O que falta\" nos relatórios.",
     "04/08 – 05/08: manuais ilustrados, caixa de links de referência.",
     "16/08: tela de login redesenhada, login exclusivo via conta Google (fim do cadastro por e-mail/senha), seletor de perfil integrado ao login, professor entra direto (sem aprovação), botão de auto-promoção a Mestre pelo código, aluno entra direto com a própria matrícula (a lista de alunos importada em PDF passou a ser o índice de acesso, com o código de turma como alternativa).",
+    "17/08: Central de Suporte (chamados de Sistema e Pedagógico, com protocolo e relatório para desenvolvimento); Novidades e Atualizações; menu Tutoriais (vídeos, um por módulo); caixa \"Exemplo de lançamento\" em cada módulo; correção de uma condição de corrida no login; rodapé de direitos autorais.",
+    "20/08: Gestor único por empresa (só uma pessoa lança dados por vez); salvamento com pausa (debounce, reduz o volume de escritas no Firestore); Backup do Semestre (todas as turmas num arquivo só); escotilha \"Escolhi Aluno por engano\" para autocorreção de perfil.",
+    "21/08: botão \"Imprimir/Salvar PDF\" fixo na Central de Suporte, disponível a qualquer momento (antes só aparecia junto de \"Encaminhar para desenvolvimento\"); nota de 0 a 10 por módulo, dada pelo professor na revisão de cada equipe (8 módulos avaliáveis + nota final de síntese no Módulo 13).",
+    "23/08: Análise de Cenários (até 3 simulações de \"e se\", comparando resultado projetado com o cenário atual, sem alterar os lançamentos salvos); correção de um bug que deixava o menu Tutoriais do Aluno em branco.",
+    "24/08: Fluxo de Caixa Anual Projetado — projeção mês a mês do primeiro ano de operação, com taxa de crescimento opcional e indicador do mês em que o caixa fica positivo (payback).",
+    "27/08: confirmação de matrícula exigida a cada login (reforço de segurança, não só no primeiro acesso); painel \"Menu do Aluno\" recolhível na revisão do professor, mostrando Cenários e Fluxo de Caixa da equipe em modo leitura; Manual do Aluno e Manual do Professor reformulados no padrão formal (capa, sumário, telas reais no estilo da própria plataforma); os dois manuais passaram a ser PDFs estáticos publicados na pasta public/ do projeto, abertos direto pelos botões do menu; impressão/download desses PDFs restrita ao Usuário Mestre — professores e alunos abrem em modo leitura, sem os controles nativos de imprimir/baixar do navegador.",
+    "28/08: Lista oficial de alunos (Turmas → Lista oficial de alunos) passou a permitir inclusão e exclusão individual de aluno, além da importação em massa por PDF — útil para ajustar um aluno pontual (matrícula corrigida, aluno novo, transferência) sem precisar reimportar a lista inteira. A inclusão individual usa o mesmo índice matrícula → turma da importação em massa, então o aluno incluído também entra direto pela própria matrícula.",
+    "28/08: primeiro acesso do aluno passou a ter dois passos em sequência — primeiro a matrícula (confirma o cadastro contra a lista oficial), depois o código da turma (precisa bater com a turma indicada pela matrícula) — só então a escolha da empresa é liberada. A partir do segundo acesso, turma e empresa já ficam salvas e não são pedidas de novo; só a matrícula é reconfirmada a cada login. Quando a matrícula ainda não está na lista oficial, existe uma alternativa para entrar só com o código da turma.",
+    "28/08: Módulo 7 (Custos de Comercialização) ganhou o cálculo automático da alíquota do Simples Nacional (Anexos I a III — Comércio, Indústria e Serviços), a partir do tipo de atividade e do faturamento anual do Módulo 5. Continua existindo a opção de informar o percentual manualmente, para atividades fora desses três anexos.",
+    "28/08: Análise do Negócio ganhou o bloco \"Produtos Mais Lucrativos\": ranking dos produtos/serviços do Módulo 5 por margem de contribuição total (usando o custo do Módulo 8 e o imposto/comissão do Módulo 7), e uma calculadora de preço sugerido por margem de contribuição desejada.",
+    "28/08: Fluxo de Caixa Anual ganhou VPL (Valor Presente Líquido) e TIR (Taxa Interna de Retorno), com TMA (Taxa Mínima de Atratividade) informada pela equipe — indicadores opcionais e mais avançados, para equipes que já dominam o Ponto de Equilíbrio e o Payback simples e querem aprofundar a análise de investimento.",
+    "28/08: Módulo 9 (Mão de Obra) ganhou o cálculo automático de encargos sociais por grupo (A — básicos/legais, B — período não trabalhado, C — pagos em dinheiro, D — incidências cruzadas), conforme o regime tributário (Simples Nacional ou Lucro Real/Presumido). Continua existindo a opção de informar um percentual manual por função.",
+    "30/08: Manual do Professor e Manual do Aluno, no perfil do professor, agora abrem sempre imprimíveis/baixáveis diretamente pelo navegador — antes essa opção era restrita ao Usuário Mestre. A visão do aluno continua em modo leitura, sem os controles nativos de imprimir/baixar. Módulo 7 ganhou também um aviso educativo sobre a Reforma Tributária (CBS/IBS) em curso no país, sem afetar nenhum cálculo — 2026 é o ano de testes da reforma, e empresas do Simples Nacional (regime coberto pela tabela automática do módulo) seguem normalmente pelo DAS.",
+    "30/08: modelo de avaliação da equipe implementado conforme o Guia Pedagógico (slide \"Como vocês serão avaliados\"): 40% média dos 8 módulos avaliáveis + 20% Módulo 13 + 20% Cenários e Fluxo de Caixa (nota nova) + 20% Apresentação da empresa (nota nova), com a nota final ponderada calculada automaticamente assim que todos os componentes estiverem lançados. Aparece tanto na revisão do professor (com os dois campos novos editáveis) quanto no Feedback do Professor visto pela equipe.",
+    "30/08: liberação sequencial dos módulos — só o Módulo 1 vem liberado; os demais aparecem no índice (visíveis, com o número da sequência) mas travados para preenchimento até a equipe enviar o módulo atual para correção e o professor confirmar. Cada módulo tem um campo de Prazo de Entrega definido pelo professor; passado o prazo sem envio, o módulo trava automaticamente e só o professor consegue reabrir — obrigatoriamente com um novo prazo —, ficando registrado que houve atraso (para o desconto de 2,0 pontos por pontualidade, aplicado manualmente pelo professor na nota). Equipes que já vinham usando a plataforma antes desta atualização não foram travadas retroativamente: o que já estava preenchido conta como corrigido, e o fluxo novo passa a valer a partir do primeiro módulo ainda não preenchido.",
+    "30/08: Manual do Aluno e Manual do Professor (conteúdo dentro da própria plataforma) revisados e atualizados para refletir todas as mudanças de agosto — login em dois passos, liberação sequencial dos módulos com prazo de entrega, e o modelo de avaliação ponderada. Com essa atualização, a plataforma está pronta para o uso em sala com a turma.",
+    "31/08: correção na liberação sequencial dos módulos — o Módulo 1 podia aparecer como \"Corrigido\" em vez de \"Liberado\" numa equipe recém-criada, se alguém tivesse clicado em \"Adicionar bem\" sem preencher nada (uma linha vazia já contava como \"módulo já preenchido\" na regra antiga, pensada para não travar retroativamente equipes que já estavam em andamento antes da atualização anterior). Como não há mais equipes antigas a proteger, a regra ficou mais simples e direta: toda equipe nova começa só com o Módulo 1 liberado, e nenhum módulo vira \"corrigido\" sem passar pelo envio da equipe e a correção do professor.",
+    "31/08: novo Relatório de Notas em GESTÃO → Relatórios: uma linha por aluno (não por empresa) — a nota de cada módulo, de Cenários/Fluxo de Caixa, de Apresentação e a nota final ponderada da equipe aparecem replicadas para cada integrante vinculado a ela, com botão para baixar em CSV.",
+    "31/08: domínio próprio ppfn.com.br configurado (DNS no Registro.br, domínio personalizado no GitHub Pages com HTTPS, domínio autorizado no Firebase Authentication). Foi preciso também ajustar o vite.config.js (base: \"/\" em vez de \"/Plataforma-Plano-Financeiro-CEDUP-Hermann-Hering/\"), já que o site passou a ser servido pela raiz do domínio, não mais por uma subpasta — sem esse ajuste, a página carregava em branco. O link antigo (profjorgerg-gif.github.io/...) continua funcionando, redirecionado automaticamente pelo GitHub Pages para o domínio novo.",
+    "01/09: novo item de menu para o aluno — Referências Bibliográficas, com 10 fontes agrupadas em 4 categorias (Plano de Negócios e Empreendedorismo, Administração Financeira, Legislação Tributária, Normalização ABNT), como ponto de partida para a bibliografia do próprio trabalho final. Os manuais (Aluno e Professor) também tiveram os Glossários ampliados: de 11 para 24 termos no do Aluno, e de 9 para 17 no do Professor.",
   ]},
   { titulo: "Segurança da plataforma", paragrafos: [
     "Login exclusivo via Google: o provedor \"E-mail/senha\" foi desativado no Console do Firebase; só \"Google\" está ativo. É preciso conferir, em Authentication → Domínios autorizados, se o domínio do GitHub Pages está na lista.",
     "Regras do Firestore exigem login (request.auth != null) em qualquer leitura/escrita.",
     "Código de Usuário Mestre: como o repositório é público, esse código nunca deve ser divulgado em canais públicos. Trocar periodicamente pelo arquivo firebaseAuth.js.",
   ]},
+  { titulo: "Cuidado ao subir um novo App.jsx", paragrafos: [
+    "Em 21/08, uma atualização pareceu \"não publicar\" várias vezes seguidas, mesmo com o GitHub Actions sempre verde. Depois de uma investigação longa (testada em navegadores e redes diferentes, e até um reset completo do GitHub Pages), a causa real era mais simples: um App.jsx antigo, ainda na pasta Downloads, estava sendo reenviado por engano no lugar do mais novo — o nome do commit ficava certo, mas o conteúdo de dentro era de uma versão anterior.",
+    "Lição para evitar isso: antes de cada upload, apague (ou mova) os App.jsx antigos da pasta Downloads, e confira o tamanho do arquivo baixado (o Claude sempre informa o tamanho esperado) antes de subir no GitHub.",
+  ]},
   { titulo: "Referências do projeto", lista: [
     "Repositório: github.com/profjorgerg-gif/Plataforma-Plano-Financeiro-CEDUP-Hermann-Hering",
-    "Site publicado: profjorgerg-gif.github.io/Plataforma-Plano-Financeiro-CEDUP-Hermann-Hering/",
+    "Site publicado: ppfn.com.br (domínio próprio, desde 31/08/2026; o link antigo profjorgerg-gif.github.io/Plataforma-Plano-Financeiro-CEDUP-Hermann-Hering/ continua funcionando, redirecionando automaticamente para o novo)",
     "Projeto Firebase: plataforma-plano-financeiro (Firestore + Authentication, southamerica-east1)",
+    "Canal de tutoriais no YouTube: youtube.com/@PPFPlataformaPlanoFinanceiro",
     "Metodologia de referência: elaboração de plano de negócios, por módulos financeiros sequenciais.",
   ]},
 ];
@@ -243,20 +531,77 @@ const OPERACIONAL_SECOES = [
 const CHECKLIST_SECOES = [
   { titulo: "O que já temos (funcionalidade confirmada)", tom: "ok", itens: [
     "Login exclusivo via Google, com seletor de perfil (Aluno/Professor + código de Mestre)",
-    "Professor entra direto; aluno entra direto com a própria matrícula (nome oficial e turma reconhecidos automaticamente)",
+    "Professor entra direto; aluno confirma matrícula + código de turma no primeiro acesso (nome oficial e turma reconhecidos automaticamente); da segunda vez em diante, só a matrícula é pedida",
     "Os 13 módulos financeiros calculando e passando dados entre si",
-    "Análise do Negócio com gráficos e alertas automáticos",
-    "Feedback do Professor por módulo",
-    "Relatórios e importação de lista de alunos em PDF",
+    "Análise do Negócio com gráficos, alertas automáticos, ranking de produtos por margem de contribuição e calculadora de preço sugerido",
+    "Modelo de avaliação da equipe (40% módulos + 20% Módulo 13 + 20% Cenários/Fluxo de Caixa + 20% Apresentação), com nota final ponderada automática",
+    "Liberação sequencial dos módulos, com prazo de entrega, envio para correção, e reabertura obrigatoriamente com novo prazo em caso de atraso",
+    "Análise de Cenários: até 3 simulações comparadas com o resultado atual",
+    "Fluxo de Caixa Anual Projetado: evolução mês a mês do primeiro ano, com indicador do mês de payback, VPL e TIR (opcionais, com TMA informada pela equipe)",
+    "Módulo 9: encargos sociais calculados automaticamente por grupo A/B/C/D, conforme o regime tributário (Simples ou Lucro Real/Presumido), com opção de percentual manual por função",
+    "Módulo 7: cálculo automático da alíquota do Simples Nacional (Anexos I a III) a partir do tipo de atividade e do faturamento anual, com opção de informar manualmente",
+    "Confirmação de matrícula a cada login, não só no primeiro acesso",
+    "Feedback do Professor por módulo, com nota de 0 a 10 em 8 módulos + nota final no Módulo 13",
+    "Painel \"Menu do Aluno\" recolhível na revisão do professor (Cenários e Fluxo de Caixa, em modo leitura)",
+    "Central de Suporte (chamados de Sistema e Pedagógico) e menu Novidades/Tutoriais",
+    "Gestor único por empresa e salvamento com pausa — reduzem o volume de uso do banco de dados",
+    "Relatórios (Resumo Comparativo, por Empresa, de Notas por aluno com exportação em CSV, e Pendências), Backup do Semestre e Lista oficial de alunos (importação em massa por PDF + inclusão/exclusão individual)",
+    "Referências Bibliográficas no menu do aluno — 10 fontes em 4 categorias, como apoio para a bibliografia do trabalho final",
+    "Manual do Aluno e Manual do Professor em PDF formal, imprimíveis/baixáveis no perfil do professor; visão do aluno em modo leitura",
     "Painel GESTÃO completo: Turmas, Usuários, Relatórios, Backup, Auditoria, Aprovações",
     "Regras de segurança do Firestore exigindo login",
   ]},
   { titulo: "Pendente de confirmação", tom: "warn", itens: [
-    "Testar o login e a gravação de dados com uma conta de aluno real, de ponta a ponta",
-    "Confirmar no Console do Firebase se o domínio do site está nos Domínios autorizados",
-    "Repassar a lista real de turmas/alunos do semestre atual, se ainda não foi importada",
+    "Testar o Gestor único e o login por matrícula + código de turma com alunos reais usando ao mesmo tempo",
+    "Gravar os vídeos do canal do YouTube para o menu Tutoriais",
   ]},
 ];
+
+// ============================================================================
+// LOG DE ACESSOS (entrada/saída) — lista global compartilhada, uma linha por
+// evento de login/logout. O professor só vê os eventos ligados às próprias
+// turmas (mais os próprios); o Usuário Mestre vê tudo, de todo mundo.
+// "Saída" só é registrada quando a pessoa clica em "Sair" — fechar a aba
+// sem clicar em "Sair" não garante o registro (limitação do navegador).
+// ============================================================================
+const CHAVE_LOG_ACESSOS = "log_acessos";
+const LOG_ACESSOS_MAX = 500;
+
+async function registrarAcesso({ uid: uidPessoa, nome, papel, turmaId, turmaNome, tipo }) {
+  try {
+    const r = await window.storage.get(CHAVE_LOG_ACESSOS, true);
+    const lista = r ? JSON.parse(r.value) : [];
+    lista.push({ id: uid(), uid: uidPessoa, nome, papel, turmaId: turmaId || null, turmaNome: turmaNome || null, tipo, timestamp: Date.now() });
+    const cortada = lista.slice(-LOG_ACESSOS_MAX);
+    await window.storage.set(CHAVE_LOG_ACESSOS, JSON.stringify(cortada), true);
+  } catch {}
+}
+
+function useLogAcessos(refreshKey) {
+  const [lista, setLista] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLista(null);
+      try {
+        const r = await window.storage.get(CHAVE_LOG_ACESSOS, true);
+        if (alive) setLista(r ? JSON.parse(r.value) : []);
+      } catch {
+        if (alive) setLista([]);
+      }
+    })();
+    return () => { alive = false; };
+  }, [refreshKey]);
+  return lista;
+}
+
+// Sufixo de data/hora para nomes de arquivo de backup — assim cada exportação
+// fica identificável (e nunca sobrescreve a anterior no histórico de
+// downloads), ex.: "2026-09-09_19h45m00s".
+function sufixoDataHoraArquivo(data = new Date()) {
+  const p2 = (n) => String(n).padStart(2, "0");
+  return `${data.getFullYear()}-${p2(data.getMonth() + 1)}-${p2(data.getDate())}_${p2(data.getHours())}h${p2(data.getMinutes())}m${p2(data.getSeconds())}s`;
+}
 
 function baixarArquivo(nome, conteudo, mime = "application/json") {
   try {
@@ -277,9 +622,9 @@ function defaultLancamentos() {
     m4: { pctProprio: 100 },
     m5: { itens: [] },
     m6: { itens: [] },
-    m7: { pctImpostos: 0, pctComissao: 0 },
+    m7: { pctImpostos: 0, pctComissao: 0, modoImposto: "simples", tipoAtividade: "" },
     m8: { custosUnit: {} },
-    m9: { itens: [] },
+    m9: { itens: [], modoEncargos: "grupos", regimeEncargos: "simples" },
     m10: { vidasUteis: {} },
     m11: { itens: [] },
   };
@@ -307,6 +652,31 @@ function calcular(lanc) {
   const faturamento = l.m5.itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.precoUnit) || 0), 0);
   const custoComercializacao = faturamento * ((Number(l.m7.pctImpostos) || 0) + (Number(l.m7.pctComissao) || 0)) / 100;
 
+  // Análise por produto/serviço: margem de contribuição unitária e total de
+  // cada item do Módulo 5, usando o custo unitário do Módulo 8 e as taxas
+  // (imposto + comissão) do Módulo 7 já lançadas — não pede nenhum dado
+  // novo do aluno. Serve para o ranking de produtos mais lucrativos e para
+  // a calculadora de preço sugerido, na Análise do Negócio.
+  const pctImpostos = Number(l.m7.pctImpostos) || 0;
+  const pctComissao = Number(l.m7.pctComissao) || 0;
+  const produtosAnalise = l.m5.itens.map((it) => {
+    const preco = Number(it.precoUnit) || 0;
+    const qtd = Number(it.qtd) || 0;
+    const custoUnit = Number(l.m8.custosUnit?.[it.id]) || 0;
+    const impostoUnit = (preco * pctImpostos) / 100;
+    const despVarUnit = (preco * pctComissao) / 100;
+    const precoLiquido = preco - impostoUnit - despVarUnit;
+    const margemUnit = precoLiquido - custoUnit;
+    const margemPct = preco > 0 ? (margemUnit / preco) * 100 : 0;
+    const receitaTotal = preco * qtd;
+    const margemTotal = margemUnit * qtd;
+    return { id: it.id, nome: it.nome || "(sem nome)", preco, qtd, custoUnit, impostoUnit, despVarUnit, precoLiquido, margemUnit, margemPct, receitaTotal, margemTotal };
+  });
+  const margemTotalGeral = produtosAnalise.reduce((s, p) => s + p.margemTotal, 0);
+  const produtosRanking = [...produtosAnalise]
+    .sort((a, b) => b.margemTotal - a.margemTotal)
+    .map((p) => ({ ...p, pctDaMargem: margemTotalGeral > 0 ? (p.margemTotal / margemTotalGeral) * 100 : 0 }));
+
   const cmv = l.m5.itens.reduce((s, it) => {
     const cu = Number(l.m8.custosUnit?.[it.id]) || 0;
     return s + (Number(it.qtd) || 0) * cu;
@@ -314,7 +684,7 @@ function calcular(lanc) {
 
   const maoDeObra = l.m9.itens.reduce((s, it) => {
     const sal = Number(it.salario) || 0;
-    const enc = Number(it.pctEncargos) || 0;
+    const enc = (l.m9.modoEncargos || "grupos") === "grupos" ? totalEncargosGrupo(l.m9.regimeEncargos || "simples") : (Number(it.pctEncargos) || 0);
     return s + (Number(it.qtd) || 0) * sal * (1 + enc / 100);
   }, 0);
 
@@ -383,6 +753,7 @@ function calcular(lanc) {
     investimentoTotal, receitaAnual, custoVariavelAnual, custoFixoAnual, lucroAnual,
     indiceMargemContribuicao, pontoEquilibrio, lucratividade, rentabilidade, prazoRetorno,
     progresso, preenchidos,
+    pctImpostos, pctComissao, produtosAnalise, produtosRanking, margemTotalGeral,
   };
 }
 
@@ -550,6 +921,54 @@ function NovidadesOverlay({ perfil, onFechar, onIrParaHistorico }) {
         </div>
         <button onClick={onFechar} className="w-full bg-amber-500 text-slate-900 font-bold py-2.5 rounded-md hover:bg-amber-400">Entendi</button>
         <button onClick={onIrParaHistorico} className="w-full text-sm text-slate-400 hover:text-slate-100 mt-2">Ver histórico completo</button>
+      </div>
+    </div>
+  );
+}
+
+const REFERENCIAS_BIBLIOGRAFICAS = [
+  { grupo: "Plano de Negócios e Empreendedorismo", itens: [
+    "SEBRAE. Como elaborar um plano de negócios. Brasília: SEBRAE, [s.d.]. Disponível em: sebrae.com.br.",
+    "DOLABELA, Fernando. O Segredo de Luísa. São Paulo: Cultura, 2008.",
+    "CHIAVENATO, Idalberto. Empreendedorismo: dando asas ao espírito empreendedor. São Paulo: Manole, 2012.",
+  ]},
+  { grupo: "Administração Financeira", itens: [
+    "ASSAF NETO, Alexandre. Administração Financeira: Empresas, Fluxo de Caixa e Valor. São Paulo: Atlas.",
+    "GITMAN, Lawrence J. Princípios de Administração Financeira. São Paulo: Pearson.",
+    "SILVA, José Pereira da. Análise Financeira das Empresas. São Paulo: Atlas.",
+  ]},
+  { grupo: "Legislação Tributária", itens: [
+    "BRASIL. Lei Complementar nº 123, de 14 de dezembro de 2006 (institui o Simples Nacional).",
+    "BRASIL. Lei Complementar nº 214, de 16 de janeiro de 2025 (institui a CBS e o IBS).",
+    "RECEITA FEDERAL DO BRASIL. Portal do Simples Nacional. Disponível em: gov.br/receitafederal.",
+  ]},
+  { grupo: "Normalização (ABNT)", itens: [
+    "ASSOCIAÇÃO BRASILEIRA DE NORMAS TÉCNICAS. NBR 6023: informação e documentação — referências — elaboração. Rio de Janeiro: ABNT.",
+  ]},
+];
+
+// Referências de apoio pedagógico para o aluno usar na bibliografia do
+// próprio trabalho — cobre a metodologia que os 13 módulos seguem (SEBRAE),
+// a base teórica de administração financeira, a legislação tributária por
+// trás dos cálculos automáticos (Módulo 7), e a norma da ABNT para o aluno
+// formatar corretamente as próprias referências.
+function ReferenciasBibliograficasView() {
+  return (
+    <div>
+      <div className="mb-8">
+        <div className="text-xs font-bold tracking-widest text-amber-500 mb-2">APOIO AO TRABALHO FINAL</div>
+        <h1 className="text-3xl font-bold text-slate-50 mb-3">Referências Bibliográficas</h1>
+        <p className="text-slate-400 max-w-2xl">Fontes que sustentam a metodologia e os cálculos da plataforma — usem como ponto de partida para a bibliografia do próprio Plano de Negócio.</p>
+      </div>
+      <div className="space-y-4">
+        {REFERENCIAS_BIBLIOGRAFICAS.map((g, i) => (
+          <Card key={i} className="p-5">
+            <h3 className="font-bold text-slate-100 mb-3">{g.grupo}</h3>
+            <ul className="space-y-2">
+              {g.itens.map((it, j) => <li key={j} className="text-sm text-slate-300 leading-relaxed">{it}</li>)}
+            </ul>
+          </Card>
+        ))}
       </div>
     </div>
   );
@@ -1705,18 +2124,135 @@ function M6Form({ data, update, m5itens }) {
   );
 }
 
+// Tabela do Simples Nacional (Lei Complementar 123/2006, Anexos I a III —
+// Comércio, Indústria e Serviços). Cobre as atividades mais comuns entre os
+// negócios que os alunos costumam simular; atividades de Anexo IV ou V
+// (construção civil, advocacia, medicina, etc.) exigem consulta a um
+// contador e usam o modo manual. Fonte: Receita Federal — RBT12 é a Receita
+// Bruta acumulada nos 12 meses anteriores (aqui, o faturamento mensal do
+// Módulo 5 × 12).
+const TABELA_SIMPLES = {
+  comercio: { nome: "Comércio", anexo: "Anexo I", faixas: [
+    { ate: 180000, aliquota: 0.040, deduzir: 0 },
+    { ate: 360000, aliquota: 0.073, deduzir: 5940 },
+    { ate: 720000, aliquota: 0.095, deduzir: 13860 },
+    { ate: 1800000, aliquota: 0.107, deduzir: 22500 },
+    { ate: 3600000, aliquota: 0.143, deduzir: 87300 },
+    { ate: 4800000, aliquota: 0.190, deduzir: 378000 },
+  ]},
+  industria: { nome: "Indústria", anexo: "Anexo II", faixas: [
+    { ate: 180000, aliquota: 0.045, deduzir: 0 },
+    { ate: 360000, aliquota: 0.078, deduzir: 5940 },
+    { ate: 720000, aliquota: 0.100, deduzir: 13860 },
+    { ate: 1800000, aliquota: 0.112, deduzir: 22500 },
+    { ate: 3600000, aliquota: 0.147, deduzir: 85500 },
+    { ate: 4800000, aliquota: 0.300, deduzir: 720000 },
+  ]},
+  servicos: { nome: "Serviços", anexo: "Anexo III", faixas: [
+    { ate: 180000, aliquota: 0.060, deduzir: 0 },
+    { ate: 360000, aliquota: 0.112, deduzir: 9360 },
+    { ate: 720000, aliquota: 0.135, deduzir: 17640 },
+    { ate: 1800000, aliquota: 0.160, deduzir: 35640 },
+    { ate: 3600000, aliquota: 0.210, deduzir: 125640 },
+    { ate: 4800000, aliquota: 0.330, deduzir: 648000 },
+  ]},
+};
+
+// Alíquota efetiva = (RBT12 × Alíquota nominal da faixa − Parcela a deduzir) ÷ RBT12
+function calcularSimples(tipoAtividade, rbt12) {
+  const tabela = TABELA_SIMPLES[tipoAtividade];
+  if (!tabela || !(rbt12 > 0)) return null;
+  const idx = tabela.faixas.findIndex((f) => rbt12 <= f.ate);
+  const faixa = idx === -1 ? tabela.faixas[tabela.faixas.length - 1] : tabela.faixas[idx];
+  const faixaIndice = (idx === -1 ? tabela.faixas.length : idx + 1);
+  const aliquotaEfetiva = Math.max(0, (rbt12 * faixa.aliquota - faixa.deduzir) / rbt12);
+  return { nome: tabela.nome, anexo: tabela.anexo, faixaIndice, totalFaixas: tabela.faixas.length, aliquotaNominal: faixa.aliquota, deduzir: faixa.deduzir, aliquotaEfetiva, acimaDoLimite: idx === -1 && rbt12 > tabela.faixas[tabela.faixas.length - 1].ate };
+}
+
 function M7Form({ data, update, faturamento }) {
+  const modoImposto = data.modoImposto || "simples";
+  const tipoAtividade = data.tipoAtividade || "";
+  const rbt12 = faturamento * 12;
+  const simples = modoImposto === "simples" && tipoAtividade ? calcularSimples(tipoAtividade, rbt12) : null;
+
+  // Mantém pctImpostos sempre sincronizado com o resultado do Simples,
+  // enquanto o modo automático estiver ativo — assim o resto da plataforma
+  // (DRE, indicadores) continua usando o mesmo campo de sempre, sem precisar
+  // saber como ele foi calculado.
+  useEffect(() => {
+    if (modoImposto !== "simples" || !simples) return;
+    const novoPct = Number((simples.aliquotaEfetiva * 100).toFixed(2));
+    if (novoPct !== Number(data.pctImpostos)) update({ ...data, pctImpostos: novoPct });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modoImposto, tipoAtividade, rbt12]);
+
   const pct = (Number(data.pctImpostos) || 0) + (Number(data.pctComissao) || 0);
   const total = (faturamento * pct) / 100;
+
   return (
     <div className="grid md:grid-cols-2 gap-6">
       <div>
-        <Field label="Impostos sobre vendas (SIMPLES, ICMS, ISS...)"><NumInput value={data.pctImpostos} onChange={(v) => update({ ...data, pctImpostos: v })} suffix="%" /></Field>
+        <Field label="Como calcular o imposto sobre vendas?">
+          <div className="flex gap-2 mb-1">
+            <button type="button" onClick={() => update({ ...data, modoImposto: "simples" })}
+              className={`flex-1 text-sm font-semibold px-3 py-2 rounded-md border transition ${modoImposto === "simples" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300 hover:border-slate-400"}`}>
+              Simples Nacional (automático)
+            </button>
+            <button type="button" onClick={() => update({ ...data, modoImposto: "manual" })}
+              className={`flex-1 text-sm font-semibold px-3 py-2 rounded-md border transition ${modoImposto === "manual" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300 hover:border-slate-400"}`}>
+              Informar manualmente
+            </button>
+          </div>
+        </Field>
+
+        {modoImposto === "simples" ? (
+          <>
+            <Field label="Tipo de atividade" hint="Define o Anexo do Simples Nacional aplicável">
+              <select value={tipoAtividade} onChange={(e) => update({ ...data, tipoAtividade: e.target.value })} className="w-full border border-slate-600 rounded-md px-3 py-2 text-sm bg-white">
+                <option value="">Selecione…</option>
+                <option value="comercio">Comércio (Anexo I)</option>
+                <option value="industria">Indústria (Anexo II)</option>
+                <option value="servicos">Serviços (Anexo III)</option>
+              </select>
+            </Field>
+            {!tipoAtividade && (
+              <p className="text-xs text-slate-500 -mt-2 mb-3">Selecione o tipo de atividade para calcular a alíquota automaticamente a partir do faturamento anual (Módulo 5).</p>
+            )}
+            {tipoAtividade && rbt12 <= 0 && (
+              <p className="text-xs text-slate-500 -mt-2 mb-3">Cadastre os produtos/serviços no Módulo 5 para a plataforma calcular a alíquota.</p>
+            )}
+            <p className="text-xs text-slate-500 -mt-1">Cobre os Anexos I a III (comércio, indústria e a maioria dos serviços). Atividades de Anexo IV ou V (ex.: construção civil, advocacia, medicina) devem usar "Informar manualmente" com a alíquota confirmada por um contador.</p>
+          </>
+        ) : (
+          <Field label="Impostos sobre vendas (SIMPLES, ICMS, ISS...)"><NumInput value={data.pctImpostos} onChange={(v) => update({ ...data, pctImpostos: v })} suffix="%" /></Field>
+        )}
+
         <Field label="Comissões / gastos com vendas (comissão, propaganda, taxa de cartão)"><NumInput value={data.pctComissao} onChange={(v) => update({ ...data, pctComissao: v })} suffix="%" /></Field>
       </div>
       <div className="space-y-3">
+        {modoImposto === "simples" && simples && (
+          <Card className="p-3 bg-slate-900 border border-slate-700">
+            <div className="text-xs uppercase text-slate-500 font-semibold mb-1.5">Cálculo do Simples Nacional</div>
+            <div className="text-sm text-slate-300 space-y-1">
+              <div>Receita Bruta em 12 meses (RBT12): <b className="text-slate-100">{fmtBRL(rbt12)}</b></div>
+              <div>{simples.nome} — {simples.anexo}, faixa {simples.faixaIndice} de {simples.totalFaixas}</div>
+              <div>Alíquota nominal da faixa: {(simples.aliquotaNominal * 100).toFixed(1)}% &nbsp;·&nbsp; Parcela a deduzir: {fmtBRL(simples.deduzir)}</div>
+              <div className="font-bold text-amber-400 text-base pt-1">Alíquota efetiva: {(simples.aliquotaEfetiva * 100).toFixed(2)}%</div>
+              {simples.acimaDoLimite && <div className="text-rose-400 text-xs pt-1">Faturamento acima do limite do Simples Nacional (R$ 4,8 milhões/ano) — nesse caso a empresa não poderia optar pelo Simples na vida real. Considere revisar o faturamento do Módulo 5 ou usar o modo manual.</div>}
+            </div>
+          </Card>
+        )}
         <StatCard label="Faturamento do Módulo 5" value={fmtBRL(faturamento)} tone="slate" small />
         <StatCard label="Custo de Comercialização" value={fmtBRL(total)} tone="blue" />
+
+        <Card className="p-3 bg-sky-950/30 border border-sky-800/50">
+          <div className="flex items-start gap-2">
+            <Info size={15} className="text-sky-400 mt-0.5 shrink-0" />
+            <div className="text-xs text-slate-400">
+              <b className="text-sky-400">Reforma Tributária em andamento:</b> o Brasil está trocando PIS, Cofins, IPI, ICMS e ISS por dois novos tributos — CBS e IBS. 2026 é o "ano de testes": eles já aparecem nas notas fiscais, mas ainda sem cobrança real, e empresas do Simples Nacional (como as calculadas acima) seguem normalmente pelo DAS, sem mudança nenhuma este ano. A cobrança da CBS começa em 2027, e a troca do ICMS/ISS pelo IBS acontece aos poucos até 2033. A tabela do Simples Nacional acima é a que vale hoje.
+            </div>
+          </div>
+        </Card>
       </div>
     </div>
   );
@@ -1758,12 +2294,120 @@ function M8Form({ data, update, m5itens }) {
   );
 }
 
+// Encargos sociais por grupo (A: básicos/legais, B: período não trabalhado,
+// C: pagos em dinheiro, D: incidências cruzadas), para os dois regimes mais
+// comuns entre pequenos negócios. Percentuais de referência sobre o
+// salário — a diferença principal entre os regimes é que, no Simples
+// Nacional, boa parte da Previdência Social patronal, o RAT e os "Terceiros"
+// (Sistema S) já ficam embutidos no próprio DAS, então não entram aqui.
+const ENCARGOS_GRUPOS = {
+  simples: {
+    nome: "Simples Nacional",
+    grupoA: [
+      { nome: "Previdência Social (INSS patronal)", pct: 0 },
+      { nome: "FGTS", pct: 8 },
+      { nome: "FGTS — provisão de multa rescisória", pct: 4 },
+      { nome: "RAT — Risco de Acidente do Trabalho", pct: 0 },
+      { nome: "Terceiros (Incra, Sesc, Sesi, Senai, Senac, Sebrae...)", pct: 0 },
+    ],
+    grupoB: [
+      { nome: "Férias", pct: 8.3333 },
+      { nome: "Adicional de Férias (1/3)", pct: 2.7778 },
+    ],
+    grupoC: [{ nome: "Décimo Terceiro Salário", pct: 8.3333 }],
+    grupoD: [
+      { nome: "FGTS sobre 13º Salário e Férias", pct: 1.5556 },
+      { nome: "Previdência Social sobre 13º Salário e Férias", pct: 0 },
+    ],
+  },
+  lucroReal: {
+    nome: "Lucro Real / Presumido",
+    grupoA: [
+      { nome: "Previdência Social (INSS patronal)", pct: 20 },
+      { nome: "FGTS", pct: 8 },
+      { nome: "FGTS — provisão de multa rescisória", pct: 4 },
+      { nome: "RAT — Risco de Acidente do Trabalho", pct: 3 },
+      { nome: "Terceiros (Incra, Sesc, Sesi, Senai, Senac, Sebrae...)", pct: 5.8 },
+    ],
+    grupoB: [
+      { nome: "Férias", pct: 8.3333 },
+      { nome: "Adicional de Férias (1/3)", pct: 2.7778 },
+    ],
+    grupoC: [{ nome: "Décimo Terceiro Salário", pct: 8.3333 }],
+    grupoD: [
+      { nome: "FGTS sobre 13º Salário e Férias", pct: 1.5556 },
+      { nome: "Previdência Social sobre 13º Salário e Férias", pct: 3.8889 },
+    ],
+  },
+};
+
+function totalEncargosGrupo(regime) {
+  const r = ENCARGOS_GRUPOS[regime] || ENCARGOS_GRUPOS.simples;
+  const soma = (lista) => lista.reduce((s, i) => s + i.pct, 0);
+  return soma(r.grupoA) + soma(r.grupoB) + soma(r.grupoC) + soma(r.grupoD);
+}
+
 function M9Form({ data, update }) {
   const itens = data.itens;
   const setItens = (next) => update({ ...data, itens: next });
-  const total = itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.salario) || 0) * (1 + (Number(it.pctEncargos) || 0) / 100), 0);
+  const modoEncargos = data.modoEncargos || "grupos";
+  const regimeEncargos = data.regimeEncargos || "simples";
+  const pctGrupos = totalEncargosGrupo(regimeEncargos);
+  const regimeInfo = ENCARGOS_GRUPOS[regimeEncargos] || ENCARGOS_GRUPOS.simples;
+  const pctEfetivo = (it) => (modoEncargos === "grupos" ? pctGrupos : (Number(it.pctEncargos) || 0));
+  const total = itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.salario) || 0) * (1 + pctEfetivo(it) / 100), 0);
+
   return (
     <div>
+      <Field label="Como calcular os encargos sociais?">
+        <div className="flex gap-2 mb-1">
+          <button type="button" onClick={() => update({ ...data, modoEncargos: "grupos" })}
+            className={`flex-1 text-sm font-semibold px-3 py-2 rounded-md border transition ${modoEncargos === "grupos" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300 hover:border-slate-400"}`}>
+            Calcular por grupos (A/B/C/D)
+          </button>
+          <button type="button" onClick={() => update({ ...data, modoEncargos: "manual" })}
+            className={`flex-1 text-sm font-semibold px-3 py-2 rounded-md border transition ${modoEncargos === "manual" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300 hover:border-slate-400"}`}>
+            Informar um % por função
+          </button>
+        </div>
+      </Field>
+
+      {modoEncargos === "grupos" && (
+        <>
+          <Field label="Regime dos encargos">
+            <select value={regimeEncargos} onChange={(e) => update({ ...data, regimeEncargos: e.target.value })} className="w-full max-w-xs border border-slate-600 rounded-md px-3 py-2 text-sm bg-white mb-3">
+              <option value="simples">Simples Nacional</option>
+              <option value="lucroReal">Lucro Real / Presumido</option>
+            </select>
+          </Field>
+          <Card className="p-3 bg-slate-900 border border-slate-700 mb-4">
+            <div className="text-xs uppercase text-slate-500 font-semibold mb-2">Composição dos encargos — {regimeInfo.nome}</div>
+            <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3 text-sm text-slate-300">
+              {[
+                ["Grupo A — Básicos/Legais", regimeInfo.grupoA],
+                ["Grupo B — Período não trabalhado", regimeInfo.grupoB],
+                ["Grupo C — Pagos em dinheiro", regimeInfo.grupoC],
+                ["Grupo D — Incidências cruzadas", regimeInfo.grupoD],
+              ].map(([titulo, lista]) => (
+                <div key={titulo}>
+                  <div className="text-xs font-bold text-slate-400 mb-1">{titulo}</div>
+                  {lista.map((i) => (
+                    <div key={i.nome} className="flex justify-between text-xs py-0.5">
+                      <span className="text-slate-400 pr-2">{i.nome}</span>
+                      <span className="text-slate-300 shrink-0">{fmtNum(i.pct, 2)}%</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between items-center mt-3 pt-2 border-t border-slate-700">
+              <span className="text-xs uppercase text-slate-500 font-semibold">Total dos encargos</span>
+              <span className="font-bold text-amber-400 text-lg">{fmtNum(pctGrupos, 2)}%</span>
+            </div>
+          </Card>
+        </>
+      )}
+
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -1782,8 +2426,12 @@ function M9Form({ data, update }) {
                 <td className="py-1.5 pr-2"><TxtInput value={it.funcao} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, funcao: v } : r)))} placeholder="Ex.: Vendedor" /></td>
                 <td className="py-1.5 pr-2"><NumInput value={it.qtd} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, qtd: v } : r)))} /></td>
                 <td className="py-1.5 pr-2"><NumInput value={it.salario} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, salario: v } : r)))} /></td>
-                <td className="py-1.5 pr-2"><NumInput value={it.pctEncargos} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, pctEncargos: v } : r)))} /></td>
-                <td className="py-1.5 pr-2 font-semibold text-slate-200">{fmtBRL((Number(it.qtd) || 0) * (Number(it.salario) || 0) * (1 + (Number(it.pctEncargos) || 0) / 100))}</td>
+                <td className="py-1.5 pr-2">
+                  {modoEncargos === "grupos"
+                    ? <span className="text-slate-400">{fmtNum(pctGrupos, 2)}%</span>
+                    : <NumInput value={it.pctEncargos} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, pctEncargos: v } : r)))} />}
+                </td>
+                <td className="py-1.5 pr-2 font-semibold text-slate-200">{fmtBRL((Number(it.qtd) || 0) * (Number(it.salario) || 0) * (1 + pctEfetivo(it) / 100))}</td>
                 <td><RemoveBtn onClick={() => setItens(itens.filter((r) => r.id !== it.id))} /></td>
               </tr>
             ))}
@@ -1958,6 +2606,153 @@ function calcularCenario(calc, v) {
 
 const CENARIO_CORES = ["#38bdf8", "#f59e0b", "#a78bfa"];
 
+// Projeta os 12 primeiros meses de operação, mês a mês, a partir dos
+// números já calculados nos módulos. O Mês 0 é o investimento inicial
+// (saída única); dali em diante, cada mês soma o resultado operacional ao
+// saldo acumulado. Uma taxa de crescimento opcional simula um negócio que
+// vai ganhando (ou perdendo) força ao longo do ano: o faturamento e o
+// custo variável escalam juntos (mantendo a margem), e o custo fixo fica
+// constante — é assim que cada um se comporta por definição.
+function projetarFluxoCaixa(calc, taxaCrescimentoMensal) {
+  const taxa = (Number(taxaCrescimentoMensal) || 0) / 100;
+  const meses = [{ mes: 0, label: "Investimento", receita: 0, custoVariavel: 0, custoFixo: 0, resultado: -calc.investimentoTotal, saldo: -calc.investimentoTotal }];
+  let saldo = -calc.investimentoTotal;
+  for (let i = 1; i <= 12; i++) {
+    const fator = Math.pow(1 + taxa, i - 1);
+    const receita = calc.faturamento * fator;
+    const custoVariavel = calc.custoVariavelTotal * fator;
+    const custoFixo = calc.custoFixoTotal;
+    const resultado = receita - custoVariavel - custoFixo;
+    saldo += resultado;
+    meses.push({ mes: i, label: `Mês ${i}`, receita, custoVariavel, custoFixo, resultado, saldo });
+  }
+  return meses;
+}
+
+// VPL (Valor Presente Líquido): traz cada resultado mensal do fluxo de
+// caixa a valor presente, descontado pela TMA mensal, e soma tudo — o
+// Mês 0 (investimento) já entra negativo. VPL > 0 significa que o negócio,
+// além de pagar a TMA exigida, ainda gera valor extra.
+function calcularVPL(fluxo, tmaMensal) {
+  const i = tmaMensal;
+  return fluxo.reduce((s, m) => s + m.resultado / Math.pow(1 + i, m.mes), 0);
+}
+
+// TIR (Taxa Interna de Retorno) mensal: a taxa de desconto que zera o VPL.
+// Sem fórmula fechada — busca por bisseção no intervalo de -99% a 1000% ao
+// mês. Antes de buscar, confere se a soma (sem desconto) dos resultados
+// mensais sequer supera o investimento — se não superar, o projeto não se
+// paga em 12 meses de jeito nenhum, e não existe TIR economicamente
+// significativa nesse horizonte (evita uma raiz matemática "fantasma" em
+// taxas negativas extremas, que não tem leitura de negócio real).
+function calcularTIRMensal(fluxo) {
+  const investimento = -fluxo[0].resultado;
+  const totalNominal = fluxo.filter((m) => m.mes > 0).reduce((s, m) => s + m.resultado, 0);
+  if (totalNominal <= investimento) return null;
+  const f = (i) => calcularVPL(fluxo, i);
+  let lo = -0.99, hi = 10;
+  let flo = f(lo), fhi = f(hi);
+  if (!Number.isFinite(flo) || !Number.isFinite(fhi) || flo * fhi > 0) return null;
+  for (let iter = 0; iter < 100; iter++) {
+    const mid = (lo + hi) / 2;
+    const fmid = f(mid);
+    if (Math.abs(fmid) < 0.01) return mid;
+    if (flo * fmid < 0) { hi = mid; fhi = fmid; } else { lo = mid; flo = fmid; }
+  }
+  return (lo + hi) / 2;
+}
+
+function FluxoCaixaAnual({ calc, taxaCrescimento, onSetTaxaCrescimento, tmaAnual, onSetTmaAnual, readOnly }) {
+  const fluxo = projetarFluxoCaixa(calc, taxaCrescimento);
+  const mesPayback = fluxo.find((m) => m.mes > 0 && m.saldo >= 0);
+  const mesesDeficit = fluxo.filter((m) => m.mes > 0 && m.resultado < 0).length;
+
+  const tmaAnualNum = Number(tmaAnual) || 0;
+  const tmaMensal = Math.pow(1 + tmaAnualNum / 100, 1 / 12) - 1;
+  const vpl = calcularVPL(fluxo, tmaMensal);
+  const tirMensal = calcularTIRMensal(fluxo);
+  const tirAnual = tirMensal !== null ? (Math.pow(1 + tirMensal, 12) - 1) * 100 : null;
+
+
+  return (
+    <div>
+      <Card className="p-5 mb-4">
+        <SectionTitle icon={Wallet} sub="Ponto de partida: o investimento total sai do caixa no Mês 0; a partir daí, cada mês soma (ou subtrai) o resultado operacional ao saldo acumulado.">Premissa da projeção</SectionTitle>
+        <Field label="Taxa de crescimento mensal do faturamento (%, opcional)" hint="0% = repete o mesmo faturamento todo mês. O custo variável acompanha o faturamento na mesma proporção; o custo fixo não muda.">
+          <input type="number" step="1" value={taxaCrescimento} disabled={readOnly} onChange={(e) => onSetTaxaCrescimento(e.target.value)} className="w-40 bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100 disabled:opacity-60" />
+        </Field>
+      </Card>
+
+      <div className="grid sm:grid-cols-3 gap-3 mb-4">
+        <StatCard label="Saldo ao final do Mês 12" value={fmtBRL(fluxo[12].saldo)} tone={fluxo[12].saldo >= 0 ? "gold" : "slate"} small />
+        <StatCard label="Mês em que o caixa fica positivo" value={mesPayback ? mesPayback.label : "Não ocorre em 12 meses"} tone={mesPayback ? "blue" : "slate"} small />
+        <StatCard label="Meses com resultado negativo" value={`${mesesDeficit} de 12`} tone={mesesDeficit > 0 ? "slate" : "gold"} small />
+      </div>
+
+      <Card className="p-5 mb-4">
+        <SectionTitle icon={Target} sub="Indicadores mais avançados, que levam em conta o valor do dinheiro no tempo — opcionais, para equipes que querem aprofundar a análise de investimento.">VPL e TIR</SectionTitle>
+        <Field label="Taxa Mínima de Atratividade — TMA (% ao ano)" hint="O retorno mínimo que os sócios exigem para valer a pena investir nesse negócio em vez de aplicar o dinheiro em outro lugar (ex.: poupança, CDB, outro investimento).">
+          <input type="number" step="1" value={tmaAnual} disabled={readOnly} onChange={(e) => onSetTmaAnual(e.target.value)} className="w-40 bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100 disabled:opacity-60" />
+        </Field>
+        <div className="grid sm:grid-cols-2 gap-3 mt-3">
+          <StatCard label="VPL (Valor Presente Líquido)" value={fmtBRL(vpl)} tone={vpl >= 0 ? "emerald" : "rose"} />
+          <StatCard label="TIR (Taxa Interna de Retorno, ao ano)" value={tirAnual !== null ? `${fmtNum(tirAnual, 1)}%` : "Não recupera em 12 meses"} tone={tirAnual !== null && tirAnual >= tmaAnualNum ? "emerald" : "rose"} />
+        </div>
+        <p className="text-xs text-slate-500 mt-3">
+          {vpl >= 0
+            ? `VPL positivo: descontando a TMA de ${fmtNum(tmaAnualNum, 1)}% ao ano, o negócio ainda gera ${fmtBRL(vpl)} de valor além do que os sócios exigiam como retorno mínimo.`
+            : `VPL negativo: nos 12 meses projetados, o negócio não gera valor suficiente para cobrir a TMA de ${fmtNum(tmaAnualNum, 1)}% ao ano exigida pelos sócios.`}
+          {" "}{tirAnual !== null
+            ? (tirAnual >= tmaAnualNum ? "A TIR está acima da TMA, o que também indica um investimento vantajoso nesse horizonte de 12 meses." : "A TIR está abaixo da TMA, o que também indica que o investimento não se paga nesse horizonte de 12 meses.")
+            : "Sem TIR calculável: o negócio não chega a recuperar o investimento dentro dos 12 meses projetados, então não existe uma taxa de retorno nesse período."}
+        </p>
+      </Card>
+
+      <Card className="p-5 mb-4">
+        <SectionTitle icon={TrendingUp} sub="A linha cruzando o zero mostra o mês em que o negócio recupera o investimento inicial.">Evolução do saldo de caixa</SectionTitle>
+        <ResponsiveContainer width="100%" height={260}>
+          <LineChart data={fluxo}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+            <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} />
+            <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(v) => fmtBRL(v)} />
+            <Tooltip formatter={(v) => fmtBRL(v)} contentStyle={{ background: "#0f172a", border: "1px solid #334155" }} />
+            <ReferenceLine y={0} stroke="#64748b" strokeDasharray="4 4" />
+            <Line type="monotone" dataKey="saldo" stroke="#f59e0b" strokeWidth={2.5} dot={{ r: 3 }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </Card>
+
+      <Card className="p-5 overflow-x-auto">
+        <SectionTitle icon={ClipboardList}>Tabela mês a mês</SectionTitle>
+        <table className="w-full text-sm min-w-[640px]">
+          <thead>
+            <tr className="text-left text-xs text-slate-500 uppercase tracking-wide border-b border-slate-700">
+              <th className="py-2 pr-3">Mês</th>
+              <th className="py-2 pr-3 text-right">Receita</th>
+              <th className="py-2 pr-3 text-right">Custo Variável</th>
+              <th className="py-2 pr-3 text-right">Custo Fixo</th>
+              <th className="py-2 pr-3 text-right">Resultado do mês</th>
+              <th className="py-2 text-right">Saldo acumulado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fluxo.map((m) => (
+              <tr key={m.mes} className="border-b border-slate-800">
+                <td className="py-2 pr-3 text-slate-300">{m.label}</td>
+                <td className="py-2 pr-3 text-right text-slate-300">{m.mes === 0 ? "—" : fmtBRL(m.receita)}</td>
+                <td className="py-2 pr-3 text-right text-slate-300">{m.mes === 0 ? "—" : fmtBRL(m.custoVariavel)}</td>
+                <td className="py-2 pr-3 text-right text-slate-300">{m.mes === 0 ? "—" : fmtBRL(m.custoFixo)}</td>
+                <td className={`py-2 pr-3 text-right font-semibold ${m.resultado >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{fmtBRL(m.resultado)}</td>
+                <td className={`py-2 text-right font-bold ${m.saldo >= 0 ? "text-amber-400" : "text-slate-400"}`}>{fmtBRL(m.saldo)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
 function AnaliseCenarios({ calc, cenarios, onSetCenarios, readOnly }) {
   const lista = cenarios || [];
 
@@ -2059,6 +2854,109 @@ function AnaliseCenarios({ calc, cenarios, onSetCenarios, readOnly }) {
   );
 }
 
+// Ranking de produtos/serviços por margem de contribuição total, e
+// calculadora de preço sugerido por markup — usa só dados já lançados nos
+// Módulos 5 (produtos/preços), 7 (impostos/comissão) e 8 (custo unitário).
+function ProdutosMaisLucrativos({ ranking, pctImpostos, pctComissao }) {
+  const [margemAlvo, setMargemAlvo] = useState(30);
+
+  if (!ranking || ranking.length === 0) {
+    return (
+      <Card className="p-4">
+        <SectionTitle icon={Target} sub="Ranking de margem de contribuição e calculadora de preço, a partir do que já foi lançado nos Módulos 5, 7 e 8.">Produtos Mais Lucrativos</SectionTitle>
+        <p className="text-sm text-slate-500 py-6 text-center">Cadastre produtos/serviços no Módulo 5 para ver o ranking aqui.</p>
+      </Card>
+    );
+  }
+
+  const divisorPct = 100 - margemAlvo - pctImpostos - pctComissao;
+  const divisorValido = divisorPct > 0;
+
+  return (
+    <Card className="p-4">
+      <SectionTitle icon={Target} sub="Ranking de margem de contribuição e calculadora de preço, a partir do que já foi lançado nos Módulos 5, 7 e 8.">Produtos Mais Lucrativos</SectionTitle>
+
+      <div className="overflow-x-auto -mx-1">
+        <table className="w-full text-sm min-w-[720px]">
+          <thead>
+            <tr className="text-left text-xs uppercase text-slate-400 border-b border-slate-700">
+              <th className="py-2 px-1 w-8">#</th>
+              <th className="py-2 px-1">Produto/Serviço</th>
+              <th className="py-2 px-1 text-right">Preço</th>
+              <th className="py-2 px-1 text-right">Custo Unit.</th>
+              <th className="py-2 px-1 text-right">Margem Unit.</th>
+              <th className="py-2 px-1 text-right">Margem %</th>
+              <th className="py-2 px-1 text-right">Margem Total</th>
+              <th className="py-2 px-1 text-right">% da Margem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ranking.map((p, i) => (
+              <tr key={p.id} className="border-b border-slate-800">
+                <td className="py-1.5 px-1 text-slate-500">{i + 1}</td>
+                <td className="py-1.5 px-1 text-slate-200">{p.nome}</td>
+                <td className="py-1.5 px-1 text-right text-slate-300">{fmtBRL(p.preco)}</td>
+                <td className="py-1.5 px-1 text-right text-slate-300">{fmtBRL(p.custoUnit)}</td>
+                <td className={`py-1.5 px-1 text-right font-semibold ${p.margemUnit >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{fmtBRL(p.margemUnit)}</td>
+                <td className="py-1.5 px-1 text-right text-slate-300">{fmtNum(p.margemPct, 1)}%</td>
+                <td className={`py-1.5 px-1 text-right font-semibold ${p.margemTotal >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{fmtBRL(p.margemTotal)}</td>
+                <td className="py-1.5 px-1 text-right text-slate-400">{fmtNum(p.pctDaMargem, 1)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-slate-500 mt-2">Ordenado do produto que mais contribui para o resultado (maior Margem Total) para o que menos contribui. Margem Total negativa significa que esse item está dando prejuízo a cada venda.</p>
+
+      <div className="mt-5 pt-4 border-t border-slate-800">
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3 mb-3">
+          <div>
+            <div className="text-xs uppercase text-slate-500 font-semibold mb-1">Calculadora de preço sugerido</div>
+            <p className="text-xs text-slate-500 max-w-md">Informe a margem de contribuição que a equipe quer alcançar, e a plataforma sugere o preço de venda de cada item — já considerando o imposto e a comissão do Módulo 7.</p>
+          </div>
+          <Field label="Margem de contribuição desejada">
+            <NumInput value={margemAlvo} onChange={setMargemAlvo} suffix="%" />
+          </Field>
+        </div>
+
+        {!divisorValido ? (
+          <p className="text-sm text-rose-400">Essa margem desejada, somada ao imposto ({fmtNum(pctImpostos, 1)}%) e à comissão ({fmtNum(pctComissao, 1)}%) do Módulo 7, passa de 100% — reduza a margem desejada para calcular um preço.</p>
+        ) : (
+          <div className="overflow-x-auto -mx-1">
+            <table className="w-full text-sm min-w-[520px]">
+              <thead>
+                <tr className="text-left text-xs uppercase text-slate-400 border-b border-slate-700">
+                  <th className="py-2 px-1">Produto/Serviço</th>
+                  <th className="py-2 px-1 text-right">Custo Unit.</th>
+                  <th className="py-2 px-1 text-right">Preço Atual</th>
+                  <th className="py-2 px-1 text-right">Preço Sugerido</th>
+                  <th className="py-2 px-1 text-right">Diferença</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ranking.map((p) => {
+                  const precoSugerido = p.custoUnit / (divisorPct / 100);
+                  const diferenca = precoSugerido - p.preco;
+                  return (
+                    <tr key={p.id} className="border-b border-slate-800">
+                      <td className="py-1.5 px-1 text-slate-200">{p.nome}</td>
+                      <td className="py-1.5 px-1 text-right text-slate-300">{fmtBRL(p.custoUnit)}</td>
+                      <td className="py-1.5 px-1 text-right text-slate-300">{fmtBRL(p.preco)}</td>
+                      <td className="py-1.5 px-1 text-right font-semibold text-amber-400">{fmtBRL(precoSugerido)}</td>
+                      <td className={`py-1.5 px-1 text-right ${diferenca > 0 ? "text-rose-400" : "text-emerald-400"}`}>{diferenca > 0 ? "+" : ""}{fmtBRL(diferenca)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="text-xs text-slate-500 mt-2">O preço sugerido é apenas uma referência de cálculo — o preço final também depende do que o mercado está disposto a pagar e do preço da concorrência.</p>
+      </div>
+    </Card>
+  );
+}
+
 function AnaliseNegocio({ calc, historico, onSalvarVersao, readOnly }) {
   const pieData = [
     { name: "Investimentos Fixos", value: calc.investFixo },
@@ -2131,6 +3029,8 @@ function AnaliseNegocio({ calc, historico, onSalvarVersao, readOnly }) {
           </ResponsiveContainer>
         </Card>
       </div>
+
+      <ProdutosMaisLucrativos ranking={calc.produtosRanking} pctImpostos={calc.pctImpostos} pctComissao={calc.pctComissao} />
 
       <Card className="p-4">
         <div className="flex items-center justify-between">
@@ -2441,16 +3341,97 @@ function ChecklistStatusView() {
   );
 }
 
-function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades }) {
+function CronogramaAlunoView({ turmaId }) {
+  const [cronograma] = useSharedObject(`cronograma_${turmaId}`, null);
+
+  if (cronograma === undefined) return <LoadingScreen />;
+
+  if (!cronograma) {
+    return (
+      <div>
+        <SectionTitle icon={Calendar} sub="O(a) professor(a) ainda não definiu as datas do cronograma.">Cronograma do projeto</SectionTitle>
+        <Card className="p-8 text-center text-slate-500">Assim que o(a) professor(a) configurar a Semana 1, o cronograma completo aparece aqui.</Card>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <SectionTitle icon={Calendar} sub="Acompanhe as datas de cada semana — só o(a) professor(a) pode alterar.">Cronograma do projeto</SectionTitle>
+      <Card className="p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Eye size={13} className="text-slate-500" />
+          <span className="text-[10px] font-semibold text-slate-500 bg-slate-800 border border-slate-700 rounded-full px-2 py-0.5">somente visualização</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="text-left text-[11px] font-bold tracking-wide text-slate-500">
+                <th className="py-2 pr-3">SEMANA</th>
+                <th className="py-2 pr-3">ETAPA / ATIVIDADE</th>
+                <th className="py-2 pr-3">DATA DE INÍCIO</th>
+                <th className="py-2 pr-3">HORÁRIO</th>
+                <th className="py-2 pr-3">PRAZO DE ENTREGA</th>
+                <th className="py-2">SITUAÇÃO</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cronograma.linhas.map((linha) => (
+                <tr key={linha.ordem} className="border-t border-slate-800">
+                  <td className="py-3 pr-3 text-sm font-semibold text-slate-200 whitespace-nowrap">{linha.semana}</td>
+                  <td className="py-3 pr-3 text-sm text-slate-200">{linha.etapa}</td>
+                  <td className="py-3 pr-3 text-sm text-slate-400 whitespace-nowrap">{fmtDataCurta(linha.dataInicio)}</td>
+                  <td className="py-3 pr-3 text-sm text-slate-400 whitespace-nowrap">{linha.horaInicio}</td>
+                  <td className="py-3 pr-3 text-sm text-slate-200 font-medium whitespace-nowrap">{fmtDataCurta(linha.dataEntrega)} · {linha.horaEntrega}</td>
+                  <td className="py-3 text-sm"><BadgeSituacaoCronograma status={situacaoCronograma(linha)} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex flex-wrap gap-3 mt-4 pt-3 border-t border-slate-800">
+          {Object.entries(SITUACAO_CRONOGRAMA_INFO).map(([k, v]) => (
+            <span key={k} className="flex items-center gap-1.5 text-[11px] text-slate-500">
+              <v.icon size={11} className={v.cls.split(" ")[0]} /> {v.label}
+            </span>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades }) {
   const [dados, setDados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
   const [aba, setAba] = useState("inicio");
   const [menuAberto, setMenuAberto] = useState(false);
   const [confirmSairAberto, setConfirmSairAberto] = useState(false);
   const [decisaoGestorTomada, setDecisaoGestorTomada] = useState(false);
+  const [pdfAberto, setPdfAberto] = useState(null);
   const irPara = (id) => { setAba(id); setMenuAberto(false); };
 
   const lanc = mergeLancamentos(dados?.lancamentos);
   const calc = useMemo(() => calcular(lanc), [JSON.stringify(lanc)]);
+  const fluxo = dados?.fluxoModulos || fluxoModulosPadrao();
+  const enviarModulo = (modId) => {
+    const estadoAtual = estadoModulo(fluxo, modId);
+    const jaAtrasado = moduloAtrasadoSemEnvio(estadoAtual);
+    const primeiraVez = !(estadoAtual.historico || []).length;
+    const evento = { tipo: primeiraVez ? "envio" : "reenvio", data: Date.now() };
+    setDados({
+      ...dados,
+      fluxoModulos: {
+        ...fluxo,
+        [modId]: {
+          ...estadoAtual,
+          status: "enviado",
+          enviadoEm: Date.now(),
+          atraso: estadoAtual.atraso || jaAtrasado,
+          historico: [...(estadoAtual.historico || []), evento],
+        },
+      },
+    });
+  };
 
   // Contador de feedback novo: compara a data de cada comentário com a última
   // vez que esta pessoa abriu a aba "Feedback do Professor" neste navegador.
@@ -2531,18 +3512,24 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
   const menuItems = [
     { id: "manual", label: "Manual do Aluno", icon: BookOpen, num: "00" },
     { id: "inicio", label: "Início", icon: LayoutDashboard, num: null },
-    ...MODULOS.map((m) => ({ id: m.id, label: m.nome, icon: m.icon, num: String(m.n).padStart(2, "0") })),
+    { id: "cronograma", label: "Cronograma do projeto", icon: Calendar, num: null },
+    ...MODULOS.map((m) => ({ id: m.id, label: m.nome, icon: m.icon, num: String(m.n).padStart(2, "0"), moduloStatus: estadoModulo(fluxo, m.id).status })),
     { id: "analise", label: "Análise do Negócio", icon: TrendingUp, num: null },
     { id: "cenarios", label: "Análise de Cenários", icon: GitCompareArrows, num: null },
+    { id: "fluxocaixa", label: "Fluxo de Caixa Anual", icon: Wallet, num: null },
+    { id: "modeloApresentacao", label: "Baixar Modelo de Apresentação", icon: FileDown, num: null },
     { id: "feedback", label: "Feedback do Professor", icon: MessageSquare, num: null },
+    { id: "notas", label: "Minhas Notas", icon: Target, num: null },
+    { id: "referencias", label: "Referências Bibliográficas", icon: Library, num: null },
     { id: "suporte", label: "Suporte", icon: LifeBuoy, num: null },
     { id: "novidades", label: "Novidades", icon: Megaphone, num: null },
     { id: "tutoriais", label: "Tutoriais", icon: Video, num: null },
   ];
 
   const baixarBackupEquipe = () => {
-    const pacote = { versaoBackup: 1, geradoEm: new Date().toISOString(), equipe, dados };
-    baixarArquivo(`backup_${equipe.nomeNegocio.replace(/\s+/g, "_")}.json`, JSON.stringify(pacote, null, 2));
+    const agora = new Date();
+    const pacote = { versaoBackup: 1, geradoEm: agora.toISOString(), equipe, dados };
+    baixarArquivo(`backup_${equipe.nomeNegocio.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo(agora)}.json`, JSON.stringify(pacote, null, 2));
   };
 
   return (
@@ -2569,6 +3556,48 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
           {menuItems.map((it) => {
             const Icon = it.icon;
             const active = aba === it.id;
+            if (it.id === "modeloApresentacao") {
+              return (
+                <a
+                  key={it.id}
+                  href={MODELO_APRESENTACAO_URL}
+                  download
+                  onClick={() => setMenuAberto(false)}
+                  className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent"
+                >
+                  <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
+                </a>
+              );
+            }
+            const pdfUrl = MANUAIS_PDF[it.id];
+            if (pdfUrl) {
+              if (user.mestre) {
+                return (
+                  <a
+                    key={it.id}
+                    href={pdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setMenuAberto(false)}
+                    className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent"
+                  >
+                    {it.num && <span className="text-[10px] font-mono w-5 shrink-0 text-white/30">{it.num}</span>}
+                    <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
+                    <Printer size={13} className="shrink-0 text-slate-500" />
+                  </a>
+                );
+              }
+              return (
+                <button
+                  key={it.id}
+                  onClick={() => { setPdfAberto({ url: pdfUrl, titulo: it.label }); setMenuAberto(false); }}
+                  className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent"
+                >
+                  {it.num && <span className="text-[10px] font-mono w-5 shrink-0 text-white/30">{it.num}</span>}
+                  <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
+                </button>
+              );
+            }
             return (
               <button
                 key={it.id}
@@ -2577,6 +3606,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
               >
                 {it.num && <span className={`text-[10px] font-mono w-5 shrink-0 ${active ? "text-amber-500" : "text-white/30"}`}>{it.num}</span>}
                 <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
+                {it.moduloStatus && <BadgeStatusModuloMenu status={it.moduloStatus} />}
                 {it.id === "feedback" && naoLidos > 0 && (
                   <span className="text-[10px] font-bold bg-amber-500 text-slate-900 rounded-full px-1.5 py-0.5 shrink-0">{naoLidos}</span>
                 )}
@@ -2636,6 +3666,8 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
 
         {aba === "manual" && <ManualAlunoView equipe={equipe} onIrPara={setAba} />}
 
+        {aba === "cronograma" && <CronogramaAlunoView turmaId={turmaId} />}
+
         {aba === "inicio" && (
           <div>
             <div className="mb-8">
@@ -2657,16 +3689,28 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
             </div>
 
             <Card className="p-4">
-              <SectionTitle icon={ClipboardList} sub="Cliquem em qualquer módulo para começar a preencher.">Índice de módulos</SectionTitle>
+              <SectionTitle icon={ClipboardList} sub="Os módulos são liberados um a um: conclua e envie o atual para o professor(a) liberar o próximo.">Índice de módulos</SectionTitle>
               <div className="grid sm:grid-cols-2 gap-2">
                 {MODULOS.map((m) => {
                   const Icon = m.icon;
+                  const estado = estadoModulo(fluxo, m.id);
+                  const atrasado = moduloAtrasadoSemEnvio(estado);
+                  const badge = atrasado
+                    ? { texto: "Prazo esgotado", cor: "text-rose-400 bg-rose-950/40 border-rose-500/30" }
+                    : estado.status === "pendente" ? { texto: "Bloqueado", cor: "text-slate-500 bg-slate-900 border-slate-700" }
+                    : estado.status === "enviado" ? { texto: "Em correção", cor: "text-sky-400 bg-sky-950/40 border-sky-500/30" }
+                    : estado.status === "ajustes" ? { texto: "Ajustes solicitados", cor: "text-amber-400 bg-amber-950/40 border-amber-500/30" }
+                    : estado.status === "corrigido" ? { texto: "Corrigido", cor: "text-emerald-400 bg-emerald-950/40 border-emerald-500/30" }
+                    : null;
                   return (
                     <button key={m.id} onClick={() => setAba(m.id)} className="flex items-center gap-3 border border-slate-700 rounded-lg p-3 text-left hover:border-amber-500 hover:bg-slate-800 transition">
-                      <div className="w-8 h-8 rounded-full bg-slate-900 border border-amber-500/40 text-amber-500 flex items-center justify-center text-xs font-bold shrink-0">{String(m.n).padStart(2, "0")}</div>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${estado.status === "pendente" ? "bg-slate-900 border border-slate-700 text-slate-500" : "bg-slate-900 border border-amber-500/40 text-amber-500"}`}>
+                        {estado.status === "pendente" ? <Lock size={13} /> : String(m.n).padStart(2, "0")}
+                      </div>
                       <Icon size={16} className="text-sky-400 shrink-0" />
-                      <span className="text-sm font-medium text-slate-200">{m.nome}</span>
-                      <ChevronRight size={15} className="ml-auto text-slate-600" />
+                      <span className="text-sm font-medium text-slate-200 flex-1">{m.nome}</span>
+                      {badge && <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 border shrink-0 ${badge.cor}`}>{badge.texto}</span>}
+                      <ChevronRight size={15} className="text-slate-600 shrink-0" />
                     </button>
                   );
                 })}
@@ -2675,7 +3719,11 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
           </div>
         )}
 
-        {MODULOS.map((m) => aba === m.id && (
+        {MODULOS.map((m) => aba === m.id && (() => {
+          const estado = estadoModulo(fluxo, m.id);
+          const atrasadoSemEnvio = moduloAtrasadoSemEnvio(estado);
+          const podeEditar = !souVisualizador && (estado.status === "liberado" || estado.status === "ajustes") && !atrasadoSemEnvio;
+          return (
           <div key={m.id}>
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
             <SectionTitle icon={m.icon} sub={`Módulo ${m.n} de 13`}>{m.nome}</SectionTitle>
@@ -2684,7 +3732,43 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
             {souVisualizador && (
               <div className="mb-3 text-xs text-sky-400 flex items-center gap-1.5"><Eye size={13} /> Modo visualização — os campos abaixo estão travados enquanto {gestor.nome} estiver gerindo.</div>
             )}
-            <Card className={`p-5 ${souVisualizador ? "opacity-70 pointer-events-none select-none" : ""}`}>
+
+            {estado.status === "pendente" && (
+              <div className="mb-3 text-sm text-slate-400 flex items-start gap-2 bg-slate-900 border border-slate-700 rounded-lg p-3">
+                <Lock size={16} className="text-slate-500 mt-0.5 shrink-0" /> Este módulo ainda não foi liberado. Concluam e enviem o Módulo {m.n - 1} para o(a) professor(a) corrigir e liberar este aqui.
+              </div>
+            )}
+            {(estado.status === "liberado" || estado.status === "ajustes") && atrasadoSemEnvio && (
+              <div className="mb-3 text-sm text-rose-400 flex items-start gap-2 bg-rose-950/30 border border-rose-800/50 rounded-lg p-3">
+                <Clock size={16} className="mt-0.5 shrink-0" /> O prazo de entrega deste módulo ({fmtDataCurta(estado.prazo)}) terminou sem envio. Falem com o(a) professor(a) para reabrir o módulo — a entrega ficará registrada como em atraso (desconto de 2,0 pontos por pontualidade).
+              </div>
+            )}
+            {estado.status === "liberado" && !atrasadoSemEnvio && estado.prazo && (
+              <div className="mb-3 text-sm text-amber-400 flex items-start gap-2 bg-amber-950/30 border border-amber-800/50 rounded-lg p-3">
+                <Clock size={16} className="mt-0.5 shrink-0" /> Prazo de entrega: <b className="ml-1">{fmtDataCurta(estado.prazo)}</b>. Atividades entregues fora do prazo estarão sujeitas ao desconto de 2,0 pontos por pontualidade — entrega em atraso.
+              </div>
+            )}
+            {estado.status === "ajustes" && (
+              <div className="mb-3 text-sm text-amber-300 flex items-start gap-2 bg-amber-950/30 border border-amber-800/50 rounded-lg p-3">
+                <RotateCcw size={16} className="mt-0.5 shrink-0" />
+                <div>
+                  <b>O(a) professor(a) devolveu este módulo para ajustes.</b> Corrijam o que for indicado abaixo e enviem novamente.
+                  {estado.feedback && <div className="mt-2 bg-slate-900/60 border border-amber-800/40 rounded-md p-2.5 text-amber-100">{estado.feedback}</div>}
+                </div>
+              </div>
+            )}
+            {estado.status === "enviado" && (
+              <div className="mb-3 text-sm text-sky-400 flex items-start gap-2 bg-sky-950/30 border border-sky-800/50 rounded-lg p-3">
+                <UserCheck size={16} className="mt-0.5 shrink-0" /> Enviado para correção em {fmtData(estado.enviadoEm)}{estado.atraso ? " (com atraso)" : ""} — aguardando avaliação do(a) professor(a).
+              </div>
+            )}
+            {estado.status === "corrigido" && (
+              <div className="mb-3 text-sm text-emerald-400 flex items-start gap-2 bg-emerald-950/30 border border-emerald-800/50 rounded-lg p-3">
+                <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> Corrigido pelo(a) professor(a){estado.corrigidoEm ? ` em ${fmtData(estado.corrigidoEm)}` : ""}.{estado.atraso ? " Entregue com atraso — desconto de 2,0 pontos por pontualidade aplicável." : ""}
+              </div>
+            )}
+
+            <Card className={`p-5 ${(souVisualizador || !podeEditar) ? "opacity-70 pointer-events-none select-none" : ""}`}>
               {m.id === "m1" && <M1Form data={lanc.m1} update={(v) => updateModulo("m1", v)} />}
               {m.id === "m2" && <M2Form data={lanc.m2} update={(v) => updateModulo("m2", v)} calc={calc} />}
               {m.id === "m3" && <M3Form data={lanc.m3} update={(v) => updateModulo("m3", v)} />}
@@ -2700,6 +3784,17 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
               {m.id === "m13" && <M13View calc={calc} />}
             </Card>
             <NotaModulo nota={dados.notas?.[m.id]} ehFinal={m.id === NOTA_MODULO_FINAL} readOnly />
+
+            {podeEditar && (
+              <div className="mt-4 flex justify-end">
+                <button onClick={() => { if (confirm(`${estado.status === "ajustes" ? "Reenviar" : "Enviar"} este módulo para correção? Ele ficará travado para edição até o professor(a) avaliar.`)) enviarModulo(m.id); }} className="flex items-center gap-2 bg-emerald-600 text-white text-sm font-bold px-4 py-2 rounded-md hover:bg-emerald-500">
+                  <Send size={15} /> {estado.status === "ajustes" ? "Reenviar para correção" : "Enviar para correção"}
+                </button>
+              </div>
+            )}
+
+            <HistoricoCorrecaoModulo historico={estado.historico} />
+
             <div className="flex justify-between mt-4">
               <button
                 onClick={() => setAba(m.n > 1 ? MODULOS[m.n - 2].id : "inicio")}
@@ -2713,7 +3808,8 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
               )}
             </div>
           </div>
-        ))}
+          );
+        })())}
 
         {aba === "analise" && (
           <div>
@@ -2731,31 +3827,29 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
           </div>
         )}
 
+        {aba === "fluxocaixa" && (
+          <div>
+            <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
+            <SectionTitle icon={Wallet} sub="Projeção mês a mês do primeiro ano de operação, a partir dos números já lançados nos módulos.">Fluxo de Caixa Anual</SectionTitle>
+            <FluxoCaixaAnual calc={calc} taxaCrescimento={dados.taxaCrescimentoFluxo ?? 0} onSetTaxaCrescimento={(v) => setDados({ ...dados, taxaCrescimentoFluxo: v })} tmaAnual={dados.tmaAnualFluxo ?? 12} onSetTmaAnual={(v) => setDados({ ...dados, tmaAnualFluxo: v })} readOnly={souVisualizador} />
+          </div>
+        )}
+
         {aba === "feedback" && (
           <div>
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
             <SectionTitle icon={MessageSquare} sub="Comentários e ajustes solicitados pelo(a) professor(a).">Feedback do Professor</SectionTitle>
-            {(() => {
+        {(() => {
               const notasDadas = NOTA_MODULOS_AVALIAVEIS.map((id) => dados.notas?.[id]).filter((n) => n !== undefined && n !== null && n !== "");
               const media = notasDadas.length ? (notasDadas.reduce((a, b) => a + Number(b), 0) / notasDadas.length) : null;
               const notaFinal = dados.notas?.[NOTA_MODULO_FINAL];
-              if (!notasDadas.length && (notaFinal === undefined || notaFinal === null || notaFinal === "")) return null;
+              const notaCenariosFluxo = dados.notas?.cenariosFluxo;
+              const notaApresentacao = dados.notas?.apresentacao;
+              if (!notasDadas.length && vazio(notaFinal) && vazio(notaCenariosFluxo) && vazio(notaApresentacao)) return null;
+              const notaPonderada = calcularNotaPonderada({ media, notaFinal, notaCenariosFluxo, notaApresentacao, totalModulos: NOTA_MODULOS_AVALIAVEIS.length, notasDadasLength: notasDadas.length });
               return (
-                <div className="grid sm:grid-cols-2 gap-3 mb-4">
-                  <div className="bg-slate-900 border border-sky-800/60 rounded-lg p-4 flex items-center justify-between">
-                    <div>
-                      <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide">Média dos módulos avaliados</div>
-                      <div className="text-xs text-slate-500 mt-0.5">{notasDadas.length}/{NOTA_MODULOS_AVALIAVEIS.length} módulos com nota</div>
-                    </div>
-                    <div className="text-2xl font-bold text-sky-400">{media !== null ? media.toFixed(1) : "—"}</div>
-                  </div>
-                  <div className="bg-slate-900 border border-amber-800/60 rounded-lg p-4 flex items-center justify-between">
-                    <div>
-                      <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wide">Nota final (síntese — Módulo 13)</div>
-                      <div className="text-xs text-slate-500 mt-0.5">Conclusão sobre a viabilidade do negócio</div>
-                    </div>
-                    <div className="text-2xl font-bold text-amber-400">{(notaFinal !== undefined && notaFinal !== null && notaFinal !== "") ? notaFinal : "—"}</div>
-                  </div>
+                <div className="mb-4">
+                  <PainelAvaliacao media={media} notasDadasLength={notasDadas.length} totalModulos={NOTA_MODULOS_AVALIAVEIS.length} notaFinal={notaFinal} notaCenariosFluxo={notaCenariosFluxo} notaApresentacao={notaApresentacao} notaPonderada={notaPonderada} readOnly />
                 </div>
               );
             })()}
@@ -2763,12 +3857,68 @@ function AlunoWorkspace({ user, equipe, equipeKey, onSair, onTrocarEmpresa, prof
           </div>
         )}
 
+        {aba === "notas" && (
+          <div>
+            <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
+            <SectionTitle icon={Target} sub="Notas por módulo e a nota final ponderada da empresa — as mesmas notas aparecem para todos os integrantes vinculados a esta empresa.">Minhas Notas</SectionTitle>
+
+            <div className="flex items-start gap-2 text-xs text-slate-400 bg-slate-900/60 border border-slate-800 rounded-lg p-3 mb-4">
+              <Info size={14} className="text-sky-400 shrink-0 mt-0.5" />
+              A nota é da empresa, não da pessoa: quando o(a) professor(a) avalia um módulo, todos os integrantes desta equipe veem a mesma nota aqui.
+            </div>
+
+            {(() => {
+              const notasDadas = NOTA_MODULOS_AVALIAVEIS.map((id) => dados.notas?.[id]).filter((n) => n !== undefined && n !== null && n !== "");
+              const media = notasDadas.length ? (notasDadas.reduce((a, b) => a + Number(b), 0) / notasDadas.length) : null;
+              const notaFinal = dados.notas?.[NOTA_MODULO_FINAL];
+              const notaCenariosFluxo = dados.notas?.cenariosFluxo;
+              const notaApresentacao = dados.notas?.apresentacao;
+              const notaPonderada = calcularNotaPonderada({ media, notaFinal, notaCenariosFluxo, notaApresentacao, totalModulos: NOTA_MODULOS_AVALIAVEIS.length, notasDadasLength: notasDadas.length });
+              return (
+                <div className="mb-5">
+                  <PainelAvaliacao media={media} notasDadasLength={notasDadas.length} totalModulos={NOTA_MODULOS_AVALIAVEIS.length} notaFinal={notaFinal} notaCenariosFluxo={notaCenariosFluxo} notaApresentacao={notaApresentacao} notaPonderada={notaPonderada} readOnly />
+                </div>
+              );
+            })()}
+
+            <Card className="p-4">
+              <SectionTitle icon={ClipboardList} sub="Cada módulo avaliável recebe uma nota de 0 a 10, assim que o(a) professor(a) aprova. Clique para revisitar o módulo.">Notas por módulo</SectionTitle>
+              <div className="space-y-2">
+                {NOTA_MODULOS_AVALIAVEIS.map((modId) => {
+                  const m = MODULOS.find((mm) => mm.id === modId);
+                  const Icon = m.icon;
+                  const nota = dados.notas?.[modId];
+                  const estadoM = estadoModulo(fluxo, modId);
+                  return (
+                    <button key={modId} onClick={() => setAba(modId)} className="w-full flex items-center gap-3 border border-slate-700 rounded-lg p-3 text-left hover:border-amber-500 hover:bg-slate-800 transition">
+                      <div className="w-8 h-8 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center text-xs font-bold text-slate-400 shrink-0">
+                        {String(m.n).padStart(2, "0")}
+                      </div>
+                      <Icon size={16} className="text-sky-400 shrink-0" />
+                      <span className="text-sm font-medium text-slate-200 flex-1">{m.nome}</span>
+                      {estadoM.status === "corrigido" ? (
+                        <span className="text-lg font-bold text-emerald-400">{!vazio(nota) ? nota : "—"}</span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-800 border border-slate-700 rounded-full px-2 py-0.5">Ainda não corrigido</span>
+                      )}
+                      <ChevronRight size={15} className="text-slate-600 shrink-0" />
+                    </button>
+                  );
+                })}
+              </div>
+            </Card>
+          </div>
+        )}
+
         {aba === "suporte" && (
           <SuporteView ctx={{ uid: user.uid, nome: user.nome, papel: "aluno", mestre: false, professorUid, professorNome, turmaNome }} />
         )}
 
+        {aba === "referencias" && <ReferenciasBibliograficasView />}
         {aba === "novidades" && <NovidadesView />}
+        {aba === "tutoriais" && <TutoriaisView categoria="aluno" />}
       </main>
+      {pdfAberto && <VisualizadorManualPDF url={pdfAberto.url} titulo={pdfAberto.titulo} onFechar={() => setPdfAberto(null)} />}
     </div>
   );
 }
@@ -2809,6 +3959,98 @@ function ModuloLeitura({ mId, lanc, calc }) {
 
 // Campo de nota (0-10) — usado pelo professor para dar a nota e, em modo
 // somente leitura, para o aluno ver a nota já dada.
+const vazio = (v) => v === undefined || v === null || v === "";
+
+// Nota final ponderada: 40% média dos 8 módulos avaliáveis + 20% Módulo 13
+// (síntese/viabilidade) + 20% Cenários e Fluxo de Caixa + 20% Apresentação
+// da empresa — o mesmo modelo do slide 9 do Guia Pedagógico ("Como vocês
+// serão avaliados"). Só calcula quando os 4 componentes estiverem completos
+// (a média dos módulos exige os 8 preenchidos), para nunca mostrar uma nota
+// parcial como se fosse definitiva.
+function calcularNotaPonderada({ media, notaFinal, notaCenariosFluxo, notaApresentacao, totalModulos, notasDadasLength }) {
+  if (notasDadasLength !== totalModulos || media === null) return null;
+  if (vazio(notaFinal) || vazio(notaCenariosFluxo) || vazio(notaApresentacao)) return null;
+  return 0.4 * media + 0.2 * Number(notaFinal) + 0.2 * Number(notaCenariosFluxo) + 0.2 * Number(notaApresentacao);
+}
+
+// Cores por variante escritas por extenso (não interpoladas) — o Tailwind
+// só gera CSS para classes que aparecem literalmente no código-fonte;
+// `text-${cor}-400` dinâmico simplesmente não funcionaria em produção.
+const CORES_NOTA_EXTRA = {
+  emerald: { texto: "text-emerald-400", foco: "focus:border-emerald-500" },
+  violet: { texto: "text-violet-400", foco: "focus:border-violet-500" },
+};
+
+function CampoNotaExtra({ valor, onSetValor, cor, readOnly }) {
+  const [texto, setTexto] = useState(valor ?? "");
+  useEffect(() => { setTexto(valor ?? ""); }, [valor]);
+  const c = CORES_NOTA_EXTRA[cor];
+  if (readOnly) return <div className={`text-2xl font-bold ${c.texto}`}>{!vazio(valor) ? valor : "—"}</div>;
+  return (
+    <input
+      type="number" min="0" max="10" step="0.5" value={texto} placeholder="—"
+      onChange={(e) => setTexto(e.target.value)}
+      onBlur={() => onSetValor(texto === "" ? null : Math.max(0, Math.min(10, Number(texto))))}
+      className={`w-16 bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-lg font-bold ${c.texto} text-center ${c.foco} focus:outline-none`}
+    />
+  );
+}
+
+// Painel de avaliação — usado tanto na tela do professor (EquipeReview,
+// onde os dois campos extras são editáveis) quanto na tela do aluno
+// (Feedback do Professor, tudo em modo leitura). As notas dos 8 módulos e
+// do Módulo 13 continuam sendo lançadas em cada accordion (NotaModulo);
+// aqui só entram os dois componentes que não têm um módulo próprio.
+function PainelAvaliacao({ media, notasDadasLength, totalModulos, notaFinal, notaCenariosFluxo, notaApresentacao, notaPonderada, onSetCenariosFluxo, onSetApresentacao, readOnly }) {
+  const editavel = !readOnly;
+  return (
+    <Card className="p-4">
+      <SectionTitle icon={Target} sub="Modelo de avaliação: 40% média dos módulos + 20% Módulo 13 + 20% Cenários/Fluxo de Caixa + 20% Apresentação da empresa.">Avaliação da equipe</SectionTitle>
+      <div className="grid sm:grid-cols-2 gap-3 mb-3">
+        <div className="bg-slate-900 border border-sky-800/60 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide">Média dos módulos (40%)</div>
+            <div className="text-xs text-slate-500 mt-0.5">{notasDadasLength}/{totalModulos} módulos com nota</div>
+          </div>
+          <div className="text-2xl font-bold text-sky-400">{media !== null ? media.toFixed(1) : "—"}</div>
+        </div>
+        <div className="bg-slate-900 border border-amber-800/60 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wide">Módulo 13 (20%)</div>
+            <div className="text-xs text-slate-500 mt-0.5">Conclusão sobre a viabilidade do negócio</div>
+          </div>
+          <div className="text-2xl font-bold text-amber-400">{!vazio(notaFinal) ? notaFinal : "—"}</div>
+        </div>
+        <div className="bg-slate-900 border border-emerald-800/60 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-bold text-emerald-400 uppercase tracking-wide">Cenários e Fluxo de Caixa (20%)</div>
+            <div className="text-xs text-slate-500 mt-0.5">Qualidade da análise de cenários e do fluxo de caixa</div>
+          </div>
+          {editavel
+            ? <CampoNotaExtra valor={notaCenariosFluxo} onSetValor={onSetCenariosFluxo} cor="emerald" />
+            : <CampoNotaExtra valor={notaCenariosFluxo} cor="emerald" readOnly />}
+        </div>
+        <div className="bg-slate-900 border border-violet-800/60 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-bold text-violet-400 uppercase tracking-wide">Apresentação da empresa (20%)</div>
+            <div className="text-xs text-slate-500 mt-0.5">Apresentação final da equipe</div>
+          </div>
+          {editavel
+            ? <CampoNotaExtra valor={notaApresentacao} onSetValor={onSetApresentacao} cor="violet" />
+            : <CampoNotaExtra valor={notaApresentacao} cor="violet" readOnly />}
+        </div>
+      </div>
+      <div className="bg-slate-950 border-2 border-amber-500/60 rounded-lg p-4 flex items-center justify-between">
+        <div>
+          <div className="text-xs font-bold text-amber-400 uppercase tracking-wide">Nota final ponderada</div>
+          <div className="text-xs text-slate-500 mt-0.5">{notaPonderada !== null ? "40% módulos + 20% Módulo 13 + 20% Cenários/Fluxo + 20% Apresentação" : "Aguardando todas as notas para calcular"}</div>
+        </div>
+        <div className="text-3xl font-bold text-amber-400">{notaPonderada !== null ? notaPonderada.toFixed(1) : "—"}</div>
+      </div>
+    </Card>
+  );
+}
+
 function NotaModulo({ nota, onSetNota, ehFinal, readOnly }) {
   const [valor, setValor] = useState(nota ?? "");
   useEffect(() => { setValor(nota ?? ""); }, [nota]);
@@ -2846,22 +4088,112 @@ function NotaModulo({ nota, onSetNota, ehFinal, readOnly }) {
   );
 }
 
-function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota }) {
+function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes }) {
+  const [prazoInput, setPrazoInput] = useState(estado.prazo || "");
+  useEffect(() => { setPrazoInput(estado.prazo || ""); }, [estado.prazo]);
+  const [novoPrazoReabrir, setNovoPrazoReabrir] = useState("");
+  const [feedbackInput, setFeedbackInput] = useState("");
+  const atrasadoSemEnvio = moduloAtrasadoSemEnvio(estado);
+
+  const statusInfo = atrasadoSemEnvio
+    ? { texto: "Prazo esgotado sem envio", cor: "text-rose-400" }
+    : {
+        pendente: { texto: "Bloqueado — aguardando módulo anterior", cor: "text-slate-400" },
+        liberado: { texto: "Em desenvolvimento — a equipe pode preencher", cor: "text-amber-400" },
+        enviado: { texto: "Enviada para correção — em análise", cor: "text-sky-400" },
+        ajustes: { texto: "Ajustes solicitados — aguardando reenvio da equipe", cor: "text-amber-400" },
+        corrigido: { texto: `Módulo concluído${estado.corrigidoEm ? ` em ${fmtData(estado.corrigidoEm)}` : ""}`, cor: "text-emerald-400" },
+      }[estado.status];
+
+  return (
+    <div className="mt-3 bg-slate-900 border border-slate-700 rounded-md p-3 space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <span className={`text-xs font-bold ${statusInfo.cor}`}>{statusInfo.texto}{estado.atraso ? " · entregue com atraso (desconto de 2,0 pts)" : ""}{estado.ciclo > 1 ? ` · ciclo ${estado.ciclo}` : ""}</span>
+        <div className="flex items-center gap-2">
+          <label className="text-[11px] text-slate-400">Prazo de entrega:</label>
+          <input type="date" value={prazoInput} onChange={(e) => { setPrazoInput(e.target.value); onSetPrazo(e.target.value || null); }} className="bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-100" />
+          {estado.prazoManual ? (
+            <span className="flex items-center gap-1">
+              <span className="text-[10px] font-semibold text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-full px-1.5 py-0.5">Manual</span>
+              <button onClick={onRestaurarPrazoAutomatico} className="text-slate-500 hover:text-amber-400" title="Voltar a seguir o cronograma da turma">
+                <Undo2 size={12} />
+              </button>
+            </span>
+          ) : (
+            <span className="text-[10px] text-slate-500 flex items-center gap-1" title="Segue automaticamente o cronograma do projeto"><Lock size={10} /> segue o cronograma</span>
+          )}
+        </div>
+      </div>
+
+      {estado.status === "enviado" && (
+        <div className="space-y-2.5">
+          <div>
+            <label className="flex items-center gap-1.5 text-[11px] text-slate-400 mb-1"><Pencil size={12} /> Feedback orientativo (obrigatório para devolver)</label>
+            <textarea
+              value={feedbackInput}
+              onChange={(e) => setFeedbackInput(e.target.value)}
+              rows={2}
+              placeholder="O que a equipe precisa rever ou corrigir antes de avançar?"
+              className="w-full bg-slate-950 border border-slate-700 rounded-md px-2.5 py-1.5 text-xs text-slate-100 focus:border-amber-500 focus:outline-none"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => { if (feedbackInput.trim()) { onDevolverAjustes(feedbackInput.trim()); setFeedbackInput(""); } }}
+              disabled={!feedbackInput.trim()}
+              className="flex items-center gap-2 border border-amber-500/50 text-amber-300 text-xs font-bold px-3 py-1.5 rounded-md hover:border-amber-400 disabled:opacity-40"
+            >
+              <RotateCcw size={13} /> Devolver para ajustes
+            </button>
+            <button onClick={onConfirmarCorrecao} className="flex items-center gap-2 bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-md hover:bg-emerald-500">
+              <CheckCircle2 size={13} /> Aprovar e concluir módulo{ultimoModulo ? "" : " (libera o próximo)"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {estado.status === "ajustes" && estado.feedback && (
+        <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/30 rounded-md p-2.5">
+          <MessageSquare size={13} className="text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-xs text-amber-100"><b>Feedback enviado à equipe:</b> {estado.feedback}</div>
+        </div>
+      )}
+
+      {atrasadoSemEnvio && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <label className="text-[11px] text-slate-400">Novo prazo (obrigatório para reabrir):</label>
+          <input type="date" value={novoPrazoReabrir} onChange={(e) => setNovoPrazoReabrir(e.target.value)} className="bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-100" />
+          <button disabled={!novoPrazoReabrir} onClick={() => onReabrir(novoPrazoReabrir)} className="flex items-center gap-2 bg-amber-500 text-slate-900 text-xs font-bold px-3 py-1.5 rounded-md hover:bg-amber-400 disabled:opacity-40">
+            <RotateCcw size={13} /> Reabrir com novo prazo
+          </button>
+        </div>
+      )}
+
+      <HistoricoCorrecaoModulo historico={estado.historico} />
+    </div>
+  );
+}
+
+function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes }) {
   const Icon = m.icon;
   const comentariosModulo = (comentarios || []).filter((c) => c.modulo === `Módulo ${m.n}`);
   const avaliavel = NOTA_MODULOS_AVALIAVEIS.includes(m.id);
   const ehFinal = m.id === NOTA_MODULO_FINAL;
+  const bloqueado = estado.status === "pendente";
   return (
     <Card className="p-0 overflow-hidden" id={`prof-mod-${m.id}`}>
       <button onClick={onToggle} className="w-full flex items-center gap-3 p-4 text-left hover:bg-slate-800/40">
-        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${completo ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/40" : "bg-slate-900 border border-amber-500/40 text-amber-500"}`}>
-          {completo ? <CheckCircle2 size={14} /> : String(m.n).padStart(2, "0")}
+        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${bloqueado ? "bg-slate-900 border border-slate-700 text-slate-500" : completo ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/40" : "bg-slate-900 border border-amber-500/40 text-amber-500"}`}>
+          {bloqueado ? <Lock size={13} /> : completo ? <CheckCircle2 size={14} /> : String(m.n).padStart(2, "0")}
         </div>
         <Icon size={16} className="text-sky-400 shrink-0" />
         <span className="text-sm font-semibold text-slate-100 flex-1">{m.nome}</span>
         {(nota !== undefined && nota !== null && nota !== "") && (
           <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 border ${ehFinal ? "text-amber-400 bg-amber-950/40 border-amber-500/30" : "text-sky-400 bg-sky-950/40 border-sky-500/30"}`}>{nota}/10</span>
         )}
+        {estado.status === "enviado" && <span className="text-[10px] font-bold text-sky-400 bg-sky-950/40 border border-sky-500/30 rounded-full px-2 py-0.5">Aguardando correção</span>}
+        {estado.status === "ajustes" && <span className="text-[10px] font-bold text-amber-400 bg-amber-950/40 border border-amber-500/30 rounded-full px-2 py-0.5">Devolvido — aguardando reenvio</span>}
+        {moduloAtrasadoSemEnvio(estado) && <span className="text-[10px] font-bold text-rose-400 bg-rose-950/40 border border-rose-500/30 rounded-full px-2 py-0.5">Prazo esgotado</span>}
         {comentariosModulo.length > 0 && (
           <span className="text-[10px] font-bold text-sky-400 bg-sky-950/40 border border-sky-500/30 rounded-full px-2 py-0.5">{comentariosModulo.length} coment.</span>
         )}
@@ -2869,6 +4201,7 @@ function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentario
       </button>
       {aberto && (
         <div className="px-4 pb-4 border-t border-slate-800">
+          <PainelFluxoModulo estado={estado} ultimoModulo={ultimoModulo} onSetPrazo={onSetPrazo} onConfirmarCorrecao={onConfirmarCorrecao} onReabrir={onReabrir} onRestaurarPrazoAutomatico={onRestaurarPrazoAutomatico} onDevolverAjustes={onDevolverAjustes} />
           <div className="pt-4"><ModuloLeitura mId={m.id} lanc={lanc} calc={calc} /></div>
           {(avaliavel || ehFinal) && <NotaModulo nota={nota} onSetNota={onSetNota} ehFinal={ehFinal} />}
           <ComentariosPanel
@@ -2884,16 +4217,98 @@ function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentario
   );
 }
 
-function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
+function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
   const equipeKey = `dados_equipe_${equipe.id}`;
   const [dados, setDados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
   const [modulosAbertos, setModulosAbertos] = useState(new Set());
+  const [menuAlunoAberto, setMenuAlunoAberto] = useState(false);
+
+  // veio direto de "Correções pendentes" — expande e rola até o módulo assim
+  // que os dados da equipe terminarem de carregar.
+  useEffect(() => {
+    if (!moduloAlvo?.moduloId || dados === undefined) return;
+    setModulosAbertos((prev) => new Set(prev).add(moduloAlvo.moduloId));
+    const t = setTimeout(() => document.getElementById(`prof-mod-${moduloAlvo.moduloId}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+    return () => clearTimeout(t);
+  }, [moduloAlvo?.moduloId, moduloAlvo?.trigger, dados === undefined]);
+
   if (dados === undefined) return <LoadingScreen />;
   const lanc = mergeLancamentos(dados.lancamentos);
   const calc = calcular(lanc);
 
   const addComentario = (c) => setDados({ ...dados, comentarios: [...(dados.comentarios || []), c] });
   const setNota = (modId, valor) => setDados({ ...dados, notas: { ...(dados.notas || {}), [modId]: valor } });
+
+  const fluxo = dados.fluxoModulos || fluxoModulosPadrao();
+  const setPrazoModulo = (modId, novoPrazo) => {
+    const atual = estadoModulo(fluxo, modId);
+    setDados({ ...dados, fluxoModulos: { ...fluxo, [modId]: { ...atual, prazo: novoPrazo, prazoManual: true } } });
+  };
+  const restaurarPrazoAutomatico = async (modId) => {
+    const atual = estadoModulo(fluxo, modId);
+    let novoPrazo = atual.prazo;
+    try {
+      const ordem = CRONOGRAMA_ORDEM_POR_MODULO[modId];
+      const r = await window.storage.get(`cronograma_${turma.id}`, true);
+      const cronograma = r ? JSON.parse(r.value) : null;
+      const linha = cronograma?.linhas?.find((l) => l.ordem === ordem);
+      if (linha) novoPrazo = linha.dataEntrega;
+    } catch {}
+    setDados({ ...dados, fluxoModulos: { ...fluxo, [modId]: { ...atual, prazo: novoPrazo, prazoManual: false } } });
+  };
+  const confirmarCorrecaoELiberarProximo = (modId) => {
+    const atual = estadoModulo(fluxo, modId);
+    const idx = MODULOS.findIndex((m) => m.id === modId);
+    const proximo = MODULOS[idx + 1];
+    const novoFluxo = {
+      ...fluxo,
+      [modId]: {
+        ...atual,
+        status: "corrigido",
+        corrigidoEm: Date.now(),
+        feedback: null,
+        historico: [...(atual.historico || []), { tipo: "aprovacao", data: Date.now() }],
+      },
+    };
+    if (proximo) {
+      const estadoProximo = estadoModulo(fluxo, proximo.id);
+      if (estadoProximo.status === "pendente") novoFluxo[proximo.id] = { ...estadoProximo, status: "liberado" };
+    }
+    setDados({ ...dados, fluxoModulos: novoFluxo });
+  };
+  const devolverParaAjustes = (modId, textoFeedback) => {
+    const atual = estadoModulo(fluxo, modId);
+    setDados({
+      ...dados,
+      fluxoModulos: {
+        ...fluxo,
+        [modId]: {
+          ...atual,
+          status: "ajustes",
+          feedback: textoFeedback,
+          ciclo: (atual.ciclo || 1) + 1,
+          historico: [...(atual.historico || []), { tipo: "devolucao", data: Date.now(), feedback: textoFeedback }],
+        },
+      },
+    });
+  };
+  const reabrirModulo = (modId, novoPrazo) => {
+    const atual = estadoModulo(fluxo, modId);
+    setDados({
+      ...dados,
+      fluxoModulos: {
+        ...fluxo,
+        [modId]: {
+          ...atual,
+          status: "liberado",
+          prazo: novoPrazo,
+          prazoManual: true,
+          atraso: true,
+          historico: [...(atual.historico || []), { tipo: "reabertura", data: Date.now() }],
+        },
+      },
+    });
+  };
 
   const toggleModulo = (id) => {
     const next = new Set(modulosAbertos);
@@ -2911,6 +4326,9 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
     .filter((n) => n !== undefined && n !== null && n !== "");
   const media = notasDadas.length ? (notasDadas.reduce((a, b) => a + Number(b), 0) / notasDadas.length) : null;
   const notaFinal = dados.notas?.[NOTA_MODULO_FINAL];
+  const notaCenariosFluxo = dados.notas?.cenariosFluxo;
+  const notaApresentacao = dados.notas?.apresentacao;
+  const notaPonderada = calcularNotaPonderada({ media, notaFinal, notaCenariosFluxo, notaApresentacao, totalModulos: NOTA_MODULOS_AVALIAVEIS.length, notasDadasLength: notasDadas.length });
 
   return (
     <div>
@@ -2920,39 +4338,55 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
       <div className="space-y-6">
         <AnaliseNegocio calc={calc} historico={dados.historico} readOnly />
 
-        {(notasDadas.length > 0 || (notaFinal !== undefined && notaFinal !== null && notaFinal !== "")) && (
-          <div className="grid sm:grid-cols-2 gap-3">
-            <div className="bg-slate-900 border border-sky-800/60 rounded-lg p-4 flex items-center justify-between">
-              <div>
-                <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide">Média dos módulos avaliados</div>
-                <div className="text-xs text-slate-500 mt-0.5">{notasDadas.length}/{NOTA_MODULOS_AVALIAVEIS.length} módulos com nota</div>
-              </div>
-              <div className="text-2xl font-bold text-sky-400">{media !== null ? media.toFixed(1) : "—"}</div>
-            </div>
-            <div className="bg-slate-900 border border-amber-800/60 rounded-lg p-4 flex items-center justify-between">
-              <div>
-                <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wide">Nota final (síntese — Módulo 13)</div>
-                <div className="text-xs text-slate-500 mt-0.5">Conclusão sobre a viabilidade do negócio</div>
-              </div>
-              <div className="text-2xl font-bold text-amber-400">{(notaFinal !== undefined && notaFinal !== null && notaFinal !== "") ? notaFinal : "—"}</div>
-            </div>
-          </div>
+        {(notasDadas.length > 0 || !vazio(notaFinal) || !vazio(notaCenariosFluxo) || !vazio(notaApresentacao)) && (
+          <PainelAvaliacao media={media} notasDadasLength={notasDadas.length} totalModulos={NOTA_MODULOS_AVALIAVEIS.length} notaFinal={notaFinal} notaCenariosFluxo={notaCenariosFluxo} notaApresentacao={notaApresentacao} notaPonderada={notaPonderada}
+            onSetCenariosFluxo={(v) => setNota("cenariosFluxo", v)} onSetApresentacao={(v) => setNota("apresentacao", v)} />
         )}
+
+        {/* Menu do Aluno — só para visualização e acompanhamento pelo
+            professor. Fica recolhido por padrão para não ocupar espaço; ao
+            expandir, mostra as mesmas telas de análise que a equipe vê do
+            lado dela (Cenários e Fluxo de Caixa), sempre em modo leitura. */}
+        <Card className="p-0 overflow-hidden">
+          <button onClick={() => setMenuAlunoAberto((v) => !v)} className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-slate-800/40">
+            <span className="flex items-center gap-2.5 font-bold text-slate-100"><LayoutDashboard size={17} className="text-amber-500" /> Menu do Aluno <span className="text-xs font-normal text-slate-500">— visualização e acompanhamento</span></span>
+            {menuAlunoAberto ? <ChevronDown size={18} className="text-slate-500 shrink-0" /> : <ChevronRight size={18} className="text-slate-500 shrink-0" />}
+          </button>
+          {menuAlunoAberto && (
+            <div className="px-5 pb-5 pt-1 border-t border-slate-800 space-y-5">
+              <AnaliseCenarios calc={calc} cenarios={dados.cenarios} onSetCenarios={() => {}} readOnly />
+              <FluxoCaixaAnual calc={calc} taxaCrescimento={dados.taxaCrescimentoFluxo ?? 0} onSetTaxaCrescimento={() => {}} tmaAnual={dados.tmaAnualFluxo ?? 12} onSetTmaAnual={() => {}} readOnly />
+            </div>
+          )}
+        </Card>
 
         <Card className="p-4">
           <SectionTitle icon={ClipboardList} sub="Clique em um módulo para abrir e ver o que a equipe preencheu, linha por linha.">Navegar pelos módulos</SectionTitle>
+          {MODULOS.some((m) => estadoModulo(fluxo, m.id).status === "enviado") && (
+            <div className="flex items-center gap-2 text-xs font-semibold text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-md px-3 py-2 mb-3">
+              <Clock size={13} className="shrink-0" />
+              {MODULOS.filter((m) => estadoModulo(fluxo, m.id).status === "enviado").length} módulo(s) enviado(s) pela equipe, aguardando sua correção.
+            </div>
+          )}
           <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-2">
             {MODULOS.map((m) => {
               const Icon = m.icon;
               const completo = !!calc.preenchidos?.[m.n - 1];
+              const statusMod = estadoModulo(fluxo, m.id).status;
               const notaM = dados.notas?.[m.id];
               return (
-                <button key={m.id} onClick={() => irEExpandir(m.id)} className="flex items-center gap-2.5 border border-slate-700 rounded-lg p-2.5 text-left hover:border-amber-500 hover:bg-slate-800 transition">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${completo ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/40" : "bg-slate-900 border border-amber-500/40 text-amber-500"}`}>
-                    {completo ? <CheckCircle2 size={12} /> : m.n}
+                <button key={m.id} onClick={() => irEExpandir(m.id)} className={`flex items-center gap-2.5 border rounded-lg p-2.5 text-left hover:border-amber-500 hover:bg-slate-800 transition ${statusMod === "enviado" ? "border-sky-500/50 bg-sky-500/5" : statusMod === "ajustes" ? "border-amber-500/50 bg-amber-500/5" : "border-slate-700"}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${statusMod === "enviado" ? "bg-sky-950/40 text-sky-400 border border-sky-500/40" : statusMod === "ajustes" ? "bg-amber-950/40 text-amber-400 border border-amber-500/40" : completo ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/40" : "bg-slate-900 border border-amber-500/40 text-amber-500"}`}>
+                    {statusMod === "enviado" ? <Clock size={12} /> : statusMod === "ajustes" ? <RotateCcw size={12} /> : completo ? <CheckCircle2 size={12} /> : m.n}
                   </div>
                   <Icon size={14} className="text-sky-400 shrink-0" />
                   <span className="text-xs font-medium text-slate-200 truncate flex-1">{m.nome}</span>
+                  {statusMod === "enviado" && (
+                    <span className="text-[9px] font-bold text-sky-400 bg-sky-950/40 border border-sky-500/30 rounded-full px-1.5 py-0.5 shrink-0">Em correção</span>
+                  )}
+                  {statusMod === "ajustes" && (
+                    <span className="text-[9px] font-bold text-amber-400 bg-amber-950/40 border border-amber-500/30 rounded-full px-1.5 py-0.5 shrink-0">Com a equipe</span>
+                  )}
                   {(notaM !== undefined && notaM !== null && notaM !== "") && (
                     <span className="text-[10px] font-bold text-sky-400 shrink-0">{notaM}</span>
                   )}
@@ -2977,6 +4411,13 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
               professorNome={professorNome}
               nota={dados.notas?.[m.id]}
               onSetNota={(valor) => setNota(m.id, valor)}
+              estado={estadoModulo(fluxo, m.id)}
+              ultimoModulo={m.n === MODULOS.length}
+              onSetPrazo={(v) => setPrazoModulo(m.id, v)}
+              onConfirmarCorrecao={() => confirmarCorrecaoELiberarProximo(m.id)}
+              onReabrir={(novoPrazo) => reabrirModulo(m.id, novoPrazo)}
+              onRestaurarPrazoAutomatico={() => restaurarPrazoAutomatico(m.id)}
+              onDevolverAjustes={(feedback) => devolverParaAjustes(m.id, feedback)}
             />
           ))}
         </div>
@@ -2993,31 +4434,44 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome }) {
 function FormNovaEmpresa({ turmaId, equipes, setEquipes }) {
   const [nome, setNome] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState(null);
 
   const adicionar = async () => {
     const limpo = nome.trim();
     if (!limpo) return;
     if ((equipes || []).some((e) => e.nomeNegocio.toLowerCase() === limpo.toLowerCase())) {
-      setNome("");
+      setErro(`Já existe uma empresa chamada "${limpo}" nesta turma. Escolha outro nome, ou edite a existente (ícone de lápis no card dela).`);
       return;
     }
+    setErro(null);
     setSalvando(true);
-    const nova = { id: uid(), turmaId, nomeNegocio: limpo, integrantes: [] };
-    await setEquipes([...(equipes || []), nova]);
-    setNome("");
+    try {
+      const nova = { id: uid(), turmaId, nomeNegocio: limpo, integrantes: [] };
+      await setEquipes([...(equipes || []), nova]);
+      setNome("");
+    } catch {
+      setErro("Não foi possível salvar agora — verifique sua conexão e tente novamente.");
+    }
     setSalvando(false);
   };
 
   return (
-    <div className="flex gap-2">
-      <TxtInput value={nome} onChange={setNome} placeholder="Nome da empresa/negócio" />
-      <button
-        onClick={adicionar}
-        disabled={!nome.trim() || salvando}
-        className="bg-amber-500 text-slate-900 font-bold px-4 rounded-md text-sm hover:bg-amber-400 disabled:opacity-40 flex items-center gap-1.5 shrink-0"
-      >
-        <Plus size={15} /> Adicionar
-      </button>
+    <div>
+      <div className="flex gap-2">
+        <TxtInput value={nome} onChange={(v) => { setNome(v); if (erro) setErro(null); }} placeholder="Nome da empresa/negócio" />
+        <button
+          onClick={adicionar}
+          disabled={!nome.trim() || salvando}
+          className="bg-amber-500 text-slate-900 font-bold px-4 rounded-md text-sm hover:bg-amber-400 disabled:opacity-40 flex items-center gap-1.5 shrink-0"
+        >
+          <Plus size={15} /> {salvando ? "Salvando…" : "Adicionar"}
+        </button>
+      </div>
+      {erro && (
+        <div className="flex items-start gap-2 text-xs text-rose-400 bg-rose-950/30 border border-rose-800/50 rounded-md p-2.5 mt-2">
+          <AlertTriangle size={13} className="shrink-0 mt-0.5" /> {erro}
+        </div>
+      )}
     </div>
   );
 }
@@ -3049,7 +4503,41 @@ function PainelRoster({ turmaId, turmaNome, professorUid, professorNome }) {
   const [processando, setProcessando] = useState(false);
   const [erro, setErro] = useState("");
   const [aberto, setAberto] = useState(false);
+  const [nomeNovo, setNomeNovo] = useState("");
+  const [matriculaNovo, setMatriculaNovo] = useState("");
+  const [erroForm, setErroForm] = useState("");
   const inputRef = useRef(null);
+
+  const adicionarAlunoIndividual = async () => {
+    const nome = nomeNovo.trim();
+    const matricula = matriculaNovo.trim();
+    setErroForm("");
+    if (!nome || !matricula) {
+      setErroForm("Preencha o nome e a matrícula.");
+      return;
+    }
+    if ((roster || []).some((a) => a.matricula === matricula)) {
+      setErroForm("Já existe um aluno com essa matrícula nesta turma.");
+      return;
+    }
+    const novo = { nome: nome.toUpperCase(), matricula };
+    await setRoster([...(roster || []), novo]);
+    // Mesmo índice matrícula → turma usado na importação em massa, para que
+    // este aluno também consiga entrar direto pela própria matrícula.
+    try {
+      await window.storage.set(`matricula_${matricula}`, JSON.stringify({
+        turmaId, turmaNome, nome: novo.nome, matricula, professorUid, professorNome,
+      }), true);
+    } catch {}
+    setNomeNovo("");
+    setMatriculaNovo("");
+  };
+
+  const removerAlunoIndividual = async (matricula) => {
+    if (!confirm("Remover este aluno da lista oficial da turma? A aprovação automática por matrícula deixa de valer para ele(a); um cadastro já aprovado não é desfeito.")) return;
+    await setRoster((roster || []).filter((a) => a.matricula !== matricula));
+    try { await window.storage.delete(`matricula_${matricula}`, true); } catch {}
+  };
 
   const aoSelecionarArquivo = async (e) => {
     const file = e.target.files?.[0];
@@ -3113,12 +4601,38 @@ function PainelRoster({ turmaId, turmaNome, professorUid, professorNome }) {
                 <Upload size={15} /> {processando ? "Lendo PDF…" : "Importar lista (PDF)"}
               </button>
               {erro && <p className="text-sm text-rose-400 mt-2">{erro}</p>}
+
+              <div className="mt-4 pt-4 border-t border-slate-800">
+                <p className="text-xs uppercase text-slate-500 font-semibold mb-2">Incluir um aluno individualmente</p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    value={nomeNovo}
+                    onChange={(e) => setNomeNovo(e.target.value)}
+                    placeholder="Nome do aluno"
+                    className="flex-1 bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100"
+                  />
+                  <input
+                    value={matriculaNovo}
+                    onChange={(e) => setMatriculaNovo(e.target.value)}
+                    placeholder="Matrícula"
+                    className="sm:w-40 bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100 font-mono"
+                  />
+                  <button
+                    onClick={adicionarAlunoIndividual}
+                    className="flex items-center justify-center gap-2 bg-slate-900 border border-slate-700 hover:border-amber-500 text-slate-100 text-sm font-semibold px-4 py-2 rounded-md shrink-0"
+                  >
+                    <UserPlus size={15} /> Adicionar
+                  </button>
+                </div>
+                {erroForm && <p className="text-sm text-rose-400 mt-2">{erroForm}</p>}
+              </div>
+
               {roster.length > 0 && (
-                <div className="mt-3 max-h-52 overflow-y-auto">
+                <div className="mt-4 max-h-52 overflow-y-auto">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="text-left text-slate-500 border-b border-slate-700">
-                        <th className="py-1.5 pr-2">Nome</th><th className="py-1.5 pr-2">Matrícula</th>
+                        <th className="py-1.5 pr-2">Nome</th><th className="py-1.5 pr-2">Matrícula</th><th className="w-8"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3126,6 +4640,11 @@ function PainelRoster({ turmaId, turmaNome, professorUid, professorNome }) {
                         <tr key={a.matricula} className="border-b border-slate-800">
                           <td className="py-1 pr-2 text-slate-300">{a.nome}</td>
                           <td className="py-1 pr-2 text-slate-500 font-mono">{a.matricula}</td>
+                          <td className="py-1 pr-1 text-right">
+                            <button onClick={() => removerAlunoIndividual(a.matricula)} className="text-slate-500 hover:text-rose-400">
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -3173,13 +4692,520 @@ function PainelRoster({ turmaId, turmaNome, professorUid, professorNome }) {
   );
 }
 
-function TurmaDetail({ turma, onVoltar, professorNome }) {
+// ----------------------------------------------------------------------------
+// Cronograma — linha editável (visão do professor)
+// ----------------------------------------------------------------------------
+function LinhaCronogramaProfessor({ linha, onChangeCampo, onRestaurar }) {
+  const [editando, setEditando] = useState(null); // 'entrega' | 'etapa' | null
+  const status = situacaoCronograma(linha);
+
+  return (
+    <tr className="border-t border-slate-800 align-top">
+      <td className="py-3 pr-3 text-sm font-semibold text-slate-200 whitespace-nowrap">{linha.semana}</td>
+      <td className="py-3 pr-3 text-sm text-slate-200 min-w-[220px]">
+        {editando === "etapa" ? (
+          <input
+            autoFocus
+            defaultValue={linha.etapa}
+            onBlur={(e) => { onChangeCampo(linha.ordem, "etapa", e.target.value); setEditando(null); }}
+            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+            className="w-full bg-slate-900 border border-amber-500 rounded-md px-2 py-1 text-sm text-slate-100 focus:outline-none"
+          />
+        ) : (
+          <button onClick={() => setEditando("etapa")} className="group flex items-center gap-1.5 text-left hover:text-amber-400">
+            {linha.etapa}
+            <Pencil size={12} className="opacity-0 group-hover:opacity-70 shrink-0" />
+          </button>
+        )}
+      </td>
+      <td className="py-3 pr-3 text-sm text-slate-400 whitespace-nowrap">
+        <span className="inline-flex items-center gap-1.5" title="Calculado automaticamente">
+          <Lock size={11} className="text-slate-600" />
+          {fmtDataCurta(linha.dataInicio)}
+        </span>
+      </td>
+      <td className="py-3 pr-3 text-sm text-slate-400 whitespace-nowrap">
+        <span className="inline-flex items-center gap-1.5">
+          <Lock size={11} className="text-slate-600" />
+          {linha.horaInicio}
+        </span>
+      </td>
+      <td className="py-3 pr-3 text-sm whitespace-nowrap">
+        {editando === "entrega" ? (
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              defaultValue={linha.dataEntrega}
+              autoFocus
+              onBlur={(e) => { onChangeCampo(linha.ordem, "dataEntrega", e.target.value); setEditando(null); }}
+              className="bg-slate-900 border border-amber-500 rounded-md px-2 py-1 text-xs text-slate-100 focus:outline-none"
+            />
+            <input
+              type="time"
+              defaultValue={linha.horaEntrega}
+              onBlur={(e) => onChangeCampo(linha.ordem, "horaEntrega", e.target.value)}
+              className="bg-slate-900 border border-amber-500 rounded-md px-2 py-1 text-xs text-slate-100 focus:outline-none w-[85px]"
+            />
+          </div>
+        ) : (
+          <button onClick={() => setEditando("entrega")} className="group flex items-center gap-1.5 text-left text-slate-200 hover:text-amber-400">
+            <span className="font-medium">{fmtDataCurta(linha.dataEntrega)} · {linha.horaEntrega}</span>
+            <Pencil size={12} className="opacity-0 group-hover:opacity-70 shrink-0" />
+          </button>
+        )}
+        {linha.manual && (
+          <div className="flex items-center gap-1 mt-1">
+            <span className="text-[10px] font-semibold text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-full px-1.5 py-0.5">Ajustado manualmente</span>
+            <button onClick={() => onRestaurar(linha.ordem)} className="text-slate-500 hover:text-amber-400" title="Restaurar cálculo automático">
+              <Undo2 size={12} />
+            </button>
+          </div>
+        )}
+      </td>
+      <td className="py-3 text-sm"><BadgeSituacaoCronograma status={status} /></td>
+    </tr>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Cronograma — card completo (visão do professor), embutido em TurmaDetail
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// Propagação do cronograma para o prazo de entrega de cada módulo, em todas
+// as equipes da turma. Só atualiza módulos cujo prazo NÃO foi digitado
+// manualmente pelo professor para aquela equipe (fluxoModulos[id].prazoManual)
+// — esses ficam preservados, mesmo com um cronograma diferente.
+// ----------------------------------------------------------------------------
+async function propagarPrazoCronogramaTurma(turmaId, linhas) {
+  const mapaOrdemParaEntrega = {};
+  linhas.forEach((l) => { mapaOrdemParaEntrega[l.ordem] = l.dataEntrega; });
+  let equipesAtualizadas = 0;
+  let prazosManuaisPreservados = 0;
+  try {
+    const r = await window.storage.get(`equipes_${turmaId}`, true);
+    const equipes = r ? JSON.parse(r.value) : [];
+    for (const eq of equipes) {
+      const key = `dados_equipe_${eq.id}`;
+      let rd;
+      try { rd = await window.storage.get(key, true); } catch { continue; }
+      if (!rd) continue;
+      const dados = JSON.parse(rd.value);
+      const fluxo = dados.fluxoModulos || fluxoModulosPadrao();
+      let mudou = false;
+      const novoFluxo = { ...fluxo };
+      Object.entries(CRONOGRAMA_ORDEM_POR_MODULO).forEach(([modId, ordem]) => {
+        const estado = estadoModulo(fluxo, modId);
+        const novoPrazo = mapaOrdemParaEntrega[ordem];
+        if (!novoPrazo) return;
+        if (estado.prazoManual) { prazosManuaisPreservados++; return; }
+        if (estado.prazo !== novoPrazo) {
+          novoFluxo[modId] = { ...estado, prazo: novoPrazo };
+          mudou = true;
+        }
+      });
+      if (mudou) {
+        try {
+          await window.storage.set(key, JSON.stringify({ ...dados, fluxoModulos: novoFluxo }), true);
+          equipesAtualizadas++;
+        } catch {}
+      }
+    }
+  } catch {}
+  return { equipesAtualizadas, prazosManuaisPreservados };
+}
+
+// Contagem "somente leitura", usada para avisar o professor, ANTES de
+// recalcular, que existem prazos de módulo digitados manualmente para
+// equipes específicas — eles serão mantidos, não sobrescritos.
+async function contarPrazosManuaisDaTurma(turmaId) {
+  let total = 0;
+  try {
+    const r = await window.storage.get(`equipes_${turmaId}`, true);
+    const equipes = r ? JSON.parse(r.value) : [];
+    for (const eq of equipes) {
+      let rd;
+      try { rd = await window.storage.get(`dados_equipe_${eq.id}`, true); } catch { continue; }
+      if (!rd) continue;
+      const dados = JSON.parse(rd.value);
+      const fluxo = dados.fluxoModulos || {};
+      Object.keys(CRONOGRAMA_ORDEM_POR_MODULO).forEach((modId) => {
+        if (fluxo[modId]?.prazoManual) total++;
+      });
+    }
+  } catch {}
+  return total;
+}
+
+function CronogramaTurmaCard({ turmaId }) {
+  const [cronograma, setCronograma] = useSharedObject(`cronograma_${turmaId}`, null);
+  const [dataInicioS1, setDataInicioS1] = useState("");
+  const [horaInicioS1, setHoraInicioS1] = useState(HORARIO_CRONOGRAMA_PADRAO);
+  const [pendenteRecalculo, setPendenteRecalculo] = useState(false);
+  const [prazosManuaisCount, setPrazosManuaisCount] = useState(0);
+  const [propagando, setPropagando] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    if (cronograma) {
+      setDataInicioS1(cronograma.dataInicioS1);
+      setHoraInicioS1(cronograma.horaInicioS1);
+    }
+  }, [cronograma?.dataInicioS1, cronograma?.horaInicioS1]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  // Assim que a alteração da Semana 1 fica pendente de recálculo, verifica em
+  // segundo plano se alguma equipe da turma tem prazo de módulo digitado à
+  // mão — para avisar o professor ANTES de recalcular, como pedido.
+  useEffect(() => {
+    if (!pendenteRecalculo) return;
+    let vivo = true;
+    contarPrazosManuaisDaTurma(turmaId).then((n) => { if (vivo) setPrazosManuaisCount(n); });
+    return () => { vivo = false; };
+  }, [pendenteRecalculo, turmaId]);
+
+  if (cronograma === undefined) return null;
+
+  const propagarEAvisar = async (linhas, mensagemBase) => {
+    setPropagando(true);
+    const { equipesAtualizadas, prazosManuaisPreservados } = await propagarPrazoCronogramaTurma(turmaId, linhas);
+    setPropagando(false);
+    const complemento = prazosManuaisPreservados > 0
+      ? ` ${prazosManuaisPreservados} prazo(s) de módulo definidos manualmente por equipe foram mantidos.`
+      : (equipesAtualizadas > 0 ? ` Prazos de módulo atualizados em ${equipesAtualizadas} equipe(s).` : "");
+    setToast(mensagemBase + complemento);
+  };
+
+  const calcularInicial = async () => {
+    if (!dataInicioS1) return;
+    const linhas = calcularCronograma(dataInicioS1, horaInicioS1);
+    setCronograma({ dataInicioS1, horaInicioS1, linhas, atualizadoEm: Date.now() });
+    await propagarEAvisar(linhas, "Cronograma calculado.");
+  };
+
+  const handleAlterarDataS1 = (novaData, novaHora) => {
+    setDataInicioS1(novaData);
+    setHoraInicioS1(novaHora);
+    setPendenteRecalculo(true);
+  };
+
+  const recalcularTudo = async () => {
+    const linhas = calcularCronograma(dataInicioS1, horaInicioS1);
+    setCronograma({ dataInicioS1, horaInicioS1, linhas, atualizadoEm: Date.now() });
+    setPendenteRecalculo(false);
+    await propagarEAvisar(linhas, "Cronograma recalculado a partir da nova data da Semana 1.");
+  };
+
+  const recalcularRespeitandoManuais = async () => {
+    const base = calcularCronograma(dataInicioS1, horaInicioS1);
+    const novasLinhas = base.map((nova, i) => (cronograma.linhas[i]?.manual ? cronograma.linhas[i] : nova));
+    setCronograma({ dataInicioS1, horaInicioS1, linhas: novasLinhas, atualizadoEm: Date.now() });
+    setPendenteRecalculo(false);
+    await propagarEAvisar(novasLinhas, "Semanas automáticas recalculadas. Os ajustes manuais do cronograma foram mantidos.");
+  };
+
+  const onChangeCampo = (ordem, campo, valor) => {
+    const novasLinhas = cronograma.linhas.map((l) => {
+      if (l.ordem !== ordem) return l;
+      if (campo === "etapa") return { ...l, etapa: valor };
+      if (campo === "dataEntrega") return { ...l, dataEntrega: valor, manual: true };
+      if (campo === "horaEntrega") return { ...l, horaEntrega: valor, manual: true };
+      return l;
+    });
+    setCronograma({ ...cronograma, linhas: novasLinhas, atualizadoEm: Date.now() });
+  };
+
+  const onRestaurar = (ordem) => {
+    const base = calcularCronograma(cronograma.dataInicioS1, cronograma.horaInicioS1);
+    const novasLinhas = cronograma.linhas.map((l, i) => (l.ordem === ordem ? { ...base[i], manual: false } : l));
+    setCronograma({ ...cronograma, linhas: novasLinhas, atualizadoEm: Date.now() });
+  };
+
+  const nManuais = cronograma?.linhas?.filter((l) => l.manual).length || 0;
+
+  return (
+    <Card className="p-4 relative">
+      <SectionTitle icon={Calendar} sub="Defina a data de início da Semana 1 — as demais semanas são calculadas automaticamente. A turma vê este cronograma em modo de visualização.">
+        Cronograma do projeto
+      </SectionTitle>
+
+      <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-4 mb-4">
+        <div className="flex items-center gap-2 mb-1">
+          <Pencil size={13} className="text-amber-500" />
+          <h3 className="text-sm font-bold text-slate-100">Início da Semana 1</h3>
+        </div>
+        <p className="text-xs text-slate-400 mb-3">
+          Único campo de data livre — a partir dele, o sistema soma os dias previstos em cada etapa para preencher as semanas seguintes.
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-[11px] text-slate-500 mb-1">Data de início</label>
+            <input
+              type="date"
+              value={dataInicioS1}
+              onChange={(e) => handleAlterarDataS1(e.target.value, horaInicioS1)}
+              className="bg-slate-950 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100 focus:border-amber-500 focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] text-slate-500 mb-1">Horário</label>
+            <input
+              type="time"
+              value={horaInicioS1}
+              onChange={(e) => handleAlterarDataS1(dataInicioS1, e.target.value)}
+              className="bg-slate-950 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100 focus:border-amber-500 focus:outline-none w-[110px]"
+            />
+          </div>
+          {!cronograma && (
+            <button onClick={calcularInicial} disabled={!dataInicioS1} className="flex items-center gap-2 bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm disabled:opacity-40">
+              <RefreshCw size={14} /> Calcular cronograma
+            </button>
+          )}
+        </div>
+
+        {pendenteRecalculo && cronograma && (
+          <div className="mt-4 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3.5 flex items-start gap-3">
+            <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm text-amber-200 font-semibold">A data de início da Semana 1 mudou.</p>
+              <p className="text-xs text-amber-200/80 mt-0.5">
+                Deseja recalcular as semanas seguintes, mantendo os intervalos previstos no cronograma?
+                {nManuais > 0 && ` Você tem ${nManuais} semana(s) com data ajustada manualmente.`}
+              </p>
+              {prazosManuaisCount > 0 && (
+                <p className="text-xs text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-md px-2.5 py-1.5 mt-2 flex items-center gap-1.5">
+                  <Info size={12} className="shrink-0" /> {prazosManuaisCount} prazo(s) de módulo, em equipes específicas, foram digitados manualmente e têm data diferente do cronograma — eles serão mantidos, o recálculo não vai sobrescrevê-los.
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2 mt-3">
+                <button onClick={recalcularTudo} disabled={propagando} className="text-xs font-bold bg-amber-500 text-slate-900 px-3 py-1.5 rounded-md hover:bg-amber-400 disabled:opacity-40">
+                  {propagando ? "Recalculando…" : "Recalcular tudo"}
+                </button>
+                {nManuais > 0 && (
+                  <button onClick={recalcularRespeitandoManuais} disabled={propagando} className="text-xs font-bold border border-amber-500/40 text-amber-300 px-3 py-1.5 rounded-md hover:border-amber-400 disabled:opacity-40">
+                    Recalcular, mantendo meus ajustes manuais
+                  </button>
+                )}
+                <button onClick={() => setPendenteRecalculo(false)} className="text-xs font-semibold text-slate-400 px-3 py-1.5 rounded-md hover:text-slate-200">
+                  Ignorar por enquanto
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {cronograma && (
+        <>
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+            <div className="flex items-center gap-3 text-[11px] text-slate-500">
+              <span className="flex items-center gap-1"><Lock size={11} className="text-slate-600" /> calculado automaticamente</span>
+              <span className="flex items-center gap-1"><Pencil size={11} className="text-amber-500" /> editável</span>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="text-left text-[11px] font-bold tracking-wide text-slate-500">
+                  <th className="py-2 pr-3">SEMANA</th>
+                  <th className="py-2 pr-3">ETAPA / ATIVIDADE</th>
+                  <th className="py-2 pr-3">DATA DE INÍCIO</th>
+                  <th className="py-2 pr-3">HORÁRIO</th>
+                  <th className="py-2 pr-3">PRAZO DE ENTREGA</th>
+                  <th className="py-2">SITUAÇÃO</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cronograma.linhas.map((linha) => (
+                  <LinhaCronogramaProfessor key={linha.ordem} linha={linha} onChangeCampo={onChangeCampo} onRestaurar={onRestaurar} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex items-start gap-2 text-xs text-slate-500 bg-slate-900/60 border border-slate-800 rounded-lg p-3 mt-3">
+            <Info size={14} className="shrink-0 mt-0.5" />
+            Clique na data de entrega ou no nome da etapa para editar. Alterações manuais ficam marcadas com "Ajustado manualmente" e podem ser desfeitas pelo ícone ao lado.
+            <br />
+            Estas datas viram automaticamente o prazo de entrega de cada módulo, em todas as equipes da turma (Bloco 1 → Módulos 1-4, Bloco 2 → Módulos 5-9, e assim por diante). Um prazo digitado manualmente para uma equipe específica (na revisão da equipe) nunca é sobrescrito por essa propagação.
+          </div>
+        </>
+      )}
+
+      {toast && (
+        <div className="absolute -bottom-3 right-4 translate-y-full bg-slate-900 border border-amber-500/40 rounded-lg shadow-2xl px-4 py-3 flex items-center gap-3 max-w-sm z-10">
+          <CheckCircle2 size={16} className="text-amber-500 shrink-0" />
+          <span className="text-sm text-slate-200">{toast}</span>
+          <button onClick={() => setToast(null)} className="text-slate-500 hover:text-slate-300"><X size={14} /></button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Correções pendentes — varre todas as turmas do professor em busca de
+// módulos com status "enviado" (aguardando análise), para alimentar o
+// contador no menu e a lista clicável que leva direto à correção.
+// ----------------------------------------------------------------------------
+function usePendentesCorrecao(turmas) {
+  const [pendentes, setPendentes] = useState(null); // null = carregando
+
+  useEffect(() => {
+    if (!turmas) return;
+    let vivo = true;
+
+    const carregar = async () => {
+      const lista = [];
+      for (const turma of turmas) {
+        let equipes = [];
+        try {
+          const r = await window.storage.get(`equipes_${turma.id}`, true);
+          equipes = r ? JSON.parse(r.value) : [];
+        } catch { continue; }
+        for (const equipe of equipes) {
+          let dados;
+          try {
+            const rd = await window.storage.get(`dados_equipe_${equipe.id}`, true);
+            dados = rd ? JSON.parse(rd.value) : null;
+          } catch { continue; }
+          if (!dados) continue;
+          const fluxo = dados.fluxoModulos || {};
+          MODULOS.forEach((m) => {
+            const estado = estadoModulo(fluxo, m.id);
+            if (estado.status === "enviado") {
+              lista.push({
+                turmaId: turma.id,
+                turmaNome: turma.nome,
+                equipeId: equipe.id,
+                equipeNome: equipe.nomeNegocio,
+                moduloId: m.id,
+                moduloNome: m.nome,
+                moduloN: m.n,
+                enviadoEm: estado.enviadoEm,
+              });
+            }
+          });
+        }
+      }
+      lista.sort((a, b) => (a.enviadoEm || 0) - (b.enviadoEm || 0));
+      if (vivo) setPendentes(lista);
+    };
+
+    carregar();
+    const intervalo = setInterval(carregar, 20000);
+    const aoFocar = () => carregar();
+    window.addEventListener("focus", aoFocar);
+    document.addEventListener("visibilitychange", aoFocar);
+    return () => {
+      vivo = false;
+      clearInterval(intervalo);
+      window.removeEventListener("focus", aoFocar);
+      document.removeEventListener("visibilitychange", aoFocar);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify((turmas || []).map((t) => t.id))]);
+
+  return pendentes;
+}
+
+function CorrecoesPendentesView({ pendentes, onAbrir }) {
+  if (pendentes === null) return <LoadingScreen />;
+
+  return (
+    <div>
+      <SectionTitle icon={Inbox} sub="Módulos enviados pelas equipes, de todas as turmas, aguardando sua análise — clique para corrigir.">
+        Correções pendentes
+      </SectionTitle>
+      {pendentes.length === 0 ? (
+        <Card className="p-10 text-center text-slate-500">Nenhuma correção pendente no momento. 🎉</Card>
+      ) : (
+        <div className="space-y-2.5">
+          {pendentes.map((p, i) => (
+            <button
+              key={`${p.equipeId}-${p.moduloId}-${i}`}
+              onClick={() => onAbrir(p.turmaId, p.equipeId, p.moduloId)}
+              className="w-full flex items-center gap-3 bg-slate-800 border border-slate-700 rounded-lg p-4 text-left hover:border-amber-500 hover:bg-slate-800/80 transition"
+            >
+              <div className="w-9 h-9 rounded-full bg-sky-950/40 border border-sky-500/40 text-sky-400 flex items-center justify-center shrink-0 text-xs font-bold">
+                {String(p.moduloN).padStart(2, "0")}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-slate-100 truncate">{p.equipeNome} <span className="text-slate-500 font-normal">· {p.turmaNome}</span></div>
+                <div className="text-xs text-slate-400 truncate">Módulo {p.moduloN} — {p.moduloNome}</div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-[11px] text-slate-500 flex items-center gap-1 justify-end"><Clock size={11} /> {p.enviadoEm ? fmtData(p.enviadoEm) : "—"}</div>
+                <div className="text-[10px] font-bold text-sky-400 bg-sky-950/40 border border-sky-500/30 rounded-full px-2 py-0.5 mt-1 inline-block">Corrigir agora</div>
+              </div>
+              <ChevronRight size={16} className="text-slate-600 shrink-0" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GestaoCronogramaView({ turmas }) {
+  const [turmaSelId, setTurmaSelId] = useState(turmas.length === 1 ? turmas[0].id : null);
+  const turmaSel = turmas.find((t) => t.id === turmaSelId) || null;
+
+  if (turmaSel) {
+    return (
+      <div className="space-y-4">
+        {turmas.length > 1 && (
+          <button onClick={() => setTurmaSelId(null)} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Escolher outra turma</button>
+        )}
+        <SectionTitle icon={Calendar} sub={`Gerenciando o cronograma de ${turmaSel.nome}.`}>Cronograma</SectionTitle>
+        <CronogramaTurmaCard turmaId={turmaSel.id} />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <SectionTitle icon={Calendar} sub="Escolha a turma para definir ou ajustar o cronograma do projeto.">Cronograma</SectionTitle>
+      {turmas.length === 0 ? (
+        <Card className="p-10 text-center text-slate-500">Você ainda não criou nenhuma turma. Crie uma em Gestão → Turmas primeiro.</Card>
+      ) : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {turmas.map((t) => (
+            <button key={t.id} onClick={() => setTurmaSelId(t.id)} className="text-left bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-amber-500 transition">
+              <div className="flex items-center gap-2 mb-2"><School size={16} className="text-sky-400 shrink-0" /><span className="font-bold text-slate-100 truncate">{t.nome}</span></div>
+              <div className="flex items-center gap-2 text-xs text-slate-400"><KeyRound size={13} /> Código: <span className="font-mono font-bold text-amber-400">{t.codigo}</span></div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TurmaDetail({ turma, onVoltar, professorNome, alvoCorrecao }) {
   const [equipes, setEquipes] = useSharedList(`equipes_${turma.id}`);
-  const [equipeSel, setEquipeSel] = useState(null);
+  const [equipeSel, setEquipeSel] = useState(alvoCorrecao?.equipeId || null);
+
+  useEffect(() => {
+    if (alvoCorrecao?.equipeId) setEquipeSel(alvoCorrecao.equipeId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alvoCorrecao?.trigger]);
 
   if (equipeSel) {
+    if (equipes === null) return <LoadingScreen />;
     const eq = equipes.find((e) => e.id === equipeSel);
-    return <EquipeReview turma={turma} equipe={eq} professorNome={professorNome} onVoltar={() => setEquipeSel(null)} />;
+    if (!eq) {
+      return (
+        <div>
+          <button onClick={() => { setEquipeSel(null); onVoltar?.(); }} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar</button>
+          <Card className="p-8 text-center text-slate-500">Não foi possível encontrar essa equipe — ela pode ter sido removida.</Card>
+        </div>
+      );
+    }
+    return <EquipeReview turma={turma} equipe={eq} professorNome={professorNome} onVoltar={() => setEquipeSel(null)} moduloAlvo={alvoCorrecao?.equipeId === equipeSel ? alvoCorrecao : null} />;
   }
 
   const renomearEmpresa = async (equipe) => {
@@ -3212,6 +5238,8 @@ function TurmaDetail({ turma, onVoltar, professorNome }) {
           <span className="font-mono font-bold tracking-widest text-slate-100">{turma.codigo}</span>
         </div>
       </div>
+
+      <CronogramaTurmaCard turmaId={turma.id} />
 
       <PainelRoster turmaId={turma.id} turmaNome={turma.nome} professorUid={turma.professorUid} professorNome={turma.professor} />
 
@@ -3258,6 +5286,8 @@ function EquipeCard({ equipe, onClick, onRenomear, onExcluir }) {
   const equipeKey = `dados_equipe_${equipe.id}`;
   const [dados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [] });
   const calc = dados ? calcular(dados.lancamentos) : null;
+  const fluxo = dados?.fluxoModulos || {};
+  const aguardandoCorrecao = MODULOS.filter((m) => estadoModulo(fluxo, m.id).status === "enviado").length;
   return (
     <div className="relative bg-slate-800 border border-slate-700 rounded-xl hover:border-amber-500 transition">
       {(onRenomear || onExcluir) && (
@@ -3280,6 +5310,11 @@ function EquipeCard({ equipe, onClick, onRenomear, onExcluir }) {
         <span className="font-bold text-slate-100 truncate">{equipe.nomeNegocio}</span>
       </div>
       <div className="text-xs text-slate-500 mb-3">{equipe.integrantes.join(", ") || "sem integrantes"}</div>
+      {aguardandoCorrecao > 0 && (
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-md px-2 py-1 mb-3 w-fit">
+          <Clock size={11} className="shrink-0" /> {aguardandoCorrecao} módulo(s) aguardando correção
+        </div>
+      )}
       {calc ? (
         <>
           <div className="w-full bg-slate-700 rounded-full h-1.5 mb-2">
@@ -3766,9 +5801,92 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
   );
 }
 
+// Relatório de Notas: uma linha por aluno (não por empresa) — a nota de
+// cada módulo é a mesma nota da empresa/equipe à qual o aluno está
+// vinculado, replicada individualmente para cada integrante, como pedido no
+// chamado. Reaproveita a mesma fórmula de nota final ponderada usada na
+// revisão da equipe e no Feedback do Professor.
+function RelatorioNotas({ dadosEquipes }) {
+  if (dadosEquipes === null) return <LoadingScreen />;
+  if (dadosEquipes.length === 0) return <Card className="p-8 text-center text-slate-500">Nenhuma empresa nesta turma ainda.</Card>;
+
+  const modulosColuna = MODULOS.filter((m) => NOTA_MODULOS_AVALIAVEIS.includes(m.id) || m.id === NOTA_MODULO_FINAL);
+
+  const linhas = [];
+  dadosEquipes.forEach(({ equipe, dados }) => {
+    const notas = dados.notas || {};
+    const notasDadas = NOTA_MODULOS_AVALIAVEIS.map((id) => notas[id]).filter((n) => !vazio(n));
+    const media = notasDadas.length ? notasDadas.reduce((a, b) => a + Number(b), 0) / notasDadas.length : null;
+    const notaFinal = notas[NOTA_MODULO_FINAL];
+    const notaCenariosFluxo = notas.cenariosFluxo;
+    const notaApresentacao = notas.apresentacao;
+    const notaPonderada = calcularNotaPonderada({ media, notaFinal, notaCenariosFluxo, notaApresentacao, totalModulos: NOTA_MODULOS_AVALIAVEIS.length, notasDadasLength: notasDadas.length });
+    const integrantes = (equipe.integrantes && equipe.integrantes.length > 0) ? equipe.integrantes : ["(sem integrantes ainda)"];
+    integrantes.forEach((nomeAluno) => {
+      linhas.push({ nomeAluno, empresa: equipe.nomeNegocio, notas, notaCenariosFluxo, notaApresentacao, notaPonderada });
+    });
+  });
+  linhas.sort((a, b) => a.nomeAluno.localeCompare(b.nomeAluno, "pt-BR"));
+
+  const baixarCSV = () => {
+    const cabecalho = ["Aluno", "Empresa", ...modulosColuna.map((m) => `Módulo ${m.n}`), "Cenários/Fluxo de Caixa", "Apresentação", "Nota Final Ponderada"];
+    const linhasCsv = linhas.map((l) => [
+      l.nomeAluno, l.empresa,
+      ...modulosColuna.map((m) => (vazio(l.notas[m.id]) ? "" : l.notas[m.id])),
+      vazio(l.notaCenariosFluxo) ? "" : l.notaCenariosFluxo,
+      vazio(l.notaApresentacao) ? "" : l.notaApresentacao,
+      l.notaPonderada !== null ? l.notaPonderada.toFixed(1) : "",
+    ]);
+    const csv = [cabecalho, ...linhasCsv].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";")).join("\n");
+    baixarArquivo("relatorio_notas.csv", csv, "text/csv");
+  };
+
+  return (
+    <div>
+      <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
+        <p className="text-xs text-slate-500 max-w-md">A nota de cada módulo é a mesma da empresa, replicada para cada aluno vinculado a ela. A coluna Final só aparece quando todos os componentes da equipe já foram lançados (40% módulos + 20% Módulo 13 + 20% Cenários/Fluxo + 20% Apresentação).</p>
+        <button onClick={baixarCSV} className="flex items-center gap-2 text-xs font-semibold border border-slate-600 text-slate-100 px-3 py-2 rounded-md hover:bg-slate-800 shrink-0">
+          <FileDown size={14} /> Baixar CSV
+        </button>
+      </div>
+      <Card className="p-0 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[900px]">
+            <thead>
+              <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40">
+                <th className="py-2 px-3">Aluno</th>
+                <th className="py-2 px-3">Empresa</th>
+                {modulosColuna.map((m) => <th key={m.id} className="py-2 px-2 text-center" title={m.nome}>M{m.n}</th>)}
+                <th className="py-2 px-2 text-center">Cen./Fluxo</th>
+                <th className="py-2 px-2 text-center">Apres.</th>
+                <th className="py-2 px-3 text-center">Final</th>
+              </tr>
+            </thead>
+            <tbody>
+              {linhas.map((l, i) => (
+                <tr key={i} className="border-b border-slate-800">
+                  <td className="py-2 px-3 text-slate-100 font-medium">{l.nomeAluno}</td>
+                  <td className="py-2 px-3 text-slate-400">{l.empresa}</td>
+                  {modulosColuna.map((m) => (
+                    <td key={m.id} className="py-2 px-2 text-center text-slate-300">{!vazio(l.notas[m.id]) ? l.notas[m.id] : "—"}</td>
+                  ))}
+                  <td className="py-2 px-2 text-center text-slate-300">{!vazio(l.notaCenariosFluxo) ? l.notaCenariosFluxo : "—"}</td>
+                  <td className="py-2 px-2 text-center text-slate-300">{!vazio(l.notaApresentacao) ? l.notaApresentacao : "—"}</td>
+                  <td className="py-2 px-3 text-center font-bold text-amber-400">{l.notaPonderada !== null ? l.notaPonderada.toFixed(1) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 const ABAS_RELATORIO = [
   { id: "resumo", label: "Resumo Comparativo", icon: FileBarChart },
   { id: "empresa", label: "Relatório por Empresa", icon: Building2 },
+  { id: "notas", label: "Relatório de Notas", icon: GraduationCap },
   { id: "pendencias", label: "Pendências", icon: ClipboardCheck },
 ];
 
@@ -3803,6 +5921,7 @@ function GestaoRelatoriosView({ turmas }) {
           </div>
           {aba === "resumo" && <ResumoComparativo turma={turma} dadosEquipes={dadosEquipes} />}
           {aba === "empresa" && <RelatorioPorEmpresa dadosEquipes={dadosEquipes} />}
+          {aba === "notas" && <RelatorioNotas dadosEquipes={dadosEquipes} />}
           {aba === "pendencias" && <RelatorioPendencias turma={turma} dadosEquipes={dadosEquipes} />}
         </div>
       )}
@@ -3867,8 +5986,9 @@ function GestaoBackupView({ turmas, setTurmas }) {
 
   const exportarBackup = () => {
     if (!turma || !dadosEquipes) return;
-    const pacote = { versaoBackup: 1, geradoEm: new Date().toISOString(), turma, equipes: dadosEquipes.map(({ equipe, dados }) => ({ equipe, dados })) };
-    baixarArquivo(`backup_${turma.nome.replace(/\s+/g, "_")}.json`, JSON.stringify(pacote, null, 2));
+    const agora = new Date();
+    const pacote = { versaoBackup: 1, geradoEm: agora.toISOString(), turma, equipes: dadosEquipes.map(({ equipe, dados }) => ({ equipe, dados })) };
+    baixarArquivo(`backup_${turma.nome.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo(agora)}.json`, JSON.stringify(pacote, null, 2));
     setUltimoBackupTurmaId(turma.id);
     setStatus("Backup exportado com sucesso.");
   };
@@ -3886,8 +6006,9 @@ function GestaoBackupView({ turmas, setTurmas }) {
         equipes: await buscarEquipesComDados(t.id),
       })));
       const rotulo = periodoSemestre.trim() || new Date().getFullYear().toString();
-      const pacote = { versaoBackup: 1, tipo: "semestre", periodo: rotulo, geradoEm: new Date().toISOString(), turmas: porTurma };
-      baixarArquivo(`Backup-Semestre-${rotulo.replace(/\s+/g, "_")}.json`, JSON.stringify(pacote, null, 2));
+      const agora = new Date();
+      const pacote = { versaoBackup: 1, tipo: "semestre", periodo: rotulo, geradoEm: agora.toISOString(), turmas: porTurma };
+      baixarArquivo(`Backup-Semestre-${rotulo.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo(agora)}.json`, JSON.stringify(pacote, null, 2));
       setStatus(`Backup do semestre "${rotulo}" gerado com ${turmas.length} turma(s).`);
     } catch {
       setStatus("Não foi possível gerar o backup do semestre. Tente novamente.");
@@ -3969,23 +6090,126 @@ function GestaoBackupView({ turmas, setTurmas }) {
   );
 }
 
+function GestaoAcessosView({ turmas, user }) {
+  const [refreshKey, setRefreshKey] = useState(0);
+  const eventos = useLogAcessos(refreshKey);
+  const [busca, setBusca] = useState("");
+  const [filtroPapel, setFiltroPapel] = useState("todos"); // todos | aluno | professor
+
+  if (eventos === null) return <LoadingScreen />;
+
+  const turmaIds = new Set((turmas || []).map((t) => t.id));
+  // Professor comum só vê os próprios acessos e os das equipes ligadas às
+  // suas turmas; o Usuário Mestre vê tudo, de todo mundo.
+  const visiveis = user.mestre ? eventos : eventos.filter((ev) => ev.uid === user.uid || (ev.turmaId && turmaIds.has(ev.turmaId)));
+
+  const filtrados = visiveis
+    .filter((ev) => filtroPapel === "todos" || ev.papel === filtroPapel)
+    .filter((ev) => !busca.trim() || (ev.nome || "").toLowerCase().includes(busca.trim().toLowerCase()))
+    .sort((a, b) => b.timestamp - a.timestamp);
+
+  // Último evento de cada pessoa indica se está com sessão em aberto agora
+  // (heurística simples — fechar a aba sem clicar em "Sair" não é detectado).
+  const ultimoPorUid = new Map();
+  visiveis.slice().sort((a, b) => a.timestamp - b.timestamp).forEach((ev) => ultimoPorUid.set(ev.uid, ev));
+  const sessoesAbertas = [...ultimoPorUid.values()].filter((ev) => ev.tipo === "entrada");
+
+  return (
+    <div>
+      <SectionTitle icon={LogIn} sub={user.mestre ? "Entradas e saídas de todos os usuários da plataforma — alunos e professores." : "Entradas e saídas dos usuários vinculados às suas turmas (e as suas próprias)."}>
+        Acessos de usuários
+      </SectionTitle>
+
+      <div className="flex items-start gap-2 text-xs text-slate-400 bg-slate-900/60 border border-slate-800 rounded-lg p-3 mb-4">
+        <Info size={14} className="text-sky-400 shrink-0 mt-0.5" />
+        A "saída" só é registrada quando a pessoa clica em "Sair" — se só fechar a aba ou o navegador, esse encerramento não fica registrado (limitação do navegador).
+      </div>
+
+      <div className="grid sm:grid-cols-3 gap-3 mb-4">
+        <StatCard label="Eventos visíveis" value={visiveis.length} tone="blue" small />
+        <StatCard label="Sessões em aberto agora" value={sessoesAbertas.length} tone="gold" small />
+        <StatCard label="Pessoas distintas" value={new Set(visiveis.map((e) => e.uid)).size} tone="slate" small />
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        <TxtInput value={busca} onChange={setBusca} placeholder="Buscar por nome…" />
+        <select value={filtroPapel} onChange={(e) => setFiltroPapel(e.target.value)} className="border border-slate-600 bg-slate-900 rounded-md px-3 text-sm text-slate-200">
+          <option value="todos">Todos os papéis</option>
+          <option value="aluno">Só alunos</option>
+          <option value="professor">Só professores</option>
+        </select>
+        <button onClick={() => setRefreshKey((k) => k + 1)} className="flex items-center gap-1.5 border border-slate-600 text-slate-200 px-3 rounded-md text-sm hover:bg-slate-800 shrink-0"><RefreshCw size={13} /> Atualizar</button>
+      </div>
+
+      {filtrados.length === 0 ? (
+        <Card className="p-8 text-center text-slate-500">Nenhum acesso registrado ainda{busca || filtroPapel !== "todos" ? " com esses filtros" : ""}.</Card>
+      ) : (
+        <Card className="p-4 max-h-[36rem] overflow-y-auto">
+          <div className="space-y-2.5">
+            {filtrados.map((ev) => {
+              const emAberto = ultimoPorUid.get(ev.uid)?.id === ev.id && ev.tipo === "entrada";
+              return (
+                <div key={ev.id} className="flex items-center gap-3 border-b border-slate-800 pb-2.5 last:border-0">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${ev.tipo === "entrada" ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/40" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
+                    {ev.tipo === "entrada" ? <LogIn size={14} /> : <LogOut size={14} />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-slate-100 truncate">{ev.nome || "—"}</span>
+                      <span className="text-[10px] font-bold text-slate-500 bg-slate-800 border border-slate-700 rounded-full px-1.5 py-0.5">{ev.papel === "professor" ? "Professor(a)" : "Aluno(a)"}</span>
+                      {emAberto && <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 rounded-full px-1.5 py-0.5">sessão em aberto</span>}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {ev.tipo === "entrada" ? "Entrou" : "Saiu"}{ev.turmaNome ? ` — ${ev.turmaNome}` : ""}
+                    </div>
+                  </div>
+                  <div className="text-xs text-slate-400 shrink-0">{fmtData(ev.timestamp)}</div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 function GestaoAuditoriaView({ turmas }) {
   const [turmaId, setTurmaId] = useState("");
+  const turma = turmas.find((t) => t.id === turmaId);
   const dadosEquipes = useEquipesComDados(turmaId);
 
   const eventos = useMemo(() => {
     if (!dadosEquipes) return [];
     const lista = [];
     dadosEquipes.forEach(({ equipe, dados }) => {
-      (dados.historico || []).forEach((h) => lista.push({ tipo: "Versão salva", equipe: equipe.nomeNegocio, autor: equipe.integrantes.join(", ") || "equipe", timestamp: h.timestamp, detalhe: h.nota || "Sem nota" }));
-      (dados.comentarios || []).forEach((c) => lista.push({ tipo: "Comentário do professor", equipe: equipe.nomeNegocio, autor: c.autor, timestamp: c.timestamp, detalhe: `${c.modulo}: ${c.texto}` }));
+      (dados.historico || []).forEach((h) => lista.push({ tipo: "Versão salva", cor: "bg-amber-500", equipe: equipe.nomeNegocio, autor: equipe.integrantes.join(", ") || "equipe", timestamp: h.timestamp, detalhe: h.nota || "Sem nota" }));
+      (dados.comentarios || []).forEach((c) => lista.push({ tipo: "Comentário do professor", cor: "bg-sky-400", equipe: equipe.nomeNegocio, autor: c.autor, timestamp: c.timestamp, detalhe: `${c.modulo}: ${c.texto}` }));
+      // fluxo de correção de cada módulo (envio, devolução, reenvio, aprovação,
+      // reabertura) — é aqui que a maior parte da atividade real acontece.
+      const fluxo = dados.fluxoModulos || {};
+      MODULOS.forEach((m) => {
+        const estado = estadoModulo(fluxo, m.id);
+        (estado.historico || []).forEach((ev) => {
+          const info = HISTORICO_EVENTO_INFO[ev.tipo] || HISTORICO_EVENTO_INFO.envio;
+          const deQuemFoi = (ev.tipo === "envio" || ev.tipo === "reenvio") ? (equipe.integrantes.join(", ") || "equipe") : (turma?.professor || "Professor(a)");
+          lista.push({
+            tipo: info.label,
+            cor: ev.tipo === "devolucao" || ev.tipo === "reabertura" ? "bg-amber-500" : ev.tipo === "aprovacao" ? "bg-emerald-500" : "bg-sky-400",
+            equipe: equipe.nomeNegocio,
+            autor: deQuemFoi,
+            timestamp: ev.data,
+            detalhe: `Módulo ${m.n} — ${m.nome}${ev.feedback ? `: ${ev.feedback}` : ""}`,
+          });
+        });
+      });
     });
     return lista.sort((a, b) => b.timestamp - a.timestamp);
-  }, [dadosEquipes]);
+  }, [dadosEquipes, turma]);
 
   return (
     <div>
-      <SectionTitle icon={History} sub="Linha do tempo com as versões salvas pelas equipes e os comentários feitos pelo professor em uma turma.">Auditoria</SectionTitle>
+      <SectionTitle icon={History} sub="Linha do tempo com envios, devoluções, aprovações, versões salvas e comentários — tudo o que aconteceu em uma turma.">Auditoria</SectionTitle>
       <SeletorTurma turmas={turmas} value={turmaId} onChange={setTurmaId} />
       {!turmaId && <Card className="p-8 text-center text-slate-500 mt-4">Selecione uma turma para ver a auditoria.</Card>}
       {turmaId && dadosEquipes === null && <LoadingScreen />}
@@ -3995,7 +6219,7 @@ function GestaoAuditoriaView({ turmas }) {
           <div className="space-y-3">
             {eventos.map((ev, i) => (
               <div key={i} className="flex gap-3 border-b border-slate-800 pb-3 last:border-0">
-                <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${ev.tipo === "Versão salva" ? "bg-amber-500" : "bg-sky-400"}`} />
+                <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${ev.cor}`} />
                 <div className="flex-1 text-sm">
                   <div className="flex justify-between text-xs text-slate-500 gap-2">
                     <span className="font-semibold text-slate-300">{ev.tipo} — {ev.equipe}</span>
@@ -4056,6 +6280,10 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
   const [aba, setAba] = useState("inicio");
   const [turmaAtivaId, setTurmaAtivaId] = useState(null);
   const [menuAberto, setMenuAberto] = useState(false);
+  const [pdfAberto, setPdfAberto] = useState(null);
+  const [alvoCorrecao, setAlvoCorrecao] = useState(null); // { equipeId, moduloId, trigger }
+
+  const pendentesCorrecao = usePendentesCorrecao(turmas);
 
   if (turmas === null) return <LoadingScreen />;
 
@@ -4068,6 +6296,12 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
 
   const turmaAtiva = turmas.find((t) => t.id === turmaAtivaId) || null;
   const irPara = (id) => { setAba(id); if (id !== "turmas") setTurmaAtivaId(null); setMenuAberto(false); };
+  const abrirCorrecao = (turmaId, equipeId, moduloId) => {
+    setTurmaAtivaId(turmaId);
+    setAlvoCorrecao({ equipeId, moduloId, trigger: Date.now() });
+    setAba("turmas");
+    setMenuAberto(false);
+  };
 
   const itensMenu = user.mestre ? [...GESTAO_ITENS, ITEM_APROVACOES] : GESTAO_ITENS;
   const itensManuais = user.mestre ? [...MANUAIS_ITENS_BASE, ...MANUAIS_ITENS_MESTRE] : MANUAIS_ITENS_BASE;
@@ -4107,9 +6341,13 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
           {itensMenu.map((it) => {
             const Icon = it.icon;
             const active = aba === it.id;
+            const contagem = it.id === "correcoes" ? (pendentesCorrecao?.length || 0) : 0;
             return (
               <button key={it.id} onClick={() => irPara(it.id)} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${active ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
-                <Icon size={16} className="shrink-0" /> {it.label}
+                <Icon size={16} className="shrink-0" /> <span className="flex-1">{it.label}</span>
+                {contagem > 0 && (
+                  <span className="bg-amber-500 text-slate-900 text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center shrink-0">{contagem}</span>
+                )}
               </button>
             );
           })}
@@ -4117,12 +6355,29 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
           {itensManuais.map((it) => {
             const Icon = it.icon;
             const active = aba === it.id;
+            const pdfUrl = MANUAIS_PDF[it.id];
+            if (pdfUrl) {
+              // Manual do Professor e Manual do Aluno, aqui no perfil do
+              // professor, abrem sempre imprimíveis/baixáveis — diferente da
+              // visão do aluno (mais abaixo, componente PainelAluno), que
+              // continua restrita, para não circular impresso fora do
+              // controle do professor.
+              return (
+                <a key={it.id} href={pdfUrl} target="_blank" rel="noopener noreferrer" onClick={() => setMenuAberto(false)} className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent">
+                  <Icon size={16} className="shrink-0" /> <span className="flex-1">{it.label}</span> <Printer size={13} className="shrink-0 text-slate-500" />
+                </a>
+              );
+            }
             return (
               <button key={it.id} onClick={() => irPara(it.id)} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${active ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
                 <Icon size={16} className="shrink-0" /> {it.label}
               </button>
             );
           })}
+          <div className="px-5 pt-5 pb-2 text-[10px] font-bold tracking-widest text-white/40">PEDAGÓGICO</div>
+          <button onClick={() => irPara("guiaPedagogico")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "guiaPedagogico" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
+            <GraduationCap size={16} className="shrink-0" /> Guia Pedagógico
+          </button>
           <div className="px-5 pt-5 pb-2 text-[10px] font-bold tracking-widest text-white/40">OUTROS</div>
           <button onClick={() => irPara("suporte")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "suporte" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
             <LifeBuoy size={16} className="shrink-0" /> Suporte
@@ -4146,10 +6401,13 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
         {aba === "turmas" && (
           turmaAtiva
 
-            ? <TurmaDetail turma={turmaAtiva} professorNome={user.nome} onVoltar={() => setTurmaAtivaId(null)} />
+            ? <TurmaDetail turma={turmaAtiva} professorNome={user.nome} onVoltar={() => { setTurmaAtivaId(null); setAlvoCorrecao(null); }} alvoCorrecao={alvoCorrecao} />
             : <GestaoTurmasView turmas={turmas} onCriar={criarTurma} onAbrir={setTurmaAtivaId} setTurmas={setTurmas} />
         )}
+        {aba === "correcoes" && <CorrecoesPendentesView pendentes={pendentesCorrecao} onAbrir={abrirCorrecao} />}
         {aba === "usuarios" && <GestaoUsuariosView turmas={turmas} />}
+        {aba === "cronograma" && <GestaoCronogramaView turmas={turmas} />}
+        {aba === "acessos" && <GestaoAcessosView turmas={turmas} user={user} />}
         {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}
         {aba === "backup" && <GestaoBackupView turmas={turmas} setTurmas={setTurmas} />}
         {aba === "auditoria" && <GestaoAuditoriaView turmas={turmas} />}
@@ -4158,12 +6416,14 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
         {aba === "manualAlunoRef" && <ManualAlunoView contexto="professor" />}
         {aba === "manualOperacional" && user.mestre && <ManualOperacionalView />}
         {aba === "checklistStatus" && user.mestre && <ChecklistStatusView />}
+        {aba === "guiaPedagogico" && <GuiaPedagogicoView />}
         {aba === "suporte" && (
           <SuporteView ctx={{ uid: user.uid, nome: user.nome, papel: "professor", mestre: !!user.mestre }} />
         )}
         {aba === "novidades" && <NovidadesView />}
         {aba === "tutoriais" && <TutoriaisView categoria="professor" />}
       </main>
+      {pdfAberto && <VisualizadorManualPDF url={pdfAberto.url} titulo={pdfAberto.titulo} onFechar={() => setPdfAberto(null)} />}
     </div>
   );
 }
@@ -4294,6 +6554,32 @@ function GestaoAprovacoesView({ usuarioAtualUid }) {
 // LOGIN / CADASTRO / APROVAÇÃO
 // ============================================================================
 
+// Visualizador controlado de PDF — usado para Manual do Aluno/Professor e
+// Checklist quando quem está olhando NÃO é Usuário Mestre. Abre dentro do
+// próprio app (não em nova aba) e some com a barra de ferramentas nativa do
+// navegador (que normalmente traz os botões de imprimir/baixar), reduzindo
+// bastante o acesso fácil a essas ações.
+// Aviso honesto: como quem desenha a tela do PDF é o próprio navegador, não
+// existe um jeito 100% garantido de bloquear impressão (ex.: atalho de
+// teclado do sistema, ou um print de tela) — isso aqui remove os botões
+// visíveis, não é uma trava de segurança à prova de tudo.
+function VisualizadorManualPDF({ url, titulo, onFechar }) {
+  return (
+    <div className="fixed inset-0 bg-black/80 z-50 flex flex-col">
+      <div className="flex items-center justify-between gap-3 bg-slate-900 border-b border-slate-700 px-4 py-3 shrink-0">
+        <div className="flex items-center gap-2 text-slate-100 font-semibold text-sm"><Eye size={16} className="text-sky-400" /> {titulo} <span className="text-xs font-normal text-slate-500">— somente leitura</span></div>
+        <button onClick={onFechar} className="text-slate-400 hover:text-slate-100 flex items-center gap-1.5 text-sm"><X size={18} /> Fechar</button>
+      </div>
+      <iframe
+        title={titulo}
+        src={`${url}#toolbar=0&navpanes=0&scrollbar=1`}
+        className="flex-1 w-full bg-slate-200"
+        onContextMenu={(e) => e.preventDefault()}
+      />
+    </div>
+  );
+}
+
 function LoadingScreen() {
   return <div className="min-h-screen flex items-center justify-center text-slate-500 text-sm bg-slate-950">Carregando…</div>;
 }
@@ -4317,46 +6603,176 @@ function useEquipeSalva(turmaId, equipeId) {
   return estado;
 }
 
-// Passo 1 do fluxo do aluno: informar a matrícula (o jeito preferido — já
-// identifica a turma certa e traz o nome oficial da lista importada pelo
-// professor) ou, alternativamente, o código da turma (para quando o
-// professor ainda não importou a lista). Em qualquer um dos dois casos, o
-// cadastro já entra aprovado na hora.
-function TelaInformarTurma({ perfil, onSair, onResultado, onVirarProfessor }) {
+// A partir do segundo acesso: turma e empresa já ficaram salvas no cadastro
+// do aluno desde o primeiro acesso (ver TelaPrimeiroAcessoAluno, mais
+// abaixo), então não são pedidas de novo. A cada login, é pedida uma
+// confirmação de identidade: quem tem matrícula cadastrada confirma a
+// matrícula (comparação direta); quem entrou pelo código de turma no
+// primeiro acesso (sem matrícula validada na lista oficial) confirma esse
+// código, verificado ao vivo — sem depender de nenhum outro campo salvo no
+// cadastro, então funciona também para contas criadas antes desta
+// atualização. É uma camada extra de segurança contra acesso indevido num
+// aparelho onde a conta Google já esteja logada por outra pessoa; não
+// substitui o login do Google, só reforça.
+function TelaConfirmarMatricula({ perfil, onConfirmar, onSair }) {
   const [valor, setValor] = useState("");
-  const [buscando, setBuscando] = useState(false);
   const [erro, setErro] = useState("");
+  const [verificando, setVerificando] = useState(false);
+
+  // Confirma a matrícula (fluxo principal, comparação direta com o valor
+  // salvo no cadastro) ou, para quem entrou pelo código de turma (sem
+  // matrícula cadastrada), o próprio código de turma — verificado ao vivo,
+  // buscando esse código na mesma tabela usada no primeiro acesso e
+  // conferindo se ele aponta para a turma deste aluno. Verificar ao vivo (em
+  // vez de comparar com um valor pré-buscado) evita depender de outros
+  // campos do cadastro que contas mais antigas podem não ter.
+  const usaCodigoTurma = !perfil.matricula;
+  const rotulo = usaCodigoTurma ? "Seu código de turma" : "Sua matrícula";
+  const placeholder = usaCodigoTurma ? "Digite o código de turma" : "Digite sua matrícula";
+
+  const confirmar = async () => {
+    setErro(""); setVerificando(true);
+    if (usaCodigoTurma) {
+      const digitado = valor.trim().toUpperCase();
+      try {
+        const rt = await window.storage.get(`turma_por_codigo_${digitado}`, true);
+        const turma = rt ? JSON.parse(rt.value) : null;
+        if (!turma || turma.id !== perfil.turmaId) {
+          setErro("Código de turma não confere. Confira e tente de novo.");
+          setVerificando(false);
+          return;
+        }
+      } catch {
+        setErro("Não foi possível concluir. Tente novamente.");
+        setVerificando(false);
+        return;
+      }
+    } else {
+      const digitado = valor.trim();
+      if (digitado !== String(perfil.matricula)) {
+        setErro("Matrícula não confere. Confira o número e tente de novo.");
+        setVerificando(false);
+        return;
+      }
+    }
+    setVerificando(false);
+    onConfirmar();
+  };
+
+  return (
+    <div className="max-w-md mx-auto w-full">
+      <button onClick={onSair} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><LogOut size={15} /> Sair</button>
+      <Card className="p-6">
+        <SectionTitle icon={ShieldCheck} sub={`Olá, ${perfil.nome}! Por segurança, confirme sua identidade a cada login.`}>Confirme sua identidade</SectionTitle>
+        <Field label={rotulo}>
+          <div className="flex gap-2">
+            <TxtInput value={valor} onChange={setValor} placeholder={placeholder} />
+            <button onClick={confirmar} disabled={verificando || !valor.trim()} className="bg-amber-500 text-slate-900 px-4 rounded-md text-sm font-semibold hover:bg-amber-400 disabled:opacity-40">
+              {verificando ? "…" : "Confirmar"}
+            </button>
+          </div>
+        </Field>
+        {erro && <p className="text-sm text-rose-400">{erro}</p>}
+      </Card>
+    </div>
+  );
+}
+
+// Passo 1 do fluxo do aluno no primeiro acesso: confirmar a matrícula.
+// Isso já valida que o aluno está oficialmente matriculado (contra a Lista
+// oficial de alunos, importada em massa por PDF ou incluída individualmente
+// pelo professor em Turmas → Lista oficial de alunos) e identifica a turma
+// à qual essa matrícula pertence.
+// Passo 2: informar o código da turma. É conferido contra a turma indicada
+// pela matrícula do passo 1 — os dois precisam bater — e só depois disso a
+// escolha da empresa/grupo é liberada. Esse cruzamento evita que o aluno
+// acabe vinculado, por engano, a uma turma ou empresa diferente da que
+// deveria.
+// Se a matrícula ainda não constar na lista oficial (professor ainda não
+// importou/cadastrou), existe uma alternativa: entrar só com o código da
+// turma, sem a validação cruzada.
+function TelaPrimeiroAcessoAluno({ perfil, onSair, onResultado, onVirarProfessor }) {
+  const [etapa, setEtapa] = useState("matricula"); // "matricula" | "turma" | "semMatricula"
+  const [registroMatricula, setRegistroMatricula] = useState(null);
+
+  const [matriculaValor, setMatriculaValor] = useState("");
+  const [matriculaErro, setMatriculaErro] = useState("");
+  const [verificandoMatricula, setVerificandoMatricula] = useState(false);
+
+  const [turmaValor, setTurmaValor] = useState("");
+  const [turmaErro, setTurmaErro] = useState("");
+  const [verificandoTurma, setVerificandoTurma] = useState(false);
 
   const [souProfessorAberto, setSouProfessorAberto] = useState(false);
   const [codigoMestre, setCodigoMestre] = useState("");
   const [erroMestre, setErroMestre] = useState("");
   const [verificandoMestre, setVerificandoMestre] = useState(false);
 
-  const buscar = async () => {
-    setErro(""); setBuscando(true);
-    const termo = valor.trim();
+  const confirmarMatricula = async () => {
+    setMatriculaErro(""); setVerificandoMatricula(true);
+    const termo = matriculaValor.trim();
     try {
-      // 1) tenta como matrícula — resolve turma e nome oficial de uma vez.
       const rm = await window.storage.get(`matricula_${termo}`, true);
       if (rm) {
         const registro = JSON.parse(rm.value);
-        await onResultado({ turmaId: registro.turmaId, turmaNome: registro.turmaNome, nome: registro.nome, status: "aprovado", professorUid: registro.professorUid || null, professorNome: registro.professorNome || null });
-        setBuscando(false);
-        return;
+        setRegistroMatricula({ ...registro, matricula: termo });
+        setEtapa("turma");
+      } else {
+        setMatriculaErro("Não encontramos essa matrícula na lista oficial. Confira o número com o professor(a), ou use a opção abaixo se a lista ainda não foi importada/cadastrada.");
       }
-      // 2) alternativa: código da turma (6 caracteres).
-      const rt = await window.storage.get(`turma_por_codigo_${termo.toUpperCase()}`, true);
-      if (rt) {
-        const turma = JSON.parse(rt.value);
-        await onResultado({ turmaId: turma.id, turmaNome: turma.nome, status: "aprovado", professorUid: turma.professorUid || null, professorNome: turma.professor || null });
-        setBuscando(false);
-        return;
-      }
-      setErro("Não encontramos essa matrícula nem esse código de turma. Confira com o professor.");
     } catch {
-      setErro("Não foi possível concluir. Tente novamente.");
+      setMatriculaErro("Não foi possível concluir. Tente novamente.");
     }
-    setBuscando(false);
+    setVerificandoMatricula(false);
+  };
+
+  const confirmarTurma = async () => {
+    setTurmaErro(""); setVerificandoTurma(true);
+    const termo = turmaValor.trim().toUpperCase();
+    try {
+      const rt = await window.storage.get(`turma_por_codigo_${termo}`, true);
+      if (!rt) {
+        setTurmaErro("Código de turma não encontrado. Confira com o professor(a).");
+        setVerificandoTurma(false);
+        return;
+      }
+      const turma = JSON.parse(rt.value);
+      if (turma.id !== registroMatricula.turmaId) {
+        setTurmaErro("Esse código de turma não corresponde à sua matrícula. Confira o código com o professor(a).");
+        setVerificandoTurma(false);
+        return;
+      }
+      await onResultado({
+        turmaId: turma.id, turmaNome: turma.nome, nome: registroMatricula.nome,
+        status: "aprovado",
+        professorUid: turma.professorUid || registroMatricula.professorUid || null,
+        professorNome: turma.professor || registroMatricula.professorNome || null,
+        matricula: registroMatricula.matricula,
+      });
+    } catch {
+      setTurmaErro("Não foi possível concluir. Tente novamente.");
+    }
+    setVerificandoTurma(false);
+  };
+
+  // Alternativa para quando a matrícula ainda não está na lista oficial:
+  // entra só com o código da turma, sem validação cruzada com a matrícula.
+  const confirmarTurmaSemMatricula = async () => {
+    setTurmaErro(""); setVerificandoTurma(true);
+    const termo = turmaValor.trim().toUpperCase();
+    try {
+      const rt = await window.storage.get(`turma_por_codigo_${termo}`, true);
+      if (!rt) {
+        setTurmaErro("Código de turma não encontrado. Confira com o professor(a).");
+        setVerificandoTurma(false);
+        return;
+      }
+      const turma = JSON.parse(rt.value);
+      await onResultado({ turmaId: turma.id, turmaNome: turma.nome, status: "aprovado", professorUid: turma.professorUid || null, professorNome: turma.professor || null, codigoTurmaUsado: termo });
+    } catch {
+      setTurmaErro("Não foi possível concluir. Tente novamente.");
+    }
+    setVerificandoTurma(false);
   };
 
   // Correção para quem escolheu "Aluno(a)" por engano no primeiro acesso
@@ -4374,20 +6790,65 @@ function TelaInformarTurma({ perfil, onSair, onResultado, onVirarProfessor }) {
     setVerificandoMestre(false);
   };
 
+  if (etapa === "turma") {
+    return (
+      <div className="max-w-md mx-auto w-full">
+        <button onClick={() => setEtapa("matricula")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ChevronRight size={15} className="rotate-180" /> Voltar</button>
+        <Card className="p-6">
+          <SectionTitle icon={KeyRound} sub={`Matrícula confirmada, ${registroMatricula.nome}! Agora informe o código da turma para concluir seu acesso.`}>Código da turma</SectionTitle>
+          <Field label="Código da turma (peça ao professor)">
+            <div className="flex gap-2">
+              <TxtInput value={turmaValor} onChange={setTurmaValor} placeholder="Ex.: A1B2C3" />
+              <button onClick={confirmarTurma} disabled={verificandoTurma || !turmaValor.trim()} className="bg-amber-500 text-slate-900 px-4 rounded-md text-sm font-semibold hover:bg-amber-400 disabled:opacity-40">
+                {verificandoTurma ? "…" : "Confirmar"}
+              </button>
+            </div>
+          </Field>
+          {turmaErro && <p className="text-sm text-rose-400">{turmaErro}</p>}
+        </Card>
+      </div>
+    );
+  }
+
+  if (etapa === "semMatricula") {
+    return (
+      <div className="max-w-md mx-auto w-full">
+        <button onClick={() => setEtapa("matricula")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ChevronRight size={15} className="rotate-180" /> Voltar</button>
+        <Card className="p-6">
+          <SectionTitle icon={KeyRound} sub="Sua matrícula ainda não está na lista oficial. Informe o código da turma para entrar — confirme com o professor(a) assim que possível.">Código da turma</SectionTitle>
+          <Field label="Código da turma">
+            <div className="flex gap-2">
+              <TxtInput value={turmaValor} onChange={setTurmaValor} placeholder="Ex.: A1B2C3" />
+              <button onClick={confirmarTurmaSemMatricula} disabled={verificandoTurma || !turmaValor.trim()} className="bg-slate-900 text-white px-4 rounded-md text-sm font-semibold hover:bg-slate-800 disabled:opacity-40">
+                {verificandoTurma ? "…" : "Confirmar"}
+              </button>
+            </div>
+          </Field>
+          {turmaErro && <p className="text-sm text-rose-400">{turmaErro}</p>}
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-md mx-auto w-full">
       <button onClick={onSair} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><LogOut size={15} /> Sair</button>
       <Card className="p-6">
-        <SectionTitle icon={KeyRound} sub={`Olá, ${perfil.nome}! Informe sua matrícula para continuar.`}>Entrar em uma turma</SectionTitle>
-        <Field label="Matrícula (ou, se não tiver, o código da turma)">
+        <SectionTitle icon={ShieldCheck} sub={`Olá, ${perfil.nome}! Confirme sua matrícula para começarmos.`}>Confirme sua matrícula</SectionTitle>
+        <Field label="Matrícula">
           <div className="flex gap-2">
-            <TxtInput value={valor} onChange={setValor} placeholder="Ex.: 2024001 ou A1B2C3" />
-            <button onClick={buscar} disabled={buscando || !valor.trim()} className="bg-slate-900 text-white px-4 rounded-md text-sm font-semibold hover:bg-slate-800 disabled:opacity-40">
-              {buscando ? "Buscando…" : "Buscar"}
+            <TxtInput value={matriculaValor} onChange={setMatriculaValor} placeholder="Digite sua matrícula" />
+            <button onClick={confirmarMatricula} disabled={verificandoMatricula || !matriculaValor.trim()} className="bg-amber-500 text-slate-900 px-4 rounded-md text-sm font-semibold hover:bg-amber-400 disabled:opacity-40">
+              {verificandoMatricula ? "…" : "Confirmar"}
             </button>
           </div>
         </Field>
-        {erro && <p className="text-sm text-rose-400 mb-2">{erro}</p>}
+        {matriculaErro && (
+          <div className="mb-2">
+            <p className="text-sm text-rose-400 mb-1.5">{matriculaErro}</p>
+            <button onClick={() => setEtapa("semMatricula")} className="text-xs text-slate-500 hover:text-slate-300 underline">Ainda não estou na lista oficial — entrar com o código da turma</button>
+          </div>
+        )}
 
         {!souProfessorAberto ? (
           <button onClick={() => setSouProfessorAberto(true)} className="text-xs text-slate-500 hover:text-slate-300 mt-2">Escolhi "Aluno(a)" por engano — na verdade sou professor(a)</button>
@@ -4463,16 +6924,27 @@ function EscolherEmpresa({ perfil, turmaId, turmaNome, onSair, onEscolhida }) {
 function AlunoWorkspaceCarregado({ userSessao, turmaId, equipeId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades }) {
   const equipe = useEquipeSalva(turmaId, equipeId);
   if (!equipe) return <LoadingScreen />;
-  return <AlunoWorkspace user={userSessao} equipe={equipe} equipeKey={`dados_equipe_${equipe.id}`} onSair={onSair} onTrocarEmpresa={() => onTrocarEmpresa(equipe)} professorUid={professorUid} professorNome={professorNome} turmaNome={turmaNome} ultimaVersaoVista={ultimaVersaoVista} onVerNovidades={onVerNovidades} />;
+  return <AlunoWorkspace user={userSessao} equipe={equipe} equipeKey={`dados_equipe_${equipe.id}`} turmaId={turmaId} onSair={onSair} onTrocarEmpresa={() => onTrocarEmpresa(equipe)} professorUid={professorUid} professorNome={professorNome} turmaNome={turmaNome} ultimaVersaoVista={ultimaVersaoVista} onVerNovidades={onVerNovidades} />;
 }
 
 function AlunoRoteador({ perfil, onSair, onVirarProfessor }) {
   const [over, setOver] = useState({});
   const efetivo = { ...perfil, ...over };
+  // Confirmação de identidade por sessão: fica em estado local (não é salvo
+  // no perfil), então volta a pedir automaticamente a cada novo carregamento
+  // da página — ou seja, a cada novo login de verdade, como pedido no
+  // chamado. Basta ter turma vinculada para precisar confirmar; a própria
+  // TelaConfirmarMatricula decide, na hora, se a checagem é por matrícula ou
+  // por código de turma (ver comentário lá).
+  const [matriculaConfirmada, setMatriculaConfirmada] = useState(false);
+  const precisaConfirmar = !matriculaConfirmada && !!efetivo.turmaId;
 
   const atualizarPerfil = async (mudancas) => {
     try { await atualizarUsuario(perfil.uid, mudancas); } catch {}
     setOver((prev) => ({ ...prev, ...mudancas }));
+    // Quem acabou de confirmar a matrícula agora (TelaPrimeiroAcessoAluno) já
+    // confirmou a identidade nesta sessão — evita pedir de novo na sequência.
+    if (mudancas.matricula) setMatriculaConfirmada(true);
   };
 
   if (efetivo.status === "rejeitado") {
@@ -4482,7 +6954,15 @@ function AlunoRoteador({ perfil, onSair, onVirarProfessor }) {
   if (!efetivo.turmaId) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
-        <TelaInformarTurma perfil={efetivo} onSair={onSair} onResultado={atualizarPerfil} onVirarProfessor={onVirarProfessor} />
+        <TelaPrimeiroAcessoAluno perfil={efetivo} onSair={onSair} onResultado={atualizarPerfil} onVirarProfessor={onVirarProfessor} />
+      </div>
+    );
+  }
+
+  if (precisaConfirmar) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+        <TelaConfirmarMatricula perfil={efetivo} onSair={onSair} onConfirmar={() => setMatriculaConfirmada(true)} />
       </div>
     );
   }
@@ -4756,6 +7236,12 @@ export default function App() {
   // de login, ANTES de entrar com o Google — só é usado se for a primeira
   // vez que essa conta acessa o sistema (ver useEffect abaixo).
   const escolhaRef = useRef({ papel: "aluno", codigoMestre: "" });
+  // true só entre o clique em "Continuar com Google" e o registro da
+  // "entrada" no log de acessos — evita logar uma entrada nova toda vez que
+  // a página é recarregada com uma sessão já existente (o Firebase dispara o
+  // mesmo evento de sessão tanto para login novo quanto para sessão restaurada).
+  const loginRecenteRef = useRef(false);
+  const ultimoUidComEntradaRegistradaRef = useRef(null);
 
   useEffect(() => {
     const cancelar = observarSessao((u) => setFirebaseUser(u || null));
@@ -4769,6 +7255,22 @@ export default function App() {
   };
 
   const perfilCarregado = useUsuario(firebaseUser?.uid);
+
+  // Registra a "entrada" no log de acessos assim que o perfil da conta que
+  // acabou de entrar (via clique em "Continuar com Google") estiver
+  // disponível — nunca ao recarregar a página com uma sessão já existente.
+  const perfilParaLogEntrada = (perfilRecemCriado?.uid === firebaseUser?.uid ? perfilRecemCriado : null) || perfilCarregado || null;
+  useEffect(() => {
+    if (!perfilParaLogEntrada || !loginRecenteRef.current) return;
+    if (ultimoUidComEntradaRegistradaRef.current === perfilParaLogEntrada.uid) return;
+    ultimoUidComEntradaRegistradaRef.current = perfilParaLogEntrada.uid;
+    loginRecenteRef.current = false;
+    registrarAcesso({
+      uid: perfilParaLogEntrada.uid, nome: perfilParaLogEntrada.nome, papel: perfilParaLogEntrada.papel,
+      turmaId: perfilParaLogEntrada.turmaId, turmaNome: perfilParaLogEntrada.turmaNome, tipo: "entrada",
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perfilParaLogEntrada?.uid]);
 
   // Primeiro acesso: assim que confirmamos que essa conta Google ainda não
   // tem cadastro na plataforma, criamos o perfil automaticamente com o
@@ -4805,7 +7307,7 @@ export default function App() {
   if (firebaseUser === undefined) return <LoadingScreen />;
 
   if (!firebaseUser) {
-    return <TelaEntrada onEscolherPerfil={(papel, codigoMestre) => { escolhaRef.current = { papel, codigoMestre }; }} />;
+    return <TelaEntrada onEscolherPerfil={(papel, codigoMestre) => { escolhaRef.current = { papel, codigoMestre }; loginRecenteRef.current = true; }} />;
   }
 
   if (perfilCarregado === undefined) return <LoadingScreen />;
@@ -4820,8 +7322,13 @@ export default function App() {
 
   if (!perfil) return <LoadingScreen />;
 
+  const efetuarSaidaComLog = () => {
+    registrarAcesso({ uid: perfil.uid, nome: perfil.nome, papel: perfil.papel, turmaId: perfil.turmaId, turmaNome: perfil.turmaNome, tipo: "saida" });
+    efetuarSaida();
+  };
+
   if (perfil.papel === "aluno") {
-    return <AlunoRoteador perfil={perfil} onSair={efetuarSaida} onVirarProfessor={async (mudancas) => {
+    return <AlunoRoteador perfil={perfil} onSair={efetuarSaidaComLog} onVirarProfessor={async (mudancas) => {
       const atualizado = await atualizarUsuario(perfil.uid, mudancas);
       if (atualizado) setPerfilRecemCriado(atualizado);
     }} />;
@@ -4833,16 +7340,16 @@ export default function App() {
       const atualizado = await atualizarUsuario(perfil.uid, { status: "aprovado", mestre: true });
       if (atualizado) setPerfilRecemCriado(atualizado);
     };
-    return <TelaAguardandoAprovacao perfil={perfil} onSair={efetuarSaida} onVirarMestre={virarMestre} />;
+    return <TelaAguardandoAprovacao perfil={perfil} onSair={efetuarSaidaComLog} onVirarMestre={virarMestre} />;
   }
   if (perfil.status === "rejeitado") {
-    return <TelaAguardandoAprovacao perfil={perfil} onSair={efetuarSaida} rejeitado />;
+    return <TelaAguardandoAprovacao perfil={perfil} onSair={efetuarSaidaComLog} rejeitado />;
   }
 
   const userSessao = { uid: perfil.uid, nome: perfil.nome, email: perfil.email, papel: perfil.papel, mestre: !!perfil.mestre };
   return (
     <ProfessorDashboard
-      user={userSessao} onSair={efetuarSaida}
+      user={userSessao} onSair={efetuarSaidaComLog}
       ultimaVersaoVista={perfil.ultimaVersaoVista}
       onVerNovidades={() => atualizarUsuario(perfil.uid, { ultimaVersaoVista: APP_VERSION }).then((p) => p && setPerfilRecemCriado(p))}
     />

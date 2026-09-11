@@ -1526,6 +1526,55 @@ async function listarUsuarios() {
   return [...porUid.values()];
 }
 
+// ============================================================================
+// TURMAS DE TODOS OS PROFESSORES — cada professor tem sua própria lista
+// privada (chave "turmas_prof_{uid}"), o que é correto para o dia a dia
+// (um professor não precisa ver a turma de outro). Mas o Usuário Mestre
+// precisa enxergar a plataforma inteira, então essas funções varrem TODAS
+// as listas "turmas_prof_*" e juntam tudo — só usadas em telas exclusivas
+// de Mestre.
+// ============================================================================
+async function listarTodasTurmas() {
+  const todas = [];
+  try {
+    const idx = await window.storage.list("turmas_prof_", true);
+    const chaves = idx?.keys || [];
+    const listas = await Promise.all(chaves.map(async (k) => {
+      try { const r = await window.storage.get(k, true); return r ? JSON.parse(r.value) : []; } catch { return []; }
+    }));
+    listas.forEach((lista) => todas.push(...(lista || [])));
+  } catch {}
+  return todas;
+}
+
+function useTodasTurmas(refreshKey) {
+  const [lista, setLista] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLista(null);
+      const r = await listarTodasTurmas();
+      if (alive) setLista(r);
+    })();
+    return () => { alive = false; };
+  }, [refreshKey]);
+  return lista;
+}
+
+// Remove uma turma do índice do DONO dela (turma.professorUid), não do
+// índice de quem está executando a ação — essencial para o Usuário Mestre
+// conseguir excluir a turma de outro professor sem corromper a própria
+// lista (e para nunca escrever a exclusão na chave errada).
+async function removerTurmaDoIndice(turma) {
+  const key = `turmas_prof_${turma.professorUid}`;
+  try {
+    const r = await window.storage.get(key, true);
+    const lista = r ? JSON.parse(r.value) : [];
+    const restante = lista.filter((t) => t.id !== turma.id);
+    await window.storage.set(key, JSON.stringify(restante), true);
+  } catch {}
+}
+
 // Hook para a tela de um único usuário (ex.: o perfil da pessoa logada).
 function useUsuario(uid) {
   // Guarda o uid junto com o perfil, e só devolve o perfil se ele for
@@ -5398,7 +5447,7 @@ async function excluirTurmaCompleta(turma) {
   } catch {}
 }
 
-function GestaoTurmasView({ turmas, onCriar, onAbrir, setTurmas }) {
+function GestaoTurmasView({ turmas, onCriar, onAbrir, onExcluir, mestre }) {
   const [novoNome, setNovoNome] = useState("");
   const [excluindoId, setExcluindoId] = useState(null);
   const criar = () => { if (novoNome.trim()) { onCriar(novoNome.trim()); setNovoNome(""); } };
@@ -5410,7 +5459,7 @@ function GestaoTurmasView({ turmas, onCriar, onAbrir, setTurmas }) {
     if (!ok) return;
     setExcluindoId(t.id);
     await excluirTurmaCompleta(t);
-    await setTurmas(turmas.filter((x) => x.id !== t.id));
+    await onExcluir(t);
     setExcluindoId(null);
   };
 
@@ -5427,7 +5476,7 @@ function GestaoTurmasView({ turmas, onCriar, onAbrir, setTurmas }) {
       </Card>
 
       {turmas.length === 0 ? (
-        <Card className="p-10 text-center text-slate-500">Você ainda não criou nenhuma turma.</Card>
+        <Card className="p-10 text-center text-slate-500">{mestre ? "Nenhuma turma cadastrada na plataforma ainda." : "Você ainda não criou nenhuma turma."}</Card>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {turmas.map((t) => (
@@ -5445,6 +5494,7 @@ function GestaoTurmasView({ turmas, onCriar, onAbrir, setTurmas }) {
                 <div className="flex items-center gap-2 text-xs text-slate-400">
                   <KeyRound size={13} /> Código: <span className="font-mono font-bold text-amber-400">{t.codigo}</span>
                 </div>
+                {mestre && <div className="text-[11px] text-slate-500 mt-1">Professor(a): {t.professor || "—"}</div>}
                 {excluindoId === t.id && <div className="text-xs text-rose-400 mt-2">Excluindo…</div>}
               </button>
             </div>
@@ -5973,7 +6023,7 @@ async function buscarEquipesComDados(turmaId) {
   } catch { return []; }
 }
 
-function GestaoBackupView({ turmas, setTurmas }) {
+function GestaoBackupView({ turmas, onExcluir }) {
   const [turmaId, setTurmaId] = useState("");
   const turma = turmas.find((t) => t.id === turmaId);
   const dadosEquipes = useEquipesComDados(turmaId);
@@ -6004,7 +6054,7 @@ function GestaoBackupView({ turmas, setTurmas }) {
     setStatus("Excluindo turma…");
     try {
       await excluirTurmaCompleta(turma);
-      await setTurmas(turmas.filter((t) => t.id !== turma.id));
+      await onExcluir(turma);
       setTurmaId("");
       setStatus(`Turma "${turma.nome}" excluída com sucesso.`);
     } catch {
@@ -6305,7 +6355,12 @@ function ProfessorInicio({ user, turmas, onIrPara }) {
 
 function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades }) {
   const chaveMinhas = `turmas_prof_${user.uid}`;
-  const [turmas, setTurmas] = useSharedList(chaveMinhas);
+  const [minhasTurmas, setMinhasTurmas] = useSharedList(chaveMinhas);
+  const [refreshTurmasGlobais, setRefreshTurmasGlobais] = useState(0);
+  const turmasGlobais = useTodasTurmas(refreshTurmasGlobais);
+  // Usuário Mestre enxerga as turmas de TODOS os professores da plataforma;
+  // professor comum só vê as próprias (mesmo comportamento de sempre).
+  const turmas = user.mestre ? turmasGlobais : minhasTurmas;
   const [aba, setAba] = useState("inicio");
   const [turmaAtivaId, setTurmaAtivaId] = useState(null);
   const [menuAberto, setMenuAberto] = useState(false);
@@ -6318,9 +6373,19 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
 
   const criarTurma = async (nome) => {
     const nova = { id: uid(), nome, codigo: codigoTurma(), professor: user.nome, professorUid: user.uid, criadaEm: Date.now() };
-    setTurmas([...(turmas || []), nova]);
+    await setMinhasTurmas([...(minhasTurmas || []), nova]);
     // registra o código para os alunos conseguirem encontrar a turma
     try { await window.storage.set(`turma_por_codigo_${nova.codigo}`, JSON.stringify(nova), true); } catch {}
+    if (user.mestre) setRefreshTurmasGlobais((k) => k + 1);
+  };
+
+  // Exclusão "consciente do dono": funciona tanto para a própria turma
+  // quanto (só para Mestre) para a turma de outro professor — sempre
+  // regrava no índice de quem realmente é o dono, nunca no do Mestre.
+  const removerTurmaDaLista = async (turma) => {
+    await removerTurmaDoIndice(turma);
+    if (user.mestre) setRefreshTurmasGlobais((k) => k + 1);
+    if (turma.professorUid === user.uid) setMinhasTurmas((minhasTurmas || []).filter((t) => t.id !== turma.id));
   };
 
   const turmaAtiva = turmas.find((t) => t.id === turmaAtivaId) || null;
@@ -6431,14 +6496,14 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
           turmaAtiva
 
             ? <TurmaDetail turma={turmaAtiva} professorNome={user.nome} onVoltar={() => { setTurmaAtivaId(null); setAlvoCorrecao(null); }} alvoCorrecao={alvoCorrecao} />
-            : <GestaoTurmasView turmas={turmas} onCriar={criarTurma} onAbrir={setTurmaAtivaId} setTurmas={setTurmas} />
+            : <GestaoTurmasView turmas={turmas} onCriar={criarTurma} onAbrir={setTurmaAtivaId} onExcluir={removerTurmaDaLista} mestre={user.mestre} />
         )}
         {aba === "correcoes" && <CorrecoesPendentesView pendentes={pendentesCorrecao} onAbrir={abrirCorrecao} />}
         {aba === "usuarios" && <GestaoUsuariosView turmas={turmas} />}
         {aba === "cronograma" && <GestaoCronogramaView turmas={turmas} />}
         {aba === "acessos" && <GestaoAcessosView turmas={turmas} user={user} />}
         {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}
-        {aba === "backup" && <GestaoBackupView turmas={turmas} setTurmas={setTurmas} />}
+        {aba === "backup" && <GestaoBackupView turmas={turmas} onExcluir={removerTurmaDaLista} />}
         {aba === "auditoria" && <GestaoAuditoriaView turmas={turmas} />}
         {aba === "aprovacoes" && user.mestre && <GestaoAprovacoesView usuarioAtualUid={user.uid} />}
         {aba === "manualProfessor" && <ManualProfessorView />}

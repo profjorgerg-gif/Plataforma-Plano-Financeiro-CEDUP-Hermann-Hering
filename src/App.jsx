@@ -6053,21 +6053,40 @@ function GestaoBackupView({ turmas, setTurmas }) {
 
 function GestaoAuditoriaView({ turmas }) {
   const [turmaId, setTurmaId] = useState("");
+  const turma = turmas.find((t) => t.id === turmaId);
   const dadosEquipes = useEquipesComDados(turmaId);
 
   const eventos = useMemo(() => {
     if (!dadosEquipes) return [];
     const lista = [];
     dadosEquipes.forEach(({ equipe, dados }) => {
-      (dados.historico || []).forEach((h) => lista.push({ tipo: "Versão salva", equipe: equipe.nomeNegocio, autor: equipe.integrantes.join(", ") || "equipe", timestamp: h.timestamp, detalhe: h.nota || "Sem nota" }));
-      (dados.comentarios || []).forEach((c) => lista.push({ tipo: "Comentário do professor", equipe: equipe.nomeNegocio, autor: c.autor, timestamp: c.timestamp, detalhe: `${c.modulo}: ${c.texto}` }));
+      (dados.historico || []).forEach((h) => lista.push({ tipo: "Versão salva", cor: "bg-amber-500", equipe: equipe.nomeNegocio, autor: equipe.integrantes.join(", ") || "equipe", timestamp: h.timestamp, detalhe: h.nota || "Sem nota" }));
+      (dados.comentarios || []).forEach((c) => lista.push({ tipo: "Comentário do professor", cor: "bg-sky-400", equipe: equipe.nomeNegocio, autor: c.autor, timestamp: c.timestamp, detalhe: `${c.modulo}: ${c.texto}` }));
+      // fluxo de correção de cada módulo (envio, devolução, reenvio, aprovação,
+      // reabertura) — é aqui que a maior parte da atividade real acontece.
+      const fluxo = dados.fluxoModulos || {};
+      MODULOS.forEach((m) => {
+        const estado = estadoModulo(fluxo, m.id);
+        (estado.historico || []).forEach((ev) => {
+          const info = HISTORICO_EVENTO_INFO[ev.tipo] || HISTORICO_EVENTO_INFO.envio;
+          const deQuemFoi = (ev.tipo === "envio" || ev.tipo === "reenvio") ? (equipe.integrantes.join(", ") || "equipe") : (turma?.professor || "Professor(a)");
+          lista.push({
+            tipo: info.label,
+            cor: ev.tipo === "devolucao" || ev.tipo === "reabertura" ? "bg-amber-500" : ev.tipo === "aprovacao" ? "bg-emerald-500" : "bg-sky-400",
+            equipe: equipe.nomeNegocio,
+            autor: deQuemFoi,
+            timestamp: ev.data,
+            detalhe: `Módulo ${m.n} — ${m.nome}${ev.feedback ? `: ${ev.feedback}` : ""}`,
+          });
+        });
+      });
     });
     return lista.sort((a, b) => b.timestamp - a.timestamp);
-  }, [dadosEquipes]);
+  }, [dadosEquipes, turma]);
 
   return (
     <div>
-      <SectionTitle icon={History} sub="Linha do tempo com as versões salvas pelas equipes e os comentários feitos pelo professor em uma turma.">Auditoria</SectionTitle>
+      <SectionTitle icon={History} sub="Linha do tempo com envios, devoluções, aprovações, versões salvas e comentários — tudo o que aconteceu em uma turma.">Auditoria</SectionTitle>
       <SeletorTurma turmas={turmas} value={turmaId} onChange={setTurmaId} />
       {!turmaId && <Card className="p-8 text-center text-slate-500 mt-4">Selecione uma turma para ver a auditoria.</Card>}
       {turmaId && dadosEquipes === null && <LoadingScreen />}
@@ -6077,7 +6096,7 @@ function GestaoAuditoriaView({ turmas }) {
           <div className="space-y-3">
             {eventos.map((ev, i) => (
               <div key={i} className="flex gap-3 border-b border-slate-800 pb-3 last:border-0">
-                <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${ev.tipo === "Versão salva" ? "bg-amber-500" : "bg-sky-400"}`} />
+                <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${ev.cor}`} />
                 <div className="flex-1 text-sm">
                   <div className="flex justify-between text-xs text-slate-500 gap-2">
                     <span className="font-semibold text-slate-300">{ev.tipo} — {ev.equipe}</span>

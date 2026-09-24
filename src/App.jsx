@@ -13,7 +13,7 @@ import {
   Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
   ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
   LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows, Monitor, FileDown, Info, Library,
-  Calendar, RefreshCw, Undo2, CircleDot, Inbox, LogIn,
+  Calendar, RefreshCw, Undo2, CircleDot, Inbox, LogIn, Users2,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
@@ -344,6 +344,7 @@ const GESTAO_ITENS = [
   { id: "turmas", label: "Turmas", icon: School },
   { id: "correcoes", label: "Correções pendentes", icon: Inbox },
   { id: "cronograma", label: "Cronograma", icon: Calendar },
+  { id: "integrantes", label: "Integrantes por Empresa", icon: Users2 },
   { id: "usuarios", label: "Usuários", icon: Users },
   { id: "acessos", label: "Acessos de usuários", icon: LogIn },
   { id: "relatorios", label: "Relatórios", icon: FileBarChart },
@@ -5228,6 +5229,121 @@ function CorrecoesPendentesView({ pendentes, onAbrir }) {
   );
 }
 
+// ----------------------------------------------------------------------------
+// Integrantes por Empresa — só leitura: busca, para cada turma, a lista de
+// empresas (equipes) já cadastrada e quem está vinculado a cada uma
+// (equipe.integrantes, o mesmo campo que já é mantido pela plataforma toda
+// vez que um aluno escolhe/troca de empresa). Não grava nada — é seguro
+// mesmo com a plataforma em uso, com lançamentos e logins acontecendo.
+// ----------------------------------------------------------------------------
+function useEquipesPorTurmas(turmas, refreshKey) {
+  const [porTurma, setPorTurma] = useState(null); // { [turmaId]: [equipes] }
+  const chave = JSON.stringify((turmas || []).map((t) => t.id));
+  useEffect(() => {
+    if (!turmas) return;
+    let alive = true;
+    (async () => {
+      setPorTurma(null);
+      const resultado = {};
+      await Promise.all(turmas.map(async (t) => {
+        try {
+          const r = await window.storage.get(`equipes_${t.id}`, true);
+          resultado[t.id] = r ? JSON.parse(r.value) : [];
+        } catch {
+          resultado[t.id] = [];
+        }
+      }));
+      if (alive) setPorTurma(resultado);
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chave, refreshKey]);
+  return porTurma;
+}
+
+function GestaoIntegrantesView({ turmas, user }) {
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [busca, setBusca] = useState("");
+  const porTurma = useEquipesPorTurmas(turmas, refreshKey);
+
+  if (porTurma === null) return <LoadingScreen />;
+
+  const buscaLimpa = busca.trim().toLowerCase();
+  const filtro = (equipe) =>
+    !buscaLimpa ||
+    equipe.nomeNegocio.toLowerCase().includes(buscaLimpa) ||
+    (equipe.integrantes || []).some((n) => n.toLowerCase().includes(buscaLimpa));
+
+  const totalEmpresas = Object.values(porTurma).reduce((s, l) => s + l.length, 0);
+  const totalIntegrantes = Object.values(porTurma).reduce((s, l) => s + l.reduce((s2, e) => s2 + (e.integrantes || []).length, 0), 0);
+
+  return (
+    <div>
+      <SectionTitle icon={Users2} sub={user.mestre ? "Quem está em cada empresa, em todas as turmas da plataforma." : "Quem está em cada empresa, em todas as suas turmas."}>
+        Integrantes por Empresa
+      </SectionTitle>
+
+      <div className="grid sm:grid-cols-3 gap-3 mb-4">
+        <StatCard label="Turmas" value={turmas.length} tone="slate" small />
+        <StatCard label="Empresas" value={totalEmpresas} tone="blue" small />
+        <StatCard label="Alunos vinculados" value={totalIntegrantes} tone="gold" small />
+      </div>
+
+      <div className="flex gap-2 mb-4">
+        <TxtInput value={busca} onChange={setBusca} placeholder="Buscar por nome do aluno ou da empresa…" />
+        <button onClick={() => setRefreshKey((k) => k + 1)} className="flex items-center gap-1.5 border border-slate-600 text-slate-200 px-3 rounded-md text-sm hover:bg-slate-800 shrink-0"><RefreshCw size={13} /> Atualizar</button>
+      </div>
+
+      {turmas.length === 0 ? (
+        <Card className="p-10 text-center text-slate-500">Nenhuma turma cadastrada ainda.</Card>
+      ) : (
+        <div className="space-y-5">
+          {turmas.map((t) => {
+            const equipes = (porTurma[t.id] || []).filter(filtro);
+            if (buscaLimpa && equipes.length === 0) return null;
+            return (
+              <Card key={t.id} className="p-4">
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                  <div className="flex items-center gap-2">
+                    <School size={16} className="text-sky-400 shrink-0" />
+                    <span className="font-bold text-slate-100">{t.nome}</span>
+                    <span className="text-xs text-slate-500 font-mono">· {t.codigo}</span>
+                  </div>
+                  {user.mestre && <span className="text-xs text-slate-500">Professor(a): {t.professor || "—"}</span>}
+                </div>
+                {equipes.length === 0 ? (
+                  <p className="text-sm text-slate-500">Nenhuma empresa cadastrada nesta turma ainda.</p>
+                ) : (
+                  <div className="grid sm:grid-cols-2 gap-2.5">
+                    {equipes.map((e) => (
+                      <div key={e.id} className="border border-slate-700 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <Building2 size={14} className="text-sky-400 shrink-0" />
+                          <span className="text-sm font-semibold text-slate-100 truncate flex-1">{e.nomeNegocio}</span>
+                          <span className="text-[10px] font-bold text-slate-500 bg-slate-800 border border-slate-700 rounded-full px-1.5 py-0.5 shrink-0">
+                            {(e.integrantes || []).length} {(e.integrantes || []).length === 1 ? "integrante" : "integrantes"}
+                          </span>
+                        </div>
+                        {(e.integrantes || []).length === 0 ? (
+                          <p className="text-xs text-slate-500">Ninguém escolheu esta empresa ainda.</p>
+                        ) : (
+                          <ul className="text-xs text-slate-300 space-y-0.5">
+                            {e.integrantes.map((nome, i) => <li key={i} className="truncate">· {nome}</li>)}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GestaoCronogramaView({ turmas }) {
   const [turmaSelId, setTurmaSelId] = useState(turmas.length === 1 ? turmas[0].id : null);
   const turmaSel = turmas.find((t) => t.id === turmaSelId) || null;
@@ -6501,6 +6617,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
         {aba === "correcoes" && <CorrecoesPendentesView pendentes={pendentesCorrecao} onAbrir={abrirCorrecao} />}
         {aba === "usuarios" && <GestaoUsuariosView turmas={turmas} />}
         {aba === "cronograma" && <GestaoCronogramaView turmas={turmas} />}
+        {aba === "integrantes" && <GestaoIntegrantesView turmas={turmas} user={user} />}
         {aba === "acessos" && <GestaoAcessosView turmas={turmas} user={user} />}
         {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}
         {aba === "backup" && <GestaoBackupView turmas={turmas} onExcluir={removerTurmaDaLista} />}

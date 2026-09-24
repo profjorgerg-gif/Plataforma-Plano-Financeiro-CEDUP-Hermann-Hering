@@ -7447,11 +7447,6 @@ export default function App() {
   // de login, ANTES de entrar com o Google — só é usado se for a primeira
   // vez que essa conta acessa o sistema (ver useEffect abaixo).
   const escolhaRef = useRef({ papel: "aluno", codigoMestre: "" });
-  // true só entre o clique em "Continuar com Google" e o registro da
-  // "entrada" no log de acessos — evita logar uma entrada nova toda vez que
-  // a página é recarregada com uma sessão já existente (o Firebase dispara o
-  // mesmo evento de sessão tanto para login novo quanto para sessão restaurada).
-  const loginRecenteRef = useRef(false);
   const ultimoUidComEntradaRegistradaRef = useRef(null);
 
   useEffect(() => {
@@ -7461,21 +7456,33 @@ export default function App() {
 
   const efetuarSaida = async () => {
     try { await sair(); } catch {}
+    try { if (firebaseUser?.uid) sessionStorage.removeItem(`ppf_entrada_${firebaseUser.uid}`); } catch {}
+    ultimoUidComEntradaRegistradaRef.current = null;
     setPerfilRecemCriado(null);
     escolhaRef.current = { papel: "aluno", codigoMestre: "" };
   };
 
   const perfilCarregado = useUsuario(firebaseUser?.uid);
 
-  // Registra a "entrada" no log de acessos assim que o perfil da conta que
-  // acabou de entrar (via clique em "Continuar com Google") estiver
-  // disponível — nunca ao recarregar a página com uma sessão já existente.
+  // Registra a "entrada" no log de acessos uma vez por sessão de navegador
+  // (aba/janela) — não uma vez por sessão do Firebase. Usar sessionStorage
+  // como trava evita duplicar a cada F5 (ela sobrevive a recarregamentos da
+  // mesma aba), mas ainda assim registra de novo quando a pessoa abre uma
+  // aba nova, reabre o navegador, ou sai e entra de novo. A versão anterior
+  // só registrava entrada junto de um clique novo em "Continuar com
+  // Google" — como o Firebase mantém a sessão entre recarregamentos, isso
+  // fazia a entrada nunca aparecer de novo depois do primeiro login (ex.:
+  // alguém que já estava logado e só deu F5 não gerava nenhum registro).
   const perfilParaLogEntrada = (perfilRecemCriado?.uid === firebaseUser?.uid ? perfilRecemCriado : null) || perfilCarregado || null;
   useEffect(() => {
-    if (!perfilParaLogEntrada || !loginRecenteRef.current) return;
+    if (!perfilParaLogEntrada) return;
+    const chaveSessao = `ppf_entrada_${perfilParaLogEntrada.uid}`;
+    let jaRegistradoNestaAba = false;
+    try { jaRegistradoNestaAba = sessionStorage.getItem(chaveSessao) === "1"; } catch {}
+    if (jaRegistradoNestaAba) return;
     if (ultimoUidComEntradaRegistradaRef.current === perfilParaLogEntrada.uid) return;
     ultimoUidComEntradaRegistradaRef.current = perfilParaLogEntrada.uid;
-    loginRecenteRef.current = false;
+    try { sessionStorage.setItem(chaveSessao, "1"); } catch {}
     registrarAcesso({
       uid: perfilParaLogEntrada.uid, nome: perfilParaLogEntrada.nome, papel: perfilParaLogEntrada.papel,
       turmaId: perfilParaLogEntrada.turmaId, turmaNome: perfilParaLogEntrada.turmaNome, tipo: "entrada",
@@ -7518,7 +7525,7 @@ export default function App() {
   if (firebaseUser === undefined) return <LoadingScreen />;
 
   if (!firebaseUser) {
-    return <TelaEntrada onEscolherPerfil={(papel, codigoMestre) => { escolhaRef.current = { papel, codigoMestre }; loginRecenteRef.current = true; }} />;
+    return <TelaEntrada onEscolherPerfil={(papel, codigoMestre) => { escolhaRef.current = { papel, codigoMestre }; }} />;
   }
 
   if (perfilCarregado === undefined) return <LoadingScreen />;

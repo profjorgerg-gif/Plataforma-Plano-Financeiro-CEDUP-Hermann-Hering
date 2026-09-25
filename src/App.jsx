@@ -4994,6 +4994,118 @@ function roundRectCanvas(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+// Gerador genérico de "tabela em imagem" — usado pelo relatório de
+// Progresso das Empresas (e reaproveitável por outros relatórios no
+// futuro). Quebra o texto de cada célula em várias linhas quando não
+// cabe na largura da coluna, calculando a altura de cada linha da tabela
+// dinamicamente a partir do conteúdo mais alto daquela linha.
+function medirLinhasTexto(ctx, texto, larguraMax) {
+  if (!texto) return [""];
+  const palavras = String(texto).split(" ");
+  const linhas = [];
+  let atual = "";
+  palavras.forEach((p) => {
+    const teste = atual ? atual + " " + p : p;
+    if (ctx.measureText(teste).width > larguraMax && atual) {
+      linhas.push(atual);
+      atual = p;
+    } else {
+      atual = teste;
+    }
+  });
+  if (atual) linhas.push(atual);
+  return linhas.length ? linhas : [""];
+}
+
+function gerarImagemTabela({ titulo, subtitulo, colunas, larguras, linhas }) {
+  const margem = 40;
+  const padCelula = 12;
+  const alturaLinhaTexto = 17;
+  const larguraTabela = larguras.reduce((a, b) => a + b, 0);
+  const larguraTotal = larguraTabela + margem * 2;
+  const alturaTopo = subtitulo ? 100 : 80;
+  const alturaCabecalho = 34;
+
+  const medCanvas = document.createElement("canvas");
+  const medCtx = medCanvas.getContext("2d");
+  medCtx.font = "13px Arial, sans-serif";
+
+  const linhasProcessadas = linhas.map((linha) => {
+    const celulas = linha.map((texto, i) => medirLinhasTexto(medCtx, texto, larguras[i] - padCelula * 2));
+    const maxLinhas = Math.max(...celulas.map((c) => c.length));
+    return { celulas, altura: Math.max(40, maxLinhas * alturaLinhaTexto + 22) };
+  });
+
+  const alturaTotalLinhas = linhasProcessadas.reduce((s, l) => s + l.altura, 0);
+  const altura = alturaTopo + alturaCabecalho + alturaTotalLinhas + margem;
+
+  const canvas = document.createElement("canvas");
+  const escala = 2;
+  canvas.width = larguraTotal * escala;
+  canvas.height = altura * escala;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(escala, escala);
+
+  ctx.fillStyle = "#0b1220";
+  ctx.fillRect(0, 0, larguraTotal, altura);
+
+  ctx.fillStyle = "#f59e0b";
+  ctx.font = "bold 12px Arial, sans-serif";
+  ctx.fillText("CEDUP HERMANN HERING", margem, 30);
+
+  ctx.fillStyle = "#f1f5f9";
+  ctx.font = "bold 20px Arial, sans-serif";
+  ctx.fillText(titulo, margem, 58);
+
+  if (subtitulo) {
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "12px Arial, sans-serif";
+    ctx.fillText(subtitulo, margem, 78);
+  }
+
+  let y = alturaTopo;
+  const x0 = margem;
+
+  ctx.fillStyle = "#1e293b";
+  roundRectCanvas(ctx, x0, y, larguraTabela, alturaCabecalho, 6);
+  ctx.fill();
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "bold 11px Arial, sans-serif";
+  let x = x0;
+  colunas.forEach((c, i) => { ctx.fillText(c.toUpperCase(), x + padCelula, y + 21); x += larguras[i]; });
+  y += alturaCabecalho;
+
+  linhasProcessadas.forEach((linha, i) => {
+    ctx.fillStyle = i % 2 === 0 ? "#0f1a2e" : "#0b1220";
+    ctx.fillRect(x0, y, larguraTabela, linha.altura);
+    ctx.strokeStyle = "#1e293b";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x0, y + linha.altura); ctx.lineTo(x0 + larguraTabela, y + linha.altura); ctx.stroke();
+
+    x = x0;
+    linha.celulas.forEach((linhasTexto, ci) => {
+      ctx.fillStyle = ci === 0 ? "#e2e8f0" : "#cbd5e1";
+      ctx.font = ci === 0 ? "bold 13px Arial, sans-serif" : "13px Arial, sans-serif";
+      linhasTexto.forEach((lt, li) => { ctx.fillText(lt, x + padCelula, y + 24 + li * alturaLinhaTexto); });
+      x += larguras[ci];
+    });
+    y += linha.altura;
+  });
+
+  return canvas;
+}
+
+function baixarCanvasComoJpg(canvas, nomeArquivo) {
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = nomeArquivo;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, "image/jpeg", 0.92);
+}
+
 function gerarImagemCronograma(cronograma, turmaNome) {
   const linhas = cronograma.linhas;
   const larguras = [95, 340, 110, 80, 165, 140];
@@ -6231,12 +6343,36 @@ function RelatorioPorEmpresa({ dadosEquipes }) {
 function RelatorioPendencias({ turma, dadosEquipes }) {
   const [roster] = useSharedList(`roster_${turma.id}`);
   const usuarios = useListaUsuarios();
+  const [buscaEmpresa, setBuscaEmpresa] = useState("");
 
   if (roster === null || usuarios === null || dadosEquipes === null) return <LoadingScreen />;
 
   const alunosDaTurma = usuarios.filter((u) => u.papel === "aluno" && u.turmaId === turma.id);
   const nomesRegistrados = new Set(alunosDaTurma.map((u) => normalizarNome(u.nome)));
   const faltando = roster.filter((a) => !nomesRegistrados.has(normalizarNome(a.nome)));
+
+  const buscaLimpa = buscaEmpresa.trim().toLowerCase();
+  const dadosFiltrados = buscaLimpa ? dadosEquipes.filter(({ equipe }) => equipe.nomeNegocio.toLowerCase().includes(buscaLimpa)) : dadosEquipes;
+
+  const baixarImagemProgresso = () => {
+    const colunas = ["Empresa", "Integrantes", "Progresso", "O que falta"];
+    const larguras = [180, 260, 90, 420];
+    const linhas = dadosFiltrados.map(({ equipe, calc }) => {
+      const nomesFaltando = MODULOS.filter((_, i) => !calc.preenchidos?.[i]).map((m) => `${m.n}. ${m.nome}`);
+      return [
+        equipe.nomeNegocio,
+        equipe.integrantes.join(", ") || "sem integrantes",
+        `${calc.progresso}%`,
+        nomesFaltando.length === 0 ? "Completo" : nomesFaltando.join(", "),
+      ];
+    });
+    const canvas = gerarImagemTabela({
+      titulo: `Progresso das empresas — ${turma.nome}`,
+      subtitulo: buscaLimpa ? `Filtrado por: "${buscaEmpresa.trim()}" · Gerado em ${new Date().toLocaleString("pt-BR")}` : `Gerado em ${new Date().toLocaleString("pt-BR")}`,
+      colunas, larguras, linhas,
+    });
+    baixarCanvasComoJpg(canvas, `progresso_${turma.nome.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo()}.jpg`);
+  };
 
   return (
     <div className="space-y-6">
@@ -6275,9 +6411,23 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
       </div>
 
       <div>
-        <h3 className="text-sm font-bold text-slate-200 mb-2">Progresso das empresas</h3>
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+          <h3 className="text-sm font-bold text-slate-200">Progresso das empresas</h3>
+          {dadosEquipes.length > 0 && (
+            <div className="no-print flex items-center gap-2">
+              <TxtInput value={buscaEmpresa} onChange={setBuscaEmpresa} placeholder="Filtrar por empresa (deixe em branco p/ geral)…" />
+              <button onClick={baixarImagemProgresso} className="flex items-center gap-1.5 text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800 whitespace-nowrap">
+                <ImageDown size={13} /> Imagem
+              </button>
+              <button onClick={() => window.print()} className="flex items-center gap-1.5 text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800 whitespace-nowrap">
+                <Printer size={13} /> PDF
+              </button>
+            </div>
+          )}
+        </div>
         {dadosEquipes.length === 0 && <Card className="p-6 text-center text-slate-500 text-sm">Nenhuma empresa cadastrada nesta turma ainda.</Card>}
-        {dadosEquipes.length > 0 && (
+        {dadosEquipes.length > 0 && dadosFiltrados.length === 0 && <Card className="p-6 text-center text-slate-500 text-sm">Nenhuma empresa encontrada com esse filtro.</Card>}
+        {dadosFiltrados.length > 0 && (
           <Card className="p-0 overflow-hidden">
             <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[640px]">
@@ -6287,7 +6437,7 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
                 </tr>
               </thead>
               <tbody>
-                {dadosEquipes.map(({ equipe, calc }) => {
+                {dadosFiltrados.map(({ equipe, calc }) => {
                   const nomesFaltando = MODULOS.filter((_, i) => !calc.preenchidos?.[i]).map((m) => `${m.n}. ${m.nome}`);
                   return (
                     <tr key={equipe.id} className="border-b border-slate-800">

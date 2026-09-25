@@ -6008,9 +6008,38 @@ function GestaoUsuariosView({ turmas }) {
   const equipesComDados = useEquipesComDados(turmaId, refreshKey);
   const usuarios = useListaUsuarios(refreshKey);
   const [editando, setEditando] = useState(null);
+  const [excluindoUid, setExcluindoUid] = useState(null);
 
   const alunosDaTurma = (usuarios || []).filter((u) => u.papel === "aluno" && u.turmaId === turmaId);
   const nomeEmpresa = (equipeId) => equipesComDados?.find((d) => d.equipe.id === equipeId)?.equipe?.nomeNegocio;
+
+  // Apaga a CONTA do aluno de verdade — diferente de "Editar → Nenhuma
+  // empresa", que só desvincula (a pessoa continua na lista, sem empresa,
+  // até escolher outra ou o professor reatribuir). Isso aqui remove o
+  // cadastro por completo: se a pessoa entrar de novo, terá que se
+  // cadastrar do zero e esperar aprovação.
+  const excluirConta = async (aluno) => {
+    const ok = window.confirm(
+      `Excluir de vez a conta de "${aluno.nome}"?\n\nDiferente de tirar da empresa, isso apaga o CADASTRO da pessoa. Se ela entrar de novo na plataforma, vai precisar se cadastrar do zero e esperar aprovação.\n\nOs lançamentos da empresa continuam intactos — só a conta desta pessoa é removida. Essa ação não pode ser desfeita.`
+    );
+    if (!ok) return;
+    setExcluindoUid(aluno.uid);
+    try {
+      if (aluno.turmaId && aluno.equipeId) {
+        try {
+          const r = await window.storage.get(`equipes_${aluno.turmaId}`, true);
+          const lista = r ? JSON.parse(r.value) : [];
+          const nova = lista.map((e) => (e.id === aluno.equipeId ? { ...e, integrantes: e.integrantes.filter((n) => n !== aluno.nome) } : e));
+          await window.storage.set(`equipes_${aluno.turmaId}`, JSON.stringify(nova), true);
+        } catch {}
+      }
+      await excluirUsuario(aluno.uid);
+      setRefreshKey((k) => k + 1);
+    } catch {
+      alert("Não foi possível excluir agora. Tente novamente.");
+    }
+    setExcluindoUid(null);
+  };
 
   return (
     <div>
@@ -6041,10 +6070,20 @@ function GestaoUsuariosView({ turmas }) {
                   <td className="py-2 pr-3">
                     {nomeEmpresa(u.equipeId) || <span className="text-slate-600 italic">Sem empresa escolhida</span>}
                   </td>
-                  <td className="py-2 pr-3 text-right">
-                    <button onClick={() => setEditando(u)} className="flex items-center gap-1.5 ml-auto bg-slate-900 border border-slate-700 hover:border-amber-500 text-slate-200 text-xs font-semibold px-3 py-1.5 rounded-md">
-                      <Pencil size={13} /> Editar
-                    </button>
+                  <td className="py-2 pr-3">
+                    <div className="flex items-center justify-end gap-2">
+                      <button onClick={() => setEditando(u)} className="flex items-center gap-1.5 bg-slate-900 border border-slate-700 hover:border-amber-500 text-slate-200 text-xs font-semibold px-3 py-1.5 rounded-md">
+                        <Pencil size={13} /> Editar
+                      </button>
+                      <button
+                        onClick={() => excluirConta(u)}
+                        disabled={excluindoUid === u.uid}
+                        title="Excluir a conta desta pessoa (diferente de só tirar da empresa)"
+                        className="flex items-center gap-1.5 bg-slate-900 border border-rose-900/60 hover:border-rose-500 text-rose-400 text-xs font-semibold px-3 py-1.5 rounded-md disabled:opacity-40"
+                      >
+                        <Trash2 size={13} /> {excluindoUid === u.uid ? "Excluindo…" : "Excluir"}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

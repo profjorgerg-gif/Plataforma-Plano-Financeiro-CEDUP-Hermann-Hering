@@ -5116,12 +5116,21 @@ function gerarImagemTabela({ titulo, subtitulo, colunas, larguras, linhas }) {
 // exportado por impressão saía com o mesmo nome genérico. Trocando o
 // título só durante o print() (ele é sempre síncrono/bloqueante até a
 // pessoa fechar a caixa de diálogo), cada relatório sai com um nome que
-// identifica do que se trata.
-function imprimirComTitulo(titulo) {
+// identifica do que se trata. "paisagem" força a orientação deitada só
+// nesta impressão (via uma tag <style> temporária) — útil para tabelas
+// largas, sem mudar a orientação dos demais relatórios/manuais.
+function imprimirComTitulo(titulo, paisagem) {
   const tituloOriginal = document.title;
   document.title = titulo;
+  let estiloTemp = null;
+  if (paisagem) {
+    estiloTemp = document.createElement("style");
+    estiloTemp.textContent = "@media print { @page { size: landscape; } }";
+    document.head.appendChild(estiloTemp);
+  }
   window.print();
   document.title = tituloOriginal;
+  if (estiloTemp) document.head.removeChild(estiloTemp);
 }
 
 function baixarCanvasComoJpg(canvas, nomeArquivo) {
@@ -6502,7 +6511,7 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
 // vinculado, replicada individualmente para cada integrante, como pedido no
 // chamado. Reaproveita a mesma fórmula de nota final ponderada usada na
 // revisão da equipe e no Feedback do Professor.
-function RelatorioNotas({ dadosEquipes }) {
+function RelatorioNotas({ turma, dadosEquipes }) {
   if (dadosEquipes === null) return <LoadingScreen />;
   if (dadosEquipes.length === 0) return <Card className="p-8 text-center text-slate-500">Nenhuma empresa nesta turma ainda.</Card>;
 
@@ -6541,9 +6550,14 @@ function RelatorioNotas({ dadosEquipes }) {
     <div>
       <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
         <p className="text-xs text-slate-500 max-w-md">A nota de cada módulo é a mesma da empresa, replicada para cada aluno vinculado a ela. A coluna Final só aparece quando todos os componentes da equipe já foram lançados (40% módulos + 20% Módulo 13 + 20% Cenários/Fluxo + 20% Apresentação).</p>
-        <button onClick={baixarCSV} className="flex items-center gap-2 text-xs font-semibold border border-slate-600 text-slate-100 px-3 py-2 rounded-md hover:bg-slate-800 shrink-0">
-          <FileDown size={14} /> Baixar CSV
-        </button>
+        <div className="no-print flex items-center gap-2 shrink-0">
+          <button onClick={() => imprimirComTitulo(`Relatorio de Notas${turma ? ` - ${turma.nome}` : ""} - ${sufixoDataHoraArquivo()}`, true)} className="flex items-center gap-2 text-xs font-semibold border border-slate-600 text-slate-100 px-3 py-2 rounded-md hover:bg-slate-800">
+            <Printer size={14} /> Baixar PDF
+          </button>
+          <button onClick={baixarCSV} className="flex items-center gap-2 text-xs font-semibold border border-slate-600 text-slate-100 px-3 py-2 rounded-md hover:bg-slate-800">
+            <FileDown size={14} /> Baixar CSV
+          </button>
+        </div>
       </div>
       <Card className="p-0 overflow-hidden">
         <div className="overflow-x-auto">
@@ -6617,7 +6631,7 @@ function GestaoRelatoriosView({ turmas }) {
           </div>
           {aba === "resumo" && <ResumoComparativo turma={turma} dadosEquipes={dadosEquipes} />}
           {aba === "empresa" && <RelatorioPorEmpresa dadosEquipes={dadosEquipes} />}
-          {aba === "notas" && <RelatorioNotas dadosEquipes={dadosEquipes} />}
+          {aba === "notas" && <RelatorioNotas turma={turma} dadosEquipes={dadosEquipes} />}
           {aba === "pendencias" && <RelatorioPendencias turma={turma} dadosEquipes={dadosEquipes} />}
         </div>
       )}

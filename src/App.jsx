@@ -260,6 +260,7 @@ const HISTORICO_EVENTO_INFO = {
   devolucao: { label: "Devolvido para ajustes", Icon: RotateCcw, cor: "text-amber-400" },
   aprovacao: { label: "Aprovado e concluído", Icon: CheckCircle2, cor: "text-emerald-400" },
   reabertura: { label: "Reaberto pelo professor (prazo esgotado)", Icon: RotateCcw, cor: "text-rose-400" },
+  reaberto_pos_correcao: { label: "Reaberto para ajustes pelo professor (nota mantida)", Icon: Undo2, cor: "text-amber-400" },
 };
 
 function HistoricoCorrecaoModulo({ historico }) {
@@ -4167,11 +4168,13 @@ function NotaModulo({ nota, onSetNota, ehFinal, readOnly }) {
   );
 }
 
-function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes }) {
+function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes, onReabrirPosCorrecao, nota }) {
   const [prazoInput, setPrazoInput] = useState(estado.prazo || "");
   useEffect(() => { setPrazoInput(estado.prazo || ""); }, [estado.prazo]);
   const [novoPrazoReabrir, setNovoPrazoReabrir] = useState("");
   const [feedbackInput, setFeedbackInput] = useState("");
+  const [mostrarReabrirPosCorrecao, setMostrarReabrirPosCorrecao] = useState(false);
+  const [motivoReabrirPosCorrecao, setMotivoReabrirPosCorrecao] = useState("");
   const atrasadoSemEnvio = moduloAtrasadoSemEnvio(estado);
 
   const statusInfo = atrasadoSemEnvio
@@ -4238,6 +4241,44 @@ function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrec
         </div>
       )}
 
+      {estado.status === "corrigido" && (
+        <div>
+          {!mostrarReabrirPosCorrecao ? (
+            <button onClick={() => setMostrarReabrirPosCorrecao(true)} className="flex items-center gap-2 border border-slate-600 text-slate-300 text-xs font-bold px-3 py-1.5 rounded-md hover:border-amber-500 hover:text-amber-400">
+              <Undo2 size={13} /> Reabrir para ajustes
+            </button>
+          ) : (
+            <div className="bg-slate-800/60 border border-slate-700 rounded-md p-3 space-y-2.5">
+              <div className="flex items-start gap-2 text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-md p-2">
+                <ShieldCheck size={13} className="shrink-0 mt-0.5" />
+                A nota já dada a este módulo ({vazio(nota) ? "—" : nota}) <b>não será alterada</b> por essa reabertura — ela continua valendo, mesmo depois de a equipe reenviar e você aprovar de novo.
+              </div>
+              <div>
+                <label className="flex items-center gap-1.5 text-[11px] text-slate-400 mb-1"><Pencil size={12} /> Orientação para a equipe (opcional)</label>
+                <textarea
+                  value={motivoReabrirPosCorrecao}
+                  onChange={(e) => setMotivoReabrirPosCorrecao(e.target.value)}
+                  rows={2}
+                  placeholder="O que precisa ser ajustado neste módulo?"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-md px-2.5 py-1.5 text-xs text-slate-100 focus:border-amber-500 focus:outline-none"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => { onReabrirPosCorrecao(motivoReabrirPosCorrecao.trim()); setMotivoReabrirPosCorrecao(""); setMostrarReabrirPosCorrecao(false); }}
+                  className="flex items-center gap-2 bg-amber-500 text-slate-900 text-xs font-bold px-3 py-1.5 rounded-md hover:bg-amber-400"
+                >
+                  <Undo2 size={13} /> Confirmar reabertura (nota mantida)
+                </button>
+                <button onClick={() => { setMostrarReabrirPosCorrecao(false); setMotivoReabrirPosCorrecao(""); }} className="text-xs font-semibold text-slate-400 px-3 py-1.5 rounded-md hover:text-slate-200">
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {atrasadoSemEnvio && (
         <div className="flex items-center gap-2 flex-wrap">
           <label className="text-[11px] text-slate-400">Novo prazo (obrigatório para reabrir):</label>
@@ -4253,7 +4294,7 @@ function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrec
   );
 }
 
-function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes }) {
+function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes, onReabrirPosCorrecao }) {
   const Icon = m.icon;
   const comentariosModulo = (comentarios || []).filter((c) => c.modulo === `Módulo ${m.n}`);
   const avaliavel = NOTA_MODULOS_AVALIAVEIS.includes(m.id);
@@ -4280,7 +4321,7 @@ function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentario
       </button>
       {aberto && (
         <div className="px-4 pb-4 border-t border-slate-800">
-          <PainelFluxoModulo estado={estado} ultimoModulo={ultimoModulo} onSetPrazo={onSetPrazo} onConfirmarCorrecao={onConfirmarCorrecao} onReabrir={onReabrir} onRestaurarPrazoAutomatico={onRestaurarPrazoAutomatico} onDevolverAjustes={onDevolverAjustes} />
+          <PainelFluxoModulo estado={estado} ultimoModulo={ultimoModulo} onSetPrazo={onSetPrazo} onConfirmarCorrecao={onConfirmarCorrecao} onReabrir={onReabrir} onRestaurarPrazoAutomatico={onRestaurarPrazoAutomatico} onDevolverAjustes={onDevolverAjustes} onReabrirPosCorrecao={onReabrirPosCorrecao} nota={nota} />
           <div className="pt-4"><ModuloLeitura mId={m.id} lanc={lanc} calc={calc} /></div>
           {(avaliavel || ehFinal) && <NotaModulo nota={nota} onSetNota={onSetNota} ehFinal={ehFinal} />}
           <ComentariosPanel
@@ -4367,6 +4408,29 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
           feedback: textoFeedback,
           ciclo: (atual.ciclo || 1) + 1,
           historico: [...(atual.historico || []), { tipo: "devolucao", data: Date.now(), feedback: textoFeedback }],
+        },
+      },
+    });
+  };
+  // Reabre um módulo JÁ CONCLUÍDO (status "corrigido") para a equipe fazer
+  // ajustes — necessário porque o plano financeiro é interligado (mudar um
+  // número lá atrás pode exigir revisão). A nota dada não é tocada em
+  // nenhum momento: ela mora em dados.notas, um campo totalmente separado
+  // do status do módulo, e nenhuma linha deste arquivo grava em dados.notas
+  // fora do campo de nota do próprio professor — reabrir, reenviar e
+  // aprovar de novo não muda o número já atribuído.
+  const reabrirParaAjustesPosCorrecao = (modId, motivo) => {
+    const atual = estadoModulo(fluxo, modId);
+    setDados({
+      ...dados,
+      fluxoModulos: {
+        ...fluxo,
+        [modId]: {
+          ...atual,
+          status: "ajustes",
+          feedback: motivo || "Reaberto pelo professor para ajustes — a nota já atribuída foi mantida.",
+          ciclo: (atual.ciclo || 1) + 1,
+          historico: [...(atual.historico || []), { tipo: "reaberto_pos_correcao", data: Date.now(), feedback: motivo || null }],
         },
       },
     });
@@ -4497,6 +4561,7 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
               onReabrir={(novoPrazo) => reabrirModulo(m.id, novoPrazo)}
               onRestaurarPrazoAutomatico={() => restaurarPrazoAutomatico(m.id)}
               onDevolverAjustes={(feedback) => devolverParaAjustes(m.id, feedback)}
+              onReabrirPosCorrecao={(motivo) => reabrirParaAjustesPosCorrecao(m.id, motivo)}
             />
           ))}
         </div>

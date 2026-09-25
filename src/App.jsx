@@ -579,11 +579,25 @@ const CHECKLIST_SECOES = [
 const CHAVE_LOG_ACESSOS = "log_acessos";
 const LOG_ACESSOS_MAX = 500;
 
-async function registrarAcesso({ uid: uidPessoa, nome, papel, turmaId, turmaNome, tipo, comBackup }) {
+// Busca o nome da empresa (equipe) de um aluno para registrar no log de
+// acessos — o perfil só guarda o equipeId, o nome mora no documento da
+// turma (equipes_{turmaId}), por isso é uma busca à parte.
+async function buscarNomeEmpresa(turmaId, equipeId) {
+  if (!turmaId || !equipeId) return null;
+  try {
+    const r = await window.storage.get(`equipes_${turmaId}`, true);
+    const lista = r ? JSON.parse(r.value) : [];
+    return lista.find((e) => e.id === equipeId)?.nomeNegocio || null;
+  } catch {
+    return null;
+  }
+}
+
+async function registrarAcesso({ uid: uidPessoa, nome, papel, turmaId, turmaNome, equipeId, equipeNome, tipo, comBackup }) {
   try {
     const r = await window.storage.get(CHAVE_LOG_ACESSOS, true);
     const lista = r ? JSON.parse(r.value) : [];
-    lista.push({ id: uid(), uid: uidPessoa, nome, papel, turmaId: turmaId || null, turmaNome: turmaNome || null, tipo, comBackup: comBackup ?? null, timestamp: Date.now() });
+    lista.push({ id: uid(), uid: uidPessoa, nome, papel, turmaId: turmaId || null, turmaNome: turmaNome || null, equipeId: equipeId || null, equipeNome: equipeNome || null, tipo, comBackup: comBackup ?? null, timestamp: Date.now() });
     const cortada = lista.slice(-LOG_ACESSOS_MAX);
     await window.storage.set(CHAVE_LOG_ACESSOS, JSON.stringify(cortada), true);
   } catch {}
@@ -635,6 +649,7 @@ function construirSessoesAcesso(eventos) {
     return {
       uid: entradaEv.uid, nome: entradaEv.nome, papel: entradaEv.papel,
       turmaId: entradaEv.turmaId, turmaNome: entradaEv.turmaNome,
+      equipeId: entradaEv.equipeId, equipeNome: entradaEv.equipeNome,
       entrada: entradaEv.timestamp, saida: null, status, comBackup: null,
     };
   };
@@ -651,6 +666,7 @@ function construirSessoesAcesso(eventos) {
           sessoes.push({
             uid: ev.uid, nome: ev.nome || entradaAtual.nome, papel: ev.papel || entradaAtual.papel,
             turmaId: entradaAtual.turmaId, turmaNome: entradaAtual.turmaNome,
+            equipeId: ev.equipeId || entradaAtual.equipeId, equipeNome: ev.equipeNome || entradaAtual.equipeNome,
             entrada: entradaAtual.timestamp, saida: ev.timestamp,
             status: "correta", comBackup: ev.comBackup ?? null,
           });
@@ -659,6 +675,7 @@ function construirSessoesAcesso(eventos) {
           // saída sem entrada correspondente no log (ex.: evento de antes desta função existir)
           sessoes.push({
             uid: ev.uid, nome: ev.nome, papel: ev.papel, turmaId: ev.turmaId, turmaNome: ev.turmaNome,
+            equipeId: ev.equipeId, equipeNome: ev.equipeNome,
             entrada: null, saida: ev.timestamp, status: "sem_entrada_registrada", comBackup: ev.comBackup ?? null,
           });
         }
@@ -6896,6 +6913,7 @@ function GestaoAcessosView({ turmas, user }) {
   const eventos = useLogAcessos(refreshKey);
   const [busca, setBusca] = useState("");
   const [filtroPapel, setFiltroPapel] = useState("todos"); // todos | aluno | professor
+  const [filtroEmpresa, setFiltroEmpresa] = useState("");
 
   if (eventos === null) return <LoadingScreen />;
 
@@ -6904,8 +6922,11 @@ function GestaoAcessosView({ turmas, user }) {
   // suas turmas; o Usuário Mestre vê tudo, de todo mundo.
   const visiveis = user.mestre ? eventos : eventos.filter((ev) => ev.uid === user.uid || (ev.turmaId && turmaIds.has(ev.turmaId)));
 
+  const empresasDisponiveis = [...new Set(visiveis.map((ev) => ev.equipeNome).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+
   const sessoes = construirSessoesAcesso(visiveis)
     .filter((s) => filtroPapel === "todos" || s.papel === filtroPapel)
+    .filter((s) => !filtroEmpresa || s.equipeNome === filtroEmpresa)
     .filter((s) => !busca.trim() || (s.nome || "").toLowerCase().includes(busca.trim().toLowerCase()));
 
   const emAberto = sessoes.filter((s) => s.status === "em_aberto").length;
@@ -6935,7 +6956,17 @@ function GestaoAcessosView({ turmas, user }) {
           <option value="aluno">Só alunos</option>
           <option value="professor">Só professores</option>
         </select>
+        <select value={filtroEmpresa} onChange={(e) => setFiltroEmpresa(e.target.value)} className="border border-slate-600 bg-slate-900 rounded-md px-3 text-sm text-slate-200">
+          <option value="">Todas as empresas</option>
+          {empresasDisponiveis.map((nome) => <option key={nome} value={nome}>{nome}</option>)}
+        </select>
         <button onClick={() => setRefreshKey((k) => k + 1)} className="flex items-center gap-1.5 border border-slate-600 text-slate-200 px-3 rounded-md text-sm hover:bg-slate-800 shrink-0"><RefreshCw size={13} /> Atualizar</button>
+        <button
+          onClick={() => imprimirComTitulo(`Acessos de Usuarios${filtroEmpresa ? ` - ${filtroEmpresa}` : ""} - ${sufixoDataHoraArquivo()}`, true)}
+          className="no-print flex items-center gap-1.5 border border-slate-600 text-slate-200 px-3 rounded-md text-sm hover:bg-slate-800 shrink-0"
+        >
+          <Printer size={13} /> Emitir PDF
+        </button>
       </div>
 
       {sessoes.length === 0 ? (
@@ -6963,7 +6994,7 @@ function GestaoAcessosView({ turmas, user }) {
                       )}
                     </div>
                     <div className="text-xs text-slate-500">
-                      {s.turmaNome ? `${s.turmaNome} — ` : ""}
+                      {s.turmaNome ? `${s.turmaNome}${s.equipeNome ? ` · ${s.equipeNome}` : ""} — ` : ""}
                       {s.entrada ? `entrou em ${fmtData(s.entrada)}` : "entrada não registrada"}
                       {s.saida ? ` · saiu em ${fmtData(s.saida)}` : ""}
                       {duracaoMin !== null && ` · ${duracaoMin < 60 ? `${duracaoMin} min` : `${Math.floor(duracaoMin / 60)}h${String(duracaoMin % 60).padStart(2, "0")}`} de sessão`}
@@ -8121,10 +8152,14 @@ export default function App() {
     if (ultimoUidComEntradaRegistradaRef.current === perfilParaLogEntrada.uid) return;
     ultimoUidComEntradaRegistradaRef.current = perfilParaLogEntrada.uid;
     try { sessionStorage.setItem(chaveSessao, "1"); } catch {}
-    registrarAcesso({
-      uid: perfilParaLogEntrada.uid, nome: perfilParaLogEntrada.nome, papel: perfilParaLogEntrada.papel,
-      turmaId: perfilParaLogEntrada.turmaId, turmaNome: perfilParaLogEntrada.turmaNome, tipo: "entrada",
-    });
+    (async () => {
+      const equipeNome = await buscarNomeEmpresa(perfilParaLogEntrada.turmaId, perfilParaLogEntrada.equipeId);
+      registrarAcesso({
+        uid: perfilParaLogEntrada.uid, nome: perfilParaLogEntrada.nome, papel: perfilParaLogEntrada.papel,
+        turmaId: perfilParaLogEntrada.turmaId, turmaNome: perfilParaLogEntrada.turmaNome,
+        equipeId: perfilParaLogEntrada.equipeId, equipeNome, tipo: "entrada",
+      });
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [perfilParaLogEntrada?.uid]);
 
@@ -8178,8 +8213,9 @@ export default function App() {
 
   if (!perfil) return <LoadingScreen />;
 
-  const efetuarSaidaComLog = (comBackup) => {
-    registrarAcesso({ uid: perfil.uid, nome: perfil.nome, papel: perfil.papel, turmaId: perfil.turmaId, turmaNome: perfil.turmaNome, tipo: "saida", comBackup: comBackup ?? null });
+  const efetuarSaidaComLog = async (comBackup) => {
+    const equipeNome = await buscarNomeEmpresa(perfil.turmaId, perfil.equipeId);
+    registrarAcesso({ uid: perfil.uid, nome: perfil.nome, papel: perfil.papel, turmaId: perfil.turmaId, turmaNome: perfil.turmaNome, equipeId: perfil.equipeId, equipeNome, tipo: "saida", comBackup: comBackup ?? null });
     efetuarSaida();
   };
 

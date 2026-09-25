@@ -6233,7 +6233,6 @@ function GestaoBackupView({ turmas, onExcluir }) {
   const [status, setStatus] = useState("");
   const [excluindo, setExcluindo] = useState(false);
   const [ultimoBackupTurmaId, setUltimoBackupTurmaId] = useState(null);
-  const [periodoSemestre, setPeriodoSemestre] = useState("");
   const [gerandoSemestre, setGerandoSemestre] = useState(false);
 
   // Só para mostrar, antes de gerar, quantas turmas/empresas/alunos o
@@ -6297,10 +6296,9 @@ function GestaoBackupView({ turmas, onExcluir }) {
         turma: t,
         equipes: await buscarEquipesComDados(t.id),
       })));
-      const rotulo = periodoSemestre.trim() || new Date().getFullYear().toString();
       const agora = new Date();
-      const pacote = { versaoBackup: 1, tipo: "geral", periodo: rotulo, geradoEm: agora.toISOString(), turmas: porTurma };
-      baixarArquivo(`Backup-Geral-${rotulo.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo(agora)}.json`, JSON.stringify(pacote, null, 2));
+      const pacote = { versaoBackup: 1, tipo: "geral", geradoEm: agora.toISOString(), turmas: porTurma };
+      baixarArquivo(`Backup-Geral_${sufixoDataHoraArquivo(agora)}.json`, JSON.stringify(pacote, null, 2));
       setStatus(`Backup Geral gerado com ${turmas.length} turma(s).`);
     } catch {
       setStatus("Não foi possível gerar o Backup Geral. Tente novamente.");
@@ -6350,11 +6348,11 @@ function GestaoBackupView({ turmas, onExcluir }) {
           </div>
         )}
         <div className="flex flex-wrap gap-2">
-          <TxtInput value={periodoSemestre} onChange={setPeriodoSemestre} placeholder="Rótulo opcional para o nome do arquivo (ex.: 2026-1)" />
           <button onClick={exportarBackupSemestre} disabled={gerandoSemestre || !turmas.length} className="bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40 text-sm whitespace-nowrap">
             {gerandoSemestre ? "Gerando…" : "Gerar Backup Geral"}
           </button>
         </div>
+        <p className="text-[11px] text-slate-500 mt-2">O arquivo já sai nomeado automaticamente com a data e a hora exatas da geração — nenhum campo para preencher.</p>
       </Card>
 
       <SeletorTurma turmas={turmas} value={turmaId} onChange={setTurmaId} />

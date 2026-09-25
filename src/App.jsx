@@ -729,21 +729,25 @@ function calcular(lanc) {
   const rentabilidade = investimentoTotal > 0 ? (lucroAnual / investimentoTotal) * 100 : 0;
   const prazoRetorno = lucroAnual > 0 ? investimentoTotal / lucroAnual : null;
 
-  // % de módulos com dados
+  // % de módulos com dados — M4, M6, M12 e M13 são automáticos/derivados de
+  // outros módulos (não têm lançamento manual próprio), então "preenchido"
+  // para eles significa "já existe dado suficiente nos módulos de origem
+  // para o cálculo fazer sentido" — nunca "sempre true", senão uma equipe
+  // recém-criada, sem nada preenchido, já apareceria com progresso alto.
   const preenchidos = [
     l.m1.itens.length > 0,
     (Number(l.m2.estoqueInicial) || 0) > 0 || necessidadeLiquidaDias !== 0,
     l.m3.itens.length > 0,
-    true,
+    investimentoTotal > 0,
     l.m5.itens.length > 0,
-    true,
+    l.m6.itens.length > 0,
     (Number(l.m7.pctImpostos) || 0) > 0 || (Number(l.m7.pctComissao) || 0) > 0,
     cmv > 0,
     l.m9.itens.length > 0,
     depreciacaoMensal > 0,
     l.m11.itens.length > 0,
-    true,
-    true,
+    faturamento > 0,
+    investimentoTotal > 0 && faturamento > 0,
   ];
   const progresso = Math.round((preenchidos.filter(Boolean).length / preenchidos.length) * 100);
 
@@ -3281,7 +3285,7 @@ function ManualAlunoView({ equipe, onIrPara, contexto = "aluno" }) {
             </div>
           )}
         </div>
-        <button onClick={() => window.print()} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0"><FileBarChart size={15} /> Exportar PDF</button>
+        <button onClick={() => imprimirComTitulo(`Manual do Aluno - PPFCHH - ${sufixoDataHoraArquivo()}`)} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0"><FileBarChart size={15} /> Exportar PDF</button>
       </div>
 
       <Card className="p-6">
@@ -3325,7 +3329,7 @@ function ManualProfessorView() {
           <h1 className="text-3xl font-bold text-slate-50 mb-3">Manual do Professor</h1>
           <p className="text-slate-400 max-w-2xl">O ciclo completo de uso da plataforma com uma turma, do início ao fim do período letivo.</p>
         </div>
-        <button onClick={() => window.print()} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0"><FileBarChart size={15} /> Exportar PDF</button>
+        <button onClick={() => imprimirComTitulo(`Manual do Professor - PPFCHH - ${sufixoDataHoraArquivo()}`)} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0"><FileBarChart size={15} /> Exportar PDF</button>
       </div>
 
       <div className="bg-slate-900 border border-amber-500/60 rounded-md p-4 text-sm text-slate-300 mb-6">
@@ -3365,7 +3369,7 @@ function ManualOperacionalView() {
           <h1 className="text-3xl font-bold text-slate-50 mb-3">Manual de Operacionalização</h1>
           <p className="text-slate-400 max-w-2xl">Guia de referência para manter e evoluir o projeto — visível só para Usuários Mestre.</p>
         </div>
-        <button onClick={() => window.print()} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0"><FileBarChart size={15} /> Exportar PDF</button>
+        <button onClick={() => imprimirComTitulo(`Manual de Operacionalizacao - PPFCHH - ${sufixoDataHoraArquivo()}`)} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0"><FileBarChart size={15} /> Exportar PDF</button>
       </div>
 
       <div className="space-y-5">
@@ -3397,7 +3401,7 @@ function ChecklistStatusView() {
           <h1 className="text-3xl font-bold text-slate-50 mb-3">Checklist de Status</h1>
           <p className="text-slate-400 max-w-2xl">O que já está funcionando e o que ainda precisa de atenção — visível só para Usuários Mestre.</p>
         </div>
-        <button onClick={() => window.print()} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0"><FileBarChart size={15} /> Exportar PDF</button>
+        <button onClick={() => imprimirComTitulo(`Checklist de Status - PPFCHH - ${sufixoDataHoraArquivo()}`)} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0"><FileBarChart size={15} /> Exportar PDF</button>
       </div>
 
       <div className="space-y-5">
@@ -5095,6 +5099,19 @@ function gerarImagemTabela({ titulo, subtitulo, colunas, larguras, linhas }) {
   return canvas;
 }
 
+// O nome sugerido pelo navegador ao "salvar como PDF" vem do <title> da
+// página — como o app inteiro usa um único título fixo, todo relatório
+// exportado por impressão saía com o mesmo nome genérico. Trocando o
+// título só durante o print() (ele é sempre síncrono/bloqueante até a
+// pessoa fechar a caixa de diálogo), cada relatório sai com um nome que
+// identifica do que se trata.
+function imprimirComTitulo(titulo) {
+  const tituloOriginal = document.title;
+  document.title = titulo;
+  window.print();
+  document.title = tituloOriginal;
+}
+
 function baixarCanvasComoJpg(canvas, nomeArquivo) {
   canvas.toBlob((blob) => {
     if (!blob) return;
@@ -6241,7 +6258,7 @@ function ResumoComparativo({ turma, dadosEquipes }) {
   return (
     <div>
       <div className="flex justify-end gap-2 mb-3 no-print">
-        <button onClick={() => window.print()} className="flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500"><FileBarChart size={15} /> Exportar PDF</button>
+        <button onClick={() => imprimirComTitulo(`Resumo Comparativo - ${turma.nome} - ${sufixoDataHoraArquivo()}`)} className="flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500"><FileBarChart size={15} /> Exportar PDF</button>
         <button onClick={exportarCSV} className="flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500"><Save size={15} /> Exportar CSV</button>
       </div>
       <Card className="p-4 overflow-x-auto">
@@ -6419,7 +6436,7 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
               <button onClick={baixarImagemProgresso} className="flex items-center gap-1.5 text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800 whitespace-nowrap">
                 <ImageDown size={13} /> Imagem
               </button>
-              <button onClick={() => window.print()} className="flex items-center gap-1.5 text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800 whitespace-nowrap">
+              <button onClick={() => imprimirComTitulo(`Progresso das empresas - ${turma.nome}${buscaLimpa ? ` - ${buscaEmpresa.trim()}` : ""} - ${sufixoDataHoraArquivo()}`)} className="flex items-center gap-1.5 text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800 whitespace-nowrap">
                 <Printer size={13} /> PDF
               </button>
             </div>

@@ -5236,6 +5236,59 @@ function CorrecoesPendentesView({ pendentes, onAbrir }) {
 // vez que um aluno escolhe/troca de empresa). Não grava nada — é seguro
 // mesmo com a plataforma em uso, com lançamentos e logins acontecendo.
 // ----------------------------------------------------------------------------
+// Reparo aditivo: para cada aluno cujo perfil já tem equipeId (ou seja, o
+// vínculo individual dele está correto — é o que ele mesmo enxerga ao
+// entrar), confere se o nome dele está na lista de integrantes da empresa
+// correspondente e, se não estiver, ADICIONA. Nunca remove ninguém, nunca
+// mexe em lançamentos ou em outro campo — só preenche o que ficou faltando
+// por causa da corrida de gravação corrigida em EscolherEmpresa. Só mexe
+// nas turmas passadas em `turmas` (as que a pessoa que está executando
+// pode ver/gerenciar).
+async function repararIntegrantesAusentes(turmas) {
+  const usuarios = await listarUsuarios();
+  const alunosLigados = usuarios.filter((u) => u.papel === "aluno" && u.turmaId && u.equipeId && u.nome);
+  const porTurma = {};
+  alunosLigados.forEach((a) => {
+    if (!porTurma[a.turmaId]) porTurma[a.turmaId] = {};
+    if (!porTurma[a.turmaId][a.equipeId]) porTurma[a.turmaId][a.equipeId] = [];
+    porTurma[a.turmaId][a.equipeId].push(a.nome);
+  });
+
+  const turmaIdsPermitidas = new Set((turmas || []).map((t) => t.id));
+  let nomesAdicionados = 0;
+  let turmasAtualizadas = 0;
+
+  for (const turmaId of Object.keys(porTurma)) {
+    if (!turmaIdsPermitidas.has(turmaId)) continue;
+    const chave = `equipes_${turmaId}`;
+    let lista;
+    try {
+      const r = await window.storage.get(chave, true);
+      lista = r ? JSON.parse(r.value) : null;
+    } catch { lista = null; }
+    if (!lista) continue;
+
+    let mudou = false;
+    const novaLista = lista.map((equipe) => {
+      const nomesEsperados = porTurma[turmaId][equipe.id] || [];
+      const faltantes = nomesEsperados.filter((n) => !equipe.integrantes.includes(n));
+      if (faltantes.length === 0) return equipe;
+      mudou = true;
+      nomesAdicionados += faltantes.length;
+      return { ...equipe, integrantes: [...equipe.integrantes, ...faltantes] };
+    });
+
+    if (mudou) {
+      try {
+        await window.storage.set(chave, JSON.stringify(novaLista), true);
+        turmasAtualizadas++;
+      } catch {}
+    }
+  }
+
+  return { nomesAdicionados, turmasAtualizadas };
+}
+
 function useEquipesPorTurmas(turmas, refreshKey) {
   const [porTurma, setPorTurma] = useState(null); // { [turmaId]: [equipes] }
   const chave = JSON.stringify((turmas || []).map((t) => t.id));
@@ -5264,6 +5317,8 @@ function useEquipesPorTurmas(turmas, refreshKey) {
 function GestaoIntegrantesView({ turmas, user }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [busca, setBusca] = useState("");
+  const [reparando, setReparando] = useState(false);
+  const [resultadoReparo, setResultadoReparo] = useState(null);
   const porTurma = useEquipesPorTurmas(turmas, refreshKey);
 
   if (porTurma === null) return <LoadingScreen />;
@@ -5277,11 +5332,43 @@ function GestaoIntegrantesView({ turmas, user }) {
   const totalEmpresas = Object.values(porTurma).reduce((s, l) => s + l.length, 0);
   const totalIntegrantes = Object.values(porTurma).reduce((s, l) => s + l.reduce((s2, e) => s2 + (e.integrantes || []).length, 0), 0);
 
+  const executarReparo = async () => {
+    const ok = window.confirm(
+      "Isso vai conferir, aluno por aluno, se o nome de quem já escolheu empresa está faltando na lista de integrantes — e SÓ ADICIONAR o que estiver faltando.\n\nNenhum nome existente é removido, nenhum lançamento é alterado. Deseja continuar?"
+    );
+    if (!ok) return;
+    setReparando(true);
+    setResultadoReparo(null);
+    const r = await repararIntegrantesAusentes(turmas);
+    setResultadoReparo(r);
+    setReparando(false);
+    setRefreshKey((k) => k + 1);
+  };
+
   return (
     <div>
       <SectionTitle icon={Users2} sub={user.mestre ? "Quem está em cada empresa, em todas as turmas da plataforma." : "Quem está em cada empresa, em todas as suas turmas."}>
         Integrantes por Empresa
       </SectionTitle>
+
+      <div className="flex items-start gap-2 text-xs text-slate-400 bg-slate-900/60 border border-slate-800 rounded-lg p-3 mb-4">
+        <Info size={14} className="text-sky-400 shrink-0 mt-0.5" />
+        <div className="flex-1">
+          Se um aluno afirma ter escolhido a empresa mas o nome dele não aparece abaixo, use "Reparar integrantes ausentes" — ele só adiciona nomes que estão faltando, nunca remove ninguém nem altera lançamentos.
+          <div className="mt-2">
+            <button onClick={executarReparo} disabled={reparando} className="flex items-center gap-1.5 bg-amber-500 text-slate-900 font-bold px-3 py-1.5 rounded-md text-xs hover:bg-amber-400 disabled:opacity-40">
+              <RefreshCw size={12} className={reparando ? "animate-spin" : ""} /> {reparando ? "Reparando…" : "Reparar integrantes ausentes"}
+            </button>
+            {resultadoReparo && (
+              <span className="ml-2 text-emerald-400">
+                {resultadoReparo.nomesAdicionados === 0
+                  ? "Nenhum nome estava faltando — tudo certo."
+                  : `${resultadoReparo.nomesAdicionados} nome(s) adicionado(s) em ${resultadoReparo.turmasAtualizadas} turma(s).`}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
 
       <div className="grid sm:grid-cols-3 gap-3 mb-4">
         <StatCard label="Turmas" value={turmas.length} tone="slate" small />
@@ -7084,17 +7171,45 @@ function TelaPrimeiroAcessoAluno({ perfil, onSair, onResultado, onVirarProfessor
 // cadastrada pelo professor dentro da turma — evita nomes digitados errado
 // ou duplicados, e permite que vários alunos entrem na mesma empresa.
 function EscolherEmpresa({ perfil, turmaId, turmaNome, onSair, onEscolhida }) {
-  const [equipes, setEquipes] = useSharedList(`equipes_${turmaId}`);
+  const [equipes] = useSharedList(`equipes_${turmaId}`);
   const [entrando, setEntrando] = useState(null);
 
   if (equipes === null) return <LoadingScreen />;
 
   const entrarNaEmpresa = async (equipe) => {
     setEntrando(equipe.id);
-    const jaEsta = equipe.integrantes.includes(perfil.nome);
-    const atualizada = jaEsta ? equipe : { ...equipe, integrantes: [...equipe.integrantes, perfil.nome] };
-    const nova = equipes.map((e) => (e.id === equipe.id ? atualizada : e));
-    await setEquipes(nova);
+    // Corrige uma corrida de gravação: quando duas pessoas escolhem empresa
+    // quase ao mesmo tempo, usar o snapshot antigo (carregado ao abrir a
+    // tela) e gravar por cima pode apagar a escolha de quem gravou primeiro.
+    // Por isso, a cada tentativa, busca o estado mais recente do servidor
+    // (nunca usa o `equipes` antigo do useSharedList para decidir o que
+    // gravar) e confere depois de gravar se o nome realmente ficou salvo —
+    // se não ficou (alguém gravou por cima entre a leitura e a escrita),
+    // tenta de novo, até 5 vezes.
+    const chave = `equipes_${turmaId}`;
+    let atualizada = equipe;
+    for (let tentativa = 0; tentativa < 5; tentativa++) {
+      let listaAtual;
+      try {
+        const r = await window.storage.get(chave, true);
+        listaAtual = r ? JSON.parse(r.value) : equipes;
+      } catch {
+        listaAtual = equipes;
+      }
+      const alvo = listaAtual.find((e) => e.id === equipe.id) || equipe;
+      if (alvo.integrantes.includes(perfil.nome)) { atualizada = alvo; break; }
+      atualizada = { ...alvo, integrantes: [...alvo.integrantes, perfil.nome] };
+      const nova = listaAtual.map((e) => (e.id === equipe.id ? atualizada : e));
+      try { await window.storage.set(chave, JSON.stringify(nova), true); } catch {}
+      let confirmado = null;
+      try {
+        const r2 = await window.storage.get(chave, true);
+        const lista2 = r2 ? JSON.parse(r2.value) : null;
+        confirmado = lista2?.find((e) => e.id === equipe.id) || null;
+      } catch {}
+      if (confirmado?.integrantes?.includes(perfil.nome)) { atualizada = confirmado; break; }
+      // não confirmou — outra escrita concorrente pode ter sobrescrito; tenta de novo
+    }
     setEntrando(null);
     onEscolhida(atualizada);
   };

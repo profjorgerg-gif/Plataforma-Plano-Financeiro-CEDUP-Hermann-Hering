@@ -6236,6 +6236,14 @@ function GestaoBackupView({ turmas, onExcluir }) {
   const [periodoSemestre, setPeriodoSemestre] = useState("");
   const [gerandoSemestre, setGerandoSemestre] = useState(false);
 
+  // Só para mostrar, antes de gerar, quantas turmas/empresas/alunos o
+  // Backup Geral vai realmente abranger — nenhuma escrita, só leitura.
+  const porTurma = useEquipesPorTurmas(turmas, 0);
+  const porTurmaResumo = porTurma && {
+    totalEmpresas: Object.values(porTurma).reduce((s, l) => s + l.length, 0),
+    totalIntegrantes: Object.values(porTurma).reduce((s, l) => s + l.reduce((s2, e) => s2 + (e.integrantes || []).length, 0), 0),
+  };
+
   // Apaga permanentemente uma turma: empresas/equipes, lançamentos de cada uma,
   // a lista oficial de alunos importada e as contas dos alunos que estavam
   // vinculados a ela. Usado ao final do ano/semestre letivo, depois de já ter
@@ -6275,9 +6283,11 @@ function GestaoBackupView({ turmas, onExcluir }) {
     setStatus("Backup exportado com sucesso.");
   };
 
-  // Backup do Semestre: reúne TODAS as turmas do professor num único
-  // arquivo, com nome padronizado — útil no fechamento do período letivo,
-  // para não precisar exportar turma por turma.
+  // Backup Geral: reúne TODAS as turmas do professor (ou, para o Usuário
+  // Mestre, todas as turmas da plataforma) num único arquivo — inclui o
+  // estado atual de cada empresa, buscado na hora do clique, então cobre
+  // tudo que já foi feito até aquele momento, mesmo que ninguém tenha
+  // exportado nada por conta própria.
   const exportarBackupSemestre = async () => {
     if (!turmas.length) return;
     setGerandoSemestre(true);
@@ -6289,11 +6299,11 @@ function GestaoBackupView({ turmas, onExcluir }) {
       })));
       const rotulo = periodoSemestre.trim() || new Date().getFullYear().toString();
       const agora = new Date();
-      const pacote = { versaoBackup: 1, tipo: "semestre", periodo: rotulo, geradoEm: agora.toISOString(), turmas: porTurma };
-      baixarArquivo(`Backup-Semestre-${rotulo.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo(agora)}.json`, JSON.stringify(pacote, null, 2));
-      setStatus(`Backup do semestre "${rotulo}" gerado com ${turmas.length} turma(s).`);
+      const pacote = { versaoBackup: 1, tipo: "geral", periodo: rotulo, geradoEm: agora.toISOString(), turmas: porTurma };
+      baixarArquivo(`Backup-Geral-${rotulo.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo(agora)}.json`, JSON.stringify(pacote, null, 2));
+      setStatus(`Backup Geral gerado com ${turmas.length} turma(s).`);
     } catch {
-      setStatus("Não foi possível gerar o backup do semestre. Tente novamente.");
+      setStatus("Não foi possível gerar o Backup Geral. Tente novamente.");
     }
     setGerandoSemestre(false);
   };
@@ -6322,15 +6332,27 @@ function GestaoBackupView({ turmas, onExcluir }) {
 
   return (
     <div>
-      <SectionTitle icon={Save} sub="Exporte os dados de uma turma para guardar uma cópia de segurança, ou restaure um backup anterior.">Backup</SectionTitle>
+      <SectionTitle icon={Save} sub="Gere um Backup Geral com todas as turmas de uma vez, ou exporte/restaure uma turma específica.">Backup</SectionTitle>
 
       <Card className="p-5 mb-5 border-amber-800/50">
-        <h3 className="font-bold text-slate-100 mb-1 flex items-center gap-2"><History size={16} className="text-amber-500" /> Backup do Semestre</h3>
-        <p className="text-sm text-slate-400 mb-3">No fechamento do período letivo, gere um único arquivo com todas as {turmas.length} turma(s) de uma vez, em vez de exportar turma por turma.</p>
+        <h3 className="font-bold text-slate-100 mb-1 flex items-center gap-2"><History size={16} className="text-amber-500" /> Backup Geral</h3>
+        <p className="text-sm text-slate-400 mb-1">
+          Reúne, num único arquivo, o estado atual de <b>todas as suas turmas</b> — todas as empresas, todos os lançamentos, notas, feedback e histórico de correção de cada uma, exatamente como estão no momento em que você clicar em gerar.
+        </p>
+        <p className="text-xs text-slate-500 mb-3">
+          Útil para não depender de os alunos lembrarem de exportar por conta própria — este backup já pega tudo o que cada equipe já fez até agora, mesmo que ninguém tenha clicado em nada.
+        </p>
+        {porTurmaResumo && (
+          <div className="flex flex-wrap gap-4 text-xs text-slate-400 mb-3">
+            <span><b className="text-slate-200">{turmas.length}</b> turma(s)</span>
+            <span><b className="text-slate-200">{porTurmaResumo.totalEmpresas}</b> empresa(s)</span>
+            <span><b className="text-slate-200">{porTurmaResumo.totalIntegrantes}</b> aluno(s) vinculado(s)</span>
+          </div>
+        )}
         <div className="flex flex-wrap gap-2">
-          <TxtInput value={periodoSemestre} onChange={setPeriodoSemestre} placeholder="Ex.: 2026-1" />
+          <TxtInput value={periodoSemestre} onChange={setPeriodoSemestre} placeholder="Rótulo opcional para o nome do arquivo (ex.: 2026-1)" />
           <button onClick={exportarBackupSemestre} disabled={gerandoSemestre || !turmas.length} className="bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40 text-sm whitespace-nowrap">
-            {gerandoSemestre ? "Gerando…" : "Gerar backup do semestre"}
+            {gerandoSemestre ? "Gerando…" : "Gerar Backup Geral"}
           </button>
         </div>
       </Card>

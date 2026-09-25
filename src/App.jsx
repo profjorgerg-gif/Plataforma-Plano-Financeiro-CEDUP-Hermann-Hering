@@ -579,11 +579,11 @@ const CHECKLIST_SECOES = [
 const CHAVE_LOG_ACESSOS = "log_acessos";
 const LOG_ACESSOS_MAX = 500;
 
-async function registrarAcesso({ uid: uidPessoa, nome, papel, turmaId, turmaNome, tipo }) {
+async function registrarAcesso({ uid: uidPessoa, nome, papel, turmaId, turmaNome, tipo, comBackup }) {
   try {
     const r = await window.storage.get(CHAVE_LOG_ACESSOS, true);
     const lista = r ? JSON.parse(r.value) : [];
-    lista.push({ id: uid(), uid: uidPessoa, nome, papel, turmaId: turmaId || null, turmaNome: turmaNome || null, tipo, timestamp: Date.now() });
+    lista.push({ id: uid(), uid: uidPessoa, nome, papel, turmaId: turmaId || null, turmaNome: turmaNome || null, tipo, comBackup: comBackup ?? null, timestamp: Date.now() });
     const cortada = lista.slice(-LOG_ACESSOS_MAX);
     await window.storage.set(CHAVE_LOG_ACESSOS, JSON.stringify(cortada), true);
   } catch {}
@@ -606,6 +606,77 @@ function useLogAcessos(refreshKey) {
   }, [refreshKey]);
   return lista;
 }
+
+// Uma sessão fica "em aberto" por no máximo este tempo antes de a
+// plataforma assumir que ela provavelmente já encerrou (a pessoa fechou a
+// aba sem clicar em "Sair") — evita que uma entrada de dias atrás continue
+// marcada como "em andamento" para sempre.
+const LIMITE_SESSAO_ABERTA_MS = 4 * 60 * 60 * 1000; // 4 horas
+
+// Pareia cada "entrada" com a "saída" correspondente da mesma pessoa,
+// na ordem em que aconteceram — isso é o que permite dizer se uma sessão
+// terminou de forma confirmada (clique em "Sair", com ou sem backup) ou
+// se só sabemos que uma entrada aconteceu, sem confirmação de saída.
+function construirSessoesAcesso(eventos) {
+  const porUid = new Map();
+  eventos.forEach((ev) => {
+    if (!porUid.has(ev.uid)) porUid.set(ev.uid, []);
+    porUid.get(ev.uid).push(ev);
+  });
+
+  const agora = Date.now();
+  const sessoes = [];
+
+  const fecharSemSaidaConfirmada = (entradaEv, proximaEntradaTs) => {
+    const referencia = proximaEntradaTs ?? agora;
+    const status = proximaEntradaTs
+      ? "sem_clique_sair" // uma entrada nova da mesma pessoa comprova que essa sessão anterior já tinha acabado
+      : (referencia - entradaEv.timestamp > LIMITE_SESSAO_ABERTA_MS ? "provavelmente_encerrada" : "em_aberto");
+    return {
+      uid: entradaEv.uid, nome: entradaEv.nome, papel: entradaEv.papel,
+      turmaId: entradaEv.turmaId, turmaNome: entradaEv.turmaNome,
+      entrada: entradaEv.timestamp, saida: null, status, comBackup: null,
+    };
+  };
+
+  porUid.forEach((lista) => {
+    const ordenada = lista.slice().sort((a, b) => a.timestamp - b.timestamp);
+    let entradaAtual = null;
+    ordenada.forEach((ev) => {
+      if (ev.tipo === "entrada") {
+        if (entradaAtual) sessoes.push(fecharSemSaidaConfirmada(entradaAtual, ev.timestamp));
+        entradaAtual = ev;
+      } else if (ev.tipo === "saida") {
+        if (entradaAtual) {
+          sessoes.push({
+            uid: ev.uid, nome: ev.nome || entradaAtual.nome, papel: ev.papel || entradaAtual.papel,
+            turmaId: entradaAtual.turmaId, turmaNome: entradaAtual.turmaNome,
+            entrada: entradaAtual.timestamp, saida: ev.timestamp,
+            status: "correta", comBackup: ev.comBackup ?? null,
+          });
+          entradaAtual = null;
+        } else {
+          // saída sem entrada correspondente no log (ex.: evento de antes desta função existir)
+          sessoes.push({
+            uid: ev.uid, nome: ev.nome, papel: ev.papel, turmaId: ev.turmaId, turmaNome: ev.turmaNome,
+            entrada: null, saida: ev.timestamp, status: "sem_entrada_registrada", comBackup: ev.comBackup ?? null,
+          });
+        }
+      }
+    });
+    if (entradaAtual) sessoes.push(fecharSemSaidaConfirmada(entradaAtual, null));
+  });
+
+  return sessoes.sort((a, b) => (b.entrada || b.saida || 0) - (a.entrada || a.saida || 0));
+}
+
+const STATUS_SESSAO_INFO = {
+  correta: { label: "Saiu corretamente", cor: "text-emerald-400 bg-emerald-950/40 border-emerald-500/30" },
+  em_aberto: { label: "Em andamento", cor: "text-sky-400 bg-sky-950/40 border-sky-500/30" },
+  sem_clique_sair: { label: "Encerrada sem clicar em Sair", cor: "text-amber-400 bg-amber-950/40 border-amber-500/30" },
+  provavelmente_encerrada: { label: "Provavelmente encerrada (sem confirmação)", cor: "text-slate-400 bg-slate-800 border-slate-700" },
+  sem_entrada_registrada: { label: "Saída sem entrada registrada", cor: "text-slate-400 bg-slate-800 border-slate-700" },
+};
 
 // Sufixo de data/hora para nomes de arquivo de backup — assim cada exportação
 // fica identificável (e nunca sobrescreve a anterior no histórico de
@@ -3725,8 +3796,8 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
             <Save size={30} className="mx-auto text-amber-500 mb-3" />
             <h3 className="font-bold text-slate-100 mb-2">Baixar um backup antes de sair?</h3>
             <p className="text-xs text-slate-400 mb-5">Baixa um arquivo com os lançamentos e o histórico de versões da equipe {equipe.nomeNegocio}. Recomendado, mas opcional.</p>
-            <button onClick={() => { baixarBackupEquipe(); setConfirmSairAberto(false); onSair(); }} className="w-full bg-amber-500 text-slate-900 font-bold py-2.5 rounded-md hover:bg-amber-400 mb-2">Sim, baixar backup e sair</button>
-            <button onClick={() => { setConfirmSairAberto(false); onSair(); }} className="w-full text-sm text-slate-400 hover:text-slate-100 py-1.5">Sair sem backup</button>
+            <button onClick={() => { baixarBackupEquipe(); setConfirmSairAberto(false); onSair(true); }} className="w-full bg-amber-500 text-slate-900 font-bold py-2.5 rounded-md hover:bg-amber-400 mb-2">Sim, baixar backup e sair</button>
+            <button onClick={() => { setConfirmSairAberto(false); onSair(false); }} className="w-full text-sm text-slate-400 hover:text-slate-100 py-1.5">Sair sem backup</button>
           </div>
         </div>
       )}
@@ -6833,16 +6904,12 @@ function GestaoAcessosView({ turmas, user }) {
   // suas turmas; o Usuário Mestre vê tudo, de todo mundo.
   const visiveis = user.mestre ? eventos : eventos.filter((ev) => ev.uid === user.uid || (ev.turmaId && turmaIds.has(ev.turmaId)));
 
-  const filtrados = visiveis
-    .filter((ev) => filtroPapel === "todos" || ev.papel === filtroPapel)
-    .filter((ev) => !busca.trim() || (ev.nome || "").toLowerCase().includes(busca.trim().toLowerCase()))
-    .sort((a, b) => b.timestamp - a.timestamp);
+  const sessoes = construirSessoesAcesso(visiveis)
+    .filter((s) => filtroPapel === "todos" || s.papel === filtroPapel)
+    .filter((s) => !busca.trim() || (s.nome || "").toLowerCase().includes(busca.trim().toLowerCase()));
 
-  // Último evento de cada pessoa indica se está com sessão em aberto agora
-  // (heurística simples — fechar a aba sem clicar em "Sair" não é detectado).
-  const ultimoPorUid = new Map();
-  visiveis.slice().sort((a, b) => a.timestamp - b.timestamp).forEach((ev) => ultimoPorUid.set(ev.uid, ev));
-  const sessoesAbertas = [...ultimoPorUid.values()].filter((ev) => ev.tipo === "entrada");
+  const emAberto = sessoes.filter((s) => s.status === "em_aberto").length;
+  const semConfirmacao = sessoes.filter((s) => s.status === "sem_clique_sair" || s.status === "provavelmente_encerrada").length;
 
   return (
     <div>
@@ -6852,13 +6919,13 @@ function GestaoAcessosView({ turmas, user }) {
 
       <div className="flex items-start gap-2 text-xs text-slate-400 bg-slate-900/60 border border-slate-800 rounded-lg p-3 mb-4">
         <Info size={14} className="text-sky-400 shrink-0 mt-0.5" />
-        A "saída" só é registrada quando a pessoa clica em "Sair" — se só fechar a aba ou o navegador, esse encerramento não fica registrado (limitação do navegador).
+        Cada linha é uma sessão — a entrada pareada com a saída correspondente da mesma pessoa. Uma saída só conta como "correta" quando a pessoa clicou em "Sair"; se ela só fechou a aba, a plataforma não tem como saber e a sessão fica marcada como sem confirmação, depois de {LIMITE_SESSAO_ABERTA_MS / 3600000}h sem notícia.
       </div>
 
       <div className="grid sm:grid-cols-3 gap-3 mb-4">
-        <StatCard label="Eventos visíveis" value={visiveis.length} tone="blue" small />
-        <StatCard label="Sessões em aberto agora" value={sessoesAbertas.length} tone="gold" small />
-        <StatCard label="Pessoas distintas" value={new Set(visiveis.map((e) => e.uid)).size} tone="slate" small />
+        <StatCard label="Sessões visíveis" value={sessoes.length} tone="blue" small />
+        <StatCard label="Em andamento agora" value={emAberto} tone="gold" small />
+        <StatCard label="Sem confirmação de saída" value={semConfirmacao} tone="slate" small />
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
@@ -6871,29 +6938,37 @@ function GestaoAcessosView({ turmas, user }) {
         <button onClick={() => setRefreshKey((k) => k + 1)} className="flex items-center gap-1.5 border border-slate-600 text-slate-200 px-3 rounded-md text-sm hover:bg-slate-800 shrink-0"><RefreshCw size={13} /> Atualizar</button>
       </div>
 
-      {filtrados.length === 0 ? (
-        <Card className="p-8 text-center text-slate-500">Nenhum acesso registrado ainda{busca || filtroPapel !== "todos" ? " com esses filtros" : ""}.</Card>
+      {sessoes.length === 0 ? (
+        <Card className="p-8 text-center text-slate-500">Nenhuma sessão registrada ainda{busca || filtroPapel !== "todos" ? " com esses filtros" : ""}.</Card>
       ) : (
-        <Card className="p-4 max-h-[36rem] overflow-y-auto">
-          <div className="space-y-2.5">
-            {filtrados.map((ev) => {
-              const emAberto = ultimoPorUid.get(ev.uid)?.id === ev.id && ev.tipo === "entrada";
+        <Card className="p-4 max-h-[40rem] overflow-y-auto">
+          <div className="space-y-3">
+            {sessoes.map((s, i) => {
+              const info = STATUS_SESSAO_INFO[s.status];
+              const duracaoMin = s.entrada && s.saida ? Math.round((s.saida - s.entrada) / 60000) : null;
               return (
-                <div key={ev.id} className="flex items-center gap-3 border-b border-slate-800 pb-2.5 last:border-0">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${ev.tipo === "entrada" ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/40" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
-                    {ev.tipo === "entrada" ? <LogIn size={14} /> : <LogOut size={14} />}
+                <div key={i} className="flex items-start gap-3 border-b border-slate-800 pb-3 last:border-0">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${s.status === "correta" ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/40" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
+                    {s.status === "correta" ? <LogOut size={14} /> : <LogIn size={14} />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold text-slate-100 truncate">{ev.nome || "—"}</span>
-                      <span className="text-[10px] font-bold text-slate-500 bg-slate-800 border border-slate-700 rounded-full px-1.5 py-0.5">{ev.papel === "professor" ? "Professor(a)" : "Aluno(a)"}</span>
-                      {emAberto && <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 rounded-full px-1.5 py-0.5">sessão em aberto</span>}
+                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                      <span className="text-sm font-semibold text-slate-100 truncate">{s.nome || "—"}</span>
+                      <span className="text-[10px] font-bold text-slate-500 bg-slate-800 border border-slate-700 rounded-full px-1.5 py-0.5">{s.papel === "professor" ? "Professor(a)" : "Aluno(a)"}</span>
+                      <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 border ${info.cor}`}>{info.label}</span>
+                      {s.status === "correta" && s.papel === "aluno" && (
+                        s.comBackup
+                          ? <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 rounded-full px-1.5 py-0.5 flex items-center gap-1"><Save size={10} /> fez backup</span>
+                          : <span className="text-[10px] font-bold text-rose-400 bg-rose-950/40 border border-rose-500/30 rounded-full px-1.5 py-0.5 flex items-center gap-1"><Save size={10} /> sem backup</span>
+                      )}
                     </div>
                     <div className="text-xs text-slate-500">
-                      {ev.tipo === "entrada" ? "Entrou" : "Saiu"}{ev.turmaNome ? ` — ${ev.turmaNome}` : ""}
+                      {s.turmaNome ? `${s.turmaNome} — ` : ""}
+                      {s.entrada ? `entrou em ${fmtData(s.entrada)}` : "entrada não registrada"}
+                      {s.saida ? ` · saiu em ${fmtData(s.saida)}` : ""}
+                      {duracaoMin !== null && ` · ${duracaoMin < 60 ? `${duracaoMin} min` : `${Math.floor(duracaoMin / 60)}h${String(duracaoMin % 60).padStart(2, "0")}`} de sessão`}
                     </div>
                   </div>
-                  <div className="text-xs text-slate-400 shrink-0">{fmtData(ev.timestamp)}</div>
                 </div>
               );
             })}
@@ -8103,8 +8178,8 @@ export default function App() {
 
   if (!perfil) return <LoadingScreen />;
 
-  const efetuarSaidaComLog = () => {
-    registrarAcesso({ uid: perfil.uid, nome: perfil.nome, papel: perfil.papel, turmaId: perfil.turmaId, turmaNome: perfil.turmaNome, tipo: "saida" });
+  const efetuarSaidaComLog = (comBackup) => {
+    registrarAcesso({ uid: perfil.uid, nome: perfil.nome, papel: perfil.papel, turmaId: perfil.turmaId, turmaNome: perfil.turmaNome, tipo: "saida", comBackup: comBackup ?? null });
     efetuarSaida();
   };
 

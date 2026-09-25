@@ -13,7 +13,7 @@ import {
   Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
   ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
   LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows, Monitor, FileDown, Info, Library,
-  Calendar, RefreshCw, Undo2, CircleDot, Inbox, LogIn, Users2,
+  Calendar, RefreshCw, Undo2, CircleDot, Inbox, LogIn, Users2, ImageDown,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
@@ -4980,7 +4980,121 @@ async function contarPrazosManuaisDaTurma(turmaId) {
   return total;
 }
 
-function CronogramaTurmaCard({ turmaId }) {
+// Desenha o cronograma como imagem, num <canvas> — sem depender de nenhuma
+// biblioteca nova. Pensado para o professor baixar e reenviar aos alunos
+// (WhatsApp, e-mail, mural) sempre que quiser lembrá-los dos prazos, sem
+// precisar mandar todo mundo abrir a plataforma.
+function roundRectCanvas(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function gerarImagemCronograma(cronograma, turmaNome) {
+  const linhas = cronograma.linhas;
+  const larguras = [95, 340, 110, 80, 165, 140];
+  const margem = 40;
+  const larguraTabela = larguras.reduce((a, b) => a + b, 0);
+  const larguraTotal = larguraTabela + margem * 2;
+  const alturaLinha = 48;
+  const alturaTopo = 110;
+  const alturaCabecalhoTabela = 38;
+  const altura = alturaTopo + alturaCabecalhoTabela + linhas.length * alturaLinha + margem;
+
+  const canvas = document.createElement("canvas");
+  const escala = 2; // exporta em resolução dobrada, fica nítido ao imprimir/ampliar
+  canvas.width = larguraTotal * escala;
+  canvas.height = altura * escala;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(escala, escala);
+
+  ctx.fillStyle = "#0b1220";
+  ctx.fillRect(0, 0, larguraTotal, altura);
+
+  ctx.fillStyle = "#f59e0b";
+  ctx.font = "bold 12px Arial, sans-serif";
+  ctx.fillText("CEDUP HERMANN HERING", margem, 30);
+
+  ctx.fillStyle = "#f1f5f9";
+  ctx.font = "bold 22px Arial, sans-serif";
+  ctx.fillText(`Cronograma do projeto — ${turmaNome}`, margem, 58);
+
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "12px Arial, sans-serif";
+  ctx.fillText(`Atualizado em ${new Date().toLocaleString("pt-BR")}`, margem, 80);
+
+  let y = alturaTopo;
+  const x0 = margem;
+
+  ctx.fillStyle = "#1e293b";
+  roundRectCanvas(ctx, x0, y, larguraTabela, alturaCabecalhoTabela, 6);
+  ctx.fill();
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "bold 11px Arial, sans-serif";
+  const cabecalhos = ["SEMANA", "ETAPA / ATIVIDADE", "INÍCIO", "HORÁRIO", "PRAZO DE ENTREGA", "SITUAÇÃO"];
+  let x = x0;
+  cabecalhos.forEach((c, i) => { ctx.fillText(c, x + 12, y + 24); x += larguras[i]; });
+  y += alturaCabecalhoTabela;
+
+  const CORES_SITUACAO = {
+    nao_iniciada: { bg: "#1e293b", fg: "#94a3b8", texto: "Não iniciada" },
+    em_andamento: { bg: "#78350f", fg: "#fbbf24", texto: "Em andamento" },
+    encerrada: { bg: "#064e3b", fg: "#34d399", texto: "Encerrada" },
+  };
+
+  linhas.forEach((linha, i) => {
+    ctx.fillStyle = i % 2 === 0 ? "#0f1a2e" : "#0b1220";
+    ctx.fillRect(x0, y, larguraTabela, alturaLinha);
+    ctx.strokeStyle = "#1e293b";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x0, y + alturaLinha); ctx.lineTo(x0 + larguraTabela, y + alturaLinha); ctx.stroke();
+
+    x = x0;
+    ctx.fillStyle = "#e2e8f0";
+    ctx.font = "bold 13px Arial, sans-serif";
+    ctx.fillText(linha.semana, x + 12, y + 30);
+    x += larguras[0];
+
+    ctx.font = "13px Arial, sans-serif";
+    ctx.fillStyle = "#cbd5e1";
+    let etapa = linha.etapa;
+    while (ctx.measureText(etapa).width > larguras[1] - 24 && etapa.length > 3) etapa = etapa.slice(0, -1);
+    if (etapa !== linha.etapa) etapa = etapa.slice(0, -1) + "…";
+    ctx.fillText(etapa, x + 12, y + 30);
+    x += larguras[1];
+
+    ctx.fillStyle = "#94a3b8";
+    ctx.fillText(fmtDataCurta(linha.dataInicio), x + 12, y + 30);
+    x += larguras[2];
+    ctx.fillText(linha.horaInicio, x + 12, y + 30);
+    x += larguras[3];
+
+    ctx.fillStyle = "#e2e8f0";
+    ctx.font = "bold 13px Arial, sans-serif";
+    ctx.fillText(`${fmtDataCurta(linha.dataEntrega)} · ${linha.horaEntrega}`, x + 12, y + 30);
+    x += larguras[4];
+
+    const status = situacaoCronograma(linha);
+    const cor = CORES_SITUACAO[status];
+    ctx.font = "bold 11px Arial, sans-serif";
+    const larguraBadge = ctx.measureText(cor.texto).width + 26;
+    ctx.fillStyle = cor.bg;
+    roundRectCanvas(ctx, x + 12, y + 14, larguraBadge, 20, 10);
+    ctx.fill();
+    ctx.fillStyle = cor.fg;
+    ctx.fillText(cor.texto, x + 25, y + 28);
+
+    y += alturaLinha;
+  });
+
+  return canvas;
+}
+
+function CronogramaTurmaCard({ turmaId, turmaNome }) {
   const [cronograma, setCronograma] = useSharedObject(`cronograma_${turmaId}`, null);
   const [dataInicioS1, setDataInicioS1] = useState("");
   const [horaInicioS1, setHoraInicioS1] = useState(HORARIO_CRONOGRAMA_PADRAO);
@@ -5150,6 +5264,22 @@ function CronogramaTurmaCard({ turmaId }) {
               <span className="flex items-center gap-1"><Lock size={11} className="text-slate-600" /> calculado automaticamente</span>
               <span className="flex items-center gap-1"><Pencil size={11} className="text-amber-500" /> editável</span>
             </div>
+            <button
+              onClick={() => {
+                const canvas = gerarImagemCronograma(cronograma, turmaNome);
+                canvas.toBlob((blob) => {
+                  if (!blob) return;
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url; a.download = `cronograma_${turmaNome.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo()}.jpg`;
+                  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                }, "image/jpeg", 0.92);
+              }}
+              className="flex items-center gap-1.5 text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800"
+            >
+              <ImageDown size={13} /> Baixar como imagem (.jpg)
+            </button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -5507,7 +5637,7 @@ function GestaoCronogramaView({ turmas }) {
           <button onClick={() => setTurmaSelId(null)} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Escolher outra turma</button>
         )}
         <SectionTitle icon={Calendar} sub={`Gerenciando o cronograma de ${turmaSel.nome}.`}>Cronograma</SectionTitle>
-        <CronogramaTurmaCard turmaId={turmaSel.id} />
+        <CronogramaTurmaCard turmaId={turmaSel.id} turmaNome={turmaSel.nome} />
       </div>
     );
   }
@@ -5585,7 +5715,7 @@ function TurmaDetail({ turma, onVoltar, professorNome, alvoCorrecao }) {
         </div>
       </div>
 
-      <CronogramaTurmaCard turmaId={turma.id} />
+      <CronogramaTurmaCard turmaId={turma.id} turmaNome={turma.nome} />
 
       <PainelRoster turmaId={turma.id} turmaNome={turma.nome} professorUid={turma.professorUid} professorNome={turma.professor} />
 

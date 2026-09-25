@@ -237,6 +237,16 @@ function estadoModulo(fluxo, modId) {
   return (fluxo && fluxo[modId]) || ESTADO_MODULO_PADRAO;
 }
 
+// Progresso "de verdade": conta só os módulos com status "corrigido" (o
+// professor já revisou e aprovou), em vez de só ter algum dado digitado.
+// Preenchido não é a mesma coisa que aprovado — um módulo pode estar
+// "enviado" ou "ajustes" (a equipe já mexeu nele, mas ainda não foi
+// confirmado) e continuar fora dessa contagem até o professor aprovar.
+function calcularProgressoAprovado(fluxoModulos) {
+  const aprovados = MODULOS.filter((m) => estadoModulo(fluxoModulos, m.id).status === "corrigido").length;
+  return Math.round((aprovados / MODULOS.length) * 100);
+}
+
 // Ícone de status ao lado do nome do módulo, no menu lateral do aluno — leitura
 // rápida do que está bloqueado/liberado/enviado/corrigido, sem precisar abrir
 // o Índice de módulos. Usa as mesmas cores já usadas nos badges "Bloqueado" /
@@ -1747,7 +1757,7 @@ function useEquipesComDados(turmaId, refreshKey) {
             const rd = await window.storage.get(`dados_equipe_${eq.id}`, true);
             if (rd) dados = JSON.parse(rd.value);
           } catch {}
-          return { equipe: eq, dados, calc: calcular(dados.lancamentos) };
+          return { equipe: eq, dados, calc: calcular(dados.lancamentos), progressoAprovado: calcularProgressoAprovado(dados.fluxoModulos) };
         }));
         if (alive) setEstado(resultados);
       } catch {
@@ -3041,7 +3051,7 @@ function ProdutosMaisLucrativos({ ranking, pctImpostos, pctComissao }) {
   );
 }
 
-function AnaliseNegocio({ calc, historico, onSalvarVersao, readOnly }) {
+function AnaliseNegocio({ calc, historico, onSalvarVersao, readOnly, progressoAprovado }) {
   const pieData = [
     { name: "Investimentos Fixos", value: calc.investFixo },
     { name: "Capital de Giro", value: calc.capitalGiroTotal },
@@ -3070,7 +3080,7 @@ function AnaliseNegocio({ calc, historico, onSalvarVersao, readOnly }) {
         <StatCard label="Investimento Total" value={fmtBRL(calc.investimentoTotal)} tone="blue" />
         <StatCard label="Faturamento Mensal" value={fmtBRL(calc.faturamento)} tone="slate" />
         <StatCard label="Resultado Operacional/mês" value={fmtBRL(calc.resultadoOperacional)} tone={calc.resultadoOperacional >= 0 ? "emerald" : "rose"} />
-        <StatCard label="Progresso dos módulos" value={`${calc.progresso}%`} tone="gold" />
+        <StatCard label="Progresso dos módulos (aprovados)" value={`${progressoAprovado ?? calc.progresso}%`} tone="gold" />
       </div>
 
       <div className="space-y-2">
@@ -3497,6 +3507,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   const lanc = mergeLancamentos(dados?.lancamentos);
   const calc = useMemo(() => calcular(lanc), [JSON.stringify(lanc)]);
   const fluxo = dados?.fluxoModulos || fluxoModulosPadrao();
+  const progressoAprovado = calcularProgressoAprovado(fluxo);
   const enviarModulo = (modId) => {
     const estadoAtual = estadoModulo(fluxo, modId);
     const jaAtrasado = moduloAtrasadoSemEnvio(estadoAtual);
@@ -3699,8 +3710,8 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
           })}
         </nav>
         <div className="p-4 border-t border-white/10">
-          <div className="text-xs text-white/50 mb-2">Progresso geral</div>
-          <div className="w-full bg-white/10 rounded-full h-2 mb-3"><div className="bg-amber-500 h-2 rounded-full transition-all" style={{ width: `${calc.progresso}%` }} /></div>
+          <div className="text-xs text-white/50 mb-2">Progresso geral (módulos aprovados)</div>
+          <div className="w-full bg-white/10 rounded-full h-2 mb-3"><div className="bg-amber-500 h-2 rounded-full transition-all" style={{ width: `${progressoAprovado}%` }} /></div>
           {onTrocarEmpresa && (
             <button onClick={onTrocarEmpresa} className="flex items-center gap-2 text-sm text-white/70 hover:text-white mb-2"><Building2 size={15} /> Trocar de empresa</button>
           )}
@@ -3769,7 +3780,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
               <StatCard label="Módulos cadastrados" value="13" tone="blue" small />
               <StatCard label="Investimento Total" value={fmtBRL(calc.investimentoTotal)} tone="slate" small />
               <StatCard label="Resultado/mês" value={fmtBRL(calc.resultadoOperacional)} tone={calc.resultadoOperacional >= 0 ? "emerald" : "rose"} small />
-              <StatCard label="Progresso" value={`${calc.progresso}%`} tone="gold" small />
+              <StatCard label="Progresso (aprovados)" value={`${progressoAprovado}%`} tone="gold" small />
             </div>
 
             <Card className="p-4">
@@ -3899,7 +3910,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
           <div>
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
             <SectionTitle icon={TrendingUp} sub="Acompanhe os indicadores consolidados e registre ajustes ao longo do projeto.">Análise do Negócio</SectionTitle>
-            <AnaliseNegocio calc={calc} historico={dados.historico} onSalvarVersao={salvarVersao} readOnly={souVisualizador} />
+            <AnaliseNegocio calc={calc} historico={dados.historico} onSalvarVersao={salvarVersao} readOnly={souVisualizador} progressoAprovado={progressoAprovado} />
           </div>
         )}
 
@@ -4364,6 +4375,7 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
   const setNota = (modId, valor) => setDados({ ...dados, notas: { ...(dados.notas || {}), [modId]: valor } });
 
   const fluxo = dados.fluxoModulos || fluxoModulosPadrao();
+  const progressoAprovado = calcularProgressoAprovado(fluxo);
   const setPrazoModulo = (modId, novoPrazo) => {
     const atual = estadoModulo(fluxo, modId);
     setDados({ ...dados, fluxoModulos: { ...fluxo, [modId]: { ...atual, prazo: novoPrazo, prazoManual: true } } });
@@ -4483,7 +4495,7 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
       <SectionTitle icon={Building2} sub={`Equipe: ${equipe.integrantes.join(", ") || "sem integrantes"} · veja cada módulo exatamente como a equipe preencheu, e deixe comentários direcionados`}>{equipe.nomeNegocio}</SectionTitle>
 
       <div className="space-y-6">
-        <AnaliseNegocio calc={calc} historico={dados.historico} readOnly />
+        <AnaliseNegocio calc={calc} historico={dados.historico} readOnly progressoAprovado={progressoAprovado} />
 
         {(notasDadas.length > 0 || !vazio(notaFinal) || !vazio(notaCenariosFluxo) || !vazio(notaApresentacao)) && (
           <PainelAvaliacao media={media} notasDadasLength={notasDadas.length} totalModulos={NOTA_MODULOS_AVALIAVEIS.length} notaFinal={notaFinal} notaCenariosFluxo={notaCenariosFluxo} notaApresentacao={notaApresentacao} notaPonderada={notaPonderada}
@@ -5892,6 +5904,7 @@ function EquipeCard({ equipe, onClick, onRenomear, onExcluir }) {
   const [dados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [] });
   const calc = dados ? calcular(dados.lancamentos) : null;
   const fluxo = dados?.fluxoModulos || {};
+  const progressoAprovado = calcularProgressoAprovado(fluxo);
   const aguardandoCorrecao = MODULOS.filter((m) => estadoModulo(fluxo, m.id).status === "enviado").length;
   return (
     <div className="relative bg-slate-800 border border-slate-700 rounded-xl hover:border-amber-500 transition">
@@ -5923,10 +5936,10 @@ function EquipeCard({ equipe, onClick, onRenomear, onExcluir }) {
       {calc ? (
         <>
           <div className="w-full bg-slate-700 rounded-full h-1.5 mb-2">
-            <div className="bg-amber-500 h-1.5 rounded-full" style={{ width: `${calc.progresso}%` }} />
+            <div className="bg-amber-500 h-1.5 rounded-full" style={{ width: `${progressoAprovado}%` }} />
           </div>
           <div className="flex justify-between text-xs">
-            <span className="text-slate-400">{calc.progresso}% preenchido</span>
+            <span className="text-slate-400">{progressoAprovado}% aprovado</span>
             <span className={calc.resultadoOperacional >= 0 ? "text-emerald-400 font-semibold" : "text-rose-400 font-semibold"}>
               {fmtBRL(calc.resultadoOperacional)}/mês
             </span>
@@ -6237,7 +6250,7 @@ function ResumoComparativo({ turma, dadosEquipes }) {
   const exportarCSV = () => {
     if (!dadosEquipes || !turma) return;
     const linhas = [["Equipe", "Integrantes", "Faturamento Mensal", "Investimento Total", "Resultado/mês", "Ponto de Equilíbrio (anual)", "Progresso (%)"]];
-    dadosEquipes.forEach(({ equipe, calc }) => {
+    dadosEquipes.forEach(({ equipe, calc, progressoAprovado }) => {
       linhas.push([
         equipe.nomeNegocio,
         equipe.integrantes.join(" | "),
@@ -6245,7 +6258,7 @@ function ResumoComparativo({ turma, dadosEquipes }) {
         calc.investimentoTotal.toFixed(2).replace(".", ","),
         calc.resultadoOperacional.toFixed(2).replace(".", ","),
         calc.pontoEquilibrio != null ? calc.pontoEquilibrio.toFixed(2).replace(".", ",") : "",
-        String(calc.progresso),
+        String(progressoAprovado),
       ]);
     });
     const csv = linhas.map((l) => l.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";")).join("\n");
@@ -6265,18 +6278,18 @@ function ResumoComparativo({ turma, dadosEquipes }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700">
-              <th className="py-2 pr-3">Equipe</th><th className="py-2 pr-3">Faturamento/mês</th><th className="py-2 pr-3">Investimento Total</th><th className="py-2 pr-3">Resultado/mês</th><th className="py-2 pr-3">Ponto de Equilíbrio</th><th className="py-2 pr-3">Progresso</th>
+              <th className="py-2 pr-3">Equipe</th><th className="py-2 pr-3">Faturamento/mês</th><th className="py-2 pr-3">Investimento Total</th><th className="py-2 pr-3">Resultado/mês</th><th className="py-2 pr-3">Ponto de Equilíbrio</th><th className="py-2 pr-3">Progresso (aprovados)</th>
             </tr>
           </thead>
           <tbody>
-            {dadosEquipes.map(({ equipe, calc }) => (
+            {dadosEquipes.map(({ equipe, calc, progressoAprovado }) => (
               <tr key={equipe.id} className="border-b border-slate-800">
                 <td className="py-2 pr-3 font-semibold text-slate-100">{equipe.nomeNegocio}</td>
                 <td className="py-2 pr-3">{fmtBRL(calc.faturamento)}</td>
                 <td className="py-2 pr-3">{fmtBRL(calc.investimentoTotal)}</td>
                 <td className={`py-2 pr-3 ${calc.resultadoOperacional >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{fmtBRL(calc.resultadoOperacional)}</td>
                 <td className="py-2 pr-3">{calc.pontoEquilibrio != null ? fmtBRL(calc.pontoEquilibrio) : "—"}</td>
-                <td className="py-2 pr-3">{calc.progresso}%</td>
+                <td className="py-2 pr-3">{progressoAprovado}%</td>
               </tr>
             ))}
           </tbody>
@@ -6348,7 +6361,7 @@ function RelatorioPorEmpresa({ dadosEquipes }) {
           {(tipo === "analise" || tipo === "gerencial") && (
             <div>
               {tipo === "gerencial" && <h3 className="text-sm font-bold text-slate-200 mb-2">3. Análise do Negócio</h3>}
-              <AnaliseNegocio calc={selecionada.calc} historico={selecionada.dados.historico} readOnly />
+              <AnaliseNegocio calc={selecionada.calc} historico={selecionada.dados.historico} readOnly progressoAprovado={selecionada.progressoAprovado} />
             </div>
           )}
         </div>
@@ -6372,14 +6385,14 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
   const dadosFiltrados = buscaLimpa ? dadosEquipes.filter(({ equipe }) => equipe.nomeNegocio.toLowerCase().includes(buscaLimpa)) : dadosEquipes;
 
   const baixarImagemProgresso = () => {
-    const colunas = ["Empresa", "Integrantes", "Progresso", "O que falta"];
-    const larguras = [180, 260, 90, 420];
-    const linhas = dadosFiltrados.map(({ equipe, calc }) => {
+    const colunas = ["Empresa", "Integrantes", "Progresso (aprovados)", "O que falta"];
+    const larguras = [180, 260, 120, 420];
+    const linhas = dadosFiltrados.map(({ equipe, calc, progressoAprovado }) => {
       const nomesFaltando = MODULOS.filter((_, i) => !calc.preenchidos?.[i]).map((m) => `${m.n}. ${m.nome}`);
       return [
         equipe.nomeNegocio,
         equipe.integrantes.join(", ") || "sem integrantes",
-        `${calc.progresso}%`,
+        `${progressoAprovado}%`,
         nomesFaltando.length === 0 ? "Completo" : nomesFaltando.join(", "),
       ];
     });
@@ -6450,11 +6463,11 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
             <table className="w-full text-sm min-w-[640px]">
               <thead>
                 <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40">
-                  <th className="py-2 px-4">Empresa</th><th className="py-2 px-4">Integrantes</th><th className="py-2 px-4">Progresso</th><th className="py-2 px-4">O que falta</th>
+                  <th className="py-2 px-4">Empresa</th><th className="py-2 px-4">Integrantes</th><th className="py-2 px-4">Progresso (aprovados)</th><th className="py-2 px-4">O que falta</th>
                 </tr>
               </thead>
               <tbody>
-                {dadosFiltrados.map(({ equipe, calc }) => {
+                {dadosFiltrados.map(({ equipe, calc, progressoAprovado }) => {
                   const nomesFaltando = MODULOS.filter((_, i) => !calc.preenchidos?.[i]).map((m) => `${m.n}. ${m.nome}`);
                   return (
                     <tr key={equipe.id} className="border-b border-slate-800">
@@ -6462,8 +6475,8 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
                       <td className="py-2 px-4 text-slate-400">{equipe.integrantes.join(", ") || "sem integrantes"}</td>
                       <td className="py-2 px-4">
                         <div className="flex items-center gap-2">
-                          <div className="w-24 bg-slate-700 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{ width: `${calc.progresso}%` }} /></div>
-                          <span className="text-xs text-slate-400">{calc.progresso}%</span>
+                          <div className="w-24 bg-slate-700 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{ width: `${progressoAprovado}%` }} /></div>
+                          <span className="text-xs text-slate-400">{progressoAprovado}%</span>
                         </div>
                       </td>
                       <td className="py-2 px-4 text-xs text-slate-400 max-w-xs">

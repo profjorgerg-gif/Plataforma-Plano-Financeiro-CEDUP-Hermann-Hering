@@ -7271,6 +7271,27 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
           .app-sidebar, .app-mobile-header, .no-print { display: none !important; }
           main { padding: 0 !important; max-width: 100% !important; overflow: visible !important; }
           body, .min-h-screen { background: #fff !important; }
+
+          /* As cores de texto/borda do sistema foram pensadas para o fundo
+             escuro da tela (tons claros sobre fundo escuro) e ficam quase
+             apagadas quando impressas em fundo branco. Estas regras só valem
+             na impressão (@media print) — a tela continua exatamente igual —
+             e reforçam o contraste, sem alterar nenhum dado, cálculo ou
+             lançamento: são seletores "contém a classe" que pegam qualquer
+             tom/opacidade já usado (ex.: text-slate-400, border-amber-500/40)
+             e trocam só a cor exibida na impressão.             */
+          [class*="text-slate-"] { color: #1e293b !important; }
+          [class*="text-amber-"] { color: #b45309 !important; }
+          [class*="text-emerald-"] { color: #047857 !important; }
+          [class*="text-sky-"] { color: #0369a1 !important; }
+          [class*="text-rose-"] { color: #be123c !important; }
+          [class*="text-violet-"] { color: #6d28d9 !important; }
+          [class*="border-slate-"] { border-color: #94a3b8 !important; }
+          [class*="border-amber-"] { border-color: #d97706 !important; }
+          [class*="border-emerald-"] { border-color: #10b981 !important; }
+          [class*="border-sky-"] { border-color: #0ea5e9 !important; }
+          [class*="border-rose-"] { border-color: #f43f5e !important; }
+          [class*="border-violet-"] { border-color: #8b5cf6 !important; }
         }
       `}</style>
       <header className="app-mobile-header md:hidden fixed top-0 inset-x-0 z-20 bg-slate-900 border-b border-white/10 flex items-center justify-between px-4 py-3">

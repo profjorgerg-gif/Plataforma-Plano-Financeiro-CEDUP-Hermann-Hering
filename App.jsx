@@ -13,7 +13,7 @@ import {
   Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
   ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
   LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows, Monitor, FileDown, Info, Library,
-  Calendar, RefreshCw, Undo2, CircleDot, Inbox, LogIn,
+  Calendar, RefreshCw, Undo2, CircleDot, Inbox, LogIn, Users2, ImageDown,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
@@ -167,6 +167,65 @@ const CRONOGRAMA_ORDEM_POR_MODULO = {
   m12: 5, m13: 5,
 };
 
+// Nome da etapa/bloco (de ETAPAS_CRONOGRAMA_BASE) indexado pela sua "ordem" —
+// mesma fonte de dados do cronograma, só reorganizada para consulta rápida.
+const ETAPA_NOME_POR_ORDEM = Object.fromEntries(
+  ETAPAS_CRONOGRAMA_BASE.map((et) => [et.ordem, et.etapa])
+);
+
+// Para cada ordem do cronograma, a lista (ordenada) dos números de módulo que
+// pertencem a ela — derivada do mesmo CRONOGRAMA_ORDEM_POR_MODULO já usado
+// para propagar os prazos automáticos. Não é uma lista nova/duplicada, é só
+// esse mapa agrupado ao contrário, por bloco em vez de por módulo.
+const MODULOS_POR_ORDEM_CRONOGRAMA = (() => {
+  const grupos = {};
+  Object.entries(CRONOGRAMA_ORDEM_POR_MODULO).forEach(([modId, ordem]) => {
+    const mod = MODULOS.find((m) => m.id === modId);
+    if (!mod) return;
+    (grupos[ordem] = grupos[ordem] || []).push(mod.n);
+  });
+  Object.values(grupos).forEach((arr) => arr.sort((a, b) => a - b));
+  return grupos;
+})();
+
+// "1, 2, 3 e 4" — vírgula entre os números, "e" antes do último.
+function formatarNumerosComE(numeros) {
+  if (!numeros || numeros.length === 0) return "";
+  if (numeros.length === 1) return String(numeros[0]);
+  return `${numeros.slice(0, -1).join(", ")} e ${numeros[numeros.length - 1]}`;
+}
+
+// Rótulo curto exibido no cronograma, embaixo do nome de cada etapa/bloco —
+// ex.: "Módulos 1, 2, 3 e 4". Etapas sem módulo numerado associado (Semana 1,
+// Cenários e Fluxo de Caixa, Apresentações finais) retornam null.
+function rotuloModulosDaEtapa(ordem) {
+  const numeros = MODULOS_POR_ORDEM_CRONOGRAMA[ordem];
+  if (!numeros || numeros.length === 0) return null;
+  const prefixo = numeros.length === 1 ? "Módulo" : "Módulos";
+  return `${prefixo} ${formatarNumerosComE(numeros)}`;
+}
+
+// Agrupa uma lista de módulos (objetos de MODULOS) pelo bloco do cronograma
+// ao qual pertencem, na ordem dos blocos — usado para exibir "O que falta"
+// organizado por bloco, em vez de uma lista corrida de módulos.
+function agruparModulosPorBloco(modulosLista) {
+  const grupos = {};
+  modulosLista.forEach((m) => {
+    const ordem = CRONOGRAMA_ORDEM_POR_MODULO[m.id] || "sem_bloco";
+    (grupos[ordem] = grupos[ordem] || []).push(m);
+  });
+  const ordens = Object.keys(grupos)
+    .filter((k) => k !== "sem_bloco")
+    .map(Number)
+    .sort((a, b) => a - b);
+  const resultado = ordens.map((ordem) => ({
+    etapa: ETAPA_NOME_POR_ORDEM[ordem] || `Etapa ${ordem}`,
+    modulos: grupos[ordem],
+  }));
+  if (grupos.sem_bloco) resultado.push({ etapa: null, modulos: grupos.sem_bloco });
+  return resultado;
+}
+
 const addDiasISO = (isoDate, n) => {
   const d = new Date(isoDate + "T00:00:00");
   d.setDate(d.getDate() + n);
@@ -237,6 +296,16 @@ function estadoModulo(fluxo, modId) {
   return (fluxo && fluxo[modId]) || ESTADO_MODULO_PADRAO;
 }
 
+// Progresso "de verdade": conta só os módulos com status "corrigido" (o
+// professor já revisou e aprovou), em vez de só ter algum dado digitado.
+// Preenchido não é a mesma coisa que aprovado — um módulo pode estar
+// "enviado" ou "ajustes" (a equipe já mexeu nele, mas ainda não foi
+// confirmado) e continuar fora dessa contagem até o professor aprovar.
+function calcularProgressoAprovado(fluxoModulos) {
+  const aprovados = MODULOS.filter((m) => estadoModulo(fluxoModulos, m.id).status === "corrigido").length;
+  return Math.round((aprovados / MODULOS.length) * 100);
+}
+
 // Ícone de status ao lado do nome do módulo, no menu lateral do aluno — leitura
 // rápida do que está bloqueado/liberado/enviado/corrigido, sem precisar abrir
 // o Índice de módulos. Usa as mesmas cores já usadas nos badges "Bloqueado" /
@@ -260,6 +329,7 @@ const HISTORICO_EVENTO_INFO = {
   devolucao: { label: "Devolvido para ajustes", Icon: RotateCcw, cor: "text-amber-400" },
   aprovacao: { label: "Aprovado e concluído", Icon: CheckCircle2, cor: "text-emerald-400" },
   reabertura: { label: "Reaberto pelo professor (prazo esgotado)", Icon: RotateCcw, cor: "text-rose-400" },
+  reaberto_pos_correcao: { label: "Reaberto para ajustes pelo professor (nota mantida)", Icon: Undo2, cor: "text-amber-400" },
 };
 
 function HistoricoCorrecaoModulo({ historico }) {
@@ -344,6 +414,7 @@ const GESTAO_ITENS = [
   { id: "turmas", label: "Turmas", icon: School },
   { id: "correcoes", label: "Correções pendentes", icon: Inbox },
   { id: "cronograma", label: "Cronograma", icon: Calendar },
+  { id: "integrantes", label: "Integrantes por Empresa", icon: Users2 },
   { id: "usuarios", label: "Usuários", icon: Users },
   { id: "acessos", label: "Acessos de usuários", icon: LogIn },
   { id: "relatorios", label: "Relatórios", icon: FileBarChart },
@@ -567,11 +638,25 @@ const CHECKLIST_SECOES = [
 const CHAVE_LOG_ACESSOS = "log_acessos";
 const LOG_ACESSOS_MAX = 500;
 
-async function registrarAcesso({ uid: uidPessoa, nome, papel, turmaId, turmaNome, tipo }) {
+// Busca o nome da empresa (equipe) de um aluno para registrar no log de
+// acessos — o perfil só guarda o equipeId, o nome mora no documento da
+// turma (equipes_{turmaId}), por isso é uma busca à parte.
+async function buscarNomeEmpresa(turmaId, equipeId) {
+  if (!turmaId || !equipeId) return null;
+  try {
+    const r = await window.storage.get(`equipes_${turmaId}`, true);
+    const lista = r ? JSON.parse(r.value) : [];
+    return lista.find((e) => e.id === equipeId)?.nomeNegocio || null;
+  } catch {
+    return null;
+  }
+}
+
+async function registrarAcesso({ uid: uidPessoa, nome, papel, turmaId, turmaNome, equipeId, equipeNome, tipo, comBackup }) {
   try {
     const r = await window.storage.get(CHAVE_LOG_ACESSOS, true);
     const lista = r ? JSON.parse(r.value) : [];
-    lista.push({ id: uid(), uid: uidPessoa, nome, papel, turmaId: turmaId || null, turmaNome: turmaNome || null, tipo, timestamp: Date.now() });
+    lista.push({ id: uid(), uid: uidPessoa, nome, papel, turmaId: turmaId || null, turmaNome: turmaNome || null, equipeId: equipeId || null, equipeNome: equipeNome || null, tipo, comBackup: comBackup ?? null, timestamp: Date.now() });
     const cortada = lista.slice(-LOG_ACESSOS_MAX);
     await window.storage.set(CHAVE_LOG_ACESSOS, JSON.stringify(cortada), true);
   } catch {}
@@ -594,6 +679,80 @@ function useLogAcessos(refreshKey) {
   }, [refreshKey]);
   return lista;
 }
+
+// Uma sessão fica "em aberto" por no máximo este tempo antes de a
+// plataforma assumir que ela provavelmente já encerrou (a pessoa fechou a
+// aba sem clicar em "Sair") — evita que uma entrada de dias atrás continue
+// marcada como "em andamento" para sempre.
+const LIMITE_SESSAO_ABERTA_MS = 4 * 60 * 60 * 1000; // 4 horas
+
+// Pareia cada "entrada" com a "saída" correspondente da mesma pessoa,
+// na ordem em que aconteceram — isso é o que permite dizer se uma sessão
+// terminou de forma confirmada (clique em "Sair", com ou sem backup) ou
+// se só sabemos que uma entrada aconteceu, sem confirmação de saída.
+function construirSessoesAcesso(eventos) {
+  const porUid = new Map();
+  eventos.forEach((ev) => {
+    if (!porUid.has(ev.uid)) porUid.set(ev.uid, []);
+    porUid.get(ev.uid).push(ev);
+  });
+
+  const agora = Date.now();
+  const sessoes = [];
+
+  const fecharSemSaidaConfirmada = (entradaEv, proximaEntradaTs) => {
+    const referencia = proximaEntradaTs ?? agora;
+    const status = proximaEntradaTs
+      ? "sem_clique_sair" // uma entrada nova da mesma pessoa comprova que essa sessão anterior já tinha acabado
+      : (referencia - entradaEv.timestamp > LIMITE_SESSAO_ABERTA_MS ? "provavelmente_encerrada" : "em_aberto");
+    return {
+      uid: entradaEv.uid, nome: entradaEv.nome, papel: entradaEv.papel,
+      turmaId: entradaEv.turmaId, turmaNome: entradaEv.turmaNome,
+      equipeId: entradaEv.equipeId, equipeNome: entradaEv.equipeNome,
+      entrada: entradaEv.timestamp, saida: null, status, comBackup: null,
+    };
+  };
+
+  porUid.forEach((lista) => {
+    const ordenada = lista.slice().sort((a, b) => a.timestamp - b.timestamp);
+    let entradaAtual = null;
+    ordenada.forEach((ev) => {
+      if (ev.tipo === "entrada") {
+        if (entradaAtual) sessoes.push(fecharSemSaidaConfirmada(entradaAtual, ev.timestamp));
+        entradaAtual = ev;
+      } else if (ev.tipo === "saida") {
+        if (entradaAtual) {
+          sessoes.push({
+            uid: ev.uid, nome: ev.nome || entradaAtual.nome, papel: ev.papel || entradaAtual.papel,
+            turmaId: entradaAtual.turmaId, turmaNome: entradaAtual.turmaNome,
+            equipeId: ev.equipeId || entradaAtual.equipeId, equipeNome: ev.equipeNome || entradaAtual.equipeNome,
+            entrada: entradaAtual.timestamp, saida: ev.timestamp,
+            status: "correta", comBackup: ev.comBackup ?? null,
+          });
+          entradaAtual = null;
+        } else {
+          // saída sem entrada correspondente no log (ex.: evento de antes desta função existir)
+          sessoes.push({
+            uid: ev.uid, nome: ev.nome, papel: ev.papel, turmaId: ev.turmaId, turmaNome: ev.turmaNome,
+            equipeId: ev.equipeId, equipeNome: ev.equipeNome,
+            entrada: null, saida: ev.timestamp, status: "sem_entrada_registrada", comBackup: ev.comBackup ?? null,
+          });
+        }
+      }
+    });
+    if (entradaAtual) sessoes.push(fecharSemSaidaConfirmada(entradaAtual, null));
+  });
+
+  return sessoes.sort((a, b) => (b.entrada || b.saida || 0) - (a.entrada || a.saida || 0));
+}
+
+const STATUS_SESSAO_INFO = {
+  correta: { label: "Saiu corretamente", cor: "text-emerald-400 bg-emerald-950/40 border-emerald-500/30" },
+  em_aberto: { label: "Em andamento", cor: "text-sky-400 bg-sky-950/40 border-sky-500/30" },
+  sem_clique_sair: { label: "Encerrada sem clicar em Sair", cor: "text-amber-400 bg-amber-950/40 border-amber-500/30" },
+  provavelmente_encerrada: { label: "Provavelmente encerrada (sem confirmação)", cor: "text-slate-400 bg-slate-800 border-slate-700" },
+  sem_entrada_registrada: { label: "Saída sem entrada registrada", cor: "text-slate-400 bg-slate-800 border-slate-700" },
+};
 
 // Sufixo de data/hora para nomes de arquivo de backup — assim cada exportação
 // fica identificável (e nunca sobrescreve a anterior no histórico de
@@ -727,21 +886,25 @@ function calcular(lanc) {
   const rentabilidade = investimentoTotal > 0 ? (lucroAnual / investimentoTotal) * 100 : 0;
   const prazoRetorno = lucroAnual > 0 ? investimentoTotal / lucroAnual : null;
 
-  // % de módulos com dados
+  // % de módulos com dados — M4, M6, M12 e M13 são automáticos/derivados de
+  // outros módulos (não têm lançamento manual próprio), então "preenchido"
+  // para eles significa "já existe dado suficiente nos módulos de origem
+  // para o cálculo fazer sentido" — nunca "sempre true", senão uma equipe
+  // recém-criada, sem nada preenchido, já apareceria com progresso alto.
   const preenchidos = [
     l.m1.itens.length > 0,
     (Number(l.m2.estoqueInicial) || 0) > 0 || necessidadeLiquidaDias !== 0,
     l.m3.itens.length > 0,
-    true,
+    investimentoTotal > 0,
     l.m5.itens.length > 0,
-    true,
+    l.m6.itens.length > 0,
     (Number(l.m7.pctImpostos) || 0) > 0 || (Number(l.m7.pctComissao) || 0) > 0,
     cmv > 0,
     l.m9.itens.length > 0,
     depreciacaoMensal > 0,
     l.m11.itens.length > 0,
-    true,
-    true,
+    faturamento > 0,
+    investimentoTotal > 0 && faturamento > 0,
   ];
   const progresso = Math.round((preenchidos.filter(Boolean).length / preenchidos.length) * 100);
 
@@ -1526,6 +1689,55 @@ async function listarUsuarios() {
   return [...porUid.values()];
 }
 
+// ============================================================================
+// TURMAS DE TODOS OS PROFESSORES — cada professor tem sua própria lista
+// privada (chave "turmas_prof_{uid}"), o que é correto para o dia a dia
+// (um professor não precisa ver a turma de outro). Mas o Usuário Mestre
+// precisa enxergar a plataforma inteira, então essas funções varrem TODAS
+// as listas "turmas_prof_*" e juntam tudo — só usadas em telas exclusivas
+// de Mestre.
+// ============================================================================
+async function listarTodasTurmas() {
+  const todas = [];
+  try {
+    const idx = await window.storage.list("turmas_prof_", true);
+    const chaves = idx?.keys || [];
+    const listas = await Promise.all(chaves.map(async (k) => {
+      try { const r = await window.storage.get(k, true); return r ? JSON.parse(r.value) : []; } catch { return []; }
+    }));
+    listas.forEach((lista) => todas.push(...(lista || [])));
+  } catch {}
+  return todas;
+}
+
+function useTodasTurmas(refreshKey) {
+  const [lista, setLista] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLista(null);
+      const r = await listarTodasTurmas();
+      if (alive) setLista(r);
+    })();
+    return () => { alive = false; };
+  }, [refreshKey]);
+  return lista;
+}
+
+// Remove uma turma do índice do DONO dela (turma.professorUid), não do
+// índice de quem está executando a ação — essencial para o Usuário Mestre
+// conseguir excluir a turma de outro professor sem corromper a própria
+// lista (e para nunca escrever a exclusão na chave errada).
+async function removerTurmaDoIndice(turma) {
+  const key = `turmas_prof_${turma.professorUid}`;
+  try {
+    const r = await window.storage.get(key, true);
+    const lista = r ? JSON.parse(r.value) : [];
+    const restante = lista.filter((t) => t.id !== turma.id);
+    await window.storage.set(key, JSON.stringify(restante), true);
+  } catch {}
+}
+
 // Hook para a tela de um único usuário (ex.: o perfil da pessoa logada).
 function useUsuario(uid) {
   // Guarda o uid junto com o perfil, e só devolve o perfil se ele for
@@ -1692,7 +1904,7 @@ function useEquipesComDados(turmaId, refreshKey) {
             const rd = await window.storage.get(`dados_equipe_${eq.id}`, true);
             if (rd) dados = JSON.parse(rd.value);
           } catch {}
-          return { equipe: eq, dados, calc: calcular(dados.lancamentos) };
+          return { equipe: eq, dados, calc: calcular(dados.lancamentos), progressoAprovado: calcularProgressoAprovado(dados.fluxoModulos) };
         }));
         if (alive) setEstado(resultados);
       } catch {
@@ -1742,6 +1954,35 @@ function TxtInput({ value, onChange, placeholder }) {
       placeholder={placeholder}
       className="w-full border border-slate-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
     />
+  );
+}
+
+// Campo do Código de Mestre — mascarado como senha por padrão, com um
+// ícone de olho para revelar/ocultar sob controle da própria pessoa (evita
+// que o código fique visível na tela "de graça", por cima do ombro ou em
+// print/gravação de tela).
+function CampoSenha({ value, onChange, placeholder }) {
+  const [visivel, setVisivel] = useState(false);
+  return (
+    <div className="relative">
+      <input
+        type={visivel ? "text" : "password"}
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete="off"
+        className="w-full border border-slate-600 rounded-md pl-3 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+      />
+      <button
+        type="button"
+        onClick={() => setVisivel((v) => !v)}
+        tabIndex={-1}
+        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+        title={visivel ? "Ocultar código" : "Mostrar código"}
+      >
+        {visivel ? <EyeOff size={15} /> : <Eye size={15} />}
+      </button>
+    </div>
   );
 }
 
@@ -2957,7 +3198,7 @@ function ProdutosMaisLucrativos({ ranking, pctImpostos, pctComissao }) {
   );
 }
 
-function AnaliseNegocio({ calc, historico, onSalvarVersao, readOnly }) {
+function AnaliseNegocio({ calc, historico, onSalvarVersao, readOnly, progressoAprovado }) {
   const pieData = [
     { name: "Investimentos Fixos", value: calc.investFixo },
     { name: "Capital de Giro", value: calc.capitalGiroTotal },
@@ -2986,7 +3227,7 @@ function AnaliseNegocio({ calc, historico, onSalvarVersao, readOnly }) {
         <StatCard label="Investimento Total" value={fmtBRL(calc.investimentoTotal)} tone="blue" />
         <StatCard label="Faturamento Mensal" value={fmtBRL(calc.faturamento)} tone="slate" />
         <StatCard label="Resultado Operacional/mês" value={fmtBRL(calc.resultadoOperacional)} tone={calc.resultadoOperacional >= 0 ? "emerald" : "rose"} />
-        <StatCard label="Progresso dos módulos" value={`${calc.progresso}%`} tone="gold" />
+        <StatCard label="Progresso dos módulos (aprovados)" value={`${progressoAprovado ?? calc.progresso}%`} tone="gold" />
       </div>
 
       <div className="space-y-2">
@@ -3201,7 +3442,7 @@ function ManualAlunoView({ equipe, onIrPara, contexto = "aluno" }) {
             </div>
           )}
         </div>
-        <button onClick={() => window.print()} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0"><FileBarChart size={15} /> Exportar PDF</button>
+        <button onClick={() => imprimirComTitulo(`Manual do Aluno - PPFCHH - ${sufixoDataHoraArquivo()}`)} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0"><FileBarChart size={15} /> Exportar PDF</button>
       </div>
 
       <Card className="p-6">
@@ -3245,7 +3486,7 @@ function ManualProfessorView() {
           <h1 className="text-3xl font-bold text-slate-50 mb-3">Manual do Professor</h1>
           <p className="text-slate-400 max-w-2xl">O ciclo completo de uso da plataforma com uma turma, do início ao fim do período letivo.</p>
         </div>
-        <button onClick={() => window.print()} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0"><FileBarChart size={15} /> Exportar PDF</button>
+        <button onClick={() => imprimirComTitulo(`Manual do Professor - PPFCHH - ${sufixoDataHoraArquivo()}`)} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0"><FileBarChart size={15} /> Exportar PDF</button>
       </div>
 
       <div className="bg-slate-900 border border-amber-500/60 rounded-md p-4 text-sm text-slate-300 mb-6">
@@ -3285,7 +3526,7 @@ function ManualOperacionalView() {
           <h1 className="text-3xl font-bold text-slate-50 mb-3">Manual de Operacionalização</h1>
           <p className="text-slate-400 max-w-2xl">Guia de referência para manter e evoluir o projeto — visível só para Usuários Mestre.</p>
         </div>
-        <button onClick={() => window.print()} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0"><FileBarChart size={15} /> Exportar PDF</button>
+        <button onClick={() => imprimirComTitulo(`Manual de Operacionalizacao - PPFCHH - ${sufixoDataHoraArquivo()}`)} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0"><FileBarChart size={15} /> Exportar PDF</button>
       </div>
 
       <div className="space-y-5">
@@ -3317,7 +3558,7 @@ function ChecklistStatusView() {
           <h1 className="text-3xl font-bold text-slate-50 mb-3">Checklist de Status</h1>
           <p className="text-slate-400 max-w-2xl">O que já está funcionando e o que ainda precisa de atenção — visível só para Usuários Mestre.</p>
         </div>
-        <button onClick={() => window.print()} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0"><FileBarChart size={15} /> Exportar PDF</button>
+        <button onClick={() => imprimirComTitulo(`Checklist de Status - PPFCHH - ${sufixoDataHoraArquivo()}`)} className="no-print flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500 shrink-0"><FileBarChart size={15} /> Exportar PDF</button>
       </div>
 
       <div className="space-y-5">
@@ -3379,7 +3620,12 @@ function CronogramaAlunoView({ turmaId }) {
               {cronograma.linhas.map((linha) => (
                 <tr key={linha.ordem} className="border-t border-slate-800">
                   <td className="py-3 pr-3 text-sm font-semibold text-slate-200 whitespace-nowrap">{linha.semana}</td>
-                  <td className="py-3 pr-3 text-sm text-slate-200">{linha.etapa}</td>
+                  <td className="py-3 pr-3 text-sm text-slate-200">
+                    {linha.etapa}
+                    {rotuloModulosDaEtapa(linha.ordem) && (
+                      <div className="text-xs font-normal text-slate-500 mt-0.5">{rotuloModulosDaEtapa(linha.ordem)}</div>
+                    )}
+                  </td>
                   <td className="py-3 pr-3 text-sm text-slate-400 whitespace-nowrap">{fmtDataCurta(linha.dataInicio)}</td>
                   <td className="py-3 pr-3 text-sm text-slate-400 whitespace-nowrap">{linha.horaInicio}</td>
                   <td className="py-3 pr-3 text-sm text-slate-200 font-medium whitespace-nowrap">{fmtDataCurta(linha.dataEntrega)} · {linha.horaEntrega}</td>
@@ -3413,6 +3659,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   const lanc = mergeLancamentos(dados?.lancamentos);
   const calc = useMemo(() => calcular(lanc), [JSON.stringify(lanc)]);
   const fluxo = dados?.fluxoModulos || fluxoModulosPadrao();
+  const progressoAprovado = calcularProgressoAprovado(fluxo);
   const enviarModulo = (modId) => {
     const estadoAtual = estadoModulo(fluxo, modId);
     const jaAtrasado = moduloAtrasadoSemEnvio(estadoAtual);
@@ -3615,8 +3862,8 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
           })}
         </nav>
         <div className="p-4 border-t border-white/10">
-          <div className="text-xs text-white/50 mb-2">Progresso geral</div>
-          <div className="w-full bg-white/10 rounded-full h-2 mb-3"><div className="bg-amber-500 h-2 rounded-full transition-all" style={{ width: `${calc.progresso}%` }} /></div>
+          <div className="text-xs text-white/50 mb-2">Progresso geral (módulos aprovados)</div>
+          <div className="w-full bg-white/10 rounded-full h-2 mb-3"><div className="bg-amber-500 h-2 rounded-full transition-all" style={{ width: `${progressoAprovado}%` }} /></div>
           {onTrocarEmpresa && (
             <button onClick={onTrocarEmpresa} className="flex items-center gap-2 text-sm text-white/70 hover:text-white mb-2"><Building2 size={15} /> Trocar de empresa</button>
           )}
@@ -3630,8 +3877,8 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
             <Save size={30} className="mx-auto text-amber-500 mb-3" />
             <h3 className="font-bold text-slate-100 mb-2">Baixar um backup antes de sair?</h3>
             <p className="text-xs text-slate-400 mb-5">Baixa um arquivo com os lançamentos e o histórico de versões da equipe {equipe.nomeNegocio}. Recomendado, mas opcional.</p>
-            <button onClick={() => { baixarBackupEquipe(); setConfirmSairAberto(false); onSair(); }} className="w-full bg-amber-500 text-slate-900 font-bold py-2.5 rounded-md hover:bg-amber-400 mb-2">Sim, baixar backup e sair</button>
-            <button onClick={() => { setConfirmSairAberto(false); onSair(); }} className="w-full text-sm text-slate-400 hover:text-slate-100 py-1.5">Sair sem backup</button>
+            <button onClick={() => { baixarBackupEquipe(); setConfirmSairAberto(false); onSair(true); }} className="w-full bg-amber-500 text-slate-900 font-bold py-2.5 rounded-md hover:bg-amber-400 mb-2">Sim, baixar backup e sair</button>
+            <button onClick={() => { setConfirmSairAberto(false); onSair(false); }} className="w-full text-sm text-slate-400 hover:text-slate-100 py-1.5">Sair sem backup</button>
           </div>
         </div>
       )}
@@ -3685,7 +3932,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
               <StatCard label="Módulos cadastrados" value="13" tone="blue" small />
               <StatCard label="Investimento Total" value={fmtBRL(calc.investimentoTotal)} tone="slate" small />
               <StatCard label="Resultado/mês" value={fmtBRL(calc.resultadoOperacional)} tone={calc.resultadoOperacional >= 0 ? "emerald" : "rose"} small />
-              <StatCard label="Progresso" value={`${calc.progresso}%`} tone="gold" small />
+              <StatCard label="Progresso (aprovados)" value={`${progressoAprovado}%`} tone="gold" small />
             </div>
 
             <Card className="p-4">
@@ -3815,7 +4062,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
           <div>
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
             <SectionTitle icon={TrendingUp} sub="Acompanhe os indicadores consolidados e registre ajustes ao longo do projeto.">Análise do Negócio</SectionTitle>
-            <AnaliseNegocio calc={calc} historico={dados.historico} onSalvarVersao={salvarVersao} readOnly={souVisualizador} />
+            <AnaliseNegocio calc={calc} historico={dados.historico} onSalvarVersao={salvarVersao} readOnly={souVisualizador} progressoAprovado={progressoAprovado} />
           </div>
         )}
 
@@ -4088,11 +4335,13 @@ function NotaModulo({ nota, onSetNota, ehFinal, readOnly }) {
   );
 }
 
-function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes }) {
+function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes, onReabrirPosCorrecao, nota }) {
   const [prazoInput, setPrazoInput] = useState(estado.prazo || "");
   useEffect(() => { setPrazoInput(estado.prazo || ""); }, [estado.prazo]);
   const [novoPrazoReabrir, setNovoPrazoReabrir] = useState("");
   const [feedbackInput, setFeedbackInput] = useState("");
+  const [mostrarReabrirPosCorrecao, setMostrarReabrirPosCorrecao] = useState(false);
+  const [motivoReabrirPosCorrecao, setMotivoReabrirPosCorrecao] = useState("");
   const atrasadoSemEnvio = moduloAtrasadoSemEnvio(estado);
 
   const statusInfo = atrasadoSemEnvio
@@ -4159,6 +4408,44 @@ function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrec
         </div>
       )}
 
+      {estado.status === "corrigido" && (
+        <div>
+          {!mostrarReabrirPosCorrecao ? (
+            <button onClick={() => setMostrarReabrirPosCorrecao(true)} className="flex items-center gap-2 border border-slate-600 text-slate-300 text-xs font-bold px-3 py-1.5 rounded-md hover:border-amber-500 hover:text-amber-400">
+              <Undo2 size={13} /> Reabrir para ajustes
+            </button>
+          ) : (
+            <div className="bg-slate-800/60 border border-slate-700 rounded-md p-3 space-y-2.5">
+              <div className="flex items-start gap-2 text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-md p-2">
+                <ShieldCheck size={13} className="shrink-0 mt-0.5" />
+                A nota já dada a este módulo ({vazio(nota) ? "—" : nota}) <b>não será alterada</b> por essa reabertura — ela continua valendo, mesmo depois de a equipe reenviar e você aprovar de novo.
+              </div>
+              <div>
+                <label className="flex items-center gap-1.5 text-[11px] text-slate-400 mb-1"><Pencil size={12} /> Orientação para a equipe (opcional)</label>
+                <textarea
+                  value={motivoReabrirPosCorrecao}
+                  onChange={(e) => setMotivoReabrirPosCorrecao(e.target.value)}
+                  rows={2}
+                  placeholder="O que precisa ser ajustado neste módulo?"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-md px-2.5 py-1.5 text-xs text-slate-100 focus:border-amber-500 focus:outline-none"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => { onReabrirPosCorrecao(motivoReabrirPosCorrecao.trim()); setMotivoReabrirPosCorrecao(""); setMostrarReabrirPosCorrecao(false); }}
+                  className="flex items-center gap-2 bg-amber-500 text-slate-900 text-xs font-bold px-3 py-1.5 rounded-md hover:bg-amber-400"
+                >
+                  <Undo2 size={13} /> Confirmar reabertura (nota mantida)
+                </button>
+                <button onClick={() => { setMostrarReabrirPosCorrecao(false); setMotivoReabrirPosCorrecao(""); }} className="text-xs font-semibold text-slate-400 px-3 py-1.5 rounded-md hover:text-slate-200">
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {atrasadoSemEnvio && (
         <div className="flex items-center gap-2 flex-wrap">
           <label className="text-[11px] text-slate-400">Novo prazo (obrigatório para reabrir):</label>
@@ -4174,7 +4461,7 @@ function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrec
   );
 }
 
-function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes }) {
+function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes, onReabrirPosCorrecao }) {
   const Icon = m.icon;
   const comentariosModulo = (comentarios || []).filter((c) => c.modulo === `Módulo ${m.n}`);
   const avaliavel = NOTA_MODULOS_AVALIAVEIS.includes(m.id);
@@ -4201,7 +4488,7 @@ function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentario
       </button>
       {aberto && (
         <div className="px-4 pb-4 border-t border-slate-800">
-          <PainelFluxoModulo estado={estado} ultimoModulo={ultimoModulo} onSetPrazo={onSetPrazo} onConfirmarCorrecao={onConfirmarCorrecao} onReabrir={onReabrir} onRestaurarPrazoAutomatico={onRestaurarPrazoAutomatico} onDevolverAjustes={onDevolverAjustes} />
+          <PainelFluxoModulo estado={estado} ultimoModulo={ultimoModulo} onSetPrazo={onSetPrazo} onConfirmarCorrecao={onConfirmarCorrecao} onReabrir={onReabrir} onRestaurarPrazoAutomatico={onRestaurarPrazoAutomatico} onDevolverAjustes={onDevolverAjustes} onReabrirPosCorrecao={onReabrirPosCorrecao} nota={nota} />
           <div className="pt-4"><ModuloLeitura mId={m.id} lanc={lanc} calc={calc} /></div>
           {(avaliavel || ehFinal) && <NotaModulo nota={nota} onSetNota={onSetNota} ehFinal={ehFinal} />}
           <ComentariosPanel
@@ -4240,6 +4527,7 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
   const setNota = (modId, valor) => setDados({ ...dados, notas: { ...(dados.notas || {}), [modId]: valor } });
 
   const fluxo = dados.fluxoModulos || fluxoModulosPadrao();
+  const progressoAprovado = calcularProgressoAprovado(fluxo);
   const setPrazoModulo = (modId, novoPrazo) => {
     const atual = estadoModulo(fluxo, modId);
     setDados({ ...dados, fluxoModulos: { ...fluxo, [modId]: { ...atual, prazo: novoPrazo, prazoManual: true } } });
@@ -4292,6 +4580,29 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
       },
     });
   };
+  // Reabre um módulo JÁ CONCLUÍDO (status "corrigido") para a equipe fazer
+  // ajustes — necessário porque o plano financeiro é interligado (mudar um
+  // número lá atrás pode exigir revisão). A nota dada não é tocada em
+  // nenhum momento: ela mora em dados.notas, um campo totalmente separado
+  // do status do módulo, e nenhuma linha deste arquivo grava em dados.notas
+  // fora do campo de nota do próprio professor — reabrir, reenviar e
+  // aprovar de novo não muda o número já atribuído.
+  const reabrirParaAjustesPosCorrecao = (modId, motivo) => {
+    const atual = estadoModulo(fluxo, modId);
+    setDados({
+      ...dados,
+      fluxoModulos: {
+        ...fluxo,
+        [modId]: {
+          ...atual,
+          status: "ajustes",
+          feedback: motivo || "Reaberto pelo professor para ajustes — a nota já atribuída foi mantida.",
+          ciclo: (atual.ciclo || 1) + 1,
+          historico: [...(atual.historico || []), { tipo: "reaberto_pos_correcao", data: Date.now(), feedback: motivo || null }],
+        },
+      },
+    });
+  };
   const reabrirModulo = (modId, novoPrazo) => {
     const atual = estadoModulo(fluxo, modId);
     setDados({
@@ -4336,7 +4647,7 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
       <SectionTitle icon={Building2} sub={`Equipe: ${equipe.integrantes.join(", ") || "sem integrantes"} · veja cada módulo exatamente como a equipe preencheu, e deixe comentários direcionados`}>{equipe.nomeNegocio}</SectionTitle>
 
       <div className="space-y-6">
-        <AnaliseNegocio calc={calc} historico={dados.historico} readOnly />
+        <AnaliseNegocio calc={calc} historico={dados.historico} readOnly progressoAprovado={progressoAprovado} />
 
         {(notasDadas.length > 0 || !vazio(notaFinal) || !vazio(notaCenariosFluxo) || !vazio(notaApresentacao)) && (
           <PainelAvaliacao media={media} notasDadasLength={notasDadas.length} totalModulos={NOTA_MODULOS_AVALIAVEIS.length} notaFinal={notaFinal} notaCenariosFluxo={notaCenariosFluxo} notaApresentacao={notaApresentacao} notaPonderada={notaPonderada}
@@ -4418,6 +4729,7 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
               onReabrir={(novoPrazo) => reabrirModulo(m.id, novoPrazo)}
               onRestaurarPrazoAutomatico={() => restaurarPrazoAutomatico(m.id)}
               onDevolverAjustes={(feedback) => devolverParaAjustes(m.id, feedback)}
+              onReabrirPosCorrecao={(motivo) => reabrirParaAjustesPosCorrecao(m.id, motivo)}
             />
           ))}
         </div>
@@ -4712,10 +5024,15 @@ function LinhaCronogramaProfessor({ linha, onChangeCampo, onRestaurar }) {
             className="w-full bg-slate-900 border border-amber-500 rounded-md px-2 py-1 text-sm text-slate-100 focus:outline-none"
           />
         ) : (
-          <button onClick={() => setEditando("etapa")} className="group flex items-center gap-1.5 text-left hover:text-amber-400">
-            {linha.etapa}
-            <Pencil size={12} className="opacity-0 group-hover:opacity-70 shrink-0" />
-          </button>
+          <div>
+            <button onClick={() => setEditando("etapa")} className="group flex items-center gap-1.5 text-left hover:text-amber-400">
+              {linha.etapa}
+              <Pencil size={12} className="opacity-0 group-hover:opacity-70 shrink-0" />
+            </button>
+            {rotuloModulosDaEtapa(linha.ordem) && (
+              <div className="text-xs font-normal text-slate-500 mt-0.5">{rotuloModulosDaEtapa(linha.ordem)}</div>
+            )}
+          </div>
         )}
       </td>
       <td className="py-3 pr-3 text-sm text-slate-400 whitespace-nowrap">
@@ -4836,7 +5153,262 @@ async function contarPrazosManuaisDaTurma(turmaId) {
   return total;
 }
 
-function CronogramaTurmaCard({ turmaId }) {
+// Desenha o cronograma como imagem, num <canvas> — sem depender de nenhuma
+// biblioteca nova. Pensado para o professor baixar e reenviar aos alunos
+// (WhatsApp, e-mail, mural) sempre que quiser lembrá-los dos prazos, sem
+// precisar mandar todo mundo abrir a plataforma.
+function roundRectCanvas(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// Gerador genérico de "tabela em imagem" — usado pelo relatório de
+// Progresso das Empresas (e reaproveitável por outros relatórios no
+// futuro). Quebra o texto de cada célula em várias linhas quando não
+// cabe na largura da coluna, calculando a altura de cada linha da tabela
+// dinamicamente a partir do conteúdo mais alto daquela linha.
+function medirLinhasTexto(ctx, texto, larguraMax) {
+  if (!texto) return [""];
+  const palavras = String(texto).split(" ");
+  const linhas = [];
+  let atual = "";
+  palavras.forEach((p) => {
+    const teste = atual ? atual + " " + p : p;
+    if (ctx.measureText(teste).width > larguraMax && atual) {
+      linhas.push(atual);
+      atual = p;
+    } else {
+      atual = teste;
+    }
+  });
+  if (atual) linhas.push(atual);
+  return linhas.length ? linhas : [""];
+}
+
+function gerarImagemTabela({ titulo, subtitulo, colunas, larguras, linhas }) {
+  const margem = 40;
+  const padCelula = 12;
+  const alturaLinhaTexto = 17;
+  const larguraTabela = larguras.reduce((a, b) => a + b, 0);
+  const larguraTotal = larguraTabela + margem * 2;
+  const alturaTopo = subtitulo ? 100 : 80;
+  const alturaCabecalho = 34;
+
+  const medCanvas = document.createElement("canvas");
+  const medCtx = medCanvas.getContext("2d");
+  medCtx.font = "13px Arial, sans-serif";
+
+  const linhasProcessadas = linhas.map((linha) => {
+    const celulas = linha.map((texto, i) => medirLinhasTexto(medCtx, texto, larguras[i] - padCelula * 2));
+    const maxLinhas = Math.max(...celulas.map((c) => c.length));
+    return { celulas, altura: Math.max(40, maxLinhas * alturaLinhaTexto + 22) };
+  });
+
+  const alturaTotalLinhas = linhasProcessadas.reduce((s, l) => s + l.altura, 0);
+  const altura = alturaTopo + alturaCabecalho + alturaTotalLinhas + margem;
+
+  const canvas = document.createElement("canvas");
+  const escala = 2;
+  canvas.width = larguraTotal * escala;
+  canvas.height = altura * escala;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(escala, escala);
+
+  ctx.fillStyle = "#0b1220";
+  ctx.fillRect(0, 0, larguraTotal, altura);
+
+  ctx.fillStyle = "#f59e0b";
+  ctx.font = "bold 12px Arial, sans-serif";
+  ctx.fillText("CEDUP HERMANN HERING", margem, 30);
+
+  ctx.fillStyle = "#f1f5f9";
+  ctx.font = "bold 20px Arial, sans-serif";
+  ctx.fillText(titulo, margem, 58);
+
+  if (subtitulo) {
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "12px Arial, sans-serif";
+    ctx.fillText(subtitulo, margem, 78);
+  }
+
+  let y = alturaTopo;
+  const x0 = margem;
+
+  ctx.fillStyle = "#1e293b";
+  roundRectCanvas(ctx, x0, y, larguraTabela, alturaCabecalho, 6);
+  ctx.fill();
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "bold 11px Arial, sans-serif";
+  let x = x0;
+  colunas.forEach((c, i) => { ctx.fillText(c.toUpperCase(), x + padCelula, y + 21); x += larguras[i]; });
+  y += alturaCabecalho;
+
+  linhasProcessadas.forEach((linha, i) => {
+    ctx.fillStyle = i % 2 === 0 ? "#0f1a2e" : "#0b1220";
+    ctx.fillRect(x0, y, larguraTabela, linha.altura);
+    ctx.strokeStyle = "#1e293b";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x0, y + linha.altura); ctx.lineTo(x0 + larguraTabela, y + linha.altura); ctx.stroke();
+
+    x = x0;
+    linha.celulas.forEach((linhasTexto, ci) => {
+      ctx.fillStyle = ci === 0 ? "#e2e8f0" : "#cbd5e1";
+      ctx.font = ci === 0 ? "bold 13px Arial, sans-serif" : "13px Arial, sans-serif";
+      linhasTexto.forEach((lt, li) => { ctx.fillText(lt, x + padCelula, y + 24 + li * alturaLinhaTexto); });
+      x += larguras[ci];
+    });
+    y += linha.altura;
+  });
+
+  return canvas;
+}
+
+// O nome sugerido pelo navegador ao "salvar como PDF" vem do <title> da
+// página — como o app inteiro usa um único título fixo, todo relatório
+// exportado por impressão saía com o mesmo nome genérico. Trocando o
+// título só durante o print() (ele é sempre síncrono/bloqueante até a
+// pessoa fechar a caixa de diálogo), cada relatório sai com um nome que
+// identifica do que se trata. "paisagem" força a orientação deitada só
+// nesta impressão (via uma tag <style> temporária) — útil para tabelas
+// largas, sem mudar a orientação dos demais relatórios/manuais.
+function imprimirComTitulo(titulo, paisagem) {
+  const tituloOriginal = document.title;
+  document.title = titulo;
+  let estiloTemp = null;
+  if (paisagem) {
+    estiloTemp = document.createElement("style");
+    estiloTemp.textContent = "@media print { @page { size: landscape; } }";
+    document.head.appendChild(estiloTemp);
+  }
+  window.print();
+  document.title = tituloOriginal;
+  if (estiloTemp) document.head.removeChild(estiloTemp);
+}
+
+function baixarCanvasComoJpg(canvas, nomeArquivo) {
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = nomeArquivo;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, "image/jpeg", 0.92);
+}
+
+function gerarImagemCronograma(cronograma, turmaNome) {
+  const linhas = cronograma.linhas;
+  const larguras = [95, 340, 110, 80, 165, 140];
+  const margem = 40;
+  const larguraTabela = larguras.reduce((a, b) => a + b, 0);
+  const larguraTotal = larguraTabela + margem * 2;
+  const alturaLinha = 58;
+  const alturaTopo = 110;
+  const alturaCabecalhoTabela = 38;
+  const altura = alturaTopo + alturaCabecalhoTabela + linhas.length * alturaLinha + margem;
+
+  const canvas = document.createElement("canvas");
+  const escala = 2; // exporta em resolução dobrada, fica nítido ao imprimir/ampliar
+  canvas.width = larguraTotal * escala;
+  canvas.height = altura * escala;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(escala, escala);
+
+  ctx.fillStyle = "#0b1220";
+  ctx.fillRect(0, 0, larguraTotal, altura);
+
+  ctx.fillStyle = "#f59e0b";
+  ctx.font = "bold 12px Arial, sans-serif";
+  ctx.fillText("CEDUP HERMANN HERING", margem, 30);
+
+  ctx.fillStyle = "#f1f5f9";
+  ctx.font = "bold 22px Arial, sans-serif";
+  ctx.fillText(`Cronograma do projeto — ${turmaNome}`, margem, 58);
+
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "12px Arial, sans-serif";
+  ctx.fillText(`Atualizado em ${new Date().toLocaleString("pt-BR")}`, margem, 80);
+
+  let y = alturaTopo;
+  const x0 = margem;
+
+  ctx.fillStyle = "#1e293b";
+  roundRectCanvas(ctx, x0, y, larguraTabela, alturaCabecalhoTabela, 6);
+  ctx.fill();
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "bold 11px Arial, sans-serif";
+  const cabecalhos = ["SEMANA", "ETAPA / ATIVIDADE", "INÍCIO", "HORÁRIO", "PRAZO DE ENTREGA", "SITUAÇÃO"];
+  let x = x0;
+  cabecalhos.forEach((c, i) => { ctx.fillText(c, x + 12, y + 24); x += larguras[i]; });
+  y += alturaCabecalhoTabela;
+
+  const CORES_SITUACAO = {
+    nao_iniciada: { bg: "#1e293b", fg: "#94a3b8", texto: "Não iniciada" },
+    em_andamento: { bg: "#78350f", fg: "#fbbf24", texto: "Em andamento" },
+    encerrada: { bg: "#064e3b", fg: "#34d399", texto: "Encerrada" },
+  };
+
+  linhas.forEach((linha, i) => {
+    ctx.fillStyle = i % 2 === 0 ? "#0f1a2e" : "#0b1220";
+    ctx.fillRect(x0, y, larguraTabela, alturaLinha);
+    ctx.strokeStyle = "#1e293b";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x0, y + alturaLinha); ctx.lineTo(x0 + larguraTabela, y + alturaLinha); ctx.stroke();
+
+    x = x0;
+    ctx.fillStyle = "#e2e8f0";
+    ctx.font = "bold 13px Arial, sans-serif";
+    ctx.fillText(linha.semana, x + 12, y + 33);
+    x += larguras[0];
+
+    ctx.font = "13px Arial, sans-serif";
+    ctx.fillStyle = "#cbd5e1";
+    let etapa = linha.etapa;
+    while (ctx.measureText(etapa).width > larguras[1] - 24 && etapa.length > 3) etapa = etapa.slice(0, -1);
+    if (etapa !== linha.etapa) etapa = etapa.slice(0, -1) + "…";
+    ctx.fillText(etapa, x + 12, y + 27);
+    const rotuloModulos = rotuloModulosDaEtapa(linha.ordem);
+    if (rotuloModulos) {
+      ctx.font = "11px Arial, sans-serif";
+      ctx.fillStyle = "#64748b";
+      ctx.fillText(rotuloModulos, x + 12, y + 43);
+    }
+    x += larguras[1];
+
+    ctx.font = "13px Arial, sans-serif";
+    ctx.fillStyle = "#94a3b8";
+    ctx.fillText(fmtDataCurta(linha.dataInicio), x + 12, y + 33);
+    x += larguras[2];
+    ctx.fillText(linha.horaInicio, x + 12, y + 33);
+    x += larguras[3];
+
+    ctx.fillStyle = "#e2e8f0";
+    ctx.font = "bold 13px Arial, sans-serif";
+    ctx.fillText(`${fmtDataCurta(linha.dataEntrega)} · ${linha.horaEntrega}`, x + 12, y + 33);
+    x += larguras[4];
+
+    const status = situacaoCronograma(linha);
+    const cor = CORES_SITUACAO[status];
+    ctx.font = "bold 11px Arial, sans-serif";
+    const larguraBadge = ctx.measureText(cor.texto).width + 26;
+    ctx.fillStyle = cor.bg;
+    roundRectCanvas(ctx, x + 12, y + 19, larguraBadge, 20, 10);
+    ctx.fill();
+    ctx.fillStyle = cor.fg;
+    ctx.fillText(cor.texto, x + 25, y + 33);
+
+    y += alturaLinha;
+  });
+
+  return canvas;
+}
+
+function CronogramaTurmaCard({ turmaId, turmaNome }) {
   const [cronograma, setCronograma] = useSharedObject(`cronograma_${turmaId}`, null);
   const [dataInicioS1, setDataInicioS1] = useState("");
   const [horaInicioS1, setHoraInicioS1] = useState(HORARIO_CRONOGRAMA_PADRAO);
@@ -5006,6 +5578,22 @@ function CronogramaTurmaCard({ turmaId }) {
               <span className="flex items-center gap-1"><Lock size={11} className="text-slate-600" /> calculado automaticamente</span>
               <span className="flex items-center gap-1"><Pencil size={11} className="text-amber-500" /> editável</span>
             </div>
+            <button
+              onClick={() => {
+                const canvas = gerarImagemCronograma(cronograma, turmaNome);
+                canvas.toBlob((blob) => {
+                  if (!blob) return;
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url; a.download = `cronograma_${turmaNome.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo()}.jpg`;
+                  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                }, "image/jpeg", 0.92);
+              }}
+              className="flex items-center gap-1.5 text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800"
+            >
+              <ImageDown size={13} /> Baixar como imagem (.jpg)
+            </button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -5150,6 +5738,208 @@ function CorrecoesPendentesView({ pendentes, onAbrir }) {
   );
 }
 
+// ----------------------------------------------------------------------------
+// Integrantes por Empresa — só leitura: busca, para cada turma, a lista de
+// empresas (equipes) já cadastrada e quem está vinculado a cada uma
+// (equipe.integrantes, o mesmo campo que já é mantido pela plataforma toda
+// vez que um aluno escolhe/troca de empresa). Não grava nada — é seguro
+// mesmo com a plataforma em uso, com lançamentos e logins acontecendo.
+// ----------------------------------------------------------------------------
+// Reparo aditivo: para cada aluno cujo perfil já tem equipeId (ou seja, o
+// vínculo individual dele está correto — é o que ele mesmo enxerga ao
+// entrar), confere se o nome dele está na lista de integrantes da empresa
+// correspondente e, se não estiver, ADICIONA. Nunca remove ninguém, nunca
+// mexe em lançamentos ou em outro campo — só preenche o que ficou faltando
+// por causa da corrida de gravação corrigida em EscolherEmpresa. Só mexe
+// nas turmas passadas em `turmas` (as que a pessoa que está executando
+// pode ver/gerenciar).
+async function repararIntegrantesAusentes(turmas) {
+  const usuarios = await listarUsuarios();
+  const alunosLigados = usuarios.filter((u) => u.papel === "aluno" && u.turmaId && u.equipeId && u.nome);
+  const porTurma = {};
+  alunosLigados.forEach((a) => {
+    if (!porTurma[a.turmaId]) porTurma[a.turmaId] = {};
+    if (!porTurma[a.turmaId][a.equipeId]) porTurma[a.turmaId][a.equipeId] = [];
+    porTurma[a.turmaId][a.equipeId].push(a.nome);
+  });
+
+  const turmaIdsPermitidas = new Set((turmas || []).map((t) => t.id));
+  let nomesAdicionados = 0;
+  let turmasAtualizadas = 0;
+
+  for (const turmaId of Object.keys(porTurma)) {
+    if (!turmaIdsPermitidas.has(turmaId)) continue;
+    const chave = `equipes_${turmaId}`;
+    let lista;
+    try {
+      const r = await window.storage.get(chave, true);
+      lista = r ? JSON.parse(r.value) : null;
+    } catch { lista = null; }
+    if (!lista) continue;
+
+    let mudou = false;
+    const novaLista = lista.map((equipe) => {
+      const nomesEsperados = porTurma[turmaId][equipe.id] || [];
+      const faltantes = nomesEsperados.filter((n) => !equipe.integrantes.includes(n));
+      if (faltantes.length === 0) return equipe;
+      mudou = true;
+      nomesAdicionados += faltantes.length;
+      return { ...equipe, integrantes: [...equipe.integrantes, ...faltantes] };
+    });
+
+    if (mudou) {
+      try {
+        await window.storage.set(chave, JSON.stringify(novaLista), true);
+        turmasAtualizadas++;
+      } catch {}
+    }
+  }
+
+  return { nomesAdicionados, turmasAtualizadas };
+}
+
+function useEquipesPorTurmas(turmas, refreshKey) {
+  const [porTurma, setPorTurma] = useState(null); // { [turmaId]: [equipes] }
+  const chave = JSON.stringify((turmas || []).map((t) => t.id));
+  useEffect(() => {
+    if (!turmas) return;
+    let alive = true;
+    (async () => {
+      setPorTurma(null);
+      const resultado = {};
+      await Promise.all(turmas.map(async (t) => {
+        try {
+          const r = await window.storage.get(`equipes_${t.id}`, true);
+          resultado[t.id] = r ? JSON.parse(r.value) : [];
+        } catch {
+          resultado[t.id] = [];
+        }
+      }));
+      if (alive) setPorTurma(resultado);
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chave, refreshKey]);
+  return porTurma;
+}
+
+function GestaoIntegrantesView({ turmas, user }) {
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [busca, setBusca] = useState("");
+  const [reparando, setReparando] = useState(false);
+  const [resultadoReparo, setResultadoReparo] = useState(null);
+  const porTurma = useEquipesPorTurmas(turmas, refreshKey);
+
+  if (porTurma === null) return <LoadingScreen />;
+
+  const buscaLimpa = busca.trim().toLowerCase();
+  const filtro = (equipe) =>
+    !buscaLimpa ||
+    equipe.nomeNegocio.toLowerCase().includes(buscaLimpa) ||
+    (equipe.integrantes || []).some((n) => n.toLowerCase().includes(buscaLimpa));
+
+  const totalEmpresas = Object.values(porTurma).reduce((s, l) => s + l.length, 0);
+  const totalIntegrantes = Object.values(porTurma).reduce((s, l) => s + l.reduce((s2, e) => s2 + (e.integrantes || []).length, 0), 0);
+
+  const executarReparo = async () => {
+    const ok = window.confirm(
+      "Isso vai conferir, aluno por aluno, se o nome de quem já escolheu empresa está faltando na lista de integrantes — e SÓ ADICIONAR o que estiver faltando.\n\nNenhum nome existente é removido, nenhum lançamento é alterado. Deseja continuar?"
+    );
+    if (!ok) return;
+    setReparando(true);
+    setResultadoReparo(null);
+    const r = await repararIntegrantesAusentes(turmas);
+    setResultadoReparo(r);
+    setReparando(false);
+    setRefreshKey((k) => k + 1);
+  };
+
+  return (
+    <div>
+      <SectionTitle icon={Users2} sub={user.mestre ? "Quem está em cada empresa, em todas as turmas da plataforma." : "Quem está em cada empresa, em todas as suas turmas."}>
+        Integrantes por Empresa
+      </SectionTitle>
+
+      <div className="flex items-start gap-2 text-xs text-slate-400 bg-slate-900/60 border border-slate-800 rounded-lg p-3 mb-4">
+        <Info size={14} className="text-sky-400 shrink-0 mt-0.5" />
+        <div className="flex-1">
+          Se um aluno afirma ter escolhido a empresa mas o nome dele não aparece abaixo, use "Reparar integrantes ausentes" — ele só adiciona nomes que estão faltando, nunca remove ninguém nem altera lançamentos.
+          <div className="mt-2">
+            <button onClick={executarReparo} disabled={reparando} className="flex items-center gap-1.5 bg-amber-500 text-slate-900 font-bold px-3 py-1.5 rounded-md text-xs hover:bg-amber-400 disabled:opacity-40">
+              <RefreshCw size={12} className={reparando ? "animate-spin" : ""} /> {reparando ? "Reparando…" : "Reparar integrantes ausentes"}
+            </button>
+            {resultadoReparo && (
+              <span className="ml-2 text-emerald-400">
+                {resultadoReparo.nomesAdicionados === 0
+                  ? "Nenhum nome estava faltando — tudo certo."
+                  : `${resultadoReparo.nomesAdicionados} nome(s) adicionado(s) em ${resultadoReparo.turmasAtualizadas} turma(s).`}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-3 gap-3 mb-4">
+        <StatCard label="Turmas" value={turmas.length} tone="slate" small />
+        <StatCard label="Empresas" value={totalEmpresas} tone="blue" small />
+        <StatCard label="Alunos vinculados" value={totalIntegrantes} tone="gold" small />
+      </div>
+
+      <div className="flex gap-2 mb-4">
+        <TxtInput value={busca} onChange={setBusca} placeholder="Buscar por nome do aluno ou da empresa…" />
+        <button onClick={() => setRefreshKey((k) => k + 1)} className="flex items-center gap-1.5 border border-slate-600 text-slate-200 px-3 rounded-md text-sm hover:bg-slate-800 shrink-0"><RefreshCw size={13} /> Atualizar</button>
+      </div>
+
+      {turmas.length === 0 ? (
+        <Card className="p-10 text-center text-slate-500">Nenhuma turma cadastrada ainda.</Card>
+      ) : (
+        <div className="space-y-5">
+          {turmas.map((t) => {
+            const equipes = (porTurma[t.id] || []).filter(filtro);
+            if (buscaLimpa && equipes.length === 0) return null;
+            return (
+              <Card key={t.id} className="p-4">
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                  <div className="flex items-center gap-2">
+                    <School size={16} className="text-sky-400 shrink-0" />
+                    <span className="font-bold text-slate-100">{t.nome}</span>
+                    <span className="text-xs text-slate-500 font-mono">· {t.codigo}</span>
+                  </div>
+                  {user.mestre && <span className="text-xs text-slate-500">Professor(a): {t.professor || "—"}</span>}
+                </div>
+                {equipes.length === 0 ? (
+                  <p className="text-sm text-slate-500">Nenhuma empresa cadastrada nesta turma ainda.</p>
+                ) : (
+                  <div className="grid sm:grid-cols-2 gap-2.5">
+                    {equipes.map((e) => (
+                      <div key={e.id} className="border border-slate-700 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <Building2 size={14} className="text-sky-400 shrink-0" />
+                          <span className="text-sm font-semibold text-slate-100 truncate flex-1">{e.nomeNegocio}</span>
+                          <span className="text-[10px] font-bold text-slate-500 bg-slate-800 border border-slate-700 rounded-full px-1.5 py-0.5 shrink-0">
+                            {(e.integrantes || []).length} {(e.integrantes || []).length === 1 ? "integrante" : "integrantes"}
+                          </span>
+                        </div>
+                        {(e.integrantes || []).length === 0 ? (
+                          <p className="text-xs text-slate-500">Ninguém escolheu esta empresa ainda.</p>
+                        ) : (
+                          <ul className="text-xs text-slate-300 space-y-0.5">
+                            {e.integrantes.map((nome, i) => <li key={i} className="truncate">· {nome}</li>)}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GestaoCronogramaView({ turmas }) {
   const [turmaSelId, setTurmaSelId] = useState(turmas.length === 1 ? turmas[0].id : null);
   const turmaSel = turmas.find((t) => t.id === turmaSelId) || null;
@@ -5161,7 +5951,7 @@ function GestaoCronogramaView({ turmas }) {
           <button onClick={() => setTurmaSelId(null)} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Escolher outra turma</button>
         )}
         <SectionTitle icon={Calendar} sub={`Gerenciando o cronograma de ${turmaSel.nome}.`}>Cronograma</SectionTitle>
-        <CronogramaTurmaCard turmaId={turmaSel.id} />
+        <CronogramaTurmaCard turmaId={turmaSel.id} turmaNome={turmaSel.nome} />
       </div>
     );
   }
@@ -5239,7 +6029,7 @@ function TurmaDetail({ turma, onVoltar, professorNome, alvoCorrecao }) {
         </div>
       </div>
 
-      <CronogramaTurmaCard turmaId={turma.id} />
+      <CronogramaTurmaCard turmaId={turma.id} turmaNome={turma.nome} />
 
       <PainelRoster turmaId={turma.id} turmaNome={turma.nome} professorUid={turma.professorUid} professorNome={turma.professor} />
 
@@ -5287,6 +6077,7 @@ function EquipeCard({ equipe, onClick, onRenomear, onExcluir }) {
   const [dados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [] });
   const calc = dados ? calcular(dados.lancamentos) : null;
   const fluxo = dados?.fluxoModulos || {};
+  const progressoAprovado = calcularProgressoAprovado(fluxo);
   const aguardandoCorrecao = MODULOS.filter((m) => estadoModulo(fluxo, m.id).status === "enviado").length;
   return (
     <div className="relative bg-slate-800 border border-slate-700 rounded-xl hover:border-amber-500 transition">
@@ -5318,10 +6109,10 @@ function EquipeCard({ equipe, onClick, onRenomear, onExcluir }) {
       {calc ? (
         <>
           <div className="w-full bg-slate-700 rounded-full h-1.5 mb-2">
-            <div className="bg-amber-500 h-1.5 rounded-full" style={{ width: `${calc.progresso}%` }} />
+            <div className="bg-amber-500 h-1.5 rounded-full" style={{ width: `${progressoAprovado}%` }} />
           </div>
           <div className="flex justify-between text-xs">
-            <span className="text-slate-400">{calc.progresso}% preenchido</span>
+            <span className="text-slate-400">{progressoAprovado}% aprovado</span>
             <span className={calc.resultadoOperacional >= 0 ? "text-emerald-400 font-semibold" : "text-rose-400 font-semibold"}>
               {fmtBRL(calc.resultadoOperacional)}/mês
             </span>
@@ -5369,7 +6160,7 @@ async function excluirTurmaCompleta(turma) {
   } catch {}
 }
 
-function GestaoTurmasView({ turmas, onCriar, onAbrir, setTurmas }) {
+function GestaoTurmasView({ turmas, onCriar, onAbrir, onExcluir, mestre }) {
   const [novoNome, setNovoNome] = useState("");
   const [excluindoId, setExcluindoId] = useState(null);
   const criar = () => { if (novoNome.trim()) { onCriar(novoNome.trim()); setNovoNome(""); } };
@@ -5381,7 +6172,7 @@ function GestaoTurmasView({ turmas, onCriar, onAbrir, setTurmas }) {
     if (!ok) return;
     setExcluindoId(t.id);
     await excluirTurmaCompleta(t);
-    await setTurmas(turmas.filter((x) => x.id !== t.id));
+    await onExcluir(t);
     setExcluindoId(null);
   };
 
@@ -5398,7 +6189,7 @@ function GestaoTurmasView({ turmas, onCriar, onAbrir, setTurmas }) {
       </Card>
 
       {turmas.length === 0 ? (
-        <Card className="p-10 text-center text-slate-500">Você ainda não criou nenhuma turma.</Card>
+        <Card className="p-10 text-center text-slate-500">{mestre ? "Nenhuma turma cadastrada na plataforma ainda." : "Você ainda não criou nenhuma turma."}</Card>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {turmas.map((t) => (
@@ -5416,6 +6207,7 @@ function GestaoTurmasView({ turmas, onCriar, onAbrir, setTurmas }) {
                 <div className="flex items-center gap-2 text-xs text-slate-400">
                   <KeyRound size={13} /> Código: <span className="font-mono font-bold text-amber-400">{t.codigo}</span>
                 </div>
+                {mestre && <div className="text-[11px] text-slate-500 mt-1">Professor(a): {t.professor || "—"}</div>}
                 {excluindoId === t.id && <div className="text-xs text-rose-400 mt-2">Excluindo…</div>}
               </button>
             </div>
@@ -5531,9 +6323,38 @@ function GestaoUsuariosView({ turmas }) {
   const equipesComDados = useEquipesComDados(turmaId, refreshKey);
   const usuarios = useListaUsuarios(refreshKey);
   const [editando, setEditando] = useState(null);
+  const [excluindoUid, setExcluindoUid] = useState(null);
 
   const alunosDaTurma = (usuarios || []).filter((u) => u.papel === "aluno" && u.turmaId === turmaId);
   const nomeEmpresa = (equipeId) => equipesComDados?.find((d) => d.equipe.id === equipeId)?.equipe?.nomeNegocio;
+
+  // Apaga a CONTA do aluno de verdade — diferente de "Editar → Nenhuma
+  // empresa", que só desvincula (a pessoa continua na lista, sem empresa,
+  // até escolher outra ou o professor reatribuir). Isso aqui remove o
+  // cadastro por completo: se a pessoa entrar de novo, terá que se
+  // cadastrar do zero e esperar aprovação.
+  const excluirConta = async (aluno) => {
+    const ok = window.confirm(
+      `Excluir de vez a conta de "${aluno.nome}"?\n\nDiferente de tirar da empresa, isso apaga o CADASTRO da pessoa. Se ela entrar de novo na plataforma, vai precisar se cadastrar do zero e esperar aprovação.\n\nOs lançamentos da empresa continuam intactos — só a conta desta pessoa é removida. Essa ação não pode ser desfeita.`
+    );
+    if (!ok) return;
+    setExcluindoUid(aluno.uid);
+    try {
+      if (aluno.turmaId && aluno.equipeId) {
+        try {
+          const r = await window.storage.get(`equipes_${aluno.turmaId}`, true);
+          const lista = r ? JSON.parse(r.value) : [];
+          const nova = lista.map((e) => (e.id === aluno.equipeId ? { ...e, integrantes: e.integrantes.filter((n) => n !== aluno.nome) } : e));
+          await window.storage.set(`equipes_${aluno.turmaId}`, JSON.stringify(nova), true);
+        } catch {}
+      }
+      await excluirUsuario(aluno.uid);
+      setRefreshKey((k) => k + 1);
+    } catch {
+      alert("Não foi possível excluir agora. Tente novamente.");
+    }
+    setExcluindoUid(null);
+  };
 
   return (
     <div>
@@ -5564,10 +6385,20 @@ function GestaoUsuariosView({ turmas }) {
                   <td className="py-2 pr-3">
                     {nomeEmpresa(u.equipeId) || <span className="text-slate-600 italic">Sem empresa escolhida</span>}
                   </td>
-                  <td className="py-2 pr-3 text-right">
-                    <button onClick={() => setEditando(u)} className="flex items-center gap-1.5 ml-auto bg-slate-900 border border-slate-700 hover:border-amber-500 text-slate-200 text-xs font-semibold px-3 py-1.5 rounded-md">
-                      <Pencil size={13} /> Editar
-                    </button>
+                  <td className="py-2 pr-3">
+                    <div className="flex items-center justify-end gap-2">
+                      <button onClick={() => setEditando(u)} className="flex items-center gap-1.5 bg-slate-900 border border-slate-700 hover:border-amber-500 text-slate-200 text-xs font-semibold px-3 py-1.5 rounded-md">
+                        <Pencil size={13} /> Editar
+                      </button>
+                      <button
+                        onClick={() => excluirConta(u)}
+                        disabled={excluindoUid === u.uid}
+                        title="Excluir a conta desta pessoa (diferente de só tirar da empresa)"
+                        className="flex items-center gap-1.5 bg-slate-900 border border-rose-900/60 hover:border-rose-500 text-rose-400 text-xs font-semibold px-3 py-1.5 rounded-md disabled:opacity-40"
+                      >
+                        <Trash2 size={13} /> {excluindoUid === u.uid ? "Excluindo…" : "Excluir"}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -5592,7 +6423,7 @@ function ResumoComparativo({ turma, dadosEquipes }) {
   const exportarCSV = () => {
     if (!dadosEquipes || !turma) return;
     const linhas = [["Equipe", "Integrantes", "Faturamento Mensal", "Investimento Total", "Resultado/mês", "Ponto de Equilíbrio (anual)", "Progresso (%)"]];
-    dadosEquipes.forEach(({ equipe, calc }) => {
+    dadosEquipes.forEach(({ equipe, calc, progressoAprovado }) => {
       linhas.push([
         equipe.nomeNegocio,
         equipe.integrantes.join(" | "),
@@ -5600,7 +6431,7 @@ function ResumoComparativo({ turma, dadosEquipes }) {
         calc.investimentoTotal.toFixed(2).replace(".", ","),
         calc.resultadoOperacional.toFixed(2).replace(".", ","),
         calc.pontoEquilibrio != null ? calc.pontoEquilibrio.toFixed(2).replace(".", ",") : "",
-        String(calc.progresso),
+        String(progressoAprovado),
       ]);
     });
     const csv = linhas.map((l) => l.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";")).join("\n");
@@ -5613,25 +6444,25 @@ function ResumoComparativo({ turma, dadosEquipes }) {
   return (
     <div>
       <div className="flex justify-end gap-2 mb-3 no-print">
-        <button onClick={() => window.print()} className="flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500"><FileBarChart size={15} /> Exportar PDF</button>
+        <button onClick={() => imprimirComTitulo(`Resumo Comparativo - ${turma.nome} - ${sufixoDataHoraArquivo()}`)} className="flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500"><FileBarChart size={15} /> Exportar PDF</button>
         <button onClick={exportarCSV} className="flex items-center gap-2 bg-slate-900 border border-slate-700 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:border-amber-500"><Save size={15} /> Exportar CSV</button>
       </div>
       <Card className="p-4 overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700">
-              <th className="py-2 pr-3">Equipe</th><th className="py-2 pr-3">Faturamento/mês</th><th className="py-2 pr-3">Investimento Total</th><th className="py-2 pr-3">Resultado/mês</th><th className="py-2 pr-3">Ponto de Equilíbrio</th><th className="py-2 pr-3">Progresso</th>
+              <th className="py-2 pr-3">Equipe</th><th className="py-2 pr-3">Faturamento/mês</th><th className="py-2 pr-3">Investimento Total</th><th className="py-2 pr-3">Resultado/mês</th><th className="py-2 pr-3">Ponto de Equilíbrio</th><th className="py-2 pr-3">Progresso (aprovados)</th>
             </tr>
           </thead>
           <tbody>
-            {dadosEquipes.map(({ equipe, calc }) => (
+            {dadosEquipes.map(({ equipe, calc, progressoAprovado }) => (
               <tr key={equipe.id} className="border-b border-slate-800">
                 <td className="py-2 pr-3 font-semibold text-slate-100">{equipe.nomeNegocio}</td>
                 <td className="py-2 pr-3">{fmtBRL(calc.faturamento)}</td>
                 <td className="py-2 pr-3">{fmtBRL(calc.investimentoTotal)}</td>
                 <td className={`py-2 pr-3 ${calc.resultadoOperacional >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{fmtBRL(calc.resultadoOperacional)}</td>
                 <td className="py-2 pr-3">{calc.pontoEquilibrio != null ? fmtBRL(calc.pontoEquilibrio) : "—"}</td>
-                <td className="py-2 pr-3">{calc.progresso}%</td>
+                <td className="py-2 pr-3">{progressoAprovado}%</td>
               </tr>
             ))}
           </tbody>
@@ -5703,7 +6534,7 @@ function RelatorioPorEmpresa({ dadosEquipes }) {
           {(tipo === "analise" || tipo === "gerencial") && (
             <div>
               {tipo === "gerencial" && <h3 className="text-sm font-bold text-slate-200 mb-2">3. Análise do Negócio</h3>}
-              <AnaliseNegocio calc={selecionada.calc} historico={selecionada.dados.historico} readOnly />
+              <AnaliseNegocio calc={selecionada.calc} historico={selecionada.dados.historico} readOnly progressoAprovado={selecionada.progressoAprovado} />
             </div>
           )}
         </div>
@@ -5715,12 +6546,43 @@ function RelatorioPorEmpresa({ dadosEquipes }) {
 function RelatorioPendencias({ turma, dadosEquipes }) {
   const [roster] = useSharedList(`roster_${turma.id}`);
   const usuarios = useListaUsuarios();
+  const [buscaEmpresa, setBuscaEmpresa] = useState("");
 
   if (roster === null || usuarios === null || dadosEquipes === null) return <LoadingScreen />;
 
   const alunosDaTurma = usuarios.filter((u) => u.papel === "aluno" && u.turmaId === turma.id);
   const nomesRegistrados = new Set(alunosDaTurma.map((u) => normalizarNome(u.nome)));
   const faltando = roster.filter((a) => !nomesRegistrados.has(normalizarNome(a.nome)));
+
+  const buscaLimpa = buscaEmpresa.trim().toLowerCase();
+  const dadosFiltrados = buscaLimpa ? dadosEquipes.filter(({ equipe }) => equipe.nomeNegocio.toLowerCase().includes(buscaLimpa)) : dadosEquipes;
+
+  const baixarImagemProgresso = () => {
+    const colunas = ["Empresa", "Integrantes", "Progresso (aprovados)", "O que falta"];
+    const larguras = [180, 260, 120, 420];
+    const linhas = dadosFiltrados.map(({ equipe, calc, progressoAprovado }) => {
+      const modulosFaltando = MODULOS.filter((_, i) => !calc.preenchidos?.[i]);
+      const gruposFaltando = agruparModulosPorBloco(modulosFaltando);
+      const textoFaltando = gruposFaltando
+        .map((g) => {
+          const itens = g.modulos.map((m) => `${m.n}. ${m.nome}`).join(", ");
+          return g.etapa ? `${g.etapa}: ${itens}` : itens;
+        })
+        .join("  |  ");
+      return [
+        equipe.nomeNegocio,
+        equipe.integrantes.join(", ") || "sem integrantes",
+        `${progressoAprovado}%`,
+        modulosFaltando.length === 0 ? "Completo" : textoFaltando,
+      ];
+    });
+    const canvas = gerarImagemTabela({
+      titulo: `Progresso das empresas — ${turma.nome}`,
+      subtitulo: buscaLimpa ? `Filtrado por: "${buscaEmpresa.trim()}" · Gerado em ${new Date().toLocaleString("pt-BR")}` : `Gerado em ${new Date().toLocaleString("pt-BR")}`,
+      colunas, larguras, linhas,
+    });
+    baixarCanvasComoJpg(canvas, `progresso_${turma.nome.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo()}.jpg`);
+  };
 
   return (
     <div className="space-y-6">
@@ -5759,34 +6621,58 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
       </div>
 
       <div>
-        <h3 className="text-sm font-bold text-slate-200 mb-2">Progresso das empresas</h3>
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+          <h3 className="text-sm font-bold text-slate-200">Progresso das empresas</h3>
+          {dadosEquipes.length > 0 && (
+            <div className="no-print flex items-center gap-2">
+              <TxtInput value={buscaEmpresa} onChange={setBuscaEmpresa} placeholder="Filtrar por empresa (deixe em branco p/ geral)…" />
+              <button onClick={baixarImagemProgresso} className="flex items-center gap-1.5 text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800 whitespace-nowrap">
+                <ImageDown size={13} /> Imagem
+              </button>
+              <button onClick={() => imprimirComTitulo(`Progresso das empresas - ${turma.nome}${buscaLimpa ? ` - ${buscaEmpresa.trim()}` : ""} - ${sufixoDataHoraArquivo()}`)} className="flex items-center gap-1.5 text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800 whitespace-nowrap">
+                <Printer size={13} /> PDF
+              </button>
+            </div>
+          )}
+        </div>
         {dadosEquipes.length === 0 && <Card className="p-6 text-center text-slate-500 text-sm">Nenhuma empresa cadastrada nesta turma ainda.</Card>}
-        {dadosEquipes.length > 0 && (
+        {dadosEquipes.length > 0 && dadosFiltrados.length === 0 && <Card className="p-6 text-center text-slate-500 text-sm">Nenhuma empresa encontrada com esse filtro.</Card>}
+        {dadosFiltrados.length > 0 && (
           <Card className="p-0 overflow-hidden">
             <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[640px]">
               <thead>
                 <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40">
-                  <th className="py-2 px-4">Empresa</th><th className="py-2 px-4">Integrantes</th><th className="py-2 px-4">Progresso</th><th className="py-2 px-4">O que falta</th>
+                  <th className="py-2 px-4">Empresa</th><th className="py-2 px-4">Integrantes</th><th className="py-2 px-4">Progresso (aprovados)</th><th className="py-2 px-4">O que falta</th>
                 </tr>
               </thead>
               <tbody>
-                {dadosEquipes.map(({ equipe, calc }) => {
-                  const nomesFaltando = MODULOS.filter((_, i) => !calc.preenchidos?.[i]).map((m) => `${m.n}. ${m.nome}`);
+                {dadosFiltrados.map(({ equipe, calc, progressoAprovado }) => {
+                  const modulosFaltando = MODULOS.filter((_, i) => !calc.preenchidos?.[i]);
+                  const gruposFaltando = agruparModulosPorBloco(modulosFaltando);
                   return (
                     <tr key={equipe.id} className="border-b border-slate-800">
                       <td className="py-2 px-4 font-semibold text-slate-100">{equipe.nomeNegocio}</td>
                       <td className="py-2 px-4 text-slate-400">{equipe.integrantes.join(", ") || "sem integrantes"}</td>
                       <td className="py-2 px-4">
                         <div className="flex items-center gap-2">
-                          <div className="w-24 bg-slate-700 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{ width: `${calc.progresso}%` }} /></div>
-                          <span className="text-xs text-slate-400">{calc.progresso}%</span>
+                          <div className="w-24 bg-slate-700 rounded-full h-1.5"><div className="bg-amber-500 h-1.5 rounded-full" style={{ width: `${progressoAprovado}%` }} /></div>
+                          <span className="text-xs text-slate-400">{progressoAprovado}%</span>
                         </div>
                       </td>
                       <td className="py-2 px-4 text-xs text-slate-400 max-w-xs">
-                        {nomesFaltando.length === 0
+                        {modulosFaltando.length === 0
                           ? <span className="text-emerald-400 flex items-center gap-1"><CheckCircle2 size={13} /> Completo</span>
-                          : nomesFaltando.join(", ")}
+                          : (
+                            <div className="space-y-1.5">
+                              {gruposFaltando.map((g, gi) => (
+                                <div key={gi}>
+                                  {g.etapa && <div className="text-[10px] font-semibold text-slate-500">{g.etapa}</div>}
+                                  <div>{g.modulos.map((m) => `${m.n}. ${m.nome}`).join(", ")}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                       </td>
                     </tr>
                   );
@@ -5806,11 +6692,18 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
 // vinculado, replicada individualmente para cada integrante, como pedido no
 // chamado. Reaproveita a mesma fórmula de nota final ponderada usada na
 // revisão da equipe e no Feedback do Professor.
-function RelatorioNotas({ dadosEquipes }) {
+function RelatorioNotas({ turma, dadosEquipes }) {
   if (dadosEquipes === null) return <LoadingScreen />;
   if (dadosEquipes.length === 0) return <Card className="p-8 text-center text-slate-500">Nenhuma empresa nesta turma ainda.</Card>;
 
   const modulosColuna = MODULOS.filter((m) => NOTA_MODULOS_AVALIAVEIS.includes(m.id) || m.id === NOTA_MODULO_FINAL);
+  // Agrupa as colunas de módulo por Bloco do cronograma (mesmo mapa já usado
+  // no cronograma e no "Progresso das empresas"), para o cabeçalho em duas
+  // linhas — é só uma camada visual a mais sobre as mesmas colunas de hoje.
+  const gruposNotas = [
+    ...agruparModulosPorBloco(modulosColuna).map((g) => ({ bloco: g.etapa, colSpan: g.modulos.length })),
+    { bloco: null, colSpan: 3 },
+  ];
 
   const linhas = [];
   dadosEquipes.forEach(({ equipe, dados }) => {
@@ -5845,20 +6738,32 @@ function RelatorioNotas({ dadosEquipes }) {
     <div>
       <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
         <p className="text-xs text-slate-500 max-w-md">A nota de cada módulo é a mesma da empresa, replicada para cada aluno vinculado a ela. A coluna Final só aparece quando todos os componentes da equipe já foram lançados (40% módulos + 20% Módulo 13 + 20% Cenários/Fluxo + 20% Apresentação).</p>
-        <button onClick={baixarCSV} className="flex items-center gap-2 text-xs font-semibold border border-slate-600 text-slate-100 px-3 py-2 rounded-md hover:bg-slate-800 shrink-0">
-          <FileDown size={14} /> Baixar CSV
-        </button>
+        <div className="no-print flex items-center gap-2 shrink-0">
+          <button onClick={() => imprimirComTitulo(`Relatorio de Notas${turma ? ` - ${turma.nome}` : ""} - ${sufixoDataHoraArquivo()}`, true)} className="flex items-center gap-2 text-xs font-semibold border border-slate-600 text-slate-100 px-3 py-2 rounded-md hover:bg-slate-800">
+            <Printer size={14} /> Baixar PDF
+          </button>
+          <button onClick={baixarCSV} className="flex items-center gap-2 text-xs font-semibold border border-slate-600 text-slate-100 px-3 py-2 rounded-md hover:bg-slate-800">
+            <FileDown size={14} /> Baixar CSV
+          </button>
+        </div>
       </div>
       <Card className="p-0 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[900px]">
             <thead>
+              <tr className="text-left text-xs uppercase text-slate-500 bg-slate-900/40">
+                <th className="py-2 px-3 align-bottom" rowSpan={2}>Aluno</th>
+                <th className="py-2 px-3 align-bottom" rowSpan={2}>Empresa</th>
+                {gruposNotas.map((g, gi) => (
+                  <th key={gi} colSpan={g.colSpan} className={`py-1 px-2 text-center text-[10px] font-semibold border-b border-slate-700 normal-case ${g.bloco ? "text-emerald-500" : "text-slate-600"}`}>
+                    {g.bloco || "Etapas finais"}
+                  </th>
+                ))}
+              </tr>
               <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40">
-                <th className="py-2 px-3">Aluno</th>
-                <th className="py-2 px-3">Empresa</th>
                 {modulosColuna.map((m) => <th key={m.id} className="py-2 px-2 text-center" title={m.nome}>M{m.n}</th>)}
                 <th className="py-2 px-2 text-center">Cen./Fluxo</th>
-                <th className="py-2 px-2 text-center">Apres.</th>
+                <th className="py-2 px-2 text-center">App-PPF</th>
                 <th className="py-2 px-3 text-center">Final</th>
               </tr>
             </thead>
@@ -5921,7 +6826,7 @@ function GestaoRelatoriosView({ turmas }) {
           </div>
           {aba === "resumo" && <ResumoComparativo turma={turma} dadosEquipes={dadosEquipes} />}
           {aba === "empresa" && <RelatorioPorEmpresa dadosEquipes={dadosEquipes} />}
-          {aba === "notas" && <RelatorioNotas dadosEquipes={dadosEquipes} />}
+          {aba === "notas" && <RelatorioNotas turma={turma} dadosEquipes={dadosEquipes} />}
           {aba === "pendencias" && <RelatorioPendencias turma={turma} dadosEquipes={dadosEquipes} />}
         </div>
       )}
@@ -5944,15 +6849,22 @@ async function buscarEquipesComDados(turmaId) {
   } catch { return []; }
 }
 
-function GestaoBackupView({ turmas, setTurmas }) {
+function GestaoBackupView({ turmas, onExcluir }) {
   const [turmaId, setTurmaId] = useState("");
   const turma = turmas.find((t) => t.id === turmaId);
   const dadosEquipes = useEquipesComDados(turmaId);
   const [status, setStatus] = useState("");
   const [excluindo, setExcluindo] = useState(false);
   const [ultimoBackupTurmaId, setUltimoBackupTurmaId] = useState(null);
-  const [periodoSemestre, setPeriodoSemestre] = useState("");
   const [gerandoSemestre, setGerandoSemestre] = useState(false);
+
+  // Só para mostrar, antes de gerar, quantas turmas/empresas/alunos o
+  // Backup Geral vai realmente abranger — nenhuma escrita, só leitura.
+  const porTurma = useEquipesPorTurmas(turmas, 0);
+  const porTurmaResumo = porTurma && {
+    totalEmpresas: Object.values(porTurma).reduce((s, l) => s + l.length, 0),
+    totalIntegrantes: Object.values(porTurma).reduce((s, l) => s + l.reduce((s2, e) => s2 + (e.integrantes || []).length, 0), 0),
+  };
 
   // Apaga permanentemente uma turma: empresas/equipes, lançamentos de cada uma,
   // a lista oficial de alunos importada e as contas dos alunos que estavam
@@ -5975,7 +6887,7 @@ function GestaoBackupView({ turmas, setTurmas }) {
     setStatus("Excluindo turma…");
     try {
       await excluirTurmaCompleta(turma);
-      await setTurmas(turmas.filter((t) => t.id !== turma.id));
+      await onExcluir(turma);
       setTurmaId("");
       setStatus(`Turma "${turma.nome}" excluída com sucesso.`);
     } catch {
@@ -5993,9 +6905,11 @@ function GestaoBackupView({ turmas, setTurmas }) {
     setStatus("Backup exportado com sucesso.");
   };
 
-  // Backup do Semestre: reúne TODAS as turmas do professor num único
-  // arquivo, com nome padronizado — útil no fechamento do período letivo,
-  // para não precisar exportar turma por turma.
+  // Backup Geral: reúne TODAS as turmas do professor (ou, para o Usuário
+  // Mestre, todas as turmas da plataforma) num único arquivo — inclui o
+  // estado atual de cada empresa, buscado na hora do clique, então cobre
+  // tudo que já foi feito até aquele momento, mesmo que ninguém tenha
+  // exportado nada por conta própria.
   const exportarBackupSemestre = async () => {
     if (!turmas.length) return;
     setGerandoSemestre(true);
@@ -6005,13 +6919,12 @@ function GestaoBackupView({ turmas, setTurmas }) {
         turma: t,
         equipes: await buscarEquipesComDados(t.id),
       })));
-      const rotulo = periodoSemestre.trim() || new Date().getFullYear().toString();
       const agora = new Date();
-      const pacote = { versaoBackup: 1, tipo: "semestre", periodo: rotulo, geradoEm: agora.toISOString(), turmas: porTurma };
-      baixarArquivo(`Backup-Semestre-${rotulo.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo(agora)}.json`, JSON.stringify(pacote, null, 2));
-      setStatus(`Backup do semestre "${rotulo}" gerado com ${turmas.length} turma(s).`);
+      const pacote = { versaoBackup: 1, tipo: "geral", geradoEm: agora.toISOString(), turmas: porTurma };
+      baixarArquivo(`Backup-Geral_${sufixoDataHoraArquivo(agora)}.json`, JSON.stringify(pacote, null, 2));
+      setStatus(`Backup Geral gerado com ${turmas.length} turma(s).`);
     } catch {
-      setStatus("Não foi possível gerar o backup do semestre. Tente novamente.");
+      setStatus("Não foi possível gerar o Backup Geral. Tente novamente.");
     }
     setGerandoSemestre(false);
   };
@@ -6040,17 +6953,29 @@ function GestaoBackupView({ turmas, setTurmas }) {
 
   return (
     <div>
-      <SectionTitle icon={Save} sub="Exporte os dados de uma turma para guardar uma cópia de segurança, ou restaure um backup anterior.">Backup</SectionTitle>
+      <SectionTitle icon={Save} sub="Gere um Backup Geral com todas as turmas de uma vez, ou exporte/restaure uma turma específica.">Backup</SectionTitle>
 
       <Card className="p-5 mb-5 border-amber-800/50">
-        <h3 className="font-bold text-slate-100 mb-1 flex items-center gap-2"><History size={16} className="text-amber-500" /> Backup do Semestre</h3>
-        <p className="text-sm text-slate-400 mb-3">No fechamento do período letivo, gere um único arquivo com todas as {turmas.length} turma(s) de uma vez, em vez de exportar turma por turma.</p>
+        <h3 className="font-bold text-slate-100 mb-1 flex items-center gap-2"><History size={16} className="text-amber-500" /> Backup Geral</h3>
+        <p className="text-sm text-slate-400 mb-1">
+          Reúne, num único arquivo, o estado atual de <b>todas as suas turmas</b> — todas as empresas, todos os lançamentos, notas, feedback e histórico de correção de cada uma, exatamente como estão no momento em que você clicar em gerar.
+        </p>
+        <p className="text-xs text-slate-500 mb-3">
+          Útil para não depender de os alunos lembrarem de exportar por conta própria — este backup já pega tudo o que cada equipe já fez até agora, mesmo que ninguém tenha clicado em nada.
+        </p>
+        {porTurmaResumo && (
+          <div className="flex flex-wrap gap-4 text-xs text-slate-400 mb-3">
+            <span><b className="text-slate-200">{turmas.length}</b> turma(s)</span>
+            <span><b className="text-slate-200">{porTurmaResumo.totalEmpresas}</b> empresa(s)</span>
+            <span><b className="text-slate-200">{porTurmaResumo.totalIntegrantes}</b> aluno(s) vinculado(s)</span>
+          </div>
+        )}
         <div className="flex flex-wrap gap-2">
-          <TxtInput value={periodoSemestre} onChange={setPeriodoSemestre} placeholder="Ex.: 2026-1" />
           <button onClick={exportarBackupSemestre} disabled={gerandoSemestre || !turmas.length} className="bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40 text-sm whitespace-nowrap">
-            {gerandoSemestre ? "Gerando…" : "Gerar backup do semestre"}
+            {gerandoSemestre ? "Gerando…" : "Gerar Backup Geral"}
           </button>
         </div>
+        <p className="text-[11px] text-slate-500 mt-2">O arquivo já sai nomeado automaticamente com a data e a hora exatas da geração — nenhum campo para preencher.</p>
       </Card>
 
       <SeletorTurma turmas={turmas} value={turmaId} onChange={setTurmaId} />
@@ -6095,6 +7020,7 @@ function GestaoAcessosView({ turmas, user }) {
   const eventos = useLogAcessos(refreshKey);
   const [busca, setBusca] = useState("");
   const [filtroPapel, setFiltroPapel] = useState("todos"); // todos | aluno | professor
+  const [filtroEmpresa, setFiltroEmpresa] = useState("");
 
   if (eventos === null) return <LoadingScreen />;
 
@@ -6103,16 +7029,15 @@ function GestaoAcessosView({ turmas, user }) {
   // suas turmas; o Usuário Mestre vê tudo, de todo mundo.
   const visiveis = user.mestre ? eventos : eventos.filter((ev) => ev.uid === user.uid || (ev.turmaId && turmaIds.has(ev.turmaId)));
 
-  const filtrados = visiveis
-    .filter((ev) => filtroPapel === "todos" || ev.papel === filtroPapel)
-    .filter((ev) => !busca.trim() || (ev.nome || "").toLowerCase().includes(busca.trim().toLowerCase()))
-    .sort((a, b) => b.timestamp - a.timestamp);
+  const empresasDisponiveis = [...new Set(visiveis.map((ev) => ev.equipeNome).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
 
-  // Último evento de cada pessoa indica se está com sessão em aberto agora
-  // (heurística simples — fechar a aba sem clicar em "Sair" não é detectado).
-  const ultimoPorUid = new Map();
-  visiveis.slice().sort((a, b) => a.timestamp - b.timestamp).forEach((ev) => ultimoPorUid.set(ev.uid, ev));
-  const sessoesAbertas = [...ultimoPorUid.values()].filter((ev) => ev.tipo === "entrada");
+  const sessoes = construirSessoesAcesso(visiveis)
+    .filter((s) => filtroPapel === "todos" || s.papel === filtroPapel)
+    .filter((s) => !filtroEmpresa || s.equipeNome === filtroEmpresa)
+    .filter((s) => !busca.trim() || (s.nome || "").toLowerCase().includes(busca.trim().toLowerCase()));
+
+  const emAberto = sessoes.filter((s) => s.status === "em_aberto").length;
+  const semConfirmacao = sessoes.filter((s) => s.status === "sem_clique_sair" || s.status === "provavelmente_encerrada").length;
 
   return (
     <div>
@@ -6122,13 +7047,13 @@ function GestaoAcessosView({ turmas, user }) {
 
       <div className="flex items-start gap-2 text-xs text-slate-400 bg-slate-900/60 border border-slate-800 rounded-lg p-3 mb-4">
         <Info size={14} className="text-sky-400 shrink-0 mt-0.5" />
-        A "saída" só é registrada quando a pessoa clica em "Sair" — se só fechar a aba ou o navegador, esse encerramento não fica registrado (limitação do navegador).
+        Cada linha é uma sessão — a entrada pareada com a saída correspondente da mesma pessoa. Uma saída só conta como "correta" quando a pessoa clicou em "Sair"; se ela só fechou a aba, a plataforma não tem como saber e a sessão fica marcada como sem confirmação, depois de {LIMITE_SESSAO_ABERTA_MS / 3600000}h sem notícia.
       </div>
 
       <div className="grid sm:grid-cols-3 gap-3 mb-4">
-        <StatCard label="Eventos visíveis" value={visiveis.length} tone="blue" small />
-        <StatCard label="Sessões em aberto agora" value={sessoesAbertas.length} tone="gold" small />
-        <StatCard label="Pessoas distintas" value={new Set(visiveis.map((e) => e.uid)).size} tone="slate" small />
+        <StatCard label="Sessões visíveis" value={sessoes.length} tone="blue" small />
+        <StatCard label="Em andamento agora" value={emAberto} tone="gold" small />
+        <StatCard label="Sem confirmação de saída" value={semConfirmacao} tone="slate" small />
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
@@ -6138,32 +7063,50 @@ function GestaoAcessosView({ turmas, user }) {
           <option value="aluno">Só alunos</option>
           <option value="professor">Só professores</option>
         </select>
+        <select value={filtroEmpresa} onChange={(e) => setFiltroEmpresa(e.target.value)} className="border border-slate-600 bg-slate-900 rounded-md px-3 text-sm text-slate-200">
+          <option value="">Todas as empresas</option>
+          {empresasDisponiveis.map((nome) => <option key={nome} value={nome}>{nome}</option>)}
+        </select>
         <button onClick={() => setRefreshKey((k) => k + 1)} className="flex items-center gap-1.5 border border-slate-600 text-slate-200 px-3 rounded-md text-sm hover:bg-slate-800 shrink-0"><RefreshCw size={13} /> Atualizar</button>
+        <button
+          onClick={() => imprimirComTitulo(`Acessos de Usuarios${filtroEmpresa ? ` - ${filtroEmpresa}` : ""} - ${sufixoDataHoraArquivo()}`, true)}
+          className="no-print flex items-center gap-1.5 border border-slate-600 text-slate-200 px-3 rounded-md text-sm hover:bg-slate-800 shrink-0"
+        >
+          <Printer size={13} /> Emitir PDF
+        </button>
       </div>
 
-      {filtrados.length === 0 ? (
-        <Card className="p-8 text-center text-slate-500">Nenhum acesso registrado ainda{busca || filtroPapel !== "todos" ? " com esses filtros" : ""}.</Card>
+      {sessoes.length === 0 ? (
+        <Card className="p-8 text-center text-slate-500">Nenhuma sessão registrada ainda{busca || filtroPapel !== "todos" ? " com esses filtros" : ""}.</Card>
       ) : (
-        <Card className="p-4 max-h-[36rem] overflow-y-auto">
-          <div className="space-y-2.5">
-            {filtrados.map((ev) => {
-              const emAberto = ultimoPorUid.get(ev.uid)?.id === ev.id && ev.tipo === "entrada";
+        <Card className="p-4 max-h-[40rem] overflow-y-auto">
+          <div className="space-y-3">
+            {sessoes.map((s, i) => {
+              const info = STATUS_SESSAO_INFO[s.status];
+              const duracaoMin = s.entrada && s.saida ? Math.round((s.saida - s.entrada) / 60000) : null;
               return (
-                <div key={ev.id} className="flex items-center gap-3 border-b border-slate-800 pb-2.5 last:border-0">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${ev.tipo === "entrada" ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/40" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
-                    {ev.tipo === "entrada" ? <LogIn size={14} /> : <LogOut size={14} />}
+                <div key={i} className="flex items-start gap-3 border-b border-slate-800 pb-3 last:border-0">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${s.status === "correta" ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/40" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
+                    {s.status === "correta" ? <LogOut size={14} /> : <LogIn size={14} />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold text-slate-100 truncate">{ev.nome || "—"}</span>
-                      <span className="text-[10px] font-bold text-slate-500 bg-slate-800 border border-slate-700 rounded-full px-1.5 py-0.5">{ev.papel === "professor" ? "Professor(a)" : "Aluno(a)"}</span>
-                      {emAberto && <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 rounded-full px-1.5 py-0.5">sessão em aberto</span>}
+                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                      <span className="text-sm font-semibold text-slate-100 truncate">{s.nome || "—"}</span>
+                      <span className="text-[10px] font-bold text-slate-500 bg-slate-800 border border-slate-700 rounded-full px-1.5 py-0.5">{s.papel === "professor" ? "Professor(a)" : "Aluno(a)"}</span>
+                      <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 border ${info.cor}`}>{info.label}</span>
+                      {s.status === "correta" && s.papel === "aluno" && (
+                        s.comBackup
+                          ? <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 rounded-full px-1.5 py-0.5 flex items-center gap-1"><Save size={10} /> fez backup</span>
+                          : <span className="text-[10px] font-bold text-rose-400 bg-rose-950/40 border border-rose-500/30 rounded-full px-1.5 py-0.5 flex items-center gap-1"><Save size={10} /> sem backup</span>
+                      )}
                     </div>
                     <div className="text-xs text-slate-500">
-                      {ev.tipo === "entrada" ? "Entrou" : "Saiu"}{ev.turmaNome ? ` — ${ev.turmaNome}` : ""}
+                      {s.turmaNome ? `${s.turmaNome}${s.equipeNome ? ` · ${s.equipeNome}` : ""} — ` : ""}
+                      {s.entrada ? `entrou em ${fmtData(s.entrada)}` : "entrada não registrada"}
+                      {s.saida ? ` · saiu em ${fmtData(s.saida)}` : ""}
+                      {duracaoMin !== null && ` · ${duracaoMin < 60 ? `${duracaoMin} min` : `${Math.floor(duracaoMin / 60)}h${String(duracaoMin % 60).padStart(2, "0")}`} de sessão`}
                     </div>
                   </div>
-                  <div className="text-xs text-slate-400 shrink-0">{fmtData(ev.timestamp)}</div>
                 </div>
               );
             })}
@@ -6276,7 +7219,12 @@ function ProfessorInicio({ user, turmas, onIrPara }) {
 
 function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades }) {
   const chaveMinhas = `turmas_prof_${user.uid}`;
-  const [turmas, setTurmas] = useSharedList(chaveMinhas);
+  const [minhasTurmas, setMinhasTurmas] = useSharedList(chaveMinhas);
+  const [refreshTurmasGlobais, setRefreshTurmasGlobais] = useState(0);
+  const turmasGlobais = useTodasTurmas(refreshTurmasGlobais);
+  // Usuário Mestre enxerga as turmas de TODOS os professores da plataforma;
+  // professor comum só vê as próprias (mesmo comportamento de sempre).
+  const turmas = user.mestre ? turmasGlobais : minhasTurmas;
   const [aba, setAba] = useState("inicio");
   const [turmaAtivaId, setTurmaAtivaId] = useState(null);
   const [menuAberto, setMenuAberto] = useState(false);
@@ -6289,9 +7237,19 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
 
   const criarTurma = async (nome) => {
     const nova = { id: uid(), nome, codigo: codigoTurma(), professor: user.nome, professorUid: user.uid, criadaEm: Date.now() };
-    setTurmas([...(turmas || []), nova]);
+    await setMinhasTurmas([...(minhasTurmas || []), nova]);
     // registra o código para os alunos conseguirem encontrar a turma
     try { await window.storage.set(`turma_por_codigo_${nova.codigo}`, JSON.stringify(nova), true); } catch {}
+    if (user.mestre) setRefreshTurmasGlobais((k) => k + 1);
+  };
+
+  // Exclusão "consciente do dono": funciona tanto para a própria turma
+  // quanto (só para Mestre) para a turma de outro professor — sempre
+  // regrava no índice de quem realmente é o dono, nunca no do Mestre.
+  const removerTurmaDaLista = async (turma) => {
+    await removerTurmaDoIndice(turma);
+    if (user.mestre) setRefreshTurmasGlobais((k) => k + 1);
+    if (turma.professorUid === user.uid) setMinhasTurmas((minhasTurmas || []).filter((t) => t.id !== turma.id));
   };
 
   const turmaAtiva = turmas.find((t) => t.id === turmaAtivaId) || null;
@@ -6402,14 +7360,15 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
           turmaAtiva
 
             ? <TurmaDetail turma={turmaAtiva} professorNome={user.nome} onVoltar={() => { setTurmaAtivaId(null); setAlvoCorrecao(null); }} alvoCorrecao={alvoCorrecao} />
-            : <GestaoTurmasView turmas={turmas} onCriar={criarTurma} onAbrir={setTurmaAtivaId} setTurmas={setTurmas} />
+            : <GestaoTurmasView turmas={turmas} onCriar={criarTurma} onAbrir={setTurmaAtivaId} onExcluir={removerTurmaDaLista} mestre={user.mestre} />
         )}
         {aba === "correcoes" && <CorrecoesPendentesView pendentes={pendentesCorrecao} onAbrir={abrirCorrecao} />}
         {aba === "usuarios" && <GestaoUsuariosView turmas={turmas} />}
         {aba === "cronograma" && <GestaoCronogramaView turmas={turmas} />}
+        {aba === "integrantes" && <GestaoIntegrantesView turmas={turmas} user={user} />}
         {aba === "acessos" && <GestaoAcessosView turmas={turmas} user={user} />}
         {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}
-        {aba === "backup" && <GestaoBackupView turmas={turmas} setTurmas={setTurmas} />}
+        {aba === "backup" && <GestaoBackupView turmas={turmas} onExcluir={removerTurmaDaLista} />}
         {aba === "auditoria" && <GestaoAuditoriaView turmas={turmas} />}
         {aba === "aprovacoes" && user.mestre && <GestaoAprovacoesView usuarioAtualUid={user.uid} />}
         {aba === "manualProfessor" && <ManualProfessorView />}
@@ -6856,7 +7815,7 @@ function TelaPrimeiroAcessoAluno({ perfil, onSair, onResultado, onVirarProfessor
           <div className="mt-3 bg-slate-900 border border-slate-700 rounded-md p-3">
             <label className="block text-[11px] text-slate-400 mb-1.5">Digite o código de Usuário Mestre para corrigir seu perfil para Professor(a).</label>
             <div className="flex gap-2">
-              <TxtInput value={codigoMestre} onChange={setCodigoMestre} placeholder="Código de Mestre" />
+              <CampoSenha value={codigoMestre} onChange={setCodigoMestre} placeholder="Código de Mestre" />
               <button onClick={virarProfessor} disabled={verificandoMestre || !codigoMestre.trim()} className="bg-amber-500 text-slate-900 px-3 rounded-md text-xs font-bold hover:bg-amber-400 disabled:opacity-40 flex-none">
                 {verificandoMestre ? "…" : "Confirmar"}
               </button>
@@ -6873,17 +7832,45 @@ function TelaPrimeiroAcessoAluno({ perfil, onSair, onResultado, onVirarProfessor
 // cadastrada pelo professor dentro da turma — evita nomes digitados errado
 // ou duplicados, e permite que vários alunos entrem na mesma empresa.
 function EscolherEmpresa({ perfil, turmaId, turmaNome, onSair, onEscolhida }) {
-  const [equipes, setEquipes] = useSharedList(`equipes_${turmaId}`);
+  const [equipes] = useSharedList(`equipes_${turmaId}`);
   const [entrando, setEntrando] = useState(null);
 
   if (equipes === null) return <LoadingScreen />;
 
   const entrarNaEmpresa = async (equipe) => {
     setEntrando(equipe.id);
-    const jaEsta = equipe.integrantes.includes(perfil.nome);
-    const atualizada = jaEsta ? equipe : { ...equipe, integrantes: [...equipe.integrantes, perfil.nome] };
-    const nova = equipes.map((e) => (e.id === equipe.id ? atualizada : e));
-    await setEquipes(nova);
+    // Corrige uma corrida de gravação: quando duas pessoas escolhem empresa
+    // quase ao mesmo tempo, usar o snapshot antigo (carregado ao abrir a
+    // tela) e gravar por cima pode apagar a escolha de quem gravou primeiro.
+    // Por isso, a cada tentativa, busca o estado mais recente do servidor
+    // (nunca usa o `equipes` antigo do useSharedList para decidir o que
+    // gravar) e confere depois de gravar se o nome realmente ficou salvo —
+    // se não ficou (alguém gravou por cima entre a leitura e a escrita),
+    // tenta de novo, até 5 vezes.
+    const chave = `equipes_${turmaId}`;
+    let atualizada = equipe;
+    for (let tentativa = 0; tentativa < 5; tentativa++) {
+      let listaAtual;
+      try {
+        const r = await window.storage.get(chave, true);
+        listaAtual = r ? JSON.parse(r.value) : equipes;
+      } catch {
+        listaAtual = equipes;
+      }
+      const alvo = listaAtual.find((e) => e.id === equipe.id) || equipe;
+      if (alvo.integrantes.includes(perfil.nome)) { atualizada = alvo; break; }
+      atualizada = { ...alvo, integrantes: [...alvo.integrantes, perfil.nome] };
+      const nova = listaAtual.map((e) => (e.id === equipe.id ? atualizada : e));
+      try { await window.storage.set(chave, JSON.stringify(nova), true); } catch {}
+      let confirmado = null;
+      try {
+        const r2 = await window.storage.get(chave, true);
+        const lista2 = r2 ? JSON.parse(r2.value) : null;
+        confirmado = lista2?.find((e) => e.id === equipe.id) || null;
+      } catch {}
+      if (confirmado?.integrantes?.includes(perfil.nome)) { atualizada = confirmado; break; }
+      // não confirmou — outra escrita concorrente pode ter sobrescrito; tenta de novo
+    }
     setEntrando(null);
     onEscolhida(atualizada);
   };
@@ -7053,7 +8040,7 @@ function TelaAguardandoAprovacao({ perfil, onSair, rejeitado, onTrocarTurma, onV
               <div className="text-left bg-slate-900 border border-slate-700 rounded-md p-3 mb-3">
                 <label className="block text-[11px] text-slate-400 mb-1.5">Tem um código de Usuário Mestre? Digite aqui para liberar seu acesso na hora.</label>
                 <div className="flex gap-2">
-                  <TxtInput value={codigoMestre} onChange={setCodigoMestre} placeholder="Código de Mestre" />
+                  <CampoSenha value={codigoMestre} onChange={setCodigoMestre} placeholder="Código de Mestre" />
                   <button onClick={tentarVirarMestre} disabled={verificando || !codigoMestre.trim()} className="bg-amber-500 text-slate-900 px-3 rounded-md text-xs font-bold hover:bg-amber-400 disabled:opacity-40 flex-none">
                     {verificando ? "…" : "Confirmar"}
                   </button>
@@ -7128,7 +8115,7 @@ function TelaLogin({ onEscolherPerfil }) {
 
       {papel === "professor" && (
         <Field label="Código de Mestre (opcional)" hint="Só preencha se você recebeu um código de Usuário Mestre. Deixe em branco para entrar direto como professor(a) comum, sem privilégios de Usuário Mestre.">
-          <TxtInput value={codigoMestre} onChange={setCodigoMestre} placeholder="Deixe em branco se não tiver" />
+          <CampoSenha value={codigoMestre} onChange={setCodigoMestre} placeholder="Deixe em branco se não tiver" />
         </Field>
       )}
 
@@ -7236,11 +8223,6 @@ export default function App() {
   // de login, ANTES de entrar com o Google — só é usado se for a primeira
   // vez que essa conta acessa o sistema (ver useEffect abaixo).
   const escolhaRef = useRef({ papel: "aluno", codigoMestre: "" });
-  // true só entre o clique em "Continuar com Google" e o registro da
-  // "entrada" no log de acessos — evita logar uma entrada nova toda vez que
-  // a página é recarregada com uma sessão já existente (o Firebase dispara o
-  // mesmo evento de sessão tanto para login novo quanto para sessão restaurada).
-  const loginRecenteRef = useRef(false);
   const ultimoUidComEntradaRegistradaRef = useRef(null);
 
   useEffect(() => {
@@ -7250,25 +8232,41 @@ export default function App() {
 
   const efetuarSaida = async () => {
     try { await sair(); } catch {}
+    try { if (firebaseUser?.uid) sessionStorage.removeItem(`ppf_entrada_${firebaseUser.uid}`); } catch {}
+    ultimoUidComEntradaRegistradaRef.current = null;
     setPerfilRecemCriado(null);
     escolhaRef.current = { papel: "aluno", codigoMestre: "" };
   };
 
   const perfilCarregado = useUsuario(firebaseUser?.uid);
 
-  // Registra a "entrada" no log de acessos assim que o perfil da conta que
-  // acabou de entrar (via clique em "Continuar com Google") estiver
-  // disponível — nunca ao recarregar a página com uma sessão já existente.
+  // Registra a "entrada" no log de acessos uma vez por sessão de navegador
+  // (aba/janela) — não uma vez por sessão do Firebase. Usar sessionStorage
+  // como trava evita duplicar a cada F5 (ela sobrevive a recarregamentos da
+  // mesma aba), mas ainda assim registra de novo quando a pessoa abre uma
+  // aba nova, reabre o navegador, ou sai e entra de novo. A versão anterior
+  // só registrava entrada junto de um clique novo em "Continuar com
+  // Google" — como o Firebase mantém a sessão entre recarregamentos, isso
+  // fazia a entrada nunca aparecer de novo depois do primeiro login (ex.:
+  // alguém que já estava logado e só deu F5 não gerava nenhum registro).
   const perfilParaLogEntrada = (perfilRecemCriado?.uid === firebaseUser?.uid ? perfilRecemCriado : null) || perfilCarregado || null;
   useEffect(() => {
-    if (!perfilParaLogEntrada || !loginRecenteRef.current) return;
+    if (!perfilParaLogEntrada) return;
+    const chaveSessao = `ppf_entrada_${perfilParaLogEntrada.uid}`;
+    let jaRegistradoNestaAba = false;
+    try { jaRegistradoNestaAba = sessionStorage.getItem(chaveSessao) === "1"; } catch {}
+    if (jaRegistradoNestaAba) return;
     if (ultimoUidComEntradaRegistradaRef.current === perfilParaLogEntrada.uid) return;
     ultimoUidComEntradaRegistradaRef.current = perfilParaLogEntrada.uid;
-    loginRecenteRef.current = false;
-    registrarAcesso({
-      uid: perfilParaLogEntrada.uid, nome: perfilParaLogEntrada.nome, papel: perfilParaLogEntrada.papel,
-      turmaId: perfilParaLogEntrada.turmaId, turmaNome: perfilParaLogEntrada.turmaNome, tipo: "entrada",
-    });
+    try { sessionStorage.setItem(chaveSessao, "1"); } catch {}
+    (async () => {
+      const equipeNome = await buscarNomeEmpresa(perfilParaLogEntrada.turmaId, perfilParaLogEntrada.equipeId);
+      registrarAcesso({
+        uid: perfilParaLogEntrada.uid, nome: perfilParaLogEntrada.nome, papel: perfilParaLogEntrada.papel,
+        turmaId: perfilParaLogEntrada.turmaId, turmaNome: perfilParaLogEntrada.turmaNome,
+        equipeId: perfilParaLogEntrada.equipeId, equipeNome, tipo: "entrada",
+      });
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [perfilParaLogEntrada?.uid]);
 
@@ -7307,7 +8305,7 @@ export default function App() {
   if (firebaseUser === undefined) return <LoadingScreen />;
 
   if (!firebaseUser) {
-    return <TelaEntrada onEscolherPerfil={(papel, codigoMestre) => { escolhaRef.current = { papel, codigoMestre }; loginRecenteRef.current = true; }} />;
+    return <TelaEntrada onEscolherPerfil={(papel, codigoMestre) => { escolhaRef.current = { papel, codigoMestre }; }} />;
   }
 
   if (perfilCarregado === undefined) return <LoadingScreen />;
@@ -7322,8 +8320,9 @@ export default function App() {
 
   if (!perfil) return <LoadingScreen />;
 
-  const efetuarSaidaComLog = () => {
-    registrarAcesso({ uid: perfil.uid, nome: perfil.nome, papel: perfil.papel, turmaId: perfil.turmaId, turmaNome: perfil.turmaNome, tipo: "saida" });
+  const efetuarSaidaComLog = async (comBackup) => {
+    const equipeNome = await buscarNomeEmpresa(perfil.turmaId, perfil.equipeId);
+    registrarAcesso({ uid: perfil.uid, nome: perfil.nome, papel: perfil.papel, turmaId: perfil.turmaId, turmaNome: perfil.turmaNome, equipeId: perfil.equipeId, equipeNome, tipo: "saida", comBackup: comBackup ?? null });
     efetuarSaida();
   };
 

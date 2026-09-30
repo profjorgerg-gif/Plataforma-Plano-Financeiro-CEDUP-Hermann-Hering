@@ -167,6 +167,65 @@ const CRONOGRAMA_ORDEM_POR_MODULO = {
   m12: 5, m13: 5,
 };
 
+// Nome da etapa/bloco (de ETAPAS_CRONOGRAMA_BASE) indexado pela sua "ordem" —
+// mesma fonte de dados do cronograma, só reorganizada para consulta rápida.
+const ETAPA_NOME_POR_ORDEM = Object.fromEntries(
+  ETAPAS_CRONOGRAMA_BASE.map((et) => [et.ordem, et.etapa])
+);
+
+// Para cada ordem do cronograma, a lista (ordenada) dos números de módulo que
+// pertencem a ela — derivada do mesmo CRONOGRAMA_ORDEM_POR_MODULO já usado
+// para propagar os prazos automáticos. Não é uma lista nova/duplicada, é só
+// esse mapa agrupado ao contrário, por bloco em vez de por módulo.
+const MODULOS_POR_ORDEM_CRONOGRAMA = (() => {
+  const grupos = {};
+  Object.entries(CRONOGRAMA_ORDEM_POR_MODULO).forEach(([modId, ordem]) => {
+    const mod = MODULOS.find((m) => m.id === modId);
+    if (!mod) return;
+    (grupos[ordem] = grupos[ordem] || []).push(mod.n);
+  });
+  Object.values(grupos).forEach((arr) => arr.sort((a, b) => a - b));
+  return grupos;
+})();
+
+// "1, 2, 3 e 4" — vírgula entre os números, "e" antes do último.
+function formatarNumerosComE(numeros) {
+  if (!numeros || numeros.length === 0) return "";
+  if (numeros.length === 1) return String(numeros[0]);
+  return `${numeros.slice(0, -1).join(", ")} e ${numeros[numeros.length - 1]}`;
+}
+
+// Rótulo curto exibido no cronograma, embaixo do nome de cada etapa/bloco —
+// ex.: "Módulos 1, 2, 3 e 4". Etapas sem módulo numerado associado (Semana 1,
+// Cenários e Fluxo de Caixa, Apresentações finais) retornam null.
+function rotuloModulosDaEtapa(ordem) {
+  const numeros = MODULOS_POR_ORDEM_CRONOGRAMA[ordem];
+  if (!numeros || numeros.length === 0) return null;
+  const prefixo = numeros.length === 1 ? "Módulo" : "Módulos";
+  return `${prefixo} ${formatarNumerosComE(numeros)}`;
+}
+
+// Agrupa uma lista de módulos (objetos de MODULOS) pelo bloco do cronograma
+// ao qual pertencem, na ordem dos blocos — usado para exibir "O que falta"
+// organizado por bloco, em vez de uma lista corrida de módulos.
+function agruparModulosPorBloco(modulosLista) {
+  const grupos = {};
+  modulosLista.forEach((m) => {
+    const ordem = CRONOGRAMA_ORDEM_POR_MODULO[m.id] || "sem_bloco";
+    (grupos[ordem] = grupos[ordem] || []).push(m);
+  });
+  const ordens = Object.keys(grupos)
+    .filter((k) => k !== "sem_bloco")
+    .map(Number)
+    .sort((a, b) => a - b);
+  const resultado = ordens.map((ordem) => ({
+    etapa: ETAPA_NOME_POR_ORDEM[ordem] || `Etapa ${ordem}`,
+    modulos: grupos[ordem],
+  }));
+  if (grupos.sem_bloco) resultado.push({ etapa: null, modulos: grupos.sem_bloco });
+  return resultado;
+}
+
 const addDiasISO = (isoDate, n) => {
   const d = new Date(isoDate + "T00:00:00");
   d.setDate(d.getDate() + n);
@@ -3561,7 +3620,12 @@ function CronogramaAlunoView({ turmaId }) {
               {cronograma.linhas.map((linha) => (
                 <tr key={linha.ordem} className="border-t border-slate-800">
                   <td className="py-3 pr-3 text-sm font-semibold text-slate-200 whitespace-nowrap">{linha.semana}</td>
-                  <td className="py-3 pr-3 text-sm text-slate-200">{linha.etapa}</td>
+                  <td className="py-3 pr-3 text-sm text-slate-200">
+                    {linha.etapa}
+                    {rotuloModulosDaEtapa(linha.ordem) && (
+                      <div className="text-xs font-normal text-slate-500 mt-0.5">{rotuloModulosDaEtapa(linha.ordem)}</div>
+                    )}
+                  </td>
                   <td className="py-3 pr-3 text-sm text-slate-400 whitespace-nowrap">{fmtDataCurta(linha.dataInicio)}</td>
                   <td className="py-3 pr-3 text-sm text-slate-400 whitespace-nowrap">{linha.horaInicio}</td>
                   <td className="py-3 pr-3 text-sm text-slate-200 font-medium whitespace-nowrap">{fmtDataCurta(linha.dataEntrega)} · {linha.horaEntrega}</td>
@@ -4960,10 +5024,15 @@ function LinhaCronogramaProfessor({ linha, onChangeCampo, onRestaurar }) {
             className="w-full bg-slate-900 border border-amber-500 rounded-md px-2 py-1 text-sm text-slate-100 focus:outline-none"
           />
         ) : (
-          <button onClick={() => setEditando("etapa")} className="group flex items-center gap-1.5 text-left hover:text-amber-400">
-            {linha.etapa}
-            <Pencil size={12} className="opacity-0 group-hover:opacity-70 shrink-0" />
-          </button>
+          <div>
+            <button onClick={() => setEditando("etapa")} className="group flex items-center gap-1.5 text-left hover:text-amber-400">
+              {linha.etapa}
+              <Pencil size={12} className="opacity-0 group-hover:opacity-70 shrink-0" />
+            </button>
+            {rotuloModulosDaEtapa(linha.ordem) && (
+              <div className="text-xs font-normal text-slate-500 mt-0.5">{rotuloModulosDaEtapa(linha.ordem)}</div>
+            )}
+          </div>
         )}
       </td>
       <td className="py-3 pr-3 text-sm text-slate-400 whitespace-nowrap">
@@ -5238,7 +5307,7 @@ function gerarImagemCronograma(cronograma, turmaNome) {
   const margem = 40;
   const larguraTabela = larguras.reduce((a, b) => a + b, 0);
   const larguraTotal = larguraTabela + margem * 2;
-  const alturaLinha = 48;
+  const alturaLinha = 58;
   const alturaTopo = 110;
   const alturaCabecalhoTabela = 38;
   const altura = alturaTopo + alturaCabecalhoTabela + linhas.length * alturaLinha + margem;
@@ -5294,7 +5363,7 @@ function gerarImagemCronograma(cronograma, turmaNome) {
     x = x0;
     ctx.fillStyle = "#e2e8f0";
     ctx.font = "bold 13px Arial, sans-serif";
-    ctx.fillText(linha.semana, x + 12, y + 30);
+    ctx.fillText(linha.semana, x + 12, y + 33);
     x += larguras[0];
 
     ctx.font = "13px Arial, sans-serif";
@@ -5302,18 +5371,25 @@ function gerarImagemCronograma(cronograma, turmaNome) {
     let etapa = linha.etapa;
     while (ctx.measureText(etapa).width > larguras[1] - 24 && etapa.length > 3) etapa = etapa.slice(0, -1);
     if (etapa !== linha.etapa) etapa = etapa.slice(0, -1) + "…";
-    ctx.fillText(etapa, x + 12, y + 30);
+    ctx.fillText(etapa, x + 12, y + 27);
+    const rotuloModulos = rotuloModulosDaEtapa(linha.ordem);
+    if (rotuloModulos) {
+      ctx.font = "11px Arial, sans-serif";
+      ctx.fillStyle = "#64748b";
+      ctx.fillText(rotuloModulos, x + 12, y + 43);
+    }
     x += larguras[1];
 
+    ctx.font = "13px Arial, sans-serif";
     ctx.fillStyle = "#94a3b8";
-    ctx.fillText(fmtDataCurta(linha.dataInicio), x + 12, y + 30);
+    ctx.fillText(fmtDataCurta(linha.dataInicio), x + 12, y + 33);
     x += larguras[2];
-    ctx.fillText(linha.horaInicio, x + 12, y + 30);
+    ctx.fillText(linha.horaInicio, x + 12, y + 33);
     x += larguras[3];
 
     ctx.fillStyle = "#e2e8f0";
     ctx.font = "bold 13px Arial, sans-serif";
-    ctx.fillText(`${fmtDataCurta(linha.dataEntrega)} · ${linha.horaEntrega}`, x + 12, y + 30);
+    ctx.fillText(`${fmtDataCurta(linha.dataEntrega)} · ${linha.horaEntrega}`, x + 12, y + 33);
     x += larguras[4];
 
     const status = situacaoCronograma(linha);
@@ -5321,10 +5397,10 @@ function gerarImagemCronograma(cronograma, turmaNome) {
     ctx.font = "bold 11px Arial, sans-serif";
     const larguraBadge = ctx.measureText(cor.texto).width + 26;
     ctx.fillStyle = cor.bg;
-    roundRectCanvas(ctx, x + 12, y + 14, larguraBadge, 20, 10);
+    roundRectCanvas(ctx, x + 12, y + 19, larguraBadge, 20, 10);
     ctx.fill();
     ctx.fillStyle = cor.fg;
-    ctx.fillText(cor.texto, x + 25, y + 28);
+    ctx.fillText(cor.texto, x + 25, y + 33);
 
     y += alturaLinha;
   });
@@ -6485,12 +6561,19 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
     const colunas = ["Empresa", "Integrantes", "Progresso (aprovados)", "O que falta"];
     const larguras = [180, 260, 120, 420];
     const linhas = dadosFiltrados.map(({ equipe, calc, progressoAprovado }) => {
-      const nomesFaltando = MODULOS.filter((_, i) => !calc.preenchidos?.[i]).map((m) => `${m.n}. ${m.nome}`);
+      const modulosFaltando = MODULOS.filter((_, i) => !calc.preenchidos?.[i]);
+      const gruposFaltando = agruparModulosPorBloco(modulosFaltando);
+      const textoFaltando = gruposFaltando
+        .map((g) => {
+          const itens = g.modulos.map((m) => `${m.n}. ${m.nome}`).join(", ");
+          return g.etapa ? `${g.etapa}: ${itens}` : itens;
+        })
+        .join("  |  ");
       return [
         equipe.nomeNegocio,
         equipe.integrantes.join(", ") || "sem integrantes",
         `${progressoAprovado}%`,
-        nomesFaltando.length === 0 ? "Completo" : nomesFaltando.join(", "),
+        modulosFaltando.length === 0 ? "Completo" : textoFaltando,
       ];
     });
     const canvas = gerarImagemTabela({
@@ -6565,7 +6648,8 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
               </thead>
               <tbody>
                 {dadosFiltrados.map(({ equipe, calc, progressoAprovado }) => {
-                  const nomesFaltando = MODULOS.filter((_, i) => !calc.preenchidos?.[i]).map((m) => `${m.n}. ${m.nome}`);
+                  const modulosFaltando = MODULOS.filter((_, i) => !calc.preenchidos?.[i]);
+                  const gruposFaltando = agruparModulosPorBloco(modulosFaltando);
                   return (
                     <tr key={equipe.id} className="border-b border-slate-800">
                       <td className="py-2 px-4 font-semibold text-slate-100">{equipe.nomeNegocio}</td>
@@ -6577,9 +6661,18 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
                         </div>
                       </td>
                       <td className="py-2 px-4 text-xs text-slate-400 max-w-xs">
-                        {nomesFaltando.length === 0
+                        {modulosFaltando.length === 0
                           ? <span className="text-emerald-400 flex items-center gap-1"><CheckCircle2 size={13} /> Completo</span>
-                          : nomesFaltando.join(", ")}
+                          : (
+                            <div className="space-y-1.5">
+                              {gruposFaltando.map((g, gi) => (
+                                <div key={gi}>
+                                  {g.etapa && <div className="text-[10px] font-semibold text-slate-500">{g.etapa}</div>}
+                                  <div>{g.modulos.map((m) => `${m.n}. ${m.nome}`).join(", ")}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                       </td>
                     </tr>
                   );

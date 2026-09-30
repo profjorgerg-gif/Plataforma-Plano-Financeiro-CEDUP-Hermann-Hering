@@ -6697,6 +6697,13 @@ function RelatorioNotas({ turma, dadosEquipes }) {
   if (dadosEquipes.length === 0) return <Card className="p-8 text-center text-slate-500">Nenhuma empresa nesta turma ainda.</Card>;
 
   const modulosColuna = MODULOS.filter((m) => NOTA_MODULOS_AVALIAVEIS.includes(m.id) || m.id === NOTA_MODULO_FINAL);
+  // Agrupa as colunas de módulo por Bloco do cronograma (mesmo mapa já usado
+  // no cronograma e no "Progresso das empresas"), para o cabeçalho em duas
+  // linhas — é só uma camada visual a mais sobre as mesmas colunas de hoje.
+  const gruposNotas = [
+    ...agruparModulosPorBloco(modulosColuna).map((g) => ({ bloco: g.etapa, colSpan: g.modulos.length })),
+    { bloco: null, colSpan: 3 },
+  ];
 
   const linhas = [];
   dadosEquipes.forEach(({ equipe, dados }) => {
@@ -6744,12 +6751,19 @@ function RelatorioNotas({ turma, dadosEquipes }) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[900px]">
             <thead>
+              <tr className="text-left text-xs uppercase text-slate-500 bg-slate-900/40">
+                <th className="py-2 px-3 align-bottom" rowSpan={2}>Aluno</th>
+                <th className="py-2 px-3 align-bottom" rowSpan={2}>Empresa</th>
+                {gruposNotas.map((g, gi) => (
+                  <th key={gi} colSpan={g.colSpan} className={`py-1 px-2 text-center text-[10px] font-semibold border-b border-slate-700 normal-case ${g.bloco ? "text-emerald-500" : "text-slate-600"}`}>
+                    {g.bloco || "Etapas finais"}
+                  </th>
+                ))}
+              </tr>
               <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40">
-                <th className="py-2 px-3">Aluno</th>
-                <th className="py-2 px-3">Empresa</th>
                 {modulosColuna.map((m) => <th key={m.id} className="py-2 px-2 text-center" title={m.nome}>M{m.n}</th>)}
                 <th className="py-2 px-2 text-center">Cen./Fluxo</th>
-                <th className="py-2 px-2 text-center">Apres.</th>
+                <th className="py-2 px-2 text-center">App-PPF</th>
                 <th className="py-2 px-3 text-center">Final</th>
               </tr>
             </thead>

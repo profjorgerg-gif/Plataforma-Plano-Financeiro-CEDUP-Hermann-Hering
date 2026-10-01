@@ -4568,7 +4568,34 @@ function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrec
   );
 }
 
-function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes, onReabrirPosCorrecao, prazoCronograma }) {
+// Mostra ao professor, dentro de "Navegar pelos módulos", exatamente a mesma
+// orientação (Teoria do módulo + Exemplo de lançamento, já com o exemplo por
+// segmento quando a empresa tiver um definido) que a equipe vê do lado dela —
+// reaproveitando os mesmos componentes usados no workspace do aluno. É só
+// leitura: fechado por padrão, não grava nem altera nada.
+function OrientacaoAlunoParaProfessor({ modId, segmento }) {
+  const [open, setOpen] = useState(false);
+  if (!TEORIA[modId] && !GUIA_MODULOS_EXTRA[modId]) return null;
+  return (
+    <div className="mt-4 border border-violet-800/50 rounded-lg overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold text-violet-300 bg-violet-950/20 hover:bg-violet-950/30 transition"
+      >
+        <span className="flex items-center gap-2"><BookOpen size={15} /> Orientação que a equipe vê neste módulo</span>
+        {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+      </button>
+      {open && (
+        <div className="p-3 bg-slate-900/40">
+          <TeoriaBox modId={modId} aberta />
+          <ExemploLancamentoBox modId={modId} aberta segmento={segmento} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes, onReabrirPosCorrecao, prazoCronograma, segmento }) {
   const Icon = m.icon;
   const comentariosModulo = (comentarios || []).filter((c) => c.modulo === `Módulo ${m.n}`);
   const avaliavel = NOTA_MODULOS_AVALIAVEIS.includes(m.id);
@@ -4596,6 +4623,7 @@ function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentario
       {aberto && (
         <div className="px-4 pb-4 border-t border-slate-800">
           <PainelFluxoModulo estado={estado} ultimoModulo={ultimoModulo} onSetPrazo={onSetPrazo} onConfirmarCorrecao={onConfirmarCorrecao} onReabrir={onReabrir} onRestaurarPrazoAutomatico={onRestaurarPrazoAutomatico} onDevolverAjustes={onDevolverAjustes} onReabrirPosCorrecao={onReabrirPosCorrecao} nota={nota} prazoCronograma={prazoCronograma} />
+          <OrientacaoAlunoParaProfessor modId={m.id} segmento={segmento} />
           <div className="pt-4"><ModuloLeitura mId={m.id} lanc={lanc} calc={calc} /></div>
           {(avaliavel || ehFinal) && <NotaModulo nota={nota} onSetNota={onSetNota} ehFinal={ehFinal} />}
           <ComentariosPanel
@@ -4849,6 +4877,7 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
               onDevolverAjustes={(feedback) => devolverParaAjustes(m.id, feedback)}
               onReabrirPosCorrecao={(motivo) => reabrirParaAjustesPosCorrecao(m.id, motivo)}
               prazoCronograma={prazoCronogramaDoModulo(m.id)}
+              segmento={equipe?.segmento}
             />
           ))}
         </div>

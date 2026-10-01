@@ -13,7 +13,7 @@ import {
   Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
   ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
   LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows, Monitor, FileDown, Info, Library,
-  Calendar, RefreshCw, Undo2, CircleDot, Inbox, LogIn, Users2, ImageDown, Sparkles, Link2,
+  Calendar, RefreshCw, Undo2, CircleDot, Inbox, LogIn, Users2, ImageDown, Sparkles, Link2, Tag,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
@@ -199,8 +199,53 @@ const SEGMENTOS_NEGOCIO = [
   "Estética / beleza",
   "Moda / brechó",
   "Sorveteria",
+  "Papelaria / livraria",
+  "Pet shop",
+  "Academia / estúdio fitness",
+  "Loja de conveniência / mercadinho",
+  "Oficina mecânica / autopeças",
+  "Salão de festas / eventos",
+  "Lavanderia",
+  "Floricultura",
   "Outro / genérico",
 ];
+
+// Descrição curta das características típicas de cada segmento — usada na
+// tela do aluno "Segmento do negócio" para ajudar a equipe a se identificar
+// com a opção certa antes de escolher. Só os 5 primeiros segmentos (+ "Outro
+// / genérico") têm conteúdo "inteligente" completo (orientação por módulo,
+// exemplo de lançamento e itens sugeridos); os demais usam o conteúdo
+// genérico até serem escritos em um lote futuro (combinado em 2026-10-01).
+const SEGMENTO_CARACTERISTICAS = {
+  "Restaurante / lanchonete": "Preparo e venda de refeições/lanches no local ou para viagem, com cozinha, salão de atendimento e expedição.",
+  "Padaria / confeitaria": "Produção própria de pães, bolos e doces, com forno e vitrine de exposição dos produtos.",
+  "Estética / beleza": "Serviços de beleza e bem-estar (cabelo, estética facial/corporal, unhas), com maca/cadeira profissional.",
+  "Moda / brechó": "Venda de roupas, calçados ou acessórios novos ou usados, com araras, provador e vitrine.",
+  "Sorveteria": "Venda de sorvetes, açaí ou sobremesas geladas, com freezers e balcão de atendimento.",
+  "Papelaria / livraria": "Venda de materiais escolares, de escritório e livros, com prateleiras e expositor.",
+  "Pet shop": "Venda de produtos para animais e/ou serviços de banho e tosa, com espaço para atendimento dos pets.",
+  "Academia / estúdio fitness": "Prestação de serviços de atividade física, com equipamentos e espaço de treino.",
+  "Loja de conveniência / mercadinho": "Venda de produtos variados do dia a dia, com prateleiras, geladeiras e caixa.",
+  "Oficina mecânica / autopeças": "Manutenção de veículos e/ou venda de peças, com ferramentas e elevador/bancada.",
+  "Salão de festas / eventos": "Locação de espaço e organização de festas/eventos, com estrutura para montagem e recepção.",
+  "Lavanderia": "Lavagem e passagem de roupas, com máquinas de lavar/secar industriais.",
+  "Floricultura": "Venda de flores, plantas e arranjos, com câmara fria ou expositor refrigerado.",
+  "Outro / genérico": "Nenhuma das opções acima descreve bem o seu negócio — use esta opção e detalhe nos lançamentos.",
+};
+
+// Uma empresa é considerada com segmento aprovado quando: (a) o professor
+// marcou explicitamente segmentoStatus "aprovado" (aprovação manual, ou
+// edição direta do professor no card, que já aprova automaticamente); ou
+// (b) tem um segmento definido e NUNCA passou pelo novo fluxo de aprovação
+// (segmentoStatus ainda não existe) — isso cobre, sem precisar de nenhuma
+// migração de dados, todas as empresas que já tinham segmento atribuído
+// antes desta atualização (2026-10-01), preservando exatamente o
+// comportamento que elas já tinham.
+function segmentoAprovado(equipe) {
+  if (!equipe?.segmento) return false;
+  if (equipe.segmentoStatus === "pendente") return false;
+  return true;
+}
 
 // Conteúdo de exemplo específico por módulo + segmento — preenchido aos
 // poucos, em lotes revisados com o professor (combinado em 2026-09-30).
@@ -3897,7 +3942,117 @@ function CronogramaAlunoView({ turmaId }) {
   );
 }
 
-function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades }) {
+// Tela da equipe para escolher/trocar o segmento do negócio (combinado com o
+// professor em 2026-10-01). A escolha fica pendente de aprovação até o
+// professor confirmar — mas as orientações, exemplos e sugestões de itens já
+// usam a escolha normalmente nesse meio tempo (ver segmentoAprovado()), para
+// a equipe não ficar travada esperando.
+function SegmentoNegocioView({ equipe, onAtualizarEquipe, souVisualizador }) {
+  const status = equipe.segmentoStatus;
+  const precisaEscolher = !equipe.segmento || status === "reconsiderar";
+  const [selecionado, setSelecionado] = useState(equipe.segmento || "");
+  const [editando, setEditando] = useState(precisaEscolher);
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    setSelecionado(equipe.segmento || "");
+    setEditando(!equipe.segmento || equipe.segmentoStatus === "reconsiderar");
+  }, [equipe.id, equipe.segmento, equipe.segmentoStatus]);
+
+  const confirmarEscolha = async () => {
+    if (!selecionado || !onAtualizarEquipe || souVisualizador) return;
+    setSalvando(true);
+    try {
+      await onAtualizarEquipe({
+        segmento: selecionado,
+        segmentoStatus: "pendente",
+        segmentoObservacao: null,
+        segmentoAprovadoEm: null,
+      });
+      setEditando(false);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  if (editando) {
+    return (
+      <div>
+        <SectionTitle icon={Tag} sub="Escolha a opção que melhor descreve o negócio da sua equipe. Isso ajuda a plataforma a sugerir itens, exemplos e orientações mais próximos da realidade de vocês. Depois de escolher, o(a) professor(a) vai revisar e aprovar.">
+          Qual é o segmento do seu negócio?
+        </SectionTitle>
+        {status === "reconsiderar" && equipe.segmentoObservacao && (
+          <div className="mb-4 bg-amber-950/30 border border-amber-800/50 rounded-lg p-3 text-sm text-amber-200 flex items-start gap-2">
+            <RotateCcw size={16} className="mt-0.5 shrink-0 text-amber-400" />
+            <div><b>O(a) professor(a) pediu para reconsiderar a escolha anterior:</b><div className="mt-1">{equipe.segmentoObservacao}</div></div>
+          </div>
+        )}
+        <div className="grid sm:grid-cols-2 gap-3">
+          {SEGMENTOS_NEGOCIO.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setSelecionado(s)}
+              className={`text-left border rounded-lg p-3 transition ${selecionado === s ? "border-amber-500 bg-amber-950/20 ring-1 ring-amber-500/40" : "border-slate-700 bg-slate-900 hover:border-slate-600"}`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 ${selecionado === s ? "border-amber-500 bg-amber-500" : "border-slate-600"}`} />
+                <span className="text-sm font-bold text-slate-100">{s}</span>
+              </div>
+              <div className="text-xs text-slate-400 ml-6">{SEGMENTO_CARACTERISTICAS[s]}</div>
+            </button>
+          ))}
+        </div>
+        <div className="flex justify-end mt-5">
+          <button
+            onClick={confirmarEscolha}
+            disabled={!selecionado || salvando || souVisualizador}
+            className="bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-sm font-bold rounded-lg px-5 py-2.5"
+          >
+            {salvando ? "Salvando…" : "Confirmar escolha"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const aprovadoLegado = !!equipe.segmento && status === undefined;
+  const aprovado = status === "aprovado" || aprovadoLegado;
+
+  return (
+    <div>
+      <SectionTitle icon={Tag} sub="O segmento escolhido ajuda a plataforma a sugerir itens, exemplos e orientações mais próximos da realidade do negócio de vocês.">
+        Segmento do negócio
+      </SectionTitle>
+      {status === "pendente" && (
+        <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-amber-400 bg-amber-950/30 border border-amber-800/50 rounded-lg px-3 py-2 w-fit">
+          <Clock size={15} /> Aguardando aprovação do(a) professor(a)
+        </div>
+      )}
+      {aprovado && (
+        <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-emerald-400 bg-emerald-950/30 border border-emerald-800/50 rounded-lg px-3 py-2 w-fit">
+          <CheckCircle2 size={15} /> Segmento aprovado{equipe.segmentoAprovadoEm ? ` em ${fmtData(equipe.segmentoAprovadoEm)}` : ""}
+        </div>
+      )}
+      <Card className="p-4 flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <div className="text-sm font-bold text-slate-100">{equipe.segmento}</div>
+          <div className="text-xs text-slate-400 mt-0.5">{SEGMENTO_CARACTERISTICAS[equipe.segmento]}</div>
+        </div>
+        {!souVisualizador && (
+          <button onClick={() => setEditando(true)} className="text-xs font-semibold text-amber-400 border border-amber-800/60 rounded-md px-3 py-1.5 hover:bg-amber-950/30">
+            {status === "pendente" ? "Alterar escolha" : "Solicitar alteração"}
+          </button>
+        )}
+      </Card>
+      {status === "pendente" && (
+        <p className="text-xs text-slate-500 mt-3">Enquanto estiver pendente, vocês ainda podem trocar a escolha livremente. As sugestões de itens e orientações por segmento já usam essa escolha normalmente — a aprovação é só a confirmação do(a) professor(a).</p>
+      )}
+    </div>
+  );
+}
+
+function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades, onAtualizarEquipe }) {
   const [dados, setDados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
   const [aba, setAba] = useState("inicio");
   const [menuAberto, setMenuAberto] = useState(false);
@@ -4009,6 +4164,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   const menuItems = [
     { id: "manual", label: "Manual do Aluno", icon: BookOpen, num: "00" },
     { id: "inicio", label: "Início", icon: LayoutDashboard, num: null },
+    { id: "segmento", label: "Segmento do negócio", icon: Tag, num: null },
     { id: "cronograma", label: "Cronograma do projeto", icon: Calendar, num: null },
     ...MODULOS.map((m) => ({ id: m.id, label: m.nome, icon: m.icon, num: String(m.n).padStart(2, "0"), moduloStatus: estadoModulo(fluxo, m.id).status })),
     { id: "analise", label: "Análise do Negócio", icon: TrendingUp, num: null },
@@ -4164,6 +4320,8 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
         {aba === "manual" && <ManualAlunoView equipe={equipe} onIrPara={setAba} />}
 
         {aba === "cronograma" && <CronogramaAlunoView turmaId={turmaId} />}
+
+        {aba === "segmento" && <SegmentoNegocioView equipe={equipe} onAtualizarEquipe={onAtualizarEquipe} souVisualizador={souVisualizador} />}
 
         {aba === "inicio" && (
           <div>
@@ -6339,9 +6497,30 @@ function TurmaDetail({ turma, onVoltar, professorNome, alvoCorrecao }) {
     await setEquipes(equipes.map((e) => (e.id === equipe.id ? { ...e, nomeNegocio: novoNome } : e)));
   };
 
+  // Professor edita/corrige o segmento direto no card: conta como aprovação
+  // automática (combinado em 2026-10-01) — evita um vai-e-vem desnecessário
+  // quando o próprio professor já está corrigindo a escolha da equipe.
   const definirSegmentoEmpresa = async (equipe, segmento) => {
-    await setEquipes(equipes.map((e) => (e.id === equipe.id ? { ...e, segmento } : e)));
+    await setEquipes(equipes.map((e) => (e.id === equipe.id
+      ? { ...e, segmento, segmentoStatus: segmento ? "aprovado" : null, segmentoAprovadoEm: segmento ? Date.now() : null, segmentoObservacao: null }
+      : e)));
   };
+
+  const aprovarSegmento = async (equipe) => {
+    await setEquipes(equipes.map((e) => (e.id === equipe.id
+      ? { ...e, segmentoStatus: "aprovado", segmentoAprovadoEm: Date.now(), segmentoObservacao: null }
+      : e)));
+  };
+
+  const pedirReconsiderarSegmento = async (equipe) => {
+    const observacao = (prompt(`Por que "${equipe.segmento}" não parece o segmento certo para a "${equipe.nomeNegocio}"? Essa explicação vai ajudar a equipe a escolher melhor:`) || "").trim();
+    if (!observacao) return;
+    await setEquipes(equipes.map((e) => (e.id === equipe.id
+      ? { ...e, segmentoStatus: "reconsiderar", segmentoObservacao: observacao, segmentoAprovadoEm: null }
+      : e)));
+  };
+
+  const equipesAguardandoSegmento = (equipes || []).filter((e) => e.segmentoStatus === "pendente");
 
   const excluirEmpresa = async (equipe) => {
     const ok = window.confirm(
@@ -6365,6 +6544,29 @@ function TurmaDetail({ turma, onVoltar, professorNome, alvoCorrecao }) {
       </div>
 
       <PainelRoster turmaId={turma.id} turmaNome={turma.nome} professorUid={turma.professorUid} professorNome={turma.professor} />
+
+      {equipesAguardandoSegmento.length > 0 && (
+        <Card className="p-4 border-amber-800/50">
+          <div className="flex items-center gap-2 text-sm font-bold text-amber-400 mb-3">
+            <Clock size={16} /> {equipesAguardandoSegmento.length} equipe(s) escolheram o segmento do negócio e aguardam sua aprovação
+          </div>
+          <div className="space-y-2">
+            {equipesAguardandoSegmento.map((eq) => (
+              <div key={eq.id} className="flex items-center justify-between gap-3 flex-wrap bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5">
+                <div>
+                  <div className="text-sm font-bold text-slate-100">{eq.nomeNegocio}</div>
+                  <div className="text-xs text-slate-500">{(eq.integrantes || []).join(", ") || "sem integrantes"}</div>
+                  <div className="text-xs font-semibold text-amber-400 mt-1">🏷️ Escolheu: {eq.segmento}</div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => aprovarSegmento(eq)} className="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-md px-3 py-1.5">✓ Aprovar</button>
+                  <button onClick={() => pedirReconsiderarSegmento(eq)} className="text-xs font-bold text-rose-300 border border-rose-900/60 hover:bg-rose-950/30 rounded-md px-3 py-1.5">Pedir para reconsiderar</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <Card className="p-4">
         <SectionTitle icon={Building2} sub="Cadastre aqui os nomes das empresas/negócios da turma — os alunos escolherão entre elas ao entrar (em vez de digitar um nome livre).">
@@ -6456,7 +6658,18 @@ function EquipeCard({ equipe, onClick, onRenomear, onExcluir, onSetSegmento }) {
       </button>
       {onSetSegmento && (
         <div className="px-4 pb-4 -mt-1" onClick={(e) => e.stopPropagation()}>
-          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Segmento do negócio</label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">Segmento do negócio</label>
+            {equipe.segmentoStatus === "pendente" && (
+              <span className="text-[9.5px] font-bold text-amber-400 bg-amber-950/40 border border-amber-800/50 rounded-full px-2 py-0.5">⏳ Aguardando aprovação</span>
+            )}
+            {equipe.segmentoStatus === "reconsiderar" && (
+              <span className="text-[9.5px] font-bold text-rose-300 bg-rose-950/40 border border-rose-800/50 rounded-full px-2 py-0.5">Pediu para reconsiderar</span>
+            )}
+            {(equipe.segmentoStatus === "aprovado" || (equipe.segmento && equipe.segmentoStatus === undefined)) && (
+              <span className="text-[9.5px] font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-800/50 rounded-full px-2 py-0.5">✓ Aprovado</span>
+            )}
+          </div>
           <select
             value={equipe.segmento || ""}
             onChange={(e) => onSetSegmento(e.target.value)}
@@ -6465,6 +6678,7 @@ function EquipeCard({ equipe, onClick, onRenomear, onExcluir, onSetSegmento }) {
             <option value="">— não definido —</option>
             {SEGMENTOS_NEGOCIO.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
+          <div className="text-[10px] text-slate-500 mt-1">Editar aqui corrige a escolha da equipe e já aprova automaticamente.</div>
         </div>
       )}
     </div>
@@ -8277,9 +8491,18 @@ function EscolherEmpresa({ perfil, turmaId, turmaNome, onSair, onEscolhida }) {
 }
 
 function AlunoWorkspaceCarregado({ userSessao, turmaId, equipeId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades }) {
-  const equipe = useEquipeSalva(turmaId, equipeId);
+  // Trocado de useEquipeSalva (leitura única) para useSharedList: a equipe
+  // precisa de um jeito de gravar sua própria escolha de segmento de volta
+  // na mesma lista `equipes_{turmaId}` que a tela da turma usa — sem isso,
+  // não haveria como persistir a escolha feita pelo aluno.
+  const [equipes, setEquipes] = useSharedList(`equipes_${turmaId}`);
+  if (equipes === null) return <LoadingScreen />;
+  const equipe = equipes.find((e) => e.id === equipeId);
   if (!equipe) return <LoadingScreen />;
-  return <AlunoWorkspace user={userSessao} equipe={equipe} equipeKey={`dados_equipe_${equipe.id}`} turmaId={turmaId} onSair={onSair} onTrocarEmpresa={() => onTrocarEmpresa(equipe)} professorUid={professorUid} professorNome={professorNome} turmaNome={turmaNome} ultimaVersaoVista={ultimaVersaoVista} onVerNovidades={onVerNovidades} />;
+  const atualizarEquipe = async (patch) => {
+    await setEquipes(equipes.map((e) => (e.id === equipeId ? { ...e, ...patch } : e)));
+  };
+  return <AlunoWorkspace user={userSessao} equipe={equipe} equipeKey={`dados_equipe_${equipe.id}`} turmaId={turmaId} onSair={onSair} onTrocarEmpresa={() => onTrocarEmpresa(equipe)} professorUid={professorUid} professorNome={professorNome} turmaNome={turmaNome} ultimaVersaoVista={ultimaVersaoVista} onVerNovidades={onVerNovidades} onAtualizarEquipe={atualizarEquipe} />;
 }
 
 function AlunoRoteador({ perfil, onSair, onVirarProfessor }) {

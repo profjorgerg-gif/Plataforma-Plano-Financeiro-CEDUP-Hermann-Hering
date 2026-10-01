@@ -234,6 +234,45 @@ const ORIENTACAO_SEGMENTO = {
   },
 };
 
+// Itens sugeridos por segmento, para os módulos onde a equipe tem mais
+// dificuldade de saber "o que lançar" (Módulos 1, 3, 5 e 11). É só uma lista
+// de nomes prontos (sem quantidade/valor) que a equipe pode aceitar, editar
+// ou excluir — nunca escreve nada sozinho, só oferece quando a equipe clica
+// no botão "Sugerir itens". Combinado com o professor em 2026-10-01; o
+// Módulo 6 (Custo Unit. Matéria-Prima) fica para um lote futuro.
+const ITENS_SUGERIDOS_M1 = {
+  "Restaurante / lanchonete": ["Fogão industrial", "Freezer", "Geladeira/expositor", "Fritadeira", "Exaustor/coifa", "Balcão de atendimento", "Mesas e cadeiras", "Kit de utensílios de cozinha"],
+  "Padaria / confeitaria": ["Forno industrial", "Batedeira planetária", "Balcão de vitrine para doces", "Bancada de inox", "Freezer/expositor refrigerado", "Kit de utensílios de panificação"],
+  "Estética / beleza": ["Maca de atendimento", "Cadeira hidráulica", "Espelho com iluminação", "Carrinho auxiliar", "Esterilizadora", "Sofá/recepção"],
+  "Moda / brechó": ["Araras de roupas", "Provador com espelho", "Balcão/caixa", "Cabides", "Manequim", "Leitor de código de barras"],
+  "Sorveteria": ["Freezer/expositor de sorvete", "Balcão de atendimento", "Mesas e cadeiras", "Kit de utensílios (colheres, potes)"],
+  "Outro / genérico": ["Balcão de atendimento", "Computador/sistema de vendas", "Móveis básicos"],
+};
+
+const ITENS_SUGERIDOS_M3 = {
+  "Restaurante / lanchonete": ["Instalação da coifa e sistema de exaustão", "Adequações de prevenção e combate a incêndio (CBMSC)", "Elaboração e diagramação do cardápio", "Divulgação de inauguração", "Licenças, alvarás e vistorias"],
+  "Padaria / confeitaria": ["Reforma e adequação da área de produção", "Sistema de ventilação e exaustão", "Desenvolvimento de embalagens e rótulos", "Licenças e alvarás para abertura", "Controle inicial de pragas"],
+  "Estética / beleza": ["Curso de capacitação/atualização técnica", "Licença de funcionamento e vigilância sanitária", "Divulgação de inauguração", "Criação da identidade visual"],
+  "Moda / brechó": ["Criação da identidade visual e fachada", "Divulgação de inauguração", "Pequenos reparos no espaço"],
+  "Sorveteria": ["Licenças e vigilância sanitária", "Instalação elétrica para freezers", "Divulgação de inauguração"],
+  "Outro / genérico": ["Registro/legalização da empresa", "Divulgação de lançamento", "Pequenos reparos iniciais"],
+};
+
+// Módulo 11 varia pouco por segmento — mesma lista para todas as empresas.
+const ITENS_SUGERIDOS_M11 = ["Aluguel", "Água", "Energia elétrica", "Internet", "Contador"];
+
+// Módulo 5: aqui "item" é o próprio produto/serviço vendido, então em vez de
+// nomes de produtos (muito específicos de cada negócio), sugerimos categorias
+// de produto/serviço típicas do segmento, para a equipe detalhar.
+const CATEGORIAS_SUGERIDAS_M5 = {
+  "Restaurante / lanchonete": ["Pratos principais", "Lanches", "Bebidas", "Sobremesas"],
+  "Padaria / confeitaria": ["Pães", "Bolos e doces", "Salgados", "Bebidas"],
+  "Estética / beleza": ["Serviços de cabelo", "Serviços de unha", "Serviços estéticos", "Produtos para revenda"],
+  "Moda / brechó": ["Roupas femininas", "Roupas masculinas", "Acessórios", "Calçados"],
+  "Sorveteria": ["Sorvetes/açaí", "Sobremesas geladas", "Bebidas", "Complementos"],
+  "Outro / genérico": ["Produto/serviço principal", "Produto/serviço complementar"],
+};
+
 const uid = () => Math.random().toString(36).slice(2, 10);
 const codigoTurma = () => Math.random().toString(36).slice(2, 8).toUpperCase();
 
@@ -2247,6 +2286,23 @@ function AddBtn({ onClick, children }) {
   );
 }
 
+// Botão "Sugerir itens para [segmento]" — só aparece quando a empresa tem um
+// Segmento definido e ainda há pelo menos uma sugestão que ela não tem na
+// lista (compara pela descrição, sem diferenciar maiúsculas/acentos de
+// espaço). Ao clicar, só ACRESCENTA as sugestões que faltam — nunca altera,
+// remove ou duplica o que a equipe já lançou.
+function SugerirItensBtn({ segmento, onSugerir }) {
+  if (!segmento) return null;
+  return (
+    <button
+      onClick={onSugerir}
+      className="flex items-center gap-1.5 text-sm font-semibold text-teal-300 bg-teal-950/20 border border-teal-800/50 rounded-md px-3 py-1.5 hover:bg-teal-950/40 transition mt-2 mr-2"
+    >
+      <Sparkles size={15} /> Sugerir itens para {segmento}
+    </button>
+  );
+}
+
 // ============================================================================
 // FORMULÁRIOS DE CADA MÓDULO
 // ============================================================================
@@ -2260,7 +2316,7 @@ const CATEGORIAS_BEM_PADRAO = [
   "Ferramentas", "Utensílios", "Instalações/Reformas", "Outros",
 ];
 
-function M1Form({ data, update }) {
+function M1Form({ data, update, segmento }) {
   const itens = data.itens;
   const setItens = (next) => update({ ...data, itens: next });
   const total = itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.valorUnit) || 0), 0);
@@ -2269,6 +2325,13 @@ function M1Form({ data, update }) {
   // tenham sido usadas nesta lista de bens, para elas aparecerem no seletor.
   const categoriasUsadas = itens.map((it) => it.categoria).filter(Boolean);
   const categorias = [...new Set([...CATEGORIAS_BEM_PADRAO, ...categoriasUsadas])];
+
+  const descsExistentes = new Set(itens.map((it) => (it.desc || "").trim().toLowerCase()));
+  const sugestoesFaltando = (segmento && ITENS_SUGERIDOS_M1[segmento] || []).filter((s) => !descsExistentes.has(s.toLowerCase()));
+  const sugerirItens = () => {
+    if (!sugestoesFaltando.length) return;
+    setItens([...itens, ...sugestoesFaltando.map((desc) => ({ id: uid(), desc, categoria: "Máquinas", qtd: null, valorUnit: null }))]);
+  };
 
   const alterarCategoria = (itemId, valor) => {
     if (valor === "__nova__") {
@@ -2313,7 +2376,10 @@ function M1Form({ data, update }) {
           </tbody>
         </table>
       </div>
-      <AddBtn onClick={() => setItens([...itens, { id: uid(), desc: "", categoria: "Máquinas", qtd: 1, valorUnit: 0 }])}>Adicionar bem</AddBtn>
+      <div className="flex flex-wrap items-center">
+        <AddBtn onClick={() => setItens([...itens, { id: uid(), desc: "", categoria: "Máquinas", qtd: 1, valorUnit: 0 }])}>Adicionar bem</AddBtn>
+        {sugestoesFaltando.length > 0 && <SugerirItensBtn segmento={segmento} onSugerir={sugerirItens} />}
+      </div>
       <div className="mt-4 text-right">
         <StatCard label="Total dos Investimentos Fixos" value={fmtBRL(total)} tone="blue" />
       </div>
@@ -2349,10 +2415,18 @@ function M2Form({ data, update, calc }) {
   );
 }
 
-function M3Form({ data, update }) {
+function M3Form({ data, update, segmento }) {
   const itens = data.itens;
   const setItens = (next) => update({ ...data, itens: next });
   const total = itens.reduce((s, it) => s + (Number(it.valor) || 0), 0);
+
+  const descsExistentes = new Set(itens.map((it) => (it.desc || "").trim().toLowerCase()));
+  const sugestoesFaltando = (segmento && ITENS_SUGERIDOS_M3[segmento] || []).filter((s) => !descsExistentes.has(s.toLowerCase()));
+  const sugerirItens = () => {
+    if (!sugestoesFaltando.length) return;
+    setItens([...itens, ...sugestoesFaltando.map((desc) => ({ id: uid(), desc, valor: null }))]);
+  };
+
   return (
     <div>
       {itens.map((it) => (
@@ -2362,7 +2436,10 @@ function M3Form({ data, update }) {
           <RemoveBtn onClick={() => setItens(itens.filter((r) => r.id !== it.id))} />
         </div>
       ))}
-      <AddBtn onClick={() => setItens([...itens, { id: uid(), desc: "", valor: 0 }])}>Adicionar despesa pré-operacional</AddBtn>
+      <div className="flex flex-wrap items-center">
+        <AddBtn onClick={() => setItens([...itens, { id: uid(), desc: "", valor: 0 }])}>Adicionar despesa pré-operacional</AddBtn>
+        {sugestoesFaltando.length > 0 && <SugerirItensBtn segmento={segmento} onSugerir={sugerirItens} />}
+      </div>
       <div className="mt-4 text-right"><StatCard label="Total de Investimentos Pré-Operacionais" value={fmtBRL(total)} tone="blue" /></div>
     </div>
   );
@@ -2442,10 +2519,16 @@ function M4Form({ data, update, calc }) {
   );
 }
 
-function M5Form({ data, update }) {
+function M5Form({ data, update, segmento }) {
   const itens = data.itens;
   const setItens = (next) => update({ ...data, itens: next });
   const total = itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.precoUnit) || 0), 0);
+  const nomesExistentes = new Set(itens.map((it) => (it.nome || "").trim().toLowerCase()));
+  const sugestoesFaltando = (segmento && CATEGORIAS_SUGERIDAS_M5[segmento] || []).filter((s) => !nomesExistentes.has(s.toLowerCase()));
+  const sugerirItens = () => {
+    if (!sugestoesFaltando.length) return;
+    setItens([...itens, ...sugestoesFaltando.map((nome) => ({ id: uid(), nome, qtd: null, precoUnit: null }))]);
+  };
   return (
     <div>
       <div className="overflow-x-auto">
@@ -2472,7 +2555,10 @@ function M5Form({ data, update }) {
           </tbody>
         </table>
       </div>
-      <AddBtn onClick={() => setItens([...itens, { id: uid(), nome: "", qtd: 1, precoUnit: 0 }])}>Adicionar produto/serviço</AddBtn>
+      <div className="flex flex-wrap items-center">
+        <AddBtn onClick={() => setItens([...itens, { id: uid(), nome: "", qtd: 1, precoUnit: 0 }])}>Adicionar produto/serviço</AddBtn>
+        {sugestoesFaltando.length > 0 && <SugerirItensBtn segmento={segmento} onSugerir={sugerirItens} />}
+      </div>
       <div className="mt-4 text-right"><StatCard label="Faturamento Total Mensal" value={fmtBRL(total)} tone="blue" /></div>
     </div>
   );
@@ -2877,11 +2963,17 @@ function M10Form({ data, update, m1itens, depreciacaoLinhas, depreciacaoMensal }
   );
 }
 
-function M11Form({ data, update, maoDeObra, depreciacaoMensal }) {
+function M11Form({ data, update, maoDeObra, depreciacaoMensal, segmento }) {
   const itens = data.itens;
   const setItens = (next) => update({ ...data, itens: next });
   const totalManual = itens.reduce((s, it) => s + (Number(it.valor) || 0), 0);
   const total = totalManual + maoDeObra + depreciacaoMensal;
+  const descsExistentes = new Set(itens.map((it) => (it.desc || "").trim().toLowerCase()));
+  const sugestoesFaltando = (segmento ? ITENS_SUGERIDOS_M11 : []).filter((s) => !descsExistentes.has(s.toLowerCase()));
+  const sugerirItens = () => {
+    if (!sugestoesFaltando.length) return;
+    setItens([...itens, ...sugestoesFaltando.map((desc) => ({ id: uid(), desc, valor: null }))]);
+  };
   return (
     <div>
       {itens.map((it) => (
@@ -2891,7 +2983,10 @@ function M11Form({ data, update, maoDeObra, depreciacaoMensal }) {
           <RemoveBtn onClick={() => setItens(itens.filter((r) => r.id !== it.id))} />
         </div>
       ))}
-      <AddBtn onClick={() => setItens([...itens, { id: uid(), desc: "", valor: 0 }])}>Adicionar custo fixo</AddBtn>
+      <div className="flex flex-wrap items-center">
+        <AddBtn onClick={() => setItens([...itens, { id: uid(), desc: "", valor: 0 }])}>Adicionar custo fixo</AddBtn>
+        {sugestoesFaltando.length > 0 && <SugerirItensBtn segmento={segmento} onSugerir={sugerirItens} />}
+      </div>
       <table className="w-full text-sm mt-4">
         <tbody>
           <tr className="border-t border-slate-700"><td className="py-2 text-slate-400">Mão de obra (Módulo 9) — automático</td><td className="py-2 text-right">{fmtBRL(maoDeObra)}</td></tr>
@@ -4182,17 +4277,17 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
             )}
 
             <Card className={`p-5 ${(souVisualizador || !podeEditar) ? "opacity-70 pointer-events-none select-none" : ""}`}>
-              {m.id === "m1" && <M1Form data={lanc.m1} update={(v) => updateModulo("m1", v)} />}
+              {m.id === "m1" && <M1Form data={lanc.m1} update={(v) => updateModulo("m1", v)} segmento={equipe?.segmento} />}
               {m.id === "m2" && <M2Form data={lanc.m2} update={(v) => updateModulo("m2", v)} calc={calc} />}
-              {m.id === "m3" && <M3Form data={lanc.m3} update={(v) => updateModulo("m3", v)} />}
+              {m.id === "m3" && <M3Form data={lanc.m3} update={(v) => updateModulo("m3", v)} segmento={equipe?.segmento} />}
               {m.id === "m4" && <M4Form data={lanc.m4} update={(v) => updateModulo("m4", v)} calc={calc} />}
-              {m.id === "m5" && <M5Form data={lanc.m5} update={(v) => updateModulo("m5", v)} />}
+              {m.id === "m5" && <M5Form data={lanc.m5} update={(v) => updateModulo("m5", v)} segmento={equipe?.segmento} />}
               {m.id === "m6" && <M6Form data={lanc.m6} update={(v) => updateModulo("m6", v)} m5itens={lanc.m5.itens} />}
               {m.id === "m7" && <M7Form data={lanc.m7} update={(v) => updateModulo("m7", v)} faturamento={calc.faturamento} />}
               {m.id === "m8" && <M8Form data={lanc.m8} update={(v) => updateModulo("m8", v)} m5itens={lanc.m5.itens} />}
               {m.id === "m9" && <M9Form data={lanc.m9} update={(v) => updateModulo("m9", v)} />}
               {m.id === "m10" && <M10Form data={lanc.m10} update={(v) => updateModulo("m10", v)} m1itens={lanc.m1.itens} depreciacaoLinhas={calc.depreciacaoLinhas} depreciacaoMensal={calc.depreciacaoMensal} />}
-              {m.id === "m11" && <M11Form data={lanc.m11} update={(v) => updateModulo("m11", v)} maoDeObra={calc.maoDeObra} depreciacaoMensal={calc.depreciacaoMensal} />}
+              {m.id === "m11" && <M11Form data={lanc.m11} update={(v) => updateModulo("m11", v)} maoDeObra={calc.maoDeObra} depreciacaoMensal={calc.depreciacaoMensal} segmento={equipe?.segmento} />}
               {m.id === "m12" && <M12View calc={calc} />}
               {m.id === "m13" && <M13View calc={calc} />}
             </Card>

@@ -4414,7 +4414,33 @@ function NotaModulo({ nota, onSetNota, ehFinal, readOnly }) {
   );
 }
 
-function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes, onReabrirPosCorrecao, nota }) {
+// Compara o prazo original do cronograma com a data em que a equipe
+// realmente enviou o módulo — só para leitura rápida do professor na hora de
+// avaliar/dar feedback. Não grava nada e não interfere no desconto de
+// pontualidade (que já é calculado, à parte, em moduloAtrasadoSemEnvio/estado.atraso).
+function LinhaPrazoCronogramaEntrega({ prazoCronograma, enviadoEm }) {
+  if (!prazoCronograma || !enviadoEm) return null;
+  const dataEntrega = new Date(enviadoEm);
+  const [ano, mes, dia] = prazoCronograma.split("-").map(Number);
+  const limite = new Date(ano, mes - 1, dia, 23, 59, 59, 999);
+  const atraso = dataEntrega.getTime() > limite.getTime();
+  return (
+    <div className="flex items-center gap-2 text-xs bg-slate-950/60 border border-slate-700 rounded-md px-3 py-2 flex-wrap">
+      <Calendar size={13} className="text-slate-500 shrink-0" />
+      <span className="text-slate-400">Prazo do cronograma:</span>
+      <span className="font-semibold text-slate-200">{fmtDataCurta(prazoCronograma)}</span>
+      <span className="text-slate-600">→</span>
+      <UserCheck size={13} className="text-slate-500 shrink-0" />
+      <span className="text-slate-400">Entregue em:</span>
+      <span className={`font-semibold ${atraso ? "text-rose-400" : "text-emerald-400"}`}>{dataEntrega.toLocaleDateString("pt-BR")}</span>
+      <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 border ${atraso ? "text-rose-400 bg-rose-500/10 border-rose-500/30" : "text-emerald-400 bg-emerald-500/10 border-emerald-500/30"}`}>
+        {atraso ? "com atraso" : "no prazo"}
+      </span>
+    </div>
+  );
+}
+
+function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes, onReabrirPosCorrecao, nota, prazoCronograma }) {
   const [prazoInput, setPrazoInput] = useState(estado.prazo || "");
   useEffect(() => { setPrazoInput(estado.prazo || ""); }, [estado.prazo]);
   const [novoPrazoReabrir, setNovoPrazoReabrir] = useState("");
@@ -4452,6 +4478,8 @@ function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrec
           )}
         </div>
       </div>
+
+      <LinhaPrazoCronogramaEntrega prazoCronograma={prazoCronograma} enviadoEm={estado.enviadoEm} />
 
       {estado.status === "enviado" && (
         <div className="space-y-2.5">
@@ -4540,7 +4568,7 @@ function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrec
   );
 }
 
-function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes, onReabrirPosCorrecao }) {
+function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes, onReabrirPosCorrecao, prazoCronograma }) {
   const Icon = m.icon;
   const comentariosModulo = (comentarios || []).filter((c) => c.modulo === `Módulo ${m.n}`);
   const avaliavel = NOTA_MODULOS_AVALIAVEIS.includes(m.id);
@@ -4567,7 +4595,7 @@ function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentario
       </button>
       {aberto && (
         <div className="px-4 pb-4 border-t border-slate-800">
-          <PainelFluxoModulo estado={estado} ultimoModulo={ultimoModulo} onSetPrazo={onSetPrazo} onConfirmarCorrecao={onConfirmarCorrecao} onReabrir={onReabrir} onRestaurarPrazoAutomatico={onRestaurarPrazoAutomatico} onDevolverAjustes={onDevolverAjustes} onReabrirPosCorrecao={onReabrirPosCorrecao} nota={nota} />
+          <PainelFluxoModulo estado={estado} ultimoModulo={ultimoModulo} onSetPrazo={onSetPrazo} onConfirmarCorrecao={onConfirmarCorrecao} onReabrir={onReabrir} onRestaurarPrazoAutomatico={onRestaurarPrazoAutomatico} onDevolverAjustes={onDevolverAjustes} onReabrirPosCorrecao={onReabrirPosCorrecao} nota={nota} prazoCronograma={prazoCronograma} />
           <div className="pt-4"><ModuloLeitura mId={m.id} lanc={lanc} calc={calc} /></div>
           {(avaliavel || ehFinal) && <NotaModulo nota={nota} onSetNota={onSetNota} ehFinal={ehFinal} />}
           <ComentariosPanel
@@ -4588,6 +4616,17 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
   const [dados, setDados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
   const [modulosAbertos, setModulosAbertos] = useState(new Set());
   const [menuAlunoAberto, setMenuAlunoAberto] = useState(false);
+  const [cronogramaTurma] = useSharedObject(`cronograma_${turma.id}`, null);
+
+  // Prazo ORIGINAL do cronograma da turma para o bloco daquele módulo — usado
+  // só para exibir ao lado da data de entrega real no painel do professor
+  // (não é o mesmo que estado.prazo, que pode ter sido ajustado manualmente
+  // para uma equipe específica).
+  const prazoCronogramaDoModulo = (modId) => {
+    const ordem = CRONOGRAMA_ORDEM_POR_MODULO[modId];
+    const linha = cronogramaTurma?.linhas?.find((l) => l.ordem === ordem);
+    return linha?.dataEntrega || null;
+  };
 
   // veio direto de "Correções pendentes" — expande e rola até o módulo assim
   // que os dados da equipe terminarem de carregar.
@@ -4809,6 +4848,7 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
               onRestaurarPrazoAutomatico={() => restaurarPrazoAutomatico(m.id)}
               onDevolverAjustes={(feedback) => devolverParaAjustes(m.id, feedback)}
               onReabrirPosCorrecao={(motivo) => reabrirParaAjustesPosCorrecao(m.id, motivo)}
+              prazoCronograma={prazoCronogramaDoModulo(m.id)}
             />
           ))}
         </div>

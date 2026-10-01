@@ -6364,8 +6364,6 @@ function TurmaDetail({ turma, onVoltar, professorNome, alvoCorrecao }) {
         </div>
       </div>
 
-      <CronogramaTurmaCard turmaId={turma.id} turmaNome={turma.nome} />
-
       <PainelRoster turmaId={turma.id} turmaNome={turma.nome} professorUid={turma.professorUid} professorNome={turma.professor} />
 
       <Card className="p-4">

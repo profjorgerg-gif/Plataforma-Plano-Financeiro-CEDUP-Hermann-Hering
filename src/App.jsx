@@ -124,6 +124,54 @@ const GUIA_MODULOS_EXTRA = {
   },
 };
 
+// Segmento de negócio da empresa — campo opcional, definido pelo professor
+// na tela "Empresas da turma" (equipe.segmento). Usado para escolher um
+// exemplo de lançamento mais próximo da realidade de cada negócio, quando
+// existir conteúdo pronto para aquele módulo+segmento (ver ORIENTACAO_SEGMENTO
+// abaixo). Enquanto não houver conteúdo para a combinação, a plataforma volta
+// automaticamente ao exemplo genérico de GUIA_MODULOS_EXTRA — nenhuma equipe
+// fica sem orientação.
+const SEGMENTOS_NEGOCIO = [
+  "Restaurante / lanchonete",
+  "Padaria / confeitaria",
+  "Estética / beleza",
+  "Moda / brechó",
+  "Sorveteria",
+  "Outro / genérico",
+];
+
+// Conteúdo de exemplo específico por módulo + segmento — preenchido aos
+// poucos, em lotes revisados com o professor (combinado em 2026-09-30).
+// Começa com o Módulo 3 para os segmentos Restaurante e Padaria, a partir
+// dos roteiros detalhados enviados pelo professor para Sabor Fronteira e
+// Padaria Golden Crumb.
+const ORIENTACAO_SEGMENTO = {
+  m3: {
+    "Restaurante / lanchonete": {
+      itens: [
+        "Reforma e adequação da cozinha e do salão",
+        "Instalação da coifa e do sistema de exaustão",
+        "Adequações de prevenção e combate a incêndio (CBMSC)",
+        "Elaboração e diagramação do cardápio",
+        "Divulgação de inauguração e campanha de lançamento",
+        "Licenças, alvarás e vistorias (Prefeitura, Vigilância Sanitária, CBMSC)",
+      ],
+      exemplo: "Reforma do salão e cozinha R$ 3.200 + coifa e exaustão R$ 1.800 + alvarás e vistorias R$ 650 + cardápio R$ 400 = R$ 6.050 de investimento pré-operacional.",
+    },
+    "Padaria / confeitaria": {
+      itens: [
+        "Reforma e adequação da área de produção",
+        "Sistema de ventilação e exaustão, quando necessário",
+        "Desenvolvimento de embalagens, rótulos e etiquetas",
+        "Capacitação para operação segura dos equipamentos",
+        "Licenças, alvarás e vistorias para abertura",
+        "Higienização técnica e controle inicial de pragas, se exigido",
+      ],
+      exemplo: "Reforma da área de produção R$ 2.600 + embalagens e rótulos R$ 350 + licenças e alvarás R$ 500 + controle de pragas R$ 180 = R$ 3.630 de investimento pré-operacional.",
+    },
+  },
+};
+
 const uid = () => Math.random().toString(36).slice(2, 10);
 const codigoTurma = () => Math.random().toString(36).slice(2, 8).toUpperCase();
 
@@ -2027,30 +2075,51 @@ function TeoriaBox({ modId, aberta }) {
 
 // Mesma ideia da TeoriaBox (clica pra abrir, clica de novo pra esconder),
 // mas focado no "como preencher na prática": o que lançar e um exemplo com
-// números — usa os mesmos dados do Guia dos 13 Módulos do Manual do Aluno.
-function ExemploLancamentoBox({ modId, aberta }) {
+// números. Quando a empresa já tem um Segmento definido (equipe.segmento) E
+// existe conteúdo pronto para esse módulo+segmento em ORIENTACAO_SEGMENTO,
+// mostra esse exemplo mais específico; caso contrário, cai no exemplo
+// genérico de sempre (GUIA_MODULOS_EXTRA) — nunca fica sem orientação.
+function ExemploLancamentoBox({ modId, aberta, segmento }) {
   const [open, setOpen] = useState(!!aberta);
+  const tailored = segmento ? ORIENTACAO_SEGMENTO[modId]?.[segmento] : null;
   const extra = GUIA_MODULOS_EXTRA[modId];
-  if (!extra) return null;
+  if (!tailored && !extra) return null;
   return (
     <div className="mb-5 border border-sky-800/60 bg-sky-950/20 rounded-lg overflow-hidden">
       <button
         onClick={() => setOpen(!open)}
         className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold text-sky-400 hover:bg-sky-900/30 transition"
       >
-        <span className="flex items-center gap-2"><ListChecks size={16} /> Exemplo de lançamento</span>
+        <span className="flex items-center gap-2"><ListChecks size={16} /> Exemplo de lançamento{tailored ? ` — ${segmento}` : ""}</span>
         {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
       </button>
       {open && (
         <div className="px-4 pb-4 text-sm text-sky-100 space-y-3">
-          <div>
-            <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide mb-1">O que lançar</div>
-            <p className="text-slate-300">{extra.lancamento}</p>
-          </div>
-          <div>
-            <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide mb-1">Exemplo</div>
-            <p className="text-slate-300 italic">{extra.exemplo}</p>
-          </div>
+          {tailored ? (
+            <>
+              <div>
+                <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide mb-1">Gastos típicos deste segmento</div>
+                <ul className="list-disc pl-5 text-slate-300 space-y-0.5">
+                  {tailored.itens.map((it, i) => <li key={i}>{it}</li>)}
+                </ul>
+              </div>
+              <div>
+                <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide mb-1">Exemplo</div>
+                <p className="text-slate-300 italic">{tailored.exemplo}</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide mb-1">O que lançar</div>
+                <p className="text-slate-300">{extra.lancamento}</p>
+              </div>
+              <div>
+                <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide mb-1">Exemplo</div>
+                <p className="text-slate-300 italic">{extra.exemplo}</p>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -3985,7 +4054,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
               </div>
             )}
             <TeoriaBox modId={m.id} aberta={estado.status === "liberado"} />
-            <ExemploLancamentoBox modId={m.id} aberta={estado.status === "liberado"} />
+            <ExemploLancamentoBox modId={m.id} aberta={estado.status === "liberado"} segmento={equipe?.segmento} />
             {souVisualizador && (
               <div className="mb-3 text-xs text-sky-400 flex items-center gap-1.5"><Eye size={13} /> Modo visualização — os campos abaixo estão travados enquanto {gestor.nome} estiver gerindo.</div>
             )}
@@ -6018,6 +6087,10 @@ function TurmaDetail({ turma, onVoltar, professorNome, alvoCorrecao }) {
     await setEquipes(equipes.map((e) => (e.id === equipe.id ? { ...e, nomeNegocio: novoNome } : e)));
   };
 
+  const definirSegmentoEmpresa = async (equipe, segmento) => {
+    await setEquipes(equipes.map((e) => (e.id === equipe.id ? { ...e, segmento } : e)));
+  };
+
   const excluirEmpresa = async (equipe) => {
     const ok = window.confirm(
       `Excluir a empresa "${equipe.nomeNegocio}"?\n\nOs lançamentos dela serão apagados permanentemente, e os alunos vinculados a ela poderão escolher outra empresa da turma no próximo acesso.`
@@ -6063,6 +6136,7 @@ function TurmaDetail({ turma, onVoltar, professorNome, alvoCorrecao }) {
               onClick={() => setEquipeSel(eq.id)}
               onRenomear={() => renomearEmpresa(eq)}
               onExcluir={() => excluirEmpresa(eq)}
+              onSetSegmento={(segmento) => definirSegmentoEmpresa(eq, segmento)}
             />
           ))}
         </div>
@@ -6082,7 +6156,7 @@ async function desvincularAlunosDaEquipe(turmaId, equipeId) {
   } catch {}
 }
 
-function EquipeCard({ equipe, onClick, onRenomear, onExcluir }) {
+function EquipeCard({ equipe, onClick, onRenomear, onExcluir, onSetSegmento }) {
   const equipeKey = `dados_equipe_${equipe.id}`;
   const [dados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [] });
   const calc = dados ? calcular(dados.lancamentos) : null;
@@ -6130,6 +6204,19 @@ function EquipeCard({ equipe, onClick, onRenomear, onExcluir }) {
         </>
       ) : <span className="text-xs text-slate-300">Carregando…</span>}
       </button>
+      {onSetSegmento && (
+        <div className="px-4 pb-4 -mt-1" onClick={(e) => e.stopPropagation()}>
+          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Segmento do negócio</label>
+          <select
+            value={equipe.segmento || ""}
+            onChange={(e) => onSetSegmento(e.target.value)}
+            className="w-full bg-slate-900 border border-slate-700 rounded-md px-2 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
+          >
+            <option value="">— não definido —</option>
+            {SEGMENTOS_NEGOCIO.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+      )}
     </div>
   );
 }

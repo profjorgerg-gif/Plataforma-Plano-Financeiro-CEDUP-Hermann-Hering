@@ -13,7 +13,7 @@ import {
   Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
   ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
   LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows, Monitor, FileDown, Info, Library,
-  Calendar, RefreshCw, Undo2, CircleDot, Inbox, LogIn, Users2, ImageDown, Sparkles,
+  Calendar, RefreshCw, Undo2, CircleDot, Inbox, LogIn, Users2, ImageDown, Sparkles, Link2,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
@@ -121,6 +121,68 @@ const GUIA_MODULOS_EXTRA = {
   m13: {
     lancamento: "Também é automático — a plataforma calcula os 4 indicadores a partir de tudo que já foi preenchido.",
     exemplo: "Com Custo Fixo de R$ 4.100,83 e margem de contribuição de 63%, o Ponto de Equilíbrio fica perto de R$ 6.500/mês de faturamento.",
+  },
+};
+
+// Disciplinas do curso relacionadas a cada módulo do Plano Financeiro — o
+// Plano Financeiro é a disciplina de Administração Financeira, mas vários
+// módulos dependem de conceitos/decisões de outras disciplinas do curso
+// (Empreendedorismo, Marketing, Gestão da Produção, Contabilidade de
+// Custos). Mostrado como apoio orientativo para a equipe saber com qual
+// professor buscar ajuda complementar, se precisar. Combinado com o
+// professor em 2026-10-01.
+const DISCIPLINAS_RELACIONADAS = {
+  m1: {
+    disciplinas: ["Empreendedorismo", "Gestão da Produção"],
+    texto: "Identificação dos bens necessários à operação, considerando capacidade produtiva, estrutura do negócio e recursos para aquisição.",
+  },
+  m2: {
+    disciplinas: ["Gestão da Produção", "Marketing", "Contabilidade de Custos"],
+    texto: "Estimativa dos recursos necessários para manter a operação, considerando estoque inicial, caixa mínimo e prazos de recebimento e pagamento.",
+  },
+  m3: {
+    disciplinas: ["Empreendedorismo", "Marketing"],
+    texto: "Levantamento dos gastos anteriores ao início das atividades, como formalização, preparação do estabelecimento e divulgação de lançamento.",
+  },
+  m4: {
+    disciplinas: ["Empreendedorismo"],
+    texto: "Consolidação dos investimentos fixos, do capital de giro e dos investimentos pré-operacionais, permitindo avaliar a necessidade total de recursos e suas fontes.",
+  },
+  m5: {
+    disciplinas: ["Marketing", "Contabilidade de Custos", "Gestão da Produção"],
+    texto: "Projeção das vendas a partir da demanda, dos preços, dos custos e da capacidade de produção ou atendimento.",
+  },
+  m6: {
+    disciplinas: ["Contabilidade de Custos", "Gestão da Produção"],
+    texto: "Apuração do custo dos materiais utilizados por unidade, com base na ficha técnica, nas quantidades, nas perdas e no rendimento da produção.",
+  },
+  m7: {
+    disciplinas: ["Contabilidade de Custos", "Marketing"],
+    texto: "Estimativa dos gastos associados às vendas, como tributos incidentes, comissões e taxas, considerando seus efeitos sobre a margem e o resultado.",
+  },
+  m8: {
+    disciplinas: ["Contabilidade de Custos", "Gestão da Produção"],
+    texto: "Apuração dos custos dos materiais diretos e/ou das mercadorias vendidas, conforme a atividade da empresa e a estrutura adotada no módulo.",
+  },
+  m9: {
+    disciplinas: ["Contabilidade de Custos", "Gestão da Produção"],
+    texto: "Dimensionamento da equipe e estimativa de salários, encargos e benefícios, considerando a classificação desses gastos e seu impacto financeiro.",
+  },
+  m10: {
+    disciplinas: ["Contabilidade de Custos", "Gestão da Produção"],
+    texto: "Distribuição do valor depreciável dos bens ao longo da vida útil, com apropriação como custo ou despesa conforme sua utilização.",
+  },
+  m11: {
+    disciplinas: ["Contabilidade de Custos", "Gestão da Produção"],
+    texto: "Identificação e estimativa dos custos e das despesas fixas necessários à manutenção do negócio.",
+  },
+  m12: {
+    disciplinas: ["Contabilidade de Custos", "Marketing", "Gestão da Produção"],
+    texto: "Organização das receitas, dos custos e das despesas projetados para apurar e analisar o resultado esperado do negócio.",
+  },
+  m13: {
+    disciplinas: ["Empreendedorismo", "Contabilidade de Custos"],
+    texto: "Cálculo e interpretação de indicadores, como ponto de equilíbrio, lucratividade, rentabilidade e prazo de retorno do investimento, para fundamentar a decisão empreendedora.",
   },
 };
 
@@ -2126,6 +2188,30 @@ function ExemploLancamentoBox({ modId, aberta, segmento }) {
   );
 }
 
+// Mostra as disciplinas do curso relacionadas a este módulo (ver
+// DISCIPLINAS_RELACIONADAS) — orientativo, para a equipe saber com qual
+// professor buscar apoio complementar. Módulos sem disciplina associada
+// (puramente internos ao cálculo) simplesmente não mostram nada.
+function DisciplinasRelacionadasBox({ modId }) {
+  const info = DISCIPLINAS_RELACIONADAS[modId];
+  if (!info) return null;
+  return (
+    <div className="mb-5 border border-teal-800/50 bg-teal-950/20 rounded-lg p-3.5">
+      <div className="flex items-center gap-2 text-xs font-bold text-teal-300 uppercase tracking-wide mb-2">
+        <Link2 size={14} /> Disciplinas relacionadas
+      </div>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {info.disciplinas.map((d) => (
+          <span key={d} className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-teal-900/40 border border-teal-700/50 text-teal-200">{d}</span>
+        ))}
+      </div>
+      <p className="text-xs text-teal-100/80 leading-relaxed">
+        {info.texto}
+      </p>
+    </div>
+  );
+}
+
 function StatCard({ label, value, tone = "slate", small }) {
   const tones = {
     slate: "bg-slate-900 text-slate-200 border-slate-700",
@@ -4055,6 +4141,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
             )}
             <TeoriaBox modId={m.id} aberta={estado.status === "liberado"} />
             <ExemploLancamentoBox modId={m.id} aberta={estado.status === "liberado"} segmento={equipe?.segmento} />
+            <DisciplinasRelacionadasBox modId={m.id} />
             {souVisualizador && (
               <div className="mb-3 text-xs text-sky-400 flex items-center gap-1.5"><Eye size={13} /> Modo visualização — os campos abaixo estão travados enquanto {gestor.nome} estiver gerindo.</div>
             )}
@@ -4589,6 +4676,7 @@ function OrientacaoAlunoParaProfessor({ modId, segmento }) {
         <div className="p-3 bg-slate-900/40">
           <TeoriaBox modId={modId} aberta />
           <ExemploLancamentoBox modId={modId} aberta segmento={segmento} />
+          <DisciplinasRelacionadasBox modId={modId} />
         </div>
       )}
     </div>

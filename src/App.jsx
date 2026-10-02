@@ -7115,7 +7115,16 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
 
   const alunosDaTurma = usuarios.filter((u) => u.papel === "aluno" && u.turmaId === turma.id);
   const nomesRegistrados = new Set(alunosDaTurma.map((u) => normalizarNome(u.nome)));
-  const faltando = roster.filter((a) => !nomesRegistrados.has(normalizarNome(a.nome)));
+  // Também conta como já cadastrado quem já está listado como integrante de
+  // alguma empresa da turma — cobre o caso de quem entrou pelo código da
+  // turma (sem confirmar a matrícula) e por isso ficou com o nome gravado
+  // vindo da conta Google, que pode não bater, letra por letra, com o nome
+  // da lista oficial (corrigido em 2026-10-01).
+  const nomesEmEquipes = new Set((dadosEquipes || []).flatMap(({ equipe }) => (equipe.integrantes || []).map(normalizarNome)));
+  const faltando = roster.filter((a) => {
+    const nome = normalizarNome(a.nome);
+    return !nomesRegistrados.has(nome) && !nomesEmEquipes.has(nome);
+  });
 
   const buscaLimpa = buscaEmpresa.trim().toLowerCase();
   const dadosFiltrados = buscaLimpa ? dadosEquipes.filter(({ equipe }) => equipe.nomeNegocio.toLowerCase().includes(buscaLimpa)) : dadosEquipes;

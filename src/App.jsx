@@ -1,4 +1,4 @@
-// build: 2026-09-01_06h35m39s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261008_18h00m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -7035,14 +7035,577 @@ function ResumoComparativo({ turma, dadosEquipes }) {
   );
 }
 
+// ============================================================================
+// RELATÓRIO GERENCIAL COMPLETO POR EMPRESA (somente leitura)
+// Reúne, numa única emissão, o status e a nota de cada módulo, todos os
+// lançamentos etapa por etapa, o histórico de correção, os gráficos e um
+// diagnóstico automático por regras objetivas. Nada aqui grava dados: só lê
+// o que já foi carregado por useEquipesComDados (adicionado em 2026-10-08).
+// ============================================================================
+
+const STATUS_MODULO_ROTULO = {
+  pendente: "Bloqueado", liberado: "Liberado (em preenchimento)", enviado: "Enviado — aguardando correção",
+  ajustes: "Devolvido para ajustes", corrigido: "Corrigido / aprovado",
+};
+const STATUS_MODULO_COR = {
+  pendente: "text-slate-400", liberado: "text-emerald-400", enviado: "text-sky-400", ajustes: "text-amber-400", corrigido: "text-emerald-400",
+};
+const SEVERIDADE_ROTULO = { alta: "Atenção alta", media: "Atenção média", info: "Informativo" };
+
+// Monta, para cada módulo, os dados já formatados em texto — a mesma estrutura
+// alimenta a tela/impressão e o arquivo .md para IA, para nunca divergirem.
+function dadosTabelaModulo(modId, l, calc) {
+  const q = (v) => fmtNum(Number(v) || 0, 2);
+  const nome = (s, alt) => (s && String(s).trim()) || alt;
+  switch (modId) {
+    case "m1":
+      return {
+        colunas: ["Descrição", "Categoria", "Qtde.", "Valor unit.", "Total"],
+        linhas: l.m1.itens.map((it) => [nome(it.desc, "(sem descrição)"), it.categoria || "—", q(it.qtd), fmtBRL(Number(it.valorUnit) || 0), fmtBRL((Number(it.qtd) || 0) * (Number(it.valorUnit) || 0))]),
+        rodape: [["Total de Investimentos Fixos", fmtBRL(calc.investFixo)]],
+      };
+    case "m2":
+      return {
+        extras: [
+          ["Estoque inicial", fmtBRL(calc.estoqueInicial)],
+          ["Prazo médio de vendas", `${fmtNum(Number(l.m2.prazoVendasDias) || 0, 0)} dias`],
+          ["Prazo médio de estoque", `${fmtNum(Number(l.m2.prazoEstoqueDias) || 0, 0)} dias`],
+          ["Prazo médio de compras", `${fmtNum(Number(l.m2.prazoComprasDias) || 0, 0)} dias`],
+          ["Necessidade líquida de capital de giro", `${fmtNum(calc.necessidadeLiquidaDias, 0)} dias`],
+          ["Caixa mínimo", fmtBRL(calc.caixaMinimo)],
+          ["Capital de giro total", fmtBRL(calc.capitalGiroTotal)],
+        ],
+      };
+    case "m3":
+      return {
+        colunas: ["Descrição", "Valor"],
+        linhas: l.m3.itens.map((it) => [nome(it.desc, "(sem descrição)"), fmtBRL(Number(it.valor) || 0)]),
+        rodape: [["Total de Investimentos Pré-Operacionais", fmtBRL(calc.investPreOp)]],
+      };
+    case "m4": {
+      const prop = Number(l.m4.pctProprio);
+      const pctProp = Number.isFinite(prop) ? prop : 100;
+      return {
+        extras: [
+          ["Investimentos fixos", fmtBRL(calc.investFixo)],
+          ["Capital de giro", fmtBRL(calc.capitalGiroTotal)],
+          ["Pré-operacionais", fmtBRL(calc.investPreOp)],
+          ["Investimento total", fmtBRL(calc.investimentoTotal)],
+          ["Recursos próprios / de terceiros", `${fmtNum(pctProp, 1)}% / ${fmtNum(100 - pctProp, 1)}%`],
+        ],
+      };
+    }
+    case "m5":
+      return {
+        colunas: ["Produto/serviço", "Qtde. mensal", "Preço unit.", "Faturamento"],
+        linhas: l.m5.itens.map((it) => [nome(it.nome, "(sem nome)"), q(it.qtd), fmtBRL(Number(it.precoUnit) || 0), fmtBRL((Number(it.qtd) || 0) * (Number(it.precoUnit) || 0))]),
+        rodape: [["Faturamento mensal", fmtBRL(calc.faturamento)]],
+      };
+    case "m6":
+      return {
+        colunas: ["Produto", "Material", "Qtde.", "Custo unit.", "Total"],
+        linhas: l.m6.itens.map((it) => [nome(it.produto, "—"), nome(it.material, "—"), q(it.qtd), fmtBRL(Number(it.custoUnit) || 0), fmtBRL((Number(it.qtd) || 0) * (Number(it.custoUnit) || 0))]),
+        rodape: [["Total de materiais", fmtBRL(l.m6.itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.custoUnit) || 0), 0))]],
+      };
+    case "m7":
+      return {
+        extras: [
+          ["Forma de cálculo do imposto", l.m7.modoImposto === "simples" ? "Tabela do Simples Nacional" : "Percentual informado"],
+          ["Tipo de atividade", l.m7.tipoAtividade || "—"],
+          ["Impostos sobre vendas", `${fmtNum(calc.pctImpostos, 2)}%`],
+          ["Comissões", `${fmtNum(calc.pctComissao, 2)}%`],
+          ["Custo de comercialização (mensal)", fmtBRL(calc.custoComercializacao)],
+        ],
+      };
+    case "m8":
+      return {
+        colunas: ["Produto/serviço", "Qtde. vendida", "Custo unit.", "CMD/CMV"],
+        linhas: l.m5.itens.map((it) => {
+          const cu = Number(l.m8.custosUnit?.[it.id]) || 0;
+          return [nome(it.nome, "(sem nome)"), q(it.qtd), fmtBRL(cu), fmtBRL((Number(it.qtd) || 0) * cu)];
+        }),
+        rodape: [["CMD/CMV total (mensal)", fmtBRL(calc.cmv)]],
+      };
+    case "m9": {
+      const grupos = (l.m9.modoEncargos || "grupos") === "grupos";
+      return {
+        colunas: ["Função", "Qtde.", "Salário", "% Encargos", "Custo mensal"],
+        linhas: l.m9.itens.map((it) => {
+          const enc = grupos ? totalEncargosGrupo(l.m9.regimeEncargos || "simples") : (Number(it.pctEncargos) || 0);
+          return [nome(it.funcao, "(sem função)"), q(it.qtd), fmtBRL(Number(it.salario) || 0), `${fmtNum(enc, 1)}%`, fmtBRL((Number(it.qtd) || 0) * (Number(it.salario) || 0) * (1 + enc / 100))];
+        }),
+        rodape: [["Custo total com mão de obra (mensal)", fmtBRL(calc.maoDeObra)]],
+      };
+    }
+    case "m10":
+      return {
+        colunas: ["Bem", "Valor", "Vida útil (anos)", "Depreciação mensal"],
+        linhas: calc.depreciacaoLinhas.map((r) => [nome(r.desc, "(sem descrição)"), fmtBRL(r.valor), fmtNum(r.vidaUtil, 1), fmtBRL(r.mensal)]),
+        rodape: [["Depreciação mensal total", fmtBRL(calc.depreciacaoMensal)]],
+      };
+    case "m11":
+      return {
+        colunas: ["Descrição", "Valor mensal"],
+        linhas: [
+          ...l.m11.itens.map((it) => [nome(it.desc, "(sem descrição)"), fmtBRL(Number(it.valor) || 0)]),
+          ["Mão de obra (Módulo 9) — automático", fmtBRL(calc.maoDeObra)],
+          ["Depreciação (Módulo 10) — automático", fmtBRL(calc.depreciacaoMensal)],
+        ],
+        rodape: [["Custos fixos mensais totais", fmtBRL(calc.custoFixoTotal)]],
+      };
+    case "m12": {
+      const pct = (v) => (calc.faturamento ? fmtPct((v / calc.faturamento) * 100) : "—");
+      return {
+        colunas: ["Descrição", "R$ (mensal)", "% da receita"],
+        linhas: [
+          ["Receita total com vendas", fmtBRL(calc.faturamento), calc.faturamento ? "100,0%" : "—"],
+          ["(–) CMD/CMV", fmtBRL(-calc.cmv), pct(calc.cmv)],
+          ["(–) Custos de comercialização", fmtBRL(-calc.custoComercializacao), pct(calc.custoComercializacao)],
+          ["= Margem de contribuição", fmtBRL(calc.margemContribuicao), pct(calc.margemContribuicao)],
+          ["(–) Custos fixos totais", fmtBRL(-calc.custoFixoTotal), pct(calc.custoFixoTotal)],
+          ["= Resultado operacional", fmtBRL(calc.resultadoOperacional), pct(calc.resultadoOperacional)],
+        ],
+        rodape: [[calc.resultadoOperacional >= 0 ? "Resultado projetado: LUCRO mensal" : "Resultado projetado: PREJUÍZO mensal", fmtBRL(Math.abs(calc.resultadoOperacional))]],
+      };
+    }
+    case "m13":
+      return {
+        extras: [
+          ["Ponto de equilíbrio (anual)", calc.pontoEquilibrio != null ? fmtBRL(calc.pontoEquilibrio) : "—"],
+          ["Lucratividade", fmtPct(calc.lucratividade)],
+          ["Rentabilidade (ao ano)", fmtPct(calc.rentabilidade)],
+          ["Prazo de retorno (payback)", calc.prazoRetorno != null ? `${fmtNum(calc.prazoRetorno, 1)} anos` : "—"],
+        ],
+      };
+    default:
+      return {};
+  }
+}
+
+// Diagnóstico automático: só regras objetivas sobre os números e o fluxo de
+// correção. Não substitui o julgamento pedagógico do professor — aponta onde
+// olhar primeiro e a que etapa a equipe deve voltar.
+function diagnosticoGerencial(l, calc, fluxoMod, dados) {
+  const d = [];
+  // Módulo ainda bloqueado: a equipe nem chegou lá, então não é falha dela e
+  // nada é apontado. Módulo liberado (em preenchimento): vira só informativo.
+  // Regras do fluxo de correção passam fluxo=true e não sofrem esse filtro.
+  const add = (sev, mod, texto, acao, fluxo) => {
+    if (mod && !fluxo) {
+      const st = estadoModulo(fluxoMod, `m${mod}`).status;
+      if (st === "pendente") return;
+      if (st === "liberado" && sev !== "info") { d.push({ sev: "info", mod, texto: `(em preenchimento) ${texto}`, acao }); return; }
+    }
+    d.push({ sev, mod, texto, acao });
+  };
+  const lista = (arr) => arr.map((x) => `"${x}"`).join(", ");
+
+  // Módulo 1
+  if (l.m1.itens.length === 0) add("alta", 1, "Nenhum bem foi lançado em Investimentos Fixos.", "Lançar máquinas, móveis, utensílios e demais bens necessários.");
+  else {
+    const sem = l.m1.itens.filter((it) => !(Number(it.qtd) > 0) || !(Number(it.valorUnit) > 0)).map((it) => it.desc || "(sem descrição)");
+    if (sem.length) add("media", 1, `${sem.length} bem(ns) sem quantidade ou valor: ${lista(sem)}.`, "Pesquisar o preço e informar a quantidade de cada bem.");
+  }
+  // Módulo 2
+  const m2zerado = !(calc.estoqueInicial > 0) && !(Number(l.m2.prazoVendasDias) > 0) && !(Number(l.m2.prazoEstoqueDias) > 0) && !(Number(l.m2.prazoComprasDias) > 0);
+  if (m2zerado) add("alta", 2, "Capital de Giro não preenchido (estoque inicial e prazos zerados).", "Informar o estoque inicial e os prazos médios de vendas, estoque e compras.");
+  else if (calc.necessidadeLiquidaDias <= 0) add("info", 2, "A necessidade líquida de giro está em zero ou negativa, então o caixa mínimo ficou zerado.", "Conferir se os prazos de vendas, estoque e compras refletem a realidade do negócio.");
+  // Módulo 3
+  if (l.m3.itens.length === 0) add("media", 3, "Nenhum gasto pré-operacional lançado (legalização, reformas, divulgação de lançamento, treinamentos).", "Confirmar se realmente não haverá gastos antes de abrir; se houver, lançá-los.");
+  else {
+    const sem = l.m3.itens.filter((it) => !(Number(it.valor) > 0)).map((it) => it.desc || "(sem descrição)");
+    if (sem.length) add("media", 3, `${sem.length} gasto(s) pré-operacional(is) sem valor: ${lista(sem)}.`, "Informar o valor de cada gasto.");
+  }
+  // Módulo 5
+  if (l.m5.itens.length === 0) add("alta", 5, "Nenhum produto/serviço lançado no Faturamento Mensal — sem receita, DRE e indicadores perdem sentido.", "Lançar produtos/serviços com quantidade mensal e preço de venda.");
+  else {
+    const sem = l.m5.itens.filter((it) => !(Number(it.qtd) > 0) || !(Number(it.precoUnit) > 0)).map((it) => it.nome || "(sem nome)");
+    if (sem.length) add("media", 5, `${sem.length} produto(s)/serviço(s) sem quantidade ou preço: ${lista(sem)}.`, "Completar quantidade mensal e preço de venda.");
+  }
+  // Módulo 7
+  if (calc.faturamento > 0 && !(calc.pctImpostos > 0) && !(calc.pctComissao > 0)) add("media", 7, "Há faturamento, mas impostos e comissões estão em 0%.", "Informar o regime/atividade (Simples Nacional) e eventuais comissões.");
+  // Módulo 8
+  if (l.m5.itens.length > 0) {
+    const semCusto = l.m5.itens.filter((it) => !(Number(l.m8.custosUnit?.[it.id]) > 0)).map((it) => it.nome || "(sem nome)");
+    if (semCusto.length) add(calc.faturamento > 0 ? "alta" : "media", 8, `${semCusto.length} produto(s)/serviço(s) sem custo unitário em CMD/CMV: ${lista(semCusto)}. Sem isso a margem aparece maior do que a real.`, "Informar o custo unitário de cada item (Módulo 8, apoiado pelo Módulo 6 quando houver matéria-prima).");
+  }
+  // Preço abaixo do custo
+  const negativos = calc.produtosAnalise.filter((p) => p.custoUnit > 0 && p.margemUnit < 0).map((p) => p.nome);
+  if (negativos.length) add("alta", 5, `Preço de venda não cobre custo + tributos em: ${lista(negativos)} (margem unitária negativa).`, "Rever o preço de venda (Módulo 5) ou o custo unitário (Módulos 6 e 8).");
+  // Módulo 9 / 11
+  if (l.m9.itens.length === 0) add("media", 9, "Nenhuma mão de obra lançada.", "Lançar funcionários/pró-labore, ou justificar por que o negócio opera sem mão de obra.");
+  if (l.m11.itens.length === 0) add("alta", 11, "Nenhum custo fixo lançado (aluguel, energia, internet, etc.).", "Lançar os custos fixos mensais do negócio.");
+
+  // Resultado e indicadores (só quando há receita)
+  if (calc.faturamento > 0) {
+    if (calc.resultadoOperacional < 0) add("alta", 5, `Resultado operacional mensal negativo (${fmtBRL(calc.resultadoOperacional)}).`, "Rever preços (Módulo 5) e custos (Módulos 7 a 11).");
+    if (calc.pontoEquilibrio != null && calc.receitaAnual < calc.pontoEquilibrio) add("media", 13, "O faturamento anual projetado está abaixo do ponto de equilíbrio.", "Aumentar receita ou reduzir custos fixos/variáveis.");
+    if (calc.prazoRetorno != null && calc.prazoRetorno > 5) add("media", 13, `Prazo de retorno de ${fmtNum(calc.prazoRetorno, 1)} anos (acima de 5).`, "Reduzir o investimento inicial ou aumentar a margem de contribuição.");
+    if (calc.investimentoTotal > 0 && calc.investFixo / calc.investimentoTotal > 0.8) add("info", 1, "Mais de 80% do investimento está em bens fixos.", "Avaliar alugar, terceirizar ou comprar usado parte dos equipamentos.");
+    const fluxo = projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0);
+    if (!fluxo.some((m) => m.mes > 0 && m.saldo >= 0)) add("media", 13, "O negócio não recupera o investimento nos 12 meses projetados no fluxo de caixa.", "Rever receita, custos e investimento; analisar cenários alternativos.");
+  }
+
+  // Fluxo de correção
+  MODULOS.forEach((m) => {
+    const est = estadoModulo(fluxoMod, m.id);
+    if (est.status === "ajustes") add("info", m.n, `Módulo devolvido para ajustes${est.feedback ? ` — orientação do professor: "${est.feedback}"` : ""}.`, "Aplicar o feedback e reenviar para correção.", true);
+    if (est.status === "enviado") add("info", m.n, "Enviado e aguardando correção do professor.", "Corrigir/avaliar o módulo.", true);
+    if (moduloAtrasadoSemEnvio(est)) add("media", m.n, `Prazo vencido sem envio (prazo: ${est.prazo}).`, "Enviar o módulo ou solicitar reabertura.", true);
+    if ((est.ciclo || 1) >= 3) add("info", m.n, `Módulo com ${est.ciclo} ciclos de envio/devolução.`, "Acompanhar de perto: pode haver dificuldade de entendimento.", true);
+  });
+
+  const ordem = { alta: 0, media: 1, info: 2 };
+  return d.sort((a, b) => ordem[a.sev] - ordem[b.sev] || (a.mod || 0) - (b.mod || 0));
+}
+
+function modulosParaRevisar(diag) {
+  return [...new Set(diag.filter((x) => x.sev !== "info" && x.mod).map((x) => x.mod))].sort((a, b) => a - b);
+}
+
+function resumoNotaEmpresa(notas) {
+  const dadas = NOTA_MODULOS_AVALIAVEIS.map((id) => notas[id]).filter((n) => !vazio(n));
+  const media = dadas.length ? dadas.reduce((a, b) => a + Number(b), 0) / dadas.length : null;
+  const ponderada = calcularNotaPonderada({ media, notaFinal: notas[NOTA_MODULO_FINAL], notaCenariosFluxo: notas.cenariosFluxo, notaApresentacao: notas.apresentacao, totalModulos: NOTA_MODULOS_AVALIAVEIS.length, notasDadasLength: dadas.length });
+  return { media, ponderada };
+}
+
+function gerarMarkdownGerencial(item, turma, diag) {
+  const { equipe, dados, calc, progressoAprovado } = item;
+  const l = mergeLancamentos(dados.lancamentos);
+  const fluxoMod = dados.fluxoModulos || {};
+  const notas = dados.notas || {};
+  const esc = (s) => String(s ?? "").replace(/\|/g, "/").replace(/\n/g, " ");
+  const tabela = (colunas, linhas) => [`| ${colunas.map(esc).join(" | ")} |`, `| ${colunas.map(() => "---").join(" | ")} |`, ...linhas.map((r) => `| ${r.map(esc).join(" | ")} |`)].join("\n");
+  const { media, ponderada } = resumoNotaEmpresa(notas);
+  const out = [];
+
+  out.push("# Relatório Gerencial Completo — Plano Financeiro");
+  out.push("");
+  out.push("## Instruções para a IA");
+  out.push("Você é um(a) professor(a) experiente de Administração/Contabilidade. Analise o relatório abaixo, que descreve o plano financeiro de um negócio criado por uma equipe de alunos de curso técnico. Faça: (1) um parecer geral curto; (2) a análise crítica de cada etapa (coerência dos valores, itens esquecidos, valores zerados, preços/custos irreais para o segmento); (3) a lista, em ordem de prioridade, das etapas em que a equipe deve voltar para corrigir, com orientações claras e didáticas do que refazer; (4) pontos fortes da equipe. Considere apenas os dados deste relatório e sinalize o que não puder ser avaliado por falta de informação. Os valores estão em reais (R$) e os custos/receitas são mensais, salvo quando indicado.");
+  out.push("");
+  out.push(`## Identificação`);
+  out.push(`- Empresa: ${equipe.nomeNegocio}`);
+  out.push(`- Turma: ${turma?.nome || "—"}`);
+  out.push(`- Integrantes: ${(equipe.integrantes || []).join(", ") || "sem integrantes"}`);
+  out.push(`- Segmento do negócio: ${equipe.segmento || "não informado"}${equipe.segmento ? ` (${equipe.segmentoStatus === "aprovado" || !equipe.segmentoStatus ? "aprovado" : "aguardando aprovação"})` : ""}`);
+  out.push(`- Emitido em: ${new Date().toLocaleString("pt-BR")}`);
+  out.push(`- Progresso (módulos aprovados): ${progressoAprovado}%`);
+  out.push(`- Nota média dos módulos avaliados: ${media !== null ? fmtNum(media, 1) : "—"} · Nota final ponderada: ${ponderada !== null ? fmtNum(ponderada, 1) : "ainda não calculada"}`);
+  out.push("");
+  out.push("## Resumo executivo");
+  out.push(tabela(["Indicador", "Valor"], [
+    ["Investimento total", fmtBRL(calc.investimentoTotal)],
+    ["Faturamento mensal", fmtBRL(calc.faturamento)],
+    ["Custos variáveis (mensal)", fmtBRL(calc.custoVariavelTotal)],
+    ["Custos fixos (mensal)", fmtBRL(calc.custoFixoTotal)],
+    ["Resultado operacional (mensal)", fmtBRL(calc.resultadoOperacional)],
+    ["Ponto de equilíbrio (anual)", calc.pontoEquilibrio != null ? fmtBRL(calc.pontoEquilibrio) : "—"],
+    ["Lucratividade", fmtPct(calc.lucratividade)],
+    ["Rentabilidade (ao ano)", fmtPct(calc.rentabilidade)],
+    ["Payback", calc.prazoRetorno != null ? `${fmtNum(calc.prazoRetorno, 1)} anos` : "—"],
+  ]));
+  out.push("");
+  out.push("## Situação dos módulos");
+  out.push(tabela(["Módulo", "Situação", "Envios", "Devoluções", "Prazo", "Nota"], MODULOS.map((m) => {
+    const est = estadoModulo(fluxoMod, m.id);
+    const h = est.historico || [];
+    return [`${m.n}. ${m.nome}`, STATUS_MODULO_ROTULO[est.status] || est.status, h.filter((e) => e.tipo === "envio" || e.tipo === "reenvio").length, h.filter((e) => e.tipo === "devolucao").length, est.prazo || "—", !vazio(notas[m.id]) ? notas[m.id] : "—"];
+  })));
+  out.push("");
+  out.push("## Etapa por etapa");
+  MODULOS.forEach((m) => {
+    const est = estadoModulo(fluxoMod, m.id);
+    const t = dadosTabelaModulo(m.id, l, calc);
+    out.push("");
+    out.push(`### Módulo ${m.n} — ${m.nome}`);
+    out.push(`Situação: ${STATUS_MODULO_ROTULO[est.status] || est.status}${!vazio(notas[m.id]) ? ` · Nota: ${notas[m.id]}` : ""}`);
+    if (t.colunas) out.push(t.linhas.length ? tabela(t.colunas, t.linhas) : "_Nenhum lançamento._");
+    if (t.extras) t.extras.forEach(([k, v]) => out.push(`- ${k}: ${v}`));
+    if (t.rodape) t.rodape.forEach(([k, v]) => out.push(`**${k}: ${v}**`));
+    const h = est.historico || [];
+    if (h.length) {
+      out.push("Histórico de correção:");
+      h.forEach((ev) => out.push(`- ${fmtData(ev.data)} — ${(HISTORICO_EVENTO_INFO[ev.tipo] || HISTORICO_EVENTO_INFO.envio).label}${ev.feedback ? `. Feedback do professor: "${esc(ev.feedback)}"` : ""}`));
+    }
+  });
+
+  const fluxo = projetarFluxoCaixa(calc, dados.taxaCrescimentoFluxo ?? 0);
+  const tmaAnual = Number(dados.tmaAnualFluxo ?? 12) || 0;
+  const tmaMensal = Math.pow(1 + tmaAnual / 100, 1 / 12) - 1;
+  const tirM = calcularTIRMensal(fluxo);
+  const mesPay = fluxo.find((m) => m.mes > 0 && m.saldo >= 0);
+  out.push("");
+  out.push("## Fluxo de caixa (12 meses) e cenários");
+  out.push(`- Crescimento mensal do faturamento considerado: ${fmtNum(Number(dados.taxaCrescimentoFluxo ?? 0) || 0, 1)}%`);
+  out.push(`- Saldo ao final do mês 12: ${fmtBRL(fluxo[12].saldo)}`);
+  out.push(`- Mês em que o caixa acumulado fica positivo: ${mesPay ? mesPay.label : "não ocorre em 12 meses"}`);
+  out.push(`- VPL (TMA ${fmtNum(tmaAnual, 1)}% a.a.): ${fmtBRL(calcularVPL(fluxo, tmaMensal))} · TIR: ${tirM !== null ? `${fmtNum((Math.pow(1 + tirM, 12) - 1) * 100, 1)}% a.a.` : "não recupera em 12 meses"}`);
+  const cens = dados.cenarios || [];
+  if (cens.length) {
+    out.push(tabela(["Cenário", "Δ Faturamento", "Δ Custo variável", "Δ Custo fixo", "Resultado mensal"], [
+      ["Base (atual)", "—", "—", "—", fmtBRL(calc.resultadoOperacional)],
+      ...cens.map((c, i) => [c.nome || `Cenário ${i + 1}`, `${fmtNum(Number(c.variacaoFaturamento) || 0, 1)}%`, `${fmtNum(Number(c.variacaoCustoVariavel) || 0, 1)}%`, `${fmtNum(Number(c.variacaoCustoFixo) || 0, 1)}%`, fmtBRL(calcularCenario(calc, c).resultadoOperacional)]),
+    ]));
+  } else out.push("_A equipe ainda não montou cenários._");
+
+  out.push("");
+  out.push("## Diagnóstico automático (regras objetivas)");
+  if (!diag.length) out.push("Nenhuma inconsistência objetiva encontrada.");
+  diag.forEach((x) => out.push(`- [${SEVERIDADE_ROTULO[x.sev]}]${x.mod ? ` Módulo ${x.mod}:` : ""} ${x.texto} → ${x.acao}`));
+  const rev = modulosParaRevisar(diag);
+  out.push("");
+  out.push(rev.length ? `Etapas sugeridas para a equipe revisar: ${rev.map((n) => `Módulo ${n}`).join(", ")}.` : "Nenhuma etapa com atenção alta/média apontada pelas regras automáticas.");
+
+  const comentarios = (dados.comentarios || []).slice(-10);
+  if (comentarios.length) {
+    out.push("");
+    out.push("## Últimos comentários registrados");
+    comentarios.forEach((c) => out.push(`- ${c.data || c.timestamp ? fmtData(c.data || c.timestamp) + " — " : ""}${esc(c.texto || c.mensagem || "")}`));
+  }
+  return out.join("\n");
+}
+
+// Aviso exibido nos relatórios por empresa quando ainda há módulos que o
+// professor não aprovou: os números mostrados são parciais, não finais.
+function AvisoRelatorioParcial({ fluxoModulos }) {
+  const pendentes = MODULOS.filter((m) => estadoModulo(fluxoModulos, m.id).status !== "corrigido");
+  if (pendentes.length === 0) return null;
+  return (
+    <div className="mb-4 flex items-start gap-2 text-xs rounded-lg p-3 border bg-amber-950/30 border-amber-800/60 text-amber-400">
+      <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+      <span><b>Relatório parcial:</b> {pendentes.length} de {MODULOS.length} módulos ainda não foram aprovados ({pendentes.map((m) => `M${m.n}`).join(", ")}). Os números abaixo refletem o que a equipe lançou até agora, inclusive em módulos ainda em preenchimento ou em correção.</span>
+    </div>
+  );
+}
+
+const TOM_SEVERIDADE = {
+  alta: "bg-rose-950/40 border-rose-800/60 text-rose-400",
+  media: "bg-amber-950/30 border-amber-800/60 text-amber-400",
+  info: "bg-sky-950/30 border-sky-800/60 text-sky-400",
+};
+
+function RelatorioGerencialCompleto({ item, turma }) {
+  const { equipe, dados, calc, progressoAprovado } = item;
+  const l = mergeLancamentos(dados.lancamentos);
+  const fluxoMod = dados.fluxoModulos || {};
+  const notas = dados.notas || {};
+  const diag = diagnosticoGerencial(l, calc, fluxoMod, dados);
+  const rev = modulosParaRevisar(diag);
+  const { media, ponderada } = resumoNotaEmpresa(notas);
+  const fluxo = projetarFluxoCaixa(calc, dados.taxaCrescimentoFluxo ?? 0);
+  const tmaAnual = Number(dados.tmaAnualFluxo ?? 12) || 0;
+  const vpl = calcularVPL(fluxo, Math.pow(1 + tmaAnual / 100, 1 / 12) - 1);
+  const cens = dados.cenarios || [];
+  const nomeArq = equipe.nomeNegocio.replace(/[^\p{L}\p{N}]+/gu, "_");
+
+  const pieData = [
+    { name: "Investimentos Fixos", value: calc.investFixo },
+    { name: "Capital de Giro", value: calc.capitalGiroTotal },
+    { name: "Pré-Operacionais", value: calc.investPreOp },
+  ].filter((x) => x.value > 0);
+  const barData = [
+    { name: "Receita", valor: calc.faturamento },
+    { name: "Custos Variáveis", valor: calc.custoVariavelTotal },
+    { name: "Custos Fixos", valor: calc.custoFixoTotal },
+    { name: "Resultado", valor: calc.resultadoOperacional },
+  ];
+
+  const th = "py-1.5 px-2 text-left text-[11px] uppercase text-slate-400 border-b border-slate-700";
+  const td = "py-1.5 px-2 text-xs text-slate-200 border-b border-slate-800";
+
+  return (
+    <div>
+      <div className="no-print flex flex-wrap gap-2 mb-5">
+        <button onClick={() => imprimirComTitulo(`Relatorio Gerencial - ${equipe.nomeNegocio} - ${sufixoDataHoraArquivo()}`)} className="flex items-center gap-2 text-sm font-semibold px-3 py-2 rounded-md bg-amber-500 text-slate-900 hover:bg-amber-400">
+          <Printer size={15} /> Imprimir / Salvar PDF
+        </button>
+        <button onClick={() => baixarArquivo(`relatorio_gerencial_${nomeArq}_${sufixoDataHoraArquivo()}.md`, gerarMarkdownGerencial(item, turma, diag), "text/markdown;charset=utf-8")} className="flex items-center gap-2 text-sm font-semibold px-3 py-2 rounded-md border border-slate-600 text-slate-100 hover:bg-slate-800">
+          <Sparkles size={15} /> Exportar para análise por IA (.md)
+        </button>
+      </div>
+
+      <div className="mb-5">
+        <div className="text-xs font-bold tracking-widest text-amber-500 uppercase">Relatório Gerencial Completo</div>
+        <h2 className="text-xl font-bold text-slate-100">{equipe.nomeNegocio}</h2>
+        <div className="text-xs text-slate-400">{turma?.nome ? `${turma.nome} · ` : ""}{(equipe.integrantes || []).join(", ") || "sem integrantes"}</div>
+        <div className="text-xs text-slate-500">Segmento: {equipe.segmento || "não informado"} · Emitido em {new Date().toLocaleString("pt-BR")}</div>
+      </div>
+
+      <AvisoRelatorioParcial fluxoModulos={fluxoMod} />
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        <StatCard label="Investimento Total" value={fmtBRL(calc.investimentoTotal)} tone="blue" small />
+        <StatCard label="Faturamento Mensal" value={fmtBRL(calc.faturamento)} tone="slate" small />
+        <StatCard label="Resultado Operacional/mês" value={fmtBRL(calc.resultadoOperacional)} tone={calc.resultadoOperacional >= 0 ? "emerald" : "rose"} small />
+        <StatCard label="Progresso (aprovados)" value={`${progressoAprovado}%`} tone="gold" small />
+      </div>
+      <p className="text-xs text-slate-400 mb-6">
+        Nota média dos módulos avaliados: <b>{media !== null ? fmtNum(media, 1) : "—"}</b> · Nota final ponderada: <b>{ponderada !== null ? fmtNum(ponderada, 1) : "ainda não calculada"}</b>
+      </p>
+
+      <h3 className="text-sm font-bold text-slate-200 mb-2">1. Situação dos módulos</h3>
+      <Card className="p-0 overflow-hidden mb-8">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead><tr><th className={th}>Módulo</th><th className={th}>Situação</th><th className={th}>Envios</th><th className={th}>Devoluções</th><th className={th}>Prazo</th><th className={th}>Nota</th></tr></thead>
+            <tbody>
+              {MODULOS.map((m) => {
+                const est = estadoModulo(fluxoMod, m.id);
+                const h = est.historico || [];
+                return (
+                  <tr key={m.id}>
+                    <td className={td}>{m.n}. {m.nome}</td>
+                    <td className={`${td} font-semibold ${STATUS_MODULO_COR[est.status] || ""}`}>{STATUS_MODULO_ROTULO[est.status] || est.status}</td>
+                    <td className={td}>{h.filter((e) => e.tipo === "envio" || e.tipo === "reenvio").length}</td>
+                    <td className={td}>{h.filter((e) => e.tipo === "devolucao").length}</td>
+                    <td className={td}>{est.prazo || "—"}</td>
+                    <td className={td}>{!vazio(notas[m.id]) ? notas[m.id] : "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <h3 className="text-sm font-bold text-slate-200 mb-2">2. Etapa por etapa</h3>
+      <div className="space-y-5 mb-8">
+        {MODULOS.map((m) => {
+          const est = estadoModulo(fluxoMod, m.id);
+          const t = dadosTabelaModulo(m.id, l, calc);
+          const h = est.historico || [];
+          return (
+            <Card key={m.id} className="p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <div className="text-sm font-bold text-slate-100">Módulo {m.n} — {m.nome}</div>
+                <div className="text-[11px]">
+                  <span className={`font-semibold ${STATUS_MODULO_COR[est.status] || ""}`}>{STATUS_MODULO_ROTULO[est.status] || est.status}</span>
+                  {!vazio(notas[m.id]) && <span className="text-slate-300"> · Nota {notas[m.id]}</span>}
+                </div>
+              </div>
+              {t.colunas && (t.linhas.length === 0
+                ? <p className="text-xs text-amber-400 mb-2">Nenhum lançamento neste módulo.</p>
+                : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full mb-2">
+                      <thead><tr>{t.colunas.map((c, i) => <th key={i} className={th}>{c}</th>)}</tr></thead>
+                      <tbody>{t.linhas.map((r, i) => <tr key={i}>{r.map((v, j) => <td key={j} className={td}>{v}</td>)}</tr>)}</tbody>
+                    </table>
+                  </div>
+                ))}
+              {t.extras && (
+                <table className="w-full mb-2"><tbody>
+                  {t.extras.map(([k, v], i) => <tr key={i}><td className={td}>{k}</td><td className={`${td} text-right font-semibold`}>{v}</td></tr>)}
+                </tbody></table>
+              )}
+              {t.rodape && t.rodape.map(([k, v], i) => (
+                <div key={i} className="flex justify-between text-xs font-bold text-slate-100 pt-1"><span>{k}</span><span>{v}</span></div>
+              ))}
+              {h.length > 0 && (
+                <div className="mt-3 pt-2 border-t border-slate-800">
+                  <div className="text-[11px] font-bold text-slate-300 mb-1">Histórico de correção ({h.length})</div>
+                  <ul className="space-y-1">
+                    {h.map((ev, i) => (
+                      <li key={i} className="text-[11px] text-slate-300">
+                        <span className={(HISTORICO_EVENTO_INFO[ev.tipo] || HISTORICO_EVENTO_INFO.envio).cor}>{(HISTORICO_EVENTO_INFO[ev.tipo] || HISTORICO_EVENTO_INFO.envio).label}</span>
+                        <span className="text-slate-500"> — {fmtData(ev.data)}</span>
+                        {ev.feedback && <div className="mt-0.5 ml-2 text-slate-300">Feedback: {ev.feedback}</div>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </Card>
+          );
+        })}
+      </div>
+
+      <h3 className="text-sm font-bold text-slate-200 mb-2">3. Gráficos</h3>
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        <Card className="p-4">
+          <div className="text-xs font-bold text-slate-300 mb-2">Composição do Investimento Total</div>
+          {pieData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={240}>
+              <PieChart>
+                <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} isAnimationActive={false} label={(e) => `${fmtNum((e.percent || 0) * 100, 0)}%`}>
+                  {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                </Pie>
+                <Tooltip formatter={(v) => fmtBRL(v)} contentStyle={CHART_TOOLTIP_STYLE} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : <p className="text-xs text-slate-500 py-10 text-center">Sem investimentos lançados para o gráfico.</p>}
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs font-bold text-slate-300 mb-2">Receita x Custos x Resultado (mensal)</div>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={barData}>
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+              <XAxis dataKey="name" tick={CHART_TICK} />
+              <YAxis tick={CHART_TICK} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+              <Tooltip formatter={(v) => fmtBRL(v)} contentStyle={CHART_TOOLTIP_STYLE} />
+              <Bar dataKey="valor" isAnimationActive={false}>
+                {barData.map((d, i) => <Cell key={i} fill={d.name === "Resultado" ? (d.valor >= 0 ? COLORS.emerald : COLORS.rose) : PIE_COLORS[i % PIE_COLORS.length]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+      </div>
+      <Card className="p-4 mb-8">
+        <div className="text-xs font-bold text-slate-300 mb-2">Fluxo de caixa acumulado — 12 meses (VPL {fmtBRL(vpl)} com TMA de {fmtNum(tmaAnual, 1)}% a.a.)</div>
+        <ResponsiveContainer width="100%" height={240}>
+          <LineChart data={fluxo}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+            <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} />
+            <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(v) => fmtBRL(v)} />
+            <Tooltip formatter={(v) => fmtBRL(v)} contentStyle={CHART_TOOLTIP_STYLE} />
+            <ReferenceLine y={0} stroke="#64748b" strokeDasharray="4 4" />
+            <Line type="monotone" dataKey="saldo" stroke={COLORS.gold} strokeWidth={2} dot={false} isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+        {cens.length > 0 && (
+          <table className="w-full mt-3">
+            <thead><tr><th className={th}>Cenário</th><th className={th}>Δ Faturamento</th><th className={th}>Δ Custo variável</th><th className={th}>Δ Custo fixo</th><th className={th}>Resultado mensal</th></tr></thead>
+            <tbody>
+              <tr><td className={td}>Base (atual)</td><td className={td}>—</td><td className={td}>—</td><td className={td}>—</td><td className={td}>{fmtBRL(calc.resultadoOperacional)}</td></tr>
+              {cens.map((c, i) => (
+                <tr key={c.id || i}><td className={td}>{c.nome || `Cenário ${i + 1}`}</td><td className={td}>{fmtNum(Number(c.variacaoFaturamento) || 0, 1)}%</td><td className={td}>{fmtNum(Number(c.variacaoCustoVariavel) || 0, 1)}%</td><td className={td}>{fmtNum(Number(c.variacaoCustoFixo) || 0, 1)}%</td><td className={td}>{fmtBRL(calcularCenario(calc, c).resultadoOperacional)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+
+      <h3 className="text-sm font-bold text-slate-200 mb-2">4. Diagnóstico automático e orientações de retorno</h3>
+      <div className="space-y-2 mb-3">
+        {diag.length === 0 && <div className="text-sm rounded-lg p-3 border bg-emerald-950/40 border-emerald-800/60 text-emerald-400">Nenhuma inconsistência objetiva encontrada pelas regras automáticas.</div>}
+        {diag.map((x, i) => (
+          <div key={i} className={`text-xs rounded-lg p-3 border ${TOM_SEVERIDADE[x.sev]}`}>
+            <div className="font-bold">{SEVERIDADE_ROTULO[x.sev]}{x.mod ? ` · Módulo ${x.mod}` : ""}</div>
+            <div className="mt-0.5">{x.texto}</div>
+            <div className="mt-0.5 opacity-90">→ {x.acao}</div>
+          </div>
+        ))}
+      </div>
+      <p className="text-sm font-semibold text-slate-200">
+        {rev.length ? `Etapas sugeridas para a equipe revisar: ${rev.map((n) => `Módulo ${n}`).join(", ")}.` : "Nenhuma etapa com atenção alta/média apontada pelas regras automáticas."}
+      </p>
+      <p className="text-[11px] text-slate-500 mt-2">O diagnóstico usa apenas regras objetivas (campos vazios ou zerados, margens negativas, prazos e fluxo de correção). Ele não substitui a avaliação pedagógica do professor; para uma análise mais profunda, use "Exportar para análise por IA".</p>
+    </div>
+  );
+}
+
 const TIPOS_RELATORIO = [
   { id: "dre", label: "Demonstrativo de Resultado", icon: FileBarChart },
   { id: "indicadores", label: "Indicadores de Viabilidade", icon: Target },
   { id: "analise", label: "Análise do Negócio", icon: TrendingUp },
   { id: "gerencial", label: "Relatório Gerencial (completo)", icon: FileSpreadsheet },
+  { id: "completo", label: "Relatório Gerencial Completo (etapa por etapa)", icon: ClipboardCheck },
 ];
 
-function RelatorioPorEmpresa({ dadosEquipes }) {
+function RelatorioPorEmpresa({ dadosEquipes, turma }) {
   const [equipeId, setEquipeId] = useState("");
   const [tipo, setTipo] = useState("gerencial");
 
@@ -7053,7 +7616,7 @@ function RelatorioPorEmpresa({ dadosEquipes }) {
 
   return (
     <div>
-      <div className="flex flex-wrap gap-3 mb-4">
+      <div className="no-print flex flex-wrap gap-3 mb-4">
         <select value={equipeId} onChange={(e) => setEquipeId(e.target.value)} className="border border-slate-600 bg-slate-900 text-slate-100 rounded-md px-3 py-2 text-sm">
           <option value="">Selecione a empresa…</option>
           {dadosEquipes.map(({ equipe }) => <option key={equipe.id} value={equipe.id}>{equipe.nomeNegocio}</option>)}
@@ -7064,7 +7627,7 @@ function RelatorioPorEmpresa({ dadosEquipes }) {
 
       {selecionada && (
         <div>
-          <div className="flex flex-wrap gap-2 mb-5">
+          <div className="no-print flex flex-wrap gap-2 mb-5">
             {TIPOS_RELATORIO.map((t) => {
               const Icon = t.icon;
               const ativo = tipo === t.id;
@@ -7077,10 +7640,15 @@ function RelatorioPorEmpresa({ dadosEquipes }) {
             })}
           </div>
 
+          {tipo === "completo" ? (
+            <RelatorioGerencialCompleto item={selecionada} turma={turma} />
+          ) : (
+          <div>
           <div className="mb-4">
             <div className="text-xs font-bold tracking-widest text-amber-500 uppercase">{selecionada.equipe.nomeNegocio}</div>
             <div className="text-xs text-slate-500">{selecionada.equipe.integrantes.join(", ") || "sem integrantes"}</div>
           </div>
+          <AvisoRelatorioParcial fluxoModulos={selecionada.dados.fluxoModulos} />
 
           {(tipo === "dre" || tipo === "gerencial") && (
             <div className="mb-8">
@@ -7099,6 +7667,8 @@ function RelatorioPorEmpresa({ dadosEquipes }) {
               {tipo === "gerencial" && <h3 className="text-sm font-bold text-slate-200 mb-2">3. Análise do Negócio</h3>}
               <AnaliseNegocio calc={selecionada.calc} historico={selecionada.dados.historico} readOnly progressoAprovado={selecionada.progressoAprovado} />
             </div>
+          )}
+          </div>
           )}
         </div>
       )}
@@ -7370,21 +7940,34 @@ const ABAS_RELATORIO = [
 function GestaoRelatoriosView({ turmas }) {
   const [turmaId, setTurmaId] = useState("");
   const [aba, setAba] = useState("resumo");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [leituraEm, setLeituraEm] = useState(null);
   const turma = turmas.find((t) => t.id === turmaId);
-  const dadosEquipes = useEquipesComDados(turmaId);
+  const dadosEquipes = useEquipesComDados(turmaId, refreshKey);
+  // Hora da última leitura dos dados no banco — os relatórios mostram uma
+  // "foto" carregada ao abrir a turma; o botão Atualizar relê tudo.
+  useEffect(() => { if (dadosEquipes !== null) setLeituraEm(Date.now()); }, [dadosEquipes]);
 
   return (
     <div>
       <SectionTitle icon={FileBarChart} sub="Escolha a turma e o tipo de relatório para acompanhar o desempenho das equipes.">Relatórios</SectionTitle>
-      <div className="mb-4">
+      <div className="no-print mb-4 flex flex-wrap items-center gap-3">
         <SeletorTurma turmas={turmas} value={turmaId} onChange={setTurmaId} />
+        {turmaId && (
+          <div className="flex items-center gap-2">
+            <button onClick={() => setRefreshKey((k) => k + 1)} disabled={dadosEquipes === null} className="flex items-center gap-1.5 text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-2 rounded-md hover:bg-slate-800 disabled:opacity-40">
+              <RefreshCw size={13} /> Atualizar dados
+            </button>
+            {leituraEm && dadosEquipes !== null && <span className="text-[11px] text-slate-500">Dados lidos às {new Date(leituraEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>}
+          </div>
+        )}
       </div>
 
       {!turmaId && <Card className="p-8 text-center text-slate-500">Selecione uma turma para ver os relatórios.</Card>}
 
       {turmaId && (
         <div>
-          <div className="flex flex-wrap gap-2 mb-5 border-b border-slate-800 pb-4">
+          <div className="no-print flex flex-wrap gap-2 mb-5 border-b border-slate-800 pb-4">
             {ABAS_RELATORIO.map((a) => {
               const Icon = a.icon;
               const ativo = aba === a.id;
@@ -7397,7 +7980,7 @@ function GestaoRelatoriosView({ turmas }) {
             })}
           </div>
           {aba === "resumo" && <ResumoComparativo turma={turma} dadosEquipes={dadosEquipes} />}
-          {aba === "empresa" && <RelatorioPorEmpresa dadosEquipes={dadosEquipes} />}
+          {aba === "empresa" && <RelatorioPorEmpresa dadosEquipes={dadosEquipes} turma={turma} />}
           {aba === "notas" && <RelatorioNotas turma={turma} dadosEquipes={dadosEquipes} />}
           {aba === "pendencias" && <RelatorioPendencias turma={turma} dadosEquipes={dadosEquipes} />}
         </div>

@@ -1,4 +1,4 @@
-// build: 20261008_19h26m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261008_19h35m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -487,6 +487,18 @@ const ESTADO_MODULO_PADRAO = {
   ciclo: 1,           // conta quantos envios já ocorreram (incrementa a cada devolução)
   historico: [],       // [{ tipo: 'envio'|'devolucao'|'reenvio'|'aprovacao'|'reabertura', data, feedback? }] — nunca é apagado
 };
+
+// Só para a empresa de teste: módulos "pendente" (bloqueados) passam a
+// "liberado" e o prazo é ignorado, para o professor poder navegar por todos
+// os módulos ao explicar o sistema. Não altera módulos já enviados/corrigidos.
+function liberarModulosDaEmpresaTeste(fluxo) {
+  const resultado = {};
+  MODULOS.forEach((m) => {
+    const est = estadoModulo(fluxo, m.id);
+    resultado[m.id] = { ...est, status: est.status === "pendente" ? "liberado" : est.status, prazo: null };
+  });
+  return resultado;
+}
 
 function estadoModulo(fluxo, modId) {
   return (fluxo && fluxo[modId]) || ESTADO_MODULO_PADRAO;
@@ -4193,7 +4205,11 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
 
   const lanc = mergeLancamentos(dados?.lancamentos);
   const calc = useMemo(() => calcular(lanc), [JSON.stringify(lanc)]);
-  const fluxo = dados?.fluxoModulos || fluxoModulosPadrao();
+  // Empresa de teste (menu "Empresa Teste"): o professor usa para demonstrar
+  // o sistema, então todos os módulos ficam liberados e sem prazo — só
+  // exibição, nada é gravado a mais. Empresas reais seguem o fluxo normal.
+  const fluxoGravado = dados?.fluxoModulos || fluxoModulosPadrao();
+  const fluxo = equipe?.teste === true ? liberarModulosDaEmpresaTeste(fluxoGravado) : fluxoGravado;
   const progressoAprovado = calcularProgressoAprovado(fluxo);
   const enviarModulo = (modId) => {
     const estadoAtual = estadoModulo(fluxo, modId);
@@ -8587,7 +8603,7 @@ function PainelEmpresaTeste({ turma, onEntrar, onAbrirCorrecao }) {
 
   const zerar = () => {
     if (!teste || teste.teste !== true) return;
-    if (!window.confirm("Zerar a empresa de teste?\n\nApaga lançamentos, notas, feedbacks, histórico e cenários dela e volta o fluxo para o Módulo 1 liberado. Só afeta a empresa de teste — os alunos reais não são tocados.")) return;
+    if (!window.confirm("Zerar a empresa de teste?\n\nApaga lançamentos, notas, feedbacks, histórico e cenários dela e volta ao estado inicial (todos os módulos liberados). Só afeta a empresa de teste — os alunos reais não são tocados.")) return;
     executar(async () => {
       await window.storage.delete(`dados_equipe_${teste.id}`, true);
       await atualizarEquipesTurma(turma.id, (lista) => lista.map((e) => (e.id === teste.id && e.teste === true ? { ...e, segmento: null, segmentoStatus: null, segmentoObservacao: null, segmentoAprovadoEm: null } : e)));
@@ -8640,7 +8656,7 @@ function PainelEmpresaTeste({ turma, onEntrar, onAbrirCorrecao }) {
       <Card className="p-4">
         <div className="text-xs font-bold text-slate-300 mb-2">Como funciona</div>
         <ul className="list-disc list-inside space-y-1 text-xs text-slate-400 leading-relaxed">
-          <li>"Entrar como equipe de teste" abre a área do aluno (mesmo menu, módulos e fluxo de envio/correção). Uma faixa laranja no topo avisa que é teste e traz o botão para sair.</li>
+          <li>"Entrar como equipe de teste" abre a área do aluno (mesmo menu, módulos e fluxo de envio/correção). <b className="text-slate-300">Todos os módulos ficam liberados e sem prazo</b> nesta empresa, para você navegar livremente ao explicar o sistema; nas empresas reais o fluxo continua normal. Uma faixa laranja no topo avisa que é teste e traz o botão para sair.</li>
           <li>Para ver o fluxo completo: lance, envie um módulo, clique em "Corrigir como professor", devolva ou aprove e depois entre de novo para ver o feedback do lado do aluno.</li>
           <li>A empresa de teste <b className="text-slate-300">não aparece</b> para os alunos, nem em Resumo Comparativo, Notas, Pendências, Backup, Auditoria, Integrantes ou contagens. Em Correções pendentes aparece com o selo TESTE e não soma no número do menu.</li>
           <li>No Relatório por Empresa há a opção "Mostrar empresa de teste", para conferir os relatórios com esses dados.</li>

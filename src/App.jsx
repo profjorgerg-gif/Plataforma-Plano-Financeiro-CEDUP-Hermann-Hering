@@ -1,5 +1,5 @@
-// build: 20261008_18h00m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+// build: 20261008_18h50m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, LineChart, Line, ReferenceLine,
@@ -59,7 +59,7 @@ const TEORIA = {
   m6: { conceito: "Custo de materiais para cada unidade fabricada — detalhamento opcional, útil para negócios industriais.", formula: "Custo Unitário = Σ (Quantidade do material × Custo Unitário do material)" },
   m7: { conceito: "Gastos variáveis que incidem diretamente sobre as vendas: impostos e comissões. O imposto pode ser calculado automaticamente pela tabela do Simples Nacional, a partir do tipo de atividade e do faturamento anual.", formula: "Custo de Comercialização = Faturamento × (% Impostos + % Comissão)\nAlíquota efetiva do Simples = (RBT12 × Alíquota nominal − Parcela a deduzir) ÷ RBT12" },
   m8: { conceito: "Valor baixado do estoque em função da venda efetiva (CMD para indústria, CMV para comércio).", formula: "CMD/CMV = Σ (Quantidade Vendida × Custo Unitário de Aquisição/Produção)" },
-  m9: { conceito: "Custo com salários e encargos sociais (FGTS, férias, 13º, INSS etc.) da equipe contratada. Os encargos podem ser calculados automaticamente por grupo (A: básicos/legais, B: período não trabalhado, C: pagos em dinheiro, D: incidências cruzadas), conforme o regime tributário da empresa.", formula: "Custo com Mão de Obra = Σ [ Salário × (1 + % Encargos Sociais) ]\n% Encargos (por grupos) = Σ Grupo A + Σ Grupo B + Σ Grupo C + Σ Grupo D" },
+  m9: { conceito: "Custo com salários, encargos sociais (FGTS, férias, 13º, INSS etc.), benefícios (vale-transporte e vale-refeição) e pró-labore dos sócios. Os encargos podem ser calculados automaticamente por grupo (A: básicos/legais, B: período não trabalhado, C: pagos em dinheiro, D: incidências cruzadas), conforme o regime tributário da empresa.", formula: "Custo com Mão de Obra = Σ [ Salário × (1 + % Encargos Sociais) + Vale-transporte + Vale-refeição ] + Pró-labore dos sócios\n% Encargos (por grupos) = Σ Grupo A + Σ Grupo B + Σ Grupo C + Σ Grupo D" },
   m10: { conceito: "Perda de valor dos bens do ativo fixo pelo uso ao longo do tempo.", formula: "Depreciação Mensal = (Valor do Bem ÷ Vida Útil em anos) ÷ 12" },
   m11: { conceito: "Gastos que não variam com o volume de produção/vendas: aluguel, energia, pró-labore etc. — inclui automaticamente a mão de obra e a depreciação.", formula: "Custo Fixo Total = Σ custos fixos + Mão de Obra + Depreciação" },
   m12: { conceito: "Consolida faturamento e custos para apurar se a empresa projeta lucro ou prejuízo.", formula: "Resultado Operacional = (Receita − Custos Variáveis) − Custos Fixos" },
@@ -103,7 +103,7 @@ const GUIA_MODULOS_EXTRA = {
     exemplo: "600 pães vendidos × R$ 2,25 de custo de matéria-prima cada = R$ 1.350 de CMD no mês.",
   },
   m9: {
-    lancamento: "Para cada função/cargo da equipe: nome, quantidade de pessoas e salário. Os encargos sociais podem ser calculados automaticamente por grupo (A/B/C/D), bastando escolher o regime tributário (Simples Nacional ou Lucro Real/Presumido) — ou, se preferir, informar um percentual manual por função.",
+    lancamento: "Para cada função/cargo da equipe: nome, quantidade de pessoas e salário (e, se houver, vale-transporte e vale-refeição por pessoa). Os sócios que trabalham no negócio entram em \"Pró-labore\". Os encargos sociais podem ser calculados automaticamente por grupo (A/B/C/D), bastando escolher o regime tributário (Simples Nacional ou Lucro Real/Presumido) — ou, se preferir, informar um percentual manual por função.",
     exemplo: "1 padeiro, salário R$ 1.800, no Simples Nacional (encargos de 33,00% pelo cálculo por grupos) → custo real de R$ 2.394/mês com essa função.",
   },
   m10: {
@@ -1037,11 +1037,7 @@ function calcular(lanc) {
     return s + (Number(it.qtd) || 0) * cu;
   }, 0);
 
-  const maoDeObra = l.m9.itens.reduce((s, it) => {
-    const sal = Number(it.salario) || 0;
-    const enc = (l.m9.modoEncargos || "grupos") === "grupos" ? totalEncargosGrupo(l.m9.regimeEncargos || "simples") : (Number(it.pctEncargos) || 0);
-    return s + (Number(it.qtd) || 0) * sal * (1 + enc / 100);
-  }, 0);
+  const maoDeObra = detalheMaoDeObra(l.m9).total;
 
   const depreciacaoLinhas = l.m1.itens.map((it) => {
     const valor = (Number(it.qtd) || 0) * (Number(it.valorUnit) || 0);
@@ -1096,7 +1092,7 @@ function calcular(lanc) {
     l.m6.itens.length > 0,
     (Number(l.m7.pctImpostos) || 0) > 0 || (Number(l.m7.pctComissao) || 0) > 0,
     cmv > 0,
-    l.m9.itens.length > 0,
+    l.m9.itens.length > 0 || (l.m9.prolabore || []).length > 0,
     depreciacaoMensal > 0,
     l.m11.itens.length > 0,
     faturamento > 0,
@@ -2876,15 +2872,63 @@ function totalEncargosGrupo(regime) {
   return soma(r.grupoA) + soma(r.grupoB) + soma(r.grupoC) + soma(r.grupoD);
 }
 
-function M9Form({ data, update }) {
+// Custo de mão de obra detalhado (Módulo 9): funcionários (salário + encargos +
+// benefícios opcionais de VT/VR) e pró-labore dos sócios. Campos novos
+// (vt, vr, prolabore) são opcionais: vazios = 0, e o total fica idêntico ao
+// de antes da folha detalhada (Nº × salário × (1 + encargos)). Mesma função
+// usada por calcular(), pela tela do Módulo 9 e pelos relatórios.
+function detalheMaoDeObra(m9) {
+  const base = m9 || {};
+  const modo = base.modoEncargos || "grupos";
+  const regime = base.regimeEncargos || "simples";
+  const pctGrupos = totalEncargosGrupo(regime);
+  const info = ENCARGOS_GRUPOS[regime] || ENCARGOS_GRUPOS.simples;
+  const inssPatronal = (info.grupoA.find((i) => i.nome.startsWith("Previdência Social")) || { pct: 0 }).pct;
+  const linhas = (base.itens || []).map((it) => {
+    const qtd = Number(it.qtd) || 0;
+    const salario = Number(it.salario) || 0;
+    const pct = modo === "grupos" ? pctGrupos : (Number(it.pctEncargos) || 0);
+    const vt = Number(it.vt) || 0;
+    const vr = Number(it.vr) || 0;
+    const salarioTotal = qtd * salario;
+    const encargos = salarioTotal * pct / 100;
+    const beneficios = qtd * (vt + vr);
+    const total = qtd * salario * (1 + pct / 100) + beneficios;
+    return { id: it.id, funcao: it.funcao, qtd, salario, pct, vt, vr, salarioTotal, encargos, beneficios, total };
+  });
+  const prolabore = (base.prolabore || []).map((it) => {
+    const qtd = Number(it.qtd) || 0;
+    const valor = Number(it.valor) || 0;
+    const total = qtd * valor * (1 + inssPatronal / 100);
+    return { id: it.id, funcao: it.funcao, qtd, valor, pct: inssPatronal, total };
+  });
+  const totalFuncionarios = linhas.reduce((s, r) => s + r.total, 0);
+  const totalProlabore = prolabore.reduce((s, r) => s + r.total, 0);
+  return { linhas, prolabore, totalFuncionarios, totalProlabore, total: totalFuncionarios + totalProlabore, pctGrupos, inssPatronal, modo, regime, info };
+}
+
+function M9Form({ data, update, abrirTudo }) {
   const itens = data.itens;
+  const prolabore = data.prolabore || [];
+  const [aberto, setAberto] = useState(null);
   const setItens = (next) => update({ ...data, itens: next });
+  const setProlabore = (next) => update({ ...data, prolabore: next });
   const modoEncargos = data.modoEncargos || "grupos";
   const regimeEncargos = data.regimeEncargos || "simples";
-  const pctGrupos = totalEncargosGrupo(regimeEncargos);
   const regimeInfo = ENCARGOS_GRUPOS[regimeEncargos] || ENCARGOS_GRUPOS.simples;
-  const pctEfetivo = (it) => (modoEncargos === "grupos" ? pctGrupos : (Number(it.pctEncargos) || 0));
-  const total = itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.salario) || 0) * (1 + pctEfetivo(it) / 100), 0);
+  const det = detalheMaoDeObra(data);
+  const linhaDe = (id) => det.linhas.find((r) => r.id === id);
+  const setCampo = (id, campo, v) => setItens(itens.map((r) => (r.id === id ? { ...r, [campo]: v } : r)));
+
+  // Composição, em reais, do custo de UMA pessoa naquela função.
+  const composicao = (r) => {
+    const partes = modoEncargos === "grupos"
+      ? [...regimeInfo.grupoA, ...regimeInfo.grupoB, ...regimeInfo.grupoC, ...regimeInfo.grupoD].filter((i) => i.pct > 0).map((i) => [i.nome, i.pct, (r.salario * i.pct) / 100])
+      : [["Encargos (percentual informado)", r.pct, (r.salario * r.pct) / 100]];
+    const encargosPessoa = partes.reduce((s, p) => s + p[2], 0);
+    const custoPessoa = r.salario + encargosPessoa + r.vt + r.vr;
+    return { partes, encargosPessoa, custoPessoa };
+  };
 
   return (
     <div>
@@ -2931,8 +2975,9 @@ function M9Form({ data, update }) {
             </div>
             <div className="flex justify-between items-center mt-3 pt-2 border-t border-slate-700">
               <span className="text-xs uppercase text-slate-500 font-semibold">Total dos encargos</span>
-              <span className="font-bold text-amber-400 text-lg">{fmtNum(pctGrupos, 2)}%</span>
+              <span className="font-bold text-amber-400 text-lg">{fmtNum(det.pctGrupos, 2)}%</span>
             </div>
+            <p className="text-[11px] text-slate-500 mt-2">Percentuais de referência para fins didáticos. Na prática, o enquadramento (por exemplo, Anexo IV do Simples, que recolhe o INSS patronal por fora) pode alterar os encargos.</p>
           </Card>
         </>
       )}
@@ -2944,31 +2989,110 @@ function M9Form({ data, update }) {
               <th className="py-2 pr-2">Função</th>
               <th className="py-2 pr-2 w-20">Nº</th>
               <th className="py-2 pr-2 w-28">Salário (R$)</th>
+              <th className="py-2 pr-2 w-28" title="Opcional — por pessoa, por mês">Vale-transp. (R$)</th>
+              <th className="py-2 pr-2 w-28" title="Opcional — por pessoa, por mês">Vale-refeição (R$)</th>
               <th className="py-2 pr-2 w-24">Encargos (%)</th>
               <th className="py-2 pr-2 w-32">Total (R$)</th>
               <th className="w-8"></th>
             </tr>
           </thead>
           <tbody>
-            {itens.map((it) => (
-              <tr key={it.id} className="border-b border-slate-800">
-                <td className="py-1.5 pr-2"><TxtInput value={it.funcao} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, funcao: v } : r)))} placeholder="Ex.: Vendedor" /></td>
-                <td className="py-1.5 pr-2"><NumInput value={it.qtd} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, qtd: v } : r)))} /></td>
-                <td className="py-1.5 pr-2"><NumInput value={it.salario} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, salario: v } : r)))} /></td>
-                <td className="py-1.5 pr-2">
-                  {modoEncargos === "grupos"
-                    ? <span className="text-slate-400">{fmtNum(pctGrupos, 2)}%</span>
-                    : <NumInput value={it.pctEncargos} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, pctEncargos: v } : r)))} />}
-                </td>
-                <td className="py-1.5 pr-2 font-semibold text-slate-200">{fmtBRL((Number(it.qtd) || 0) * (Number(it.salario) || 0) * (1 + pctEfetivo(it) / 100))}</td>
-                <td><RemoveBtn onClick={() => setItens(itens.filter((r) => r.id !== it.id))} /></td>
-              </tr>
-            ))}
+            {itens.map((it) => {
+              const r = linhaDe(it.id);
+              const c = composicao(r);
+              const aberta = abrirTudo || aberto === it.id;
+              return (
+                <Fragment key={it.id}>
+                  <tr className="border-b border-slate-800">
+                    <td className="py-1.5 pr-2">
+                      <TxtInput value={it.funcao} onChange={(v) => setCampo(it.id, "funcao", v)} placeholder="Ex.: Vendedor" />
+                      <button type="button" onClick={() => setAberto(aberta ? null : it.id)} className="mt-1 flex items-center gap-1 text-[11px] text-amber-400 hover:text-amber-300">
+                        {aberta ? <ChevronDown size={12} /> : <ChevronRight size={12} />} ver composição do custo
+                      </button>
+                    </td>
+                    <td className="py-1.5 pr-2 align-top"><NumInput value={it.qtd} onChange={(v) => setCampo(it.id, "qtd", v)} /></td>
+                    <td className="py-1.5 pr-2 align-top"><NumInput value={it.salario} onChange={(v) => setCampo(it.id, "salario", v)} /></td>
+                    <td className="py-1.5 pr-2 align-top"><NumInput value={it.vt} onChange={(v) => setCampo(it.id, "vt", v)} /></td>
+                    <td className="py-1.5 pr-2 align-top"><NumInput value={it.vr} onChange={(v) => setCampo(it.id, "vr", v)} /></td>
+                    <td className="py-1.5 pr-2 align-top">
+                      {modoEncargos === "grupos"
+                        ? <span className="text-slate-400 block pt-2">{fmtNum(det.pctGrupos, 2)}%</span>
+                        : <NumInput value={it.pctEncargos} onChange={(v) => setCampo(it.id, "pctEncargos", v)} />}
+                    </td>
+                    <td className="py-1.5 pr-2 font-semibold text-slate-200 align-top"><span className="block pt-2">{fmtBRL(r.total)}</span></td>
+                    <td className="align-top pt-1.5"><RemoveBtn onClick={() => setItens(itens.filter((x) => x.id !== it.id))} /></td>
+                  </tr>
+                  {aberta && (
+                    <tr className="border-b border-slate-800">
+                      <td colSpan={8} className="pb-3">
+                        <div className="bg-slate-900 border border-slate-700 rounded-md p-3 text-xs">
+                          <div className="font-bold text-slate-200 mb-2">{it.funcao || "Função"} — custo de 1 pessoa para a empresa</div>
+                          <table className="w-full max-w-lg">
+                            <tbody>
+                              <tr><td className="py-0.5 text-slate-300 font-semibold">Salário bruto</td><td className="py-0.5 text-right text-slate-500"></td><td className="py-0.5 text-right text-slate-200 font-semibold">{fmtBRL(r.salario)}</td></tr>
+                              {c.partes.map(([nome, pct, valor]) => (
+                                <tr key={nome}><td className="py-0.5 text-slate-400 pr-3">{nome}</td><td className="py-0.5 text-right text-slate-500">{fmtNum(pct, 2)}%</td><td className="py-0.5 text-right text-slate-300">{fmtBRL(valor)}</td></tr>
+                              ))}
+                              <tr><td className="py-0.5 text-slate-300 font-semibold border-t border-slate-700">Subtotal de encargos</td><td className="py-0.5 text-right text-amber-400 border-t border-slate-700">{fmtNum(r.pct, 2)}%</td><td className="py-0.5 text-right text-slate-200 font-semibold border-t border-slate-700">{fmtBRL(c.encargosPessoa)}</td></tr>
+                              {r.vt > 0 && <tr><td className="py-0.5 text-slate-400">Vale-transporte</td><td></td><td className="py-0.5 text-right text-slate-300">{fmtBRL(r.vt)}</td></tr>}
+                              {r.vr > 0 && <tr><td className="py-0.5 text-slate-400">Vale-refeição</td><td></td><td className="py-0.5 text-right text-slate-300">{fmtBRL(r.vr)}</td></tr>}
+                              <tr><td className="py-1 text-slate-100 font-bold border-t border-slate-600">Custo mensal por pessoa</td><td className="border-t border-slate-600"></td><td className="py-1 text-right text-amber-400 font-bold border-t border-slate-600">{fmtBRL(c.custoPessoa)}</td></tr>
+                            </tbody>
+                          </table>
+                          {r.salario > 0 && <p className="mt-2 text-slate-400">Cada pessoa nessa função custa {fmtNum(((c.custoPessoa / r.salario) - 1) * 100, 0)}% a mais do que o salário. Multiplicado por {fmtNum(r.qtd, 0)} {r.qtd === 1 ? "pessoa" : "pessoas"}: <b className="text-slate-200">{fmtBRL(r.total)}</b>.</p>}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
       <AddBtn onClick={() => setItens([...itens, { id: uid(), funcao: "", qtd: 1, salario: 0, pctEncargos: 30 }])}>Adicionar função</AddBtn>
-      <div className="mt-4 text-right"><StatCard label="Total com Mão de Obra" value={fmtBRL(total)} tone="blue" /></div>
+      <p className="text-[11px] text-slate-500 mt-1">Vale-transporte e vale-refeição são opcionais (valor mensal por pessoa). Em branco, não entram no custo.</p>
+
+      <div className="mt-6">
+        <div className="text-sm font-bold text-slate-200 mb-1">Pró-labore dos sócios</div>
+        <p className="text-[11px] text-slate-500 mb-2">Remuneração dos sócios que trabalham no negócio. Sócio não gera FGTS, férias nem 13º.{" "}
+          {det.inssPatronal > 0 ? `No regime ${regimeInfo.nome}, incide INSS patronal de ${fmtNum(det.inssPatronal, 0)}% sobre o pró-labore.` : `No regime ${regimeInfo.nome}, não há INSS patronal (o sócio recolhe o próprio INSS).`}
+        </p>
+        {prolabore.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase text-slate-400 border-b border-slate-700">
+                  <th className="py-2 pr-2">Sócio(a) / função</th>
+                  <th className="py-2 pr-2 w-20">Nº</th>
+                  <th className="py-2 pr-2 w-32">Pró-labore (R$)</th>
+                  <th className="py-2 pr-2 w-28">INSS patronal</th>
+                  <th className="py-2 pr-2 w-32">Total (R$)</th>
+                  <th className="w-8"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {prolabore.map((it) => {
+                  const r = det.prolabore.find((x) => x.id === it.id);
+                  return (
+                    <tr key={it.id} className="border-b border-slate-800">
+                      <td className="py-1.5 pr-2"><TxtInput value={it.funcao} onChange={(v) => setProlabore(prolabore.map((x) => (x.id === it.id ? { ...x, funcao: v } : x)))} placeholder="Ex.: Sócia administradora" /></td>
+                      <td className="py-1.5 pr-2"><NumInput value={it.qtd} onChange={(v) => setProlabore(prolabore.map((x) => (x.id === it.id ? { ...x, qtd: v } : x)))} /></td>
+                      <td className="py-1.5 pr-2"><NumInput value={it.valor} onChange={(v) => setProlabore(prolabore.map((x) => (x.id === it.id ? { ...x, valor: v } : x)))} /></td>
+                      <td className="py-1.5 pr-2 text-slate-400">{fmtNum(det.inssPatronal, 2)}%</td>
+                      <td className="py-1.5 pr-2 font-semibold text-slate-200">{fmtBRL(r ? r.total : 0)}</td>
+                      <td><RemoveBtn onClick={() => setProlabore(prolabore.filter((x) => x.id !== it.id))} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <AddBtn onClick={() => setProlabore([...prolabore, { id: uid(), funcao: "", qtd: 1, valor: 0 }])}>Adicionar pró-labore</AddBtn>
+      </div>
+
+      <div className="mt-4 text-right"><StatCard label="Total com Mão de Obra" value={fmtBRL(det.total)} tone="blue" /></div>
     </div>
   );
 }
@@ -4445,7 +4569,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
               {m.id === "m6" && <M6Form data={lanc.m6} update={(v) => updateModulo("m6", v)} m5itens={lanc.m5.itens} />}
               {m.id === "m7" && <M7Form data={lanc.m7} update={(v) => updateModulo("m7", v)} faturamento={calc.faturamento} />}
               {m.id === "m8" && <M8Form data={lanc.m8} update={(v) => updateModulo("m8", v)} m5itens={lanc.m5.itens} />}
-              {m.id === "m9" && <M9Form data={lanc.m9} update={(v) => updateModulo("m9", v)} />}
+              {m.id === "m9" && <M9Form data={lanc.m9} update={(v) => updateModulo("m9", v)} abrirTudo={souVisualizador || !podeEditar} />}
               {m.id === "m10" && <M10Form data={lanc.m10} update={(v) => updateModulo("m10", v)} m1itens={lanc.m1.itens} depreciacaoLinhas={calc.depreciacaoLinhas} depreciacaoMensal={calc.depreciacaoMensal} />}
               {m.id === "m11" && <M11Form data={lanc.m11} update={(v) => updateModulo("m11", v)} maoDeObra={calc.maoDeObra} depreciacaoMensal={calc.depreciacaoMensal} segmento={equipe?.segmento} />}
               {m.id === "m12" && <M12View calc={calc} />}
@@ -4615,7 +4739,7 @@ function ModuloLeitura({ mId, lanc, calc }) {
         {mId === "m6" && <M6Form data={lanc.m6} update={noop} m5itens={lanc.m5.itens} />}
         {mId === "m7" && <M7Form data={lanc.m7} update={noop} faturamento={calc.faturamento} />}
         {mId === "m8" && <M8Form data={lanc.m8} update={noop} m5itens={lanc.m5.itens} />}
-        {mId === "m9" && <M9Form data={lanc.m9} update={noop} />}
+        {mId === "m9" && <M9Form data={lanc.m9} update={noop} abrirTudo />}
         {mId === "m10" && <M10Form data={lanc.m10} update={noop} m1itens={lanc.m1.itens} depreciacaoLinhas={calc.depreciacaoLinhas} depreciacaoMensal={calc.depreciacaoMensal} />}
         {mId === "m11" && <M11Form data={lanc.m11} update={noop} maoDeObra={calc.maoDeObra} depreciacaoMensal={calc.depreciacaoMensal} />}
         {mId === "m12" && <M12View calc={calc} />}
@@ -7127,14 +7251,14 @@ function dadosTabelaModulo(modId, l, calc) {
         rodape: [["CMD/CMV total (mensal)", fmtBRL(calc.cmv)]],
       };
     case "m9": {
-      const grupos = (l.m9.modoEncargos || "grupos") === "grupos";
+      const det = detalheMaoDeObra(l.m9);
       return {
-        colunas: ["Função", "Qtde.", "Salário", "% Encargos", "Custo mensal"],
-        linhas: l.m9.itens.map((it) => {
-          const enc = grupos ? totalEncargosGrupo(l.m9.regimeEncargos || "simples") : (Number(it.pctEncargos) || 0);
-          return [nome(it.funcao, "(sem função)"), q(it.qtd), fmtBRL(Number(it.salario) || 0), `${fmtNum(enc, 1)}%`, fmtBRL((Number(it.qtd) || 0) * (Number(it.salario) || 0) * (1 + enc / 100))];
-        }),
-        rodape: [["Custo total com mão de obra (mensal)", fmtBRL(calc.maoDeObra)]],
+        colunas: ["Função", "Qtde.", "Salário", "% Encargos", "VT + VR (por pessoa)", "Custo mensal"],
+        linhas: [
+          ...det.linhas.map((r) => [nome(r.funcao, "(sem função)"), q(r.qtd), fmtBRL(r.salario), `${fmtNum(r.pct, 1)}%`, fmtBRL(r.vt + r.vr), fmtBRL(r.total)]),
+          ...det.prolabore.map((r) => [`Pró-labore — ${nome(r.funcao, "sócio(a)")}`, q(r.qtd), fmtBRL(r.valor), `${fmtNum(r.pct, 1)}% (INSS patronal)`, "—", fmtBRL(r.total)]),
+        ],
+        rodape: [["Funcionários", fmtBRL(det.totalFuncionarios)], ["Pró-labore", fmtBRL(det.totalProlabore)], ["Custo total com mão de obra (mensal)", fmtBRL(calc.maoDeObra)]],
       };
     }
     case "m10":
@@ -7233,7 +7357,7 @@ function diagnosticoGerencial(l, calc, fluxoMod, dados) {
   const negativos = calc.produtosAnalise.filter((p) => p.custoUnit > 0 && p.margemUnit < 0).map((p) => p.nome);
   if (negativos.length) add("alta", 5, `Preço de venda não cobre custo + tributos em: ${lista(negativos)} (margem unitária negativa).`, "Rever o preço de venda (Módulo 5) ou o custo unitário (Módulos 6 e 8).");
   // Módulo 9 / 11
-  if (l.m9.itens.length === 0) add("media", 9, "Nenhuma mão de obra lançada.", "Lançar funcionários/pró-labore, ou justificar por que o negócio opera sem mão de obra.");
+  if (l.m9.itens.length === 0 && (l.m9.prolabore || []).length === 0) add("media", 9, "Nenhuma mão de obra nem pró-labore lançados.", "Lançar funcionários e/ou pró-labore dos sócios, ou justificar por que o negócio opera sem mão de obra.");
   if (l.m11.itens.length === 0) add("alta", 11, "Nenhum custo fixo lançado (aluguel, energia, internet, etc.).", "Lançar os custos fixos mensais do negócio.");
 
   // Resultado e indicadores (só quando há receita)

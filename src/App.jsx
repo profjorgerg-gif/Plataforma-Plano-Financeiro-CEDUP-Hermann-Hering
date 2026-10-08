@@ -1,4 +1,4 @@
-// build: 20261008_18h50m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261008_19h26m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -13,7 +13,7 @@ import {
   Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
   ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
   LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows, Monitor, FileDown, Info, Library,
-  Calendar, RefreshCw, Undo2, CircleDot, Inbox, LogIn, Users2, ImageDown, Sparkles, Link2, Tag,
+  Calendar, RefreshCw, Undo2, CircleDot, Inbox, LogIn, Users2, ImageDown, Sparkles, Link2, Tag, FlaskConical,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
@@ -614,6 +614,7 @@ const GESTAO_ITENS = [
   { id: "usuarios", label: "Usuários", icon: Users },
   { id: "acessos", label: "Acessos de usuários", icon: LogIn },
   { id: "relatorios", label: "Relatórios", icon: FileBarChart },
+  { id: "empresaTeste", label: "Empresa Teste", icon: FlaskConical },
   { id: "backup", label: "Backup", icon: Save },
   { id: "auditoria", label: "Auditoria", icon: History },
 ];
@@ -2080,7 +2081,7 @@ function useSharedObject(key, fallback) {
 // Carrega, para uma turma, a lista de equipes + os dados (lançamentos, histórico,
 // comentários) e o cálculo já pronto de cada uma. Usado pelas telas de Gestão
 // (Relatórios, Backup e Auditoria) que precisam olhar todas as equipes de uma vez.
-function useEquipesComDados(turmaId, refreshKey) {
+function useEquipesComDados(turmaId, refreshKey, incluirTeste) {
   const [estado, setEstado] = useState(null);
   useEffect(() => {
     if (!turmaId) { setEstado([]); return; }
@@ -2089,7 +2090,10 @@ function useEquipesComDados(turmaId, refreshKey) {
       setEstado(null);
       try {
         const r = await window.storage.get(`equipes_${turmaId}`, true);
-        const equipes = r ? JSON.parse(r.value) : [];
+        const todasEquipes = r ? JSON.parse(r.value) : [];
+        // A empresa de teste (menu "Empresa Teste") fica fora de relatórios,
+        // backup, auditoria e contagens, salvo quando pedida explicitamente.
+        const equipes = incluirTeste ? todasEquipes : todasEquipes.filter((e) => !e.teste);
         const resultados = await Promise.all(equipes.map(async (eq) => {
           let dados = { lancamentos: defaultLancamentos(), historico: [], comentarios: [] };
           try {
@@ -2104,7 +2108,7 @@ function useEquipesComDados(turmaId, refreshKey) {
       }
     })();
     return () => { alive = false; };
-  }, [turmaId, refreshKey]);
+  }, [turmaId, refreshKey, incluirTeste]);
   return estado;
 }
 
@@ -6285,6 +6289,7 @@ function usePendentesCorrecao(turmas) {
                 turmaNome: turma.nome,
                 equipeId: equipe.id,
                 equipeNome: equipe.nomeNegocio,
+                teste: !!equipe.teste,
                 moduloId: m.id,
                 moduloNome: m.nome,
                 moduloN: m.n,
@@ -6337,7 +6342,7 @@ function CorrecoesPendentesView({ pendentes, onAbrir }) {
                 {String(p.moduloN).padStart(2, "0")}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-slate-100 truncate">{p.equipeNome} <span className="text-slate-500 font-normal">· {p.turmaNome}</span></div>
+                <div className="text-sm font-semibold text-slate-100 truncate">{p.teste && <span className="text-[10px] font-bold text-violet-300 bg-violet-950/40 border border-violet-500/40 rounded-full px-1.5 py-0.5 mr-1.5 align-middle">🧪 TESTE</span>}{p.equipeNome} <span className="text-slate-500 font-normal">· {p.turmaNome}</span></div>
                 <div className="text-xs text-slate-400 truncate">Módulo {p.moduloN} — {p.moduloNome}</div>
               </div>
               <div className="text-right shrink-0">
@@ -6425,7 +6430,7 @@ function useEquipesPorTurmas(turmas, refreshKey) {
       await Promise.all(turmas.map(async (t) => {
         try {
           const r = await window.storage.get(`equipes_${t.id}`, true);
-          resultado[t.id] = r ? JSON.parse(r.value) : [];
+          resultado[t.id] = (r ? JSON.parse(r.value) : []).filter((e) => !e.teste);
         } catch {
           resultado[t.id] = [];
         }
@@ -6646,7 +6651,8 @@ function TurmaDetail({ turma, onVoltar, professorNome, alvoCorrecao }) {
       : e)));
   };
 
-  const equipesAguardandoSegmento = (equipes || []).filter((e) => e.segmentoStatus === "pendente");
+  const equipesAguardandoSegmento = (equipes || []).filter((e) => e.segmentoStatus === "pendente" && !e.teste);
+  const equipesReais = (equipes || []).filter((e) => !e.teste);
 
   const excluirEmpresa = async (equipe) => {
     const ok = window.confirm(
@@ -6702,12 +6708,12 @@ function TurmaDetail({ turma, onVoltar, professorNome, alvoCorrecao }) {
       </Card>
 
       {equipes === null && <LoadingScreen />}
-      {equipes && equipes.length === 0 && (
+      {equipes && equipesReais.length === 0 && (
         <Card className="p-8 text-center text-slate-500">Nenhuma empresa cadastrada ainda. Use o formulário acima para adicionar.</Card>
       )}
-      {equipes && equipes.length > 0 && (
+      {equipes && equipesReais.length > 0 && (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {equipes.map((eq) => (
+          {equipesReais.map((eq) => (
             <EquipeCard
               key={eq.id}
               equipe={eq}
@@ -6924,7 +6930,7 @@ function EditarAlunoPanel({ aluno, turmas, onFechar, onSalvo }) {
     (async () => {
       try {
         const r = await window.storage.get(`equipes_${turmaId}`, true);
-        const lista = r ? JSON.parse(r.value) : [];
+        const lista = (r ? JSON.parse(r.value) : []).filter((e) => !e.teste);
         if (alive) setEmpresas(lista);
       } catch { if (alive) setEmpresas([]); }
     })();
@@ -7743,7 +7749,7 @@ function RelatorioPorEmpresa({ dadosEquipes, turma }) {
       <div className="no-print flex flex-wrap gap-3 mb-4">
         <select value={equipeId} onChange={(e) => setEquipeId(e.target.value)} className="border border-slate-600 bg-slate-900 text-slate-100 rounded-md px-3 py-2 text-sm">
           <option value="">Selecione a empresa…</option>
-          {dadosEquipes.map(({ equipe }) => <option key={equipe.id} value={equipe.id}>{equipe.nomeNegocio}</option>)}
+          {dadosEquipes.map(({ equipe }) => <option key={equipe.id} value={equipe.id}>{equipe.teste ? "🧪 " : ""}{equipe.nomeNegocio}</option>)}
         </select>
       </div>
 
@@ -8067,7 +8073,8 @@ function GestaoRelatoriosView({ turmas }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [leituraEm, setLeituraEm] = useState(null);
   const turma = turmas.find((t) => t.id === turmaId);
-  const dadosEquipes = useEquipesComDados(turmaId, refreshKey);
+  const [incluirTeste, setIncluirTeste] = useState(false);
+  const dadosEquipes = useEquipesComDados(turmaId, refreshKey, incluirTeste && aba === "empresa");
   // Hora da última leitura dos dados no banco — os relatórios mostram uma
   // "foto" carregada ao abrir a turma; o botão Atualizar relê tudo.
   useEffect(() => { if (dadosEquipes !== null) setLeituraEm(Date.now()); }, [dadosEquipes]);
@@ -8103,6 +8110,12 @@ function GestaoRelatoriosView({ turmas }) {
               );
             })}
           </div>
+          {aba === "empresa" && (
+            <label className="no-print flex items-center gap-2 text-xs text-slate-400 mb-4 cursor-pointer w-fit">
+              <input type="checkbox" checked={incluirTeste} onChange={(e) => setIncluirTeste(e.target.checked)} />
+              🧪 Mostrar empresa de teste (só aqui; os demais relatórios nunca a incluem)
+            </label>
+          )}
           {aba === "resumo" && <ResumoComparativo turma={turma} dadosEquipes={dadosEquipes} />}
           {aba === "empresa" && <RelatorioPorEmpresa dadosEquipes={dadosEquipes} turma={turma} />}
           {aba === "notas" && <RelatorioNotas turma={turma} dadosEquipes={dadosEquipes} />}
@@ -8116,7 +8129,7 @@ function GestaoRelatoriosView({ turmas }) {
 async function buscarEquipesComDados(turmaId) {
   try {
     const r = await window.storage.get(`equipes_${turmaId}`, true);
-    const equipes = r ? JSON.parse(r.value) : [];
+    const equipes = (r ? JSON.parse(r.value) : []).filter((e) => !e.teste);
     return await Promise.all(equipes.map(async (eq) => {
       let dados = { lancamentos: defaultLancamentos(), historico: [], comentarios: [] };
       try {
@@ -8220,6 +8233,12 @@ function GestaoBackupView({ turmas, onExcluir }) {
       const pacote = JSON.parse(texto);
       if (!pacote.equipes) throw new Error("Arquivo inválido");
       const listaEquipes = pacote.equipes.map((e) => e.equipe);
+      // Preserva a empresa de teste da turma (o backup nunca a inclui).
+      try {
+        const atual = await window.storage.get(`equipes_${turma.id}`, true);
+        const testesAtuais = (atual ? JSON.parse(atual.value) : []).filter((e) => e.teste && !listaEquipes.some((x) => x.id === e.id));
+        listaEquipes.push(...testesAtuais);
+      } catch {}
       await window.storage.set(`equipes_${turma.id}`, JSON.stringify(listaEquipes), true);
       for (const { equipe, dados } of pacote.equipes) {
         await window.storage.set(`dados_equipe_${equipe.id}`, JSON.stringify(dados), true);
@@ -8496,6 +8515,155 @@ function ProfessorInicio({ user, turmas, onIrPara }) {
   );
 }
 
+// ============================================================================
+// EMPRESA TESTE (menu do professor)
+// Uma empresa marcada com teste:true dentro da turma, sem integrantes, para o
+// professor percorrer o fluxo do aluno (lançar, enviar, corrigir, ver o
+// feedback) sem usar conta de aluno e sem tocar nos dados reais. Ela fica de
+// fora das listas/relatórios/backup/contagens (filtro por `teste` nos pontos
+// de leitura) e só aparece em Correções pendentes com selo, sem somar no
+// número do menu. "Zerar" e "Excluir" só aceitam empresas com teste === true.
+// ============================================================================
+
+// Lê a lista MAIS RECENTE do servidor, aplica a mudança e grava — evita
+// sobrescrever, com uma cópia antiga, um aluno que entrou na turma agora.
+async function atualizarEquipesTurma(turmaId, mudar) {
+  const chave = `equipes_${turmaId}`;
+  let lista = [];
+  try { const r = await window.storage.get(chave, true); lista = r ? JSON.parse(r.value) : []; } catch {}
+  const nova = mudar(lista);
+  await window.storage.set(chave, JSON.stringify(nova), true);
+  return nova;
+}
+
+function ResumoEmpresaTeste({ equipe }) {
+  const [dados] = useSharedObject(`dados_equipe_${equipe.id}`, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
+  if (dados === undefined) return <div className="text-xs text-slate-500">Carregando…</div>;
+  const fluxo = dados?.fluxoModulos || {};
+  const progresso = calcularProgressoAprovado(fluxo);
+  const aguardando = MODULOS.filter((m) => estadoModulo(fluxo, m.id).status === "enviado").length;
+  const ajustes = MODULOS.filter((m) => estadoModulo(fluxo, m.id).status === "ajustes").length;
+  return (
+    <div className="grid sm:grid-cols-3 gap-3">
+      <StatCard label="Módulos aprovados" value={`${progresso}%`} tone="gold" small />
+      <StatCard label="Aguardando correção" value={String(aguardando)} tone="blue" small />
+      <StatCard label="Devolvidos para ajustes" value={String(ajustes)} tone="slate" small />
+    </div>
+  );
+}
+
+function PainelEmpresaTeste({ turma, onEntrar, onAbrirCorrecao }) {
+  const [equipes, setEquipes] = useState(null);
+  const [rev, setRev] = useState(0);
+  const [ocupado, setOcupado] = useState(false);
+  const [aviso, setAviso] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await window.storage.get(`equipes_${turma.id}`, true);
+        if (alive) setEquipes(r ? JSON.parse(r.value) : []);
+      } catch { if (alive) setEquipes([]); }
+    })();
+    return () => { alive = false; };
+  }, [turma.id, rev]);
+
+  if (equipes === null) return <LoadingScreen />;
+  const teste = equipes.find((e) => e.teste === true) || null;
+
+  const executar = async (fn, okMsg) => {
+    setOcupado(true); setAviso(null);
+    try { await fn(); setAviso({ tom: "ok", texto: okMsg }); }
+    catch { setAviso({ tom: "erro", texto: "Não foi possível concluir agora — verifique a conexão e tente novamente." }); }
+    setRev((k) => k + 1);
+    setOcupado(false);
+  };
+
+  const criar = () => executar(
+    () => atualizarEquipesTurma(turma.id, (lista) => (lista.some((e) => e.teste === true) ? lista : [...lista, { id: uid(), turmaId: turma.id, nomeNegocio: "Empresa de teste", integrantes: [], teste: true }])),
+    "Empresa de teste criada."
+  );
+
+  const zerar = () => {
+    if (!teste || teste.teste !== true) return;
+    if (!window.confirm("Zerar a empresa de teste?\n\nApaga lançamentos, notas, feedbacks, histórico e cenários dela e volta o fluxo para o Módulo 1 liberado. Só afeta a empresa de teste — os alunos reais não são tocados.")) return;
+    executar(async () => {
+      await window.storage.delete(`dados_equipe_${teste.id}`, true);
+      await atualizarEquipesTurma(turma.id, (lista) => lista.map((e) => (e.id === teste.id && e.teste === true ? { ...e, segmento: null, segmentoStatus: null, segmentoObservacao: null, segmentoAprovadoEm: null } : e)));
+    }, "Empresa de teste zerada.");
+  };
+
+  const excluir = () => {
+    if (!teste || teste.teste !== true) return;
+    if (!window.confirm("Excluir a empresa de teste e todos os dados dela? (Você pode criar outra depois.)")) return;
+    executar(async () => {
+      await atualizarEquipesTurma(turma.id, (lista) => lista.filter((e) => !(e.id === teste.id && e.teste === true)));
+      try { await window.storage.delete(`dados_equipe_${teste.id}`, true); } catch {}
+    }, "Empresa de teste excluída.");
+  };
+
+  return (
+    <div className="space-y-4">
+      {aviso && (
+        <div className={`text-xs rounded-lg p-3 border ${aviso.tom === "ok" ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-400" : "bg-rose-950/40 border-rose-800/60 text-rose-400"}`}>{aviso.texto}</div>
+      )}
+
+      {!teste && (
+        <Card className="p-6 text-center">
+          <p className="text-sm text-slate-400 mb-4">A turma <b className="text-slate-200">{turma.nome}</b> ainda não tem empresa de teste.</p>
+          <button onClick={criar} disabled={ocupado} className="bg-amber-500 text-slate-900 font-bold px-5 py-2.5 rounded-md hover:bg-amber-400 disabled:opacity-40 text-sm flex items-center gap-2 mx-auto"><Plus size={15} /> Criar empresa de teste</button>
+        </Card>
+      )}
+
+      {teste && (
+        <Card className="p-5 border-dashed border-violet-500/60">
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+            <div>
+              <div className="flex items-center gap-2"><span className="font-bold text-slate-100">{teste.nomeNegocio}</span><span className="text-[10px] font-bold text-violet-300 bg-violet-950/40 border border-violet-500/40 rounded-full px-2 py-0.5">TESTE</span></div>
+              <div className="text-xs text-slate-500 mt-0.5">Turma {turma.nome} · sem integrantes · invisível para os alunos</div>
+              {teste.segmento && <div className="text-xs text-amber-400 mt-1">🏷️ Segmento: {teste.segmento}</div>}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => onEntrar(turma, teste)} className="flex items-center gap-2 bg-amber-500 text-slate-900 font-bold text-sm px-4 py-2 rounded-md hover:bg-amber-400"><Play size={14} /> Entrar como equipe de teste</button>
+              <button onClick={() => onAbrirCorrecao(turma.id, teste.id)} className="flex items-center gap-2 border border-slate-600 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:bg-slate-800"><ClipboardCheck size={14} /> Corrigir como professor</button>
+            </div>
+          </div>
+          <ResumoEmpresaTeste key={`${teste.id}-${rev}`} equipe={teste} />
+          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-800">
+            <button onClick={zerar} disabled={ocupado} className="flex items-center gap-2 border border-amber-700/60 text-amber-400 text-xs font-semibold px-3 py-2 rounded-md hover:bg-amber-950/30 disabled:opacity-40"><RotateCcw size={13} /> Zerar dados</button>
+            <button onClick={excluir} disabled={ocupado} className="flex items-center gap-2 border border-rose-900/60 text-rose-300 text-xs font-semibold px-3 py-2 rounded-md hover:bg-rose-950/30 disabled:opacity-40"><Trash2 size={13} /> Excluir</button>
+          </div>
+        </Card>
+      )}
+
+      <Card className="p-4">
+        <div className="text-xs font-bold text-slate-300 mb-2">Como funciona</div>
+        <ul className="list-disc list-inside space-y-1 text-xs text-slate-400 leading-relaxed">
+          <li>"Entrar como equipe de teste" abre a área do aluno (mesmo menu, módulos e fluxo de envio/correção). Uma faixa laranja no topo avisa que é teste e traz o botão para sair.</li>
+          <li>Para ver o fluxo completo: lance, envie um módulo, clique em "Corrigir como professor", devolva ou aprove e depois entre de novo para ver o feedback do lado do aluno.</li>
+          <li>A empresa de teste <b className="text-slate-300">não aparece</b> para os alunos, nem em Resumo Comparativo, Notas, Pendências, Backup, Auditoria, Integrantes ou contagens. Em Correções pendentes aparece com o selo TESTE e não soma no número do menu.</li>
+          <li>No Relatório por Empresa há a opção "Mostrar empresa de teste", para conferir os relatórios com esses dados.</li>
+          <li>Atualizar a página (F5) sai do modo de teste; o que foi lançado continua salvo.</li>
+        </ul>
+      </Card>
+    </div>
+  );
+}
+
+function GestaoEmpresaTesteView({ turmas, onEntrar, onAbrirCorrecao }) {
+  const [turmaId, setTurmaId] = useState("");
+  const turma = turmas.find((t) => t.id === turmaId);
+  return (
+    <div>
+      <SectionTitle icon={FlaskConical} sub="Uma empresa fictícia por turma para você testar o fluxo do aluno sem afetar os dados reais.">Empresa Teste</SectionTitle>
+      <div className="mb-4"><SeletorTurma turmas={turmas} value={turmaId} onChange={setTurmaId} /></div>
+      {!turma && <Card className="p-8 text-center text-slate-500">Selecione uma turma para criar ou abrir a empresa de teste.</Card>}
+      {turma && <PainelEmpresaTeste key={turma.id} turma={turma} onEntrar={onEntrar} onAbrirCorrecao={onAbrirCorrecao} />}
+    </div>
+  );
+}
+
 function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades }) {
   const chaveMinhas = `turmas_prof_${user.uid}`;
   const [minhasTurmas, setMinhasTurmas] = useSharedList(chaveMinhas);
@@ -8509,10 +8677,40 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
   const [menuAberto, setMenuAberto] = useState(false);
   const [pdfAberto, setPdfAberto] = useState(null);
   const [alvoCorrecao, setAlvoCorrecao] = useState(null); // { equipeId, moduloId, trigger }
+  const [testeAtivo, setTesteAtivo] = useState(null); // { turmaId, equipeId, turmaNome } | null — modo "Empresa Teste"
 
   const pendentesCorrecao = usePendentesCorrecao(turmas);
 
   if (turmas === null) return <LoadingScreen />;
+
+  // MODO EMPRESA TESTE: mostra a área do aluno (mesmas telas e fluxo) usando
+  // a empresa de teste da turma, com uma faixa de aviso fixa no topo.
+  if (testeAtivo) {
+    const sairDoTeste = () => setTesteAtivo(null);
+    return (
+      <div>
+        <style>{`.modo-teste .app-mobile-header{top:2.5rem}`}</style>
+        <div className="sticky top-0 z-[60] h-10 flex items-center justify-between gap-3 px-4 bg-orange-950 border-b border-orange-600/70 text-orange-200 text-xs font-semibold">
+          <span className="truncate">🧪 Modo de teste — você está agindo como a "Empresa de teste" ({testeAtivo.turmaNome}). Nada aqui conta para os alunos reais.</span>
+          <button onClick={sairDoTeste} className="shrink-0 bg-orange-500 text-slate-900 font-bold rounded-md px-3 py-1 hover:bg-orange-400">Sair do modo de teste</button>
+        </div>
+        <div className="modo-teste">
+          <AlunoWorkspaceCarregado
+            userSessao={{ uid: user.uid, nome: user.nome, email: user.email, papel: "aluno" }}
+            turmaId={testeAtivo.turmaId}
+            equipeId={testeAtivo.equipeId}
+            onSair={sairDoTeste}
+            onTrocarEmpresa={() => alert("Trocar de empresa não se aplica ao modo de teste. Use \"Sair do modo de teste\".")}
+            professorUid={user.uid}
+            professorNome={user.nome}
+            turmaNome={testeAtivo.turmaNome}
+            ultimaVersaoVista={APP_VERSION}
+            onVerNovidades={undefined}
+          />
+        </div>
+      </div>
+    );
+  }
 
   const criarTurma = async (nome) => {
     const nova = { id: uid(), nome, codigo: codigoTurma(), professor: user.nome, professorUid: user.uid, criadaEm: Date.now() };
@@ -8599,7 +8797,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
           {itensMenu.map((it) => {
             const Icon = it.icon;
             const active = aba === it.id;
-            const contagem = it.id === "correcoes" ? (pendentesCorrecao?.length || 0) : 0;
+            const contagem = it.id === "correcoes" ? ((pendentesCorrecao || []).filter((p) => !p.teste).length) : 0;
             return (
               <button key={it.id} onClick={() => irPara(it.id)} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${active ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
                 <Icon size={16} className="shrink-0" /> <span className="flex-1">{it.label}</span>
@@ -8668,6 +8866,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
         {aba === "integrantes" && <GestaoIntegrantesView turmas={turmas} user={user} />}
         {aba === "acessos" && <GestaoAcessosView turmas={turmas} user={user} />}
         {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}
+        {aba === "empresaTeste" && <GestaoEmpresaTesteView turmas={turmas} onEntrar={(t, eq) => setTesteAtivo({ turmaId: t.id, equipeId: eq.id, turmaNome: t.nome })} onAbrirCorrecao={abrirCorrecao} />}
         {aba === "backup" && <GestaoBackupView turmas={turmas} onExcluir={removerTurmaDaLista} />}
         {aba === "auditoria" && <GestaoAuditoriaView turmas={turmas} />}
         {aba === "aprovacoes" && user.mestre && <GestaoAprovacoesView usuarioAtualUid={user.uid} />}
@@ -9132,7 +9331,9 @@ function TelaPrimeiroAcessoAluno({ perfil, onSair, onResultado, onVirarProfessor
 // cadastrada pelo professor dentro da turma — evita nomes digitados errado
 // ou duplicados, e permite que vários alunos entrem na mesma empresa.
 function EscolherEmpresa({ perfil, turmaId, turmaNome, onSair, onEscolhida }) {
-  const [equipes] = useSharedList(`equipes_${turmaId}`);
+  const [equipesTodas] = useSharedList(`equipes_${turmaId}`);
+  // A empresa de teste do professor nunca aparece para o aluno escolher.
+  const equipes = equipesTodas === null ? null : equipesTodas.filter((e) => !e.teste);
   const [entrando, setEntrando] = useState(null);
 
   if (equipes === null) return <LoadingScreen />;

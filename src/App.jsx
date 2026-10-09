@@ -1,4 +1,4 @@
-// build: 20261008_19h35m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261008_23h12m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -319,6 +319,89 @@ const CATEGORIAS_SUGERIDAS_M5 = {
   "Sorveteria": ["Sorvetes/açaí", "Sobremesas geladas", "Bebidas", "Complementos"],
   "Outro / genérico": ["Produto/serviço principal", "Produto/serviço complementar"],
 };
+
+// ============================================================================
+// EXEMPLOS PRONTOS POR SEGMENTO — usados SOMENTE na Empresa de teste, para o
+// professor demonstrar o plano completo (Módulos 1 a 11) com dados fictícios.
+// Cada linha é um valor típico de negócio em escala de aluno; o imposto do
+// Módulo 7 é calculado na hora pela tabela do Simples (mesma conta do sistema).
+// Formatos: m1 [desc, categoria, qtd, valorUnit, vidaÚtilAnos] · m2 [estoque
+// inicial, prazo vendas, prazo estoque, prazo compras] · m3/m11 [desc, valor]
+// · m5 [nome, qtd/mês, preço, custoUnit(M8)] · m6 [índiceDoProduto, material,
+// qtd, custoUnit] · func [função, qtd, salário, VT, VR] · pro [função, qtd, valor].
+// ============================================================================
+const EXEMPLOS_SEGMENTO = {
+  "Padaria / confeitaria": {
+    tipoAtividade: "industria", pctComissao: 2, pctProprio: 70,
+    m2: [6000, 2, 10, 15],
+    m1: [["Forno industrial","Máquinas",1,15000,10],["Batedeira planetária","Máquinas",1,4500,10],["Balcão de vitrine para doces","Móveis",2,3200,10],["Bancada de inox","Móveis",2,1800,10],["Freezer/expositor refrigerado","Máquinas",1,4200,10],["Kit de utensílios de panificação","Máquinas",1,2500,3],["Computador e sistema de caixa","Equipamentos de Informática",1,2800,5]],
+    m3: [["Reforma e adequação da área de produção",9000],["Sistema de ventilação e exaustão",3500],["Embalagens e rótulos de lançamento",1200],["Licenças e alvarás para abertura",1800],["Divulgação de inauguração",1500]],
+    m5: [["Pão francês (kg)",800,18,6.8],["Pães especiais (unid.)",300,12,4.9],["Bolo caseiro (fatia)",1100,7,2.4],["Doces e tortas (unid.)",500,9,3.3],["Salgados (unid.)",1500,7,2.7],["Café e bebidas (unid.)",2000,5,1.5]],
+    m6: [[0,"Farinha de trigo",0.65,4.2],[0,"Fermento, sal, melhorador e energia do forno",1,2.6],[2,"Farinha, ovos e açúcar",1,1.5],[2,"Leite, manteiga e cobertura",1,0.9]],
+    func: [["Padeiro",1,2300,180,250],["Auxiliar de produção",1,1700,180,250],["Atendente de balcão",2,1650,180,250]],
+    pro: [["Sócios (administração)",2,2300]],
+    m11: [["Aluguel",4200],["Água",450],["Energia elétrica",1400],["Internet",150],["Contador",600],["Gás de cozinha",600],["Marketing e redes sociais",600],["Manutenção e limpeza",500],["Sistema de gestão e embalagens",300]],
+  },
+  "Restaurante / lanchonete": {
+    tipoAtividade: "comercio", pctComissao: 2.5, pctProprio: 70,
+    m2: [8000, 2, 7, 10],
+    m1: [["Fogão industrial","Máquinas",1,4500,10],["Freezer","Máquinas",2,3800,10],["Geladeira/expositor","Máquinas",1,5200,10],["Fritadeira","Máquinas",1,2200,8],["Exaustor/coifa","Máquinas",1,6500,10],["Balcão de atendimento","Móveis",1,4800,10],["Mesas e cadeiras (12 conjuntos)","Móveis",12,650,8],["Kit de utensílios de cozinha","Máquinas",1,3500,3],["Computador e sistema de caixa","Equipamentos de Informática",1,3200,5]],
+    m3: [["Instalação da coifa e sistema de exaustão",4500],["Adequações de prevenção e combate a incêndio (CBMSC)",3500],["Elaboração e diagramação do cardápio",900],["Divulgação de inauguração",2000],["Licenças, alvarás e vistorias",2400]],
+    m5: [["Pratos executivos",900,32,11.5],["Lanches",800,22,8.2],["Bebidas",1800,7,2.4],["Sobremesas",450,12,4.3]],
+    m6: [],
+    func: [["Cozinheiro",1,2600,180,280],["Auxiliar de cozinha",1,1800,180,280],["Garçom",2,1700,180,280],["Caixa",1,1750,180,280]],
+    pro: [["Sócios (administração)",2,2300]],
+    m11: [["Aluguel",5500],["Água",700],["Energia elétrica",2000],["Gás de cozinha",1100],["Internet",180],["Contador",700],["Marketing e redes sociais",700],["Manutenção e limpeza",600],["Sistema de delivery/pedidos",400]],
+  },
+  "Estética / beleza": {
+    tipoAtividade: "servicos", pctComissao: 2.5, pctProprio: 70,
+    m2: [2500, 0, 20, 15],
+    m1: [["Maca de atendimento","Móveis",2,1800,10],["Cadeira hidráulica","Móveis",2,1500,10],["Espelho com iluminação","Móveis",2,900,10],["Lavatório com cadeira","Móveis",1,2800,10],["Carrinho auxiliar","Móveis",3,350,10],["Esterilizadora","Máquinas",1,900,5],["Equipamentos de estética (vapor, alta frequência)","Máquinas",1,9500,5],["Sofá e mobiliário de recepção","Móveis",1,2800,8],["Computador e sistema de agenda","Equipamentos de Informática",1,2800,5]],
+    m3: [["Curso de capacitação/atualização técnica",3000],["Licença de funcionamento e vigilância sanitária",1500],["Criação da identidade visual e fachada",2500],["Divulgação de inauguração",2000],["Reforma e adequação do espaço",6000]],
+    m5: [["Serviços de cabelo",220,85,14],["Serviços de unha",300,45,6],["Serviços estéticos",80,130,22],["Produtos para revenda",120,50,30]],
+    m6: [],
+    func: [["Cabeleireira",2,2200,180,250],["Manicure",1,1800,180,250],["Esteticista",1,2200,180,250],["Recepcionista",1,1700,180,250]],
+    pro: [["Sócias (administração)",2,2300]],
+    m11: [["Aluguel",4800],["Água",500],["Energia elétrica",1000],["Internet",150],["Contador",600],["Marketing e redes sociais",1200],["Higiene e limpeza",600],["Sistema de agendamento e manutenção de equipamentos",650]],
+  },
+  "Semijoias / acessórios": {
+    tipoAtividade: "comercio", pctComissao: 2.5, pctProprio: 70,
+    m2: [10000, 3, 40, 30],
+    m1: [["Vitrines e expositores de joias","Móveis",4,1800,10],["Balcão/caixa","Móveis",1,2800,10],["Araras e prateleiras","Móveis",3,900,10],["Espelhos e iluminação de vitrine","Móveis",1,2200,10],["Computador e sistema de vendas","Equipamentos de Informática",1,2800,5],["Maquininha, balança de precisão e acessórios","Equipamentos de Informática",1,900,5]],
+    m3: [["Criação da identidade visual e fachada",2500],["Divulgação de inauguração",2000],["Pequenos reparos e adequação do espaço",3500],["Licenças e alvarás para abertura",1500],["Embalagens personalizadas e etiquetas",1200]],
+    m5: [["Colares",220,65,27],["Brincos",380,38,15],["Pulseiras e anéis",260,45,19],["Bolsas e clutches",90,120,58]],
+    m6: [],
+    func: [["Vendedora",3,1800,180,250]],
+    pro: [["Sócias (administração)",2,2300]],
+    m11: [["Aluguel",5000],["Água",250],["Energia elétrica",700],["Internet",150],["Contador",600],["Marketing e redes sociais",1500],["Segurança e seguro",250],["Embalagens e material de limpeza",300]],
+  },
+};
+
+function montarExemploSegmento(segmento) {
+  const def = EXEMPLOS_SEGMENTO[segmento];
+  if (!def) return null;
+  const m5 = def.m5.map(([nome, qtd, precoUnit], i) => ({ id: `ex_m5_${i}`, nome, qtd, precoUnit }));
+  const l = {
+    m1: { itens: def.m1.map(([desc, categoria, qtd, valorUnit], i) => ({ id: `ex_m1_${i}`, desc, categoria, qtd, valorUnit })) },
+    m2: { estoqueInicial: def.m2[0], prazoVendasDias: def.m2[1], prazoEstoqueDias: def.m2[2], prazoComprasDias: def.m2[3] },
+    m3: { itens: def.m3.map(([desc, valor], i) => ({ id: `ex_m3_${i}`, desc, valor })) },
+    m4: { pctProprio: def.pctProprio },
+    m5: { itens: m5 },
+    m6: { itens: def.m6.map(([pi, material, qtd, custoUnit], i) => ({ id: `ex_m6_${i}`, produto: m5[pi].nome, material, qtd, custoUnit })) },
+    m7: { modoImposto: "simples", tipoAtividade: def.tipoAtividade, pctImpostos: 0, pctComissao: def.pctComissao },
+    m8: { custosUnit: Object.fromEntries(def.m5.map(([, , , c], i) => [`ex_m5_${i}`, c])) },
+    m9: { modoEncargos: "grupos", regimeEncargos: "simples",
+      itens: def.func.map(([funcao, qtd, salario, vt, vr], i) => ({ id: `ex_m9_${i}`, funcao, qtd, salario, vt, vr })),
+      prolabore: def.pro.map(([funcao, qtd, valor], i) => ({ id: `ex_m9p_${i}`, funcao, qtd, valor })) },
+    m10: { vidasUteis: Object.fromEntries(def.m1.map(([, , , , v], i) => [`ex_m1_${i}`, v])) },
+    m11: { itens: def.m11.map(([desc, valor], i) => ({ id: `ex_m11_${i}`, desc, valor })) },
+  };
+  // O M7 só sincroniza o imposto quando o formulário abre; aqui já gravamos o valor certo.
+  const fat = l.m5.itens.reduce((s, it) => s + it.qtd * it.precoUnit, 0);
+  const s = calcularSimples(def.tipoAtividade, fat * 12);
+  if (s) l.m7.pctImpostos = Number((s.aliquotaEfetiva * 100).toFixed(2));
+  return l;
+}
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 const codigoTurma = () => Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -4089,7 +4172,7 @@ function CronogramaAlunoView({ turmaId }) {
 // professor confirmar — mas as orientações, exemplos e sugestões de itens já
 // usam a escolha normalmente nesse meio tempo (ver segmentoAprovado()), para
 // a equipe não ficar travada esperando.
-function SegmentoNegocioView({ equipe, onAtualizarEquipe, souVisualizador }) {
+function SegmentoNegocioView({ equipe, onAtualizarEquipe, souVisualizador, exemplo }) {
   const status = equipe.segmentoStatus;
   const precisaEscolher = !equipe.segmento || status === "reconsiderar";
   const [selecionado, setSelecionado] = useState(equipe.segmento || "");
@@ -4105,11 +4188,12 @@ function SegmentoNegocioView({ equipe, onAtualizarEquipe, souVisualizador }) {
     if (!selecionado || !onAtualizarEquipe || souVisualizador) return;
     setSalvando(true);
     try {
+      // Empresa de teste: ninguém avalia a escolha, então já fica aprovada.
       await onAtualizarEquipe({
         segmento: selecionado,
-        segmentoStatus: "pendente",
+        segmentoStatus: equipe.teste === true ? "aprovado" : "pendente",
         segmentoObservacao: null,
-        segmentoAprovadoEm: null,
+        segmentoAprovadoEm: equipe.teste === true ? Date.now() : null,
       });
       setEditando(false);
     } finally {
@@ -4187,8 +4271,41 @@ function SegmentoNegocioView({ equipe, onAtualizarEquipe, souVisualizador }) {
           </button>
         )}
       </Card>
+      {equipe.teste === true && exemplo && <PainelExemploSegmento segmento={equipe.segmento} exemplo={exemplo} />}
       {status === "pendente" && (
         <p className="text-xs text-slate-500 mt-3">Enquanto estiver pendente, vocês ainda podem trocar a escolha livremente. As sugestões de itens e orientações por segmento já usam essa escolha normalmente — a aprovação é só a confirmação do(a) professor(a).</p>
+      )}
+    </div>
+  );
+}
+
+// Painel exclusivo da Empresa de teste: preenche os módulos com o exemplo do
+// segmento. Só é renderizado quando equipe.teste === true (ver chamada acima)
+// e o handler de gravação confere isso de novo.
+function PainelExemploSegmento({ segmento, exemplo }) {
+  const tem = !!EXEMPLOS_SEGMENTO[segmento];
+  const [ocupado, setOcupado] = useState(false);
+  const aplicado = exemplo.aplicado === segmento;
+  const rodar = async (fn) => { setOcupado(true); try { await fn(); } finally { setOcupado(false); } };
+  return (
+    <div className="mt-4 border-2 border-dashed border-violet-500/60 bg-violet-950/20 rounded-lg p-4">
+      <div className="flex items-center gap-2 flex-wrap mb-1">
+        <span className="text-sm font-bold text-slate-100">📋 Exemplo para demonstração</span>
+        <span className="text-[10px] font-bold text-violet-300 bg-violet-900/30 border border-violet-700/50 rounded-full px-2 py-0.5">SÓ NA EMPRESA DE TESTE</span>
+        {aplicado && <span className="text-[10px] font-bold text-emerald-300 bg-emerald-900/30 border border-emerald-700/50 rounded-full px-2 py-0.5">Dados fictícios de exemplo</span>}
+      </div>
+      {tem ? (
+        <>
+          <p className="text-xs text-slate-400 mb-3">Preenche os Módulos 1 a 11 com um exemplo completo de <b className="text-slate-200">{segmento}</b> (valores fictícios). Os Módulos 12 e 13 são calculados na hora. Os módulos <b className="text-slate-200">não são enviados</b> para correção — ficam liberados para você mostrar e editar à vontade. O que já estiver lançado na Empresa de teste será substituído (pede confirmação). Empresas reais e alunos não são afetados.</p>
+          <div className="flex gap-2 flex-wrap">
+            <button disabled={ocupado} onClick={() => rodar(() => exemplo.preencher(segmento))} className="bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-bold rounded-md px-4 py-2">
+              {aplicado ? `Restaurar exemplo original de ${segmento}` : `Preencher todos os módulos com o exemplo de ${segmento}`}
+            </button>
+            <button disabled={ocupado} onClick={() => rodar(() => exemplo.limpar())} className="border border-slate-600 text-slate-300 hover:border-slate-400 disabled:opacity-50 text-xs font-bold rounded-md px-4 py-2">Limpar módulos (zerar lançamentos)</button>
+          </div>
+        </>
+      ) : (
+        <p className="text-xs text-slate-400">Ainda não há exemplo pronto para este segmento. Exemplos disponíveis: {Object.keys(EXEMPLOS_SEGMENTO).join(", ")}.</p>
       )}
     </div>
   );
@@ -4295,6 +4412,21 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
     if (souVisualizador) return; // trava extra — a tela já fica sem interação para quem visualiza
     const novo = { ...dados, lancamentos: { ...lanc, [modId]: val } };
     setDados(novo);
+  };
+
+  // Exemplo por segmento — EXCLUSIVO da Empresa de teste. Escreve apenas nos
+  // dados desta própria equipe (equipeKey) e só se equipe.teste === true.
+  const preencherExemploTeste = async (segmento) => {
+    if (equipe?.teste !== true || souVisualizador) return;
+    const lancEx = montarExemploSegmento(segmento);
+    if (!lancEx) return;
+    if (!window.confirm(`Preencher a Empresa de teste com o exemplo de ${segmento}?\n\nO que estiver lançado nos módulos 1 a 11 da Empresa de teste será substituído. Só afeta a empresa de teste — nenhum aluno real é tocado.`)) return;
+    setDados({ ...dados, lancamentos: lancEx, exemploAplicado: segmento });
+  };
+  const limparExemploTeste = async () => {
+    if (equipe?.teste !== true || souVisualizador) return;
+    if (!window.confirm("Limpar todos os lançamentos da Empresa de teste (módulos 1 a 11)? Só afeta a empresa de teste.")) return;
+    setDados({ ...dados, lancamentos: defaultLancamentos(), exemploAplicado: null });
   };
 
   const salvarVersao = () => {
@@ -4450,6 +4582,11 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
       )}
 
       <main className="flex-1 overflow-y-auto p-4 pt-20 md:p-8 md:pt-8 max-w-5xl mx-auto w-full">
+        {equipe?.teste === true && dados?.exemploAplicado && (
+          <div className="mb-4 bg-violet-950/30 border border-violet-700/50 rounded-md px-4 py-2 text-xs text-violet-200 flex items-center gap-2">
+            <span>📋</span><span><b>Dados fictícios de exemplo</b> — {dados.exemploAplicado}. Você pode editar qualquer valor para demonstrar; para voltar ao original, use "Restaurar exemplo" em Segmento do negócio.</span>
+          </div>
+        )}
         {souVisualizador && (
           <div className="mb-4 bg-slate-900 border border-sky-800/60 rounded-md px-4 py-2.5 flex items-center gap-2.5 text-sm text-sky-300">
             <Eye size={16} className="shrink-0" />
@@ -4467,7 +4604,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
 
         {aba === "cronograma" && <CronogramaAlunoView turmaId={turmaId} />}
 
-        {aba === "segmento" && <SegmentoNegocioView equipe={equipe} onAtualizarEquipe={onAtualizarEquipe} souVisualizador={souVisualizador} />}
+        {aba === "segmento" && <SegmentoNegocioView equipe={equipe} onAtualizarEquipe={onAtualizarEquipe} souVisualizador={souVisualizador} exemplo={equipe?.teste === true ? { aplicado: dados?.exemploAplicado || null, preencher: preencherExemploTeste, limpar: limparExemploTeste } : null} />}
 
         {aba === "inicio" && (
           <div>

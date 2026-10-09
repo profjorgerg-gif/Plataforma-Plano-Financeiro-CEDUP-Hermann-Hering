@@ -1,4 +1,4 @@
-// build: 20261008_23h34m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261008_23h51m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -4332,6 +4332,362 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo }) {
   await pptx.writeFile({ fileName: `Apresentacao-Plano-Financeiro-${nomeArquivoSeguro(equipe.nomeNegocio)}.pptx` });
 }
 
+// ============================================================================
+// PLANO FINANCEIRO EM WORD (.docx) — todas as informações do plano, em tabelas
+// e textos prontos para copiar/anexar ao Plano de Negócio. Gerado no navegador,
+// no clique, somente leitura (nada é gravado). A biblioteca é carregada da
+// internet apenas nesse momento.
+// ============================================================================
+
+const DOCXJS_URL = "https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.iife.js";
+
+
+// ---------------------------------------------------------------------------
+// Gráficos para o Word: desenhados em um <canvas> (mesmas cores e séries das
+// telas do sistema, com fundo branco para imprimir bem) e inseridos como PNG.
+// ---------------------------------------------------------------------------
+function graficoPng(cfg) {
+  const S = 2, W = 620 * S, H = (cfg.alt || 300) * S;
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+  const g = cv.getContext("2d");
+  g.fillStyle = "#FFFFFF"; g.fillRect(0, 0, W, H);
+  const F = (px, bold) => `${bold ? "bold " : ""}${px * S}px Arial, sans-serif`;
+  const moneyCurto = (v) => { const a = Math.abs(v); const s = a >= 1000 ? `${Math.round(a / 1000).toLocaleString("pt-BR")} mil` : Math.round(a).toLocaleString("pt-BR"); return `${v < 0 ? "-" : ""}R$ ${s}`; };
+  const moneyCheio = (v) => `${v < 0 ? "-" : ""}R$ ${Math.round(Math.abs(v)).toLocaleString("pt-BR")}`;
+  g.fillStyle = "#0F172A"; g.font = F(13, true); g.textAlign = "center"; g.textBaseline = "top";
+  g.fillText(cfg.titulo, W / 2, 8 * S);
+  const topo = 34 * S;
+
+  if (cfg.tipo === "pizza") {
+    const total = cfg.fatias.reduce((s, f) => s + f.valor, 0);
+    const cx = 165 * S, cy = topo + (H - topo) / 2, r = Math.min(105 * S, (H - topo) / 2 - 8 * S);
+    let ang = -Math.PI / 2;
+    cfg.fatias.forEach((f) => {
+      const a = (f.valor / total) * Math.PI * 2;
+      g.beginPath(); g.moveTo(cx, cy); g.arc(cx, cy, r, ang, ang + a); g.closePath(); g.fillStyle = f.cor; g.fill();
+      g.strokeStyle = "#FFFFFF"; g.lineWidth = 2 * S; g.stroke();
+      const m = ang + a / 2; g.fillStyle = "#FFFFFF"; g.font = F(12, true); g.textAlign = "center"; g.textBaseline = "middle";
+      if (f.valor / total > 0.05) g.fillText(`${Math.round((f.valor / total) * 100)}%`, cx + Math.cos(m) * r * 0.62, cy + Math.sin(m) * r * 0.62);
+      ang += a;
+    });
+    let ly = cy - cfg.fatias.length * 20 * S / 2;
+    cfg.fatias.forEach((f) => {
+      g.fillStyle = f.cor; g.fillRect(340 * S, ly, 12 * S, 12 * S);
+      g.fillStyle = "#1E293B"; g.font = F(11); g.textAlign = "left"; g.textBaseline = "middle";
+      g.fillText(`${f.nome} — ${moneyCheio(f.valor)}`, 358 * S, ly + 6 * S); ly += 22 * S;
+    });
+  } else {
+    // eixos (barras e linhas)
+    const series = cfg.tipo === "barras" ? [{ valores: cfg.valores }] : cfg.series;
+    const todos = series.flatMap((s) => s.valores);
+    let vmin = Math.min(0, ...todos), vmax = Math.max(0, ...todos);
+    if (vmin === vmax) vmax = vmin + 1;
+    const bruto = (vmax - vmin) / 5, pot = Math.pow(10, Math.floor(Math.log10(bruto))), n = bruto / pot;
+    const passo = (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * pot;
+    vmin = Math.floor(vmin / passo) * passo; vmax = Math.ceil(vmax / passo) * passo;
+    const legendaH = cfg.tipo === "linhas" && series.length > 1 ? 22 * S : 0;
+    const L = 74 * S, R = 14 * S, T = topo + legendaH + 10 * S, B = H - (cfg.tipo === "barras" ? 46 : 34) * S;
+    const y = (v) => B - ((v - vmin) / (vmax - vmin)) * (B - T);
+    g.font = F(10); g.textAlign = "right"; g.textBaseline = "middle";
+    for (let v = vmin; v <= vmax + passo / 2; v += passo) {
+      g.strokeStyle = v === 0 ? "#64748B" : "#E2E8F0"; g.lineWidth = (v === 0 ? 1.5 : 1) * S;
+      g.beginPath(); g.moveTo(L, y(v)); g.lineTo(W - R, y(v)); g.stroke();
+      g.fillStyle = "#475569"; g.fillText(moneyCurto(v), L - 6 * S, y(v));
+    }
+    const cats = cfg.categorias, k = cats.length, larg = (W - L - R) / k;
+    g.textAlign = "center"; g.textBaseline = "top"; g.fillStyle = "#334155"; g.font = F(cats.length > 8 ? 9 : 10.5);
+    const quebra = (t, max) => { const pal = String(t).split(" "), ls = []; let cur = ""; pal.forEach((w) => { if ((cur + " " + w).trim().length > max && cur) { ls.push(cur); cur = w; } else cur = (cur + " " + w).trim(); }); if (cur) ls.push(cur); return ls.slice(0, 2).map((x, i, a) => (i === a.length - 1 && x.length > max + 2 ? x.slice(0, max) + "…" : x)); };
+    cats.forEach((c, i) => { if (cfg.tipo === "linhas" && k > 8 && i % 2 && i !== k - 1) return; quebra(c, k > 4 ? 13 : 20).forEach((ln, li) => g.fillText(ln, L + larg * (i + 0.5), B + 8 * S + li * 13 * S)); });
+    if (cfg.tipo === "barras") {
+      cfg.valores.forEach((v, i) => {
+        const bw = Math.min(larg * 0.55, 90 * S), x = L + larg * (i + 0.5) - bw / 2;
+        g.fillStyle = cfg.cores[i % cfg.cores.length];
+        const y0 = y(0), y1 = y(v); g.fillRect(x, Math.min(y0, y1), bw, Math.max(1, Math.abs(y1 - y0)));
+        g.fillStyle = "#0F172A"; g.font = F(10.5, true); g.textAlign = "center"; g.textBaseline = v >= 0 ? "bottom" : "top";
+        g.fillText(moneyCheio(v), x + bw / 2, v >= 0 ? Math.min(y0, y1) - 3 * S : Math.max(y0, y1) + 3 * S);
+      });
+    } else {
+      series.forEach((s, si) => {
+        g.strokeStyle = s.cor; g.lineWidth = 2.6 * S; g.setLineDash(s.tracejado ? [6 * S, 4 * S] : []);
+        g.beginPath(); s.valores.forEach((v, i) => { const x = L + larg * (i + 0.5); i ? g.lineTo(x, y(v)) : g.moveTo(x, y(v)); }); g.stroke(); g.setLineDash([]);
+        g.fillStyle = s.cor; s.valores.forEach((v, i) => { g.beginPath(); g.arc(L + larg * (i + 0.5), y(v), 3.2 * S, 0, Math.PI * 2); g.fill(); });
+      });
+      if (legendaH) {
+        let lx = L; g.font = F(10.5); g.textAlign = "left"; g.textBaseline = "middle";
+        series.forEach((s) => { g.fillStyle = s.cor; g.fillRect(lx, topo + 4 * S, 14 * S, 3 * S); g.fillStyle = "#334155"; g.fillText(s.nome, lx + 20 * S, topo + 6 * S); lx += 20 * S + g.measureText(s.nome).width + 24 * S; });
+      }
+    }
+  }
+  const b64 = cv.toDataURL("image/png").split(",")[1], bin = atob(b64), u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return { data: u8, w: 620, h: cfg.alt || 300 };
+}
+
+const PALETA_GRAFICOS = ["#c9972e", "#4f83c9", "#5c7186", "#2dd4a8", "#f87171", "#a78bfa", "#38bdf8", "#f59e0b"];
+
+async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, taxaCrescimento, tmaAnual, historico }) {
+  const D = await carregarScriptCDN(DOCXJS_URL, "docx");
+  const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, ShadingType, BorderStyle, Footer, Header, PageNumber, HeadingLevel, ImageRun } = D;
+  const brl = (n) => (Number(n) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const num = (n, d = 0) => (Number(n) || 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+  const pc = (n, d = 1) => `${num(n, d)}%`;
+  const FONT = "Arial", NAVY = "0F172A", GRAY = "64748B", HEAD = "1E293B", ZEBRA = "F1F5F9", TOTAL = "FEF3C7";
+  const CW = 9638; // largura útil (A4, margens de 2 cm), em twips
+  const borda = { style: BorderStyle.SINGLE, size: 4, color: "CBD5E1" };
+  const bordas = { top: borda, bottom: borda, left: borda, right: borda };
+
+  const run = (text, o = {}) => new TextRun({ text, font: FONT, size: o.size || 21, bold: o.bold, italics: o.italics, color: o.color });
+  const para = (text, o = {}) => new Paragraph({ spacing: { after: o.after ?? 120, before: o.before ?? 0, line: 300 }, alignment: o.align, children: [run(text, o)] });
+  const h1 = (t) => new Paragraph({ heading: HeadingLevel.HEADING_1, spacing: { before: 360, after: 140 }, keepNext: true, children: [new TextRun({ text: t, font: FONT, size: 28, bold: true, color: NAVY })] });
+  const h2 = (t) => new Paragraph({ heading: HeadingLevel.HEADING_2, spacing: { before: 220, after: 100 }, keepNext: true, children: [new TextRun({ text: t, font: FONT, size: 23, bold: true, color: HEAD })] });
+  const vazio = (t) => para(t, { italics: true, color: GRAY });
+
+  // tabela: cabeçalhos, linhas (arrays de texto), larguras relativas, colunas à direita, última linha em destaque
+  const tabela = (cabecalhos, linhas, pesos, direita = [], destacarUltima = false, tam = 19) => {
+    const soma = pesos.reduce((a, b) => a + b, 0);
+    const larg = pesos.map((p) => Math.round((CW * p) / soma));
+    larg[larg.length - 1] += CW - larg.reduce((a, b) => a + b, 0);
+    const cel = (t, i, o) => new TableCell({
+      width: { size: larg[i], type: WidthType.DXA }, borders: bordas,
+      shading: { type: ShadingType.CLEAR, fill: o.fill || "FFFFFF", color: "auto" },
+      margins: { top: 60, bottom: 60, left: 90, right: 90 },
+      children: [new Paragraph({ alignment: direita.includes(i) ? AlignmentType.RIGHT : AlignmentType.LEFT, children: [run(String(t), { size: tam, bold: o.bold, color: o.color })] })],
+    });
+    const rows = [new TableRow({ tableHeader: true, cantSplit: true, children: cabecalhos.map((t, i) => cel(t, i, { fill: NAVY, bold: true, color: "FFFFFF" })) })];
+    linhas.forEach((l, r) => {
+      const ult = destacarUltima && r === linhas.length - 1;
+      rows.push(new TableRow({ cantSplit: true, children: l.map((t, i) => cel(t, i, { fill: ult ? TOTAL : r % 2 ? ZEBRA : "FFFFFF", bold: ult })) }));
+    });
+    return new Table({ width: { size: CW, type: WidthType.DXA }, columnWidths: larg, rows });
+  };
+  const imagem = (cfg) => { const im = graficoPng(cfg); return new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 120, after: 160 }, keepLines: true, children: [new ImageRun({ data: im.data, type: "png", transformation: { width: im.w, height: im.h } })] }); };
+  const pizza = (titulo, itens, alt = 250) => { const v = itens.filter((x) => x.valor > 0).sort((a, b) => b.valor - a.valor); let use = v; if (v.length > 7) { use = [...v.slice(0, 6), { nome: "Outros", valor: v.slice(6).reduce((s, x) => s + x.valor, 0) }]; } if (use.length < 2) return null; return imagem({ tipo: "pizza", titulo, fatias: use.map((x, i) => ({ nome: x.nome.length > 30 ? x.nome.slice(0, 29) + "…" : x.nome, valor: x.valor, cor: PALETA_GRAFICOS[i % PALETA_GRAFICOS.length] })), alt }); };
+  const add = (...xs) => xs.forEach((x) => x && filhos.push(x));
+  const esp = () => new Paragraph({ spacing: { after: 120 }, children: [] });
+
+  const f = calc.faturamento || 0;
+  const temDados = f > 0;
+  const temInvest = (calc.investimentoTotal || 0) > 0;
+  const filhos = [];
+  const mod = (n, nome) => h2(`Módulo ${n} — ${nome}`);
+  const pPro = Number(lanc.m4.pctProprio) || 0;
+  const fontes = (lanc.m4.fontesTerceiros || []).filter((x) => x.fonte);
+  const mo = detalheMaoDeObra(lanc.m9);
+  const cens = (cenarios || []).filter((c) => c);
+  const hist = (historico || []).filter((h) => h && h.indicadores);
+
+  // ---------- Capa / orientação / conteúdo ----------
+  filhos.push(new Paragraph({ spacing: { after: 60 }, children: [run("CEDUP HERMANN HERING", { size: 18, bold: true, color: "B45309" })] }));
+  filhos.push(new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: "Plano Financeiro", font: FONT, size: 44, bold: true, color: NAVY })] }));
+  filhos.push(new Paragraph({ spacing: { after: 60 }, children: [run(equipe.nomeNegocio, { size: 28, bold: true })] }));
+  if ((equipe.integrantes || []).length) filhos.push(para(`Equipe: ${equipe.integrantes.join(", ")}`, { color: GRAY }));
+  filhos.push(para(`Gerado pela Plataforma do Plano Financeiro em ${new Date().toLocaleDateString("pt-BR")}`, { color: GRAY, size: 18 }));
+  filhos.push(esp());
+  filhos.push(tabela(["Conteúdo", "Módulos / análises"], [
+    ["1. Investimento inicial", "Módulo 1 (Investimentos Fixos) · 2 (Capital de Giro) · 3 (Pré-Operacionais) · 4 (Investimento Total e Fontes)"],
+    ["2. Receitas e custos variáveis", "Módulo 5 (Faturamento) · 6 (Matéria-prima) · 7 (Comercialização) · 8 (Custo Unitário e CMV)"],
+    ["3. Estrutura de custos fixos", "Módulo 9 (Mão de Obra) · 10 (Depreciação) · 11 (Custos Fixos)"],
+    ["4. Resultados e viabilidade", "Módulo 12 (Demonstrativo de Resultados) · 13 (Indicadores de Viabilidade)"],
+    ["5. Análise do Negócio", "Panorama, pontos de atenção, gráficos, produtos mais lucrativos e evolução dos ajustes"],
+    ["6. Fluxo de Caixa Anual", "Projeção mês a mês do primeiro ano, VPL e TIR"],
+    ["7. Análise de Cenários", "Simulações \"e se\" da equipe"],
+  ], [2.4, 5.6]));
+  filhos.push(esp());
+  filhos.push(tabela(["Como usar este documento"], [["Cada módulo traz uma tabela e um texto descritivo prontos para copiar e colar na parte \"Plano Financeiro\" do Plano de Negócio. Os números vêm do que a equipe lançou nos módulos da plataforma; se algo mudar lá, baixem o documento de novo. Os textos descrevem os números — a análise e as conclusões devem ser escritas pela equipe, com as próprias palavras."]], [1]));
+
+  // ================= 1. Investimento inicial =================
+  filhos.push(h1("1. Investimento inicial"));
+  filhos.push(mod(1, "Investimentos Fixos"));
+  if (!lanc.m1.itens.length) filhos.push(vazio("Módulo 1 ainda não preenchido."));
+  else {
+    filhos.push(para(`Para iniciar as atividades, a empresa precisa adquirir máquinas, móveis e equipamentos no valor total de ${brl(calc.investFixo)}.`));
+    filhos.push(tabela(["Bem", "Categoria", "Qtde.", "Valor unitário", "Total"],
+      [...lanc.m1.itens.map((i) => [i.desc || "—", i.categoria || "—", num(i.qtd), brl(i.valorUnit), brl((Number(i.qtd) || 0) * (Number(i.valorUnit) || 0))]), ["Total dos investimentos fixos", "", "", "", brl(calc.investFixo)]],
+      [4, 2.4, 1, 1.9, 1.9], [2, 3, 4], true));
+  }
+  filhos.push(mod(2, "Capital de Giro"));
+  filhos.push(para(`O capital de giro é o dinheiro necessário para manter a empresa funcionando enquanto as vendas ainda não viram caixa. Considerando o estoque inicial de ${brl(calc.estoqueInicial)} e um prazo médio de ${num(lanc.m2.prazoVendasDias)} dia(s) para receber das vendas, ${num(lanc.m2.prazoEstoqueDias)} dia(s) de estoque e ${num(lanc.m2.prazoComprasDias)} dia(s) para pagar os fornecedores, a necessidade líquida de giro é de ${num(calc.necessidadeLiquidaDias)} dia(s)${calc.necessidadeLiquidaDias < 0 ? " (negativa: os fornecedores financiam o giro, então não é preciso reservar caixa mínimo)" : ""} e o capital de giro total é de ${brl(calc.capitalGiroTotal)}.`));
+  filhos.push(tabela(["Item", "Valor"], [
+    ["Estoque inicial", brl(calc.estoqueInicial)], ["Prazo médio de vendas", `${num(lanc.m2.prazoVendasDias)} dias`], ["Prazo médio de estoque", `${num(lanc.m2.prazoEstoqueDias)} dias`], ["Prazo médio de compras", `${num(lanc.m2.prazoComprasDias)} dias`],
+    ["Necessidade líquida de giro", `${num(calc.necessidadeLiquidaDias)} dias`], ["Caixa mínimo", brl(calc.caixaMinimo)], ["Capital de giro total", brl(calc.capitalGiroTotal)],
+  ], [3, 2], [1], true));
+  filhos.push(mod(3, "Investimentos Pré-Operacionais"));
+  if (!lanc.m3.itens.length) filhos.push(vazio("Módulo 3 ainda não preenchido."));
+  else {
+    filhos.push(para(`Antes de abrir as portas, a empresa terá gastos de implantação (reformas, licenças, divulgação etc.) no total de ${brl(calc.investPreOp)}.`));
+    filhos.push(tabela(["Despesa pré-operacional", "Valor"], [...lanc.m3.itens.map((i) => [i.desc || "—", brl(i.valor)]), ["Total pré-operacional", brl(calc.investPreOp)]], [4, 1.4], [1], true));
+  }
+  filhos.push(mod(4, "Investimento Total e Fontes de Recursos"));
+  if (!temInvest) filhos.push(vazio("Disponível quando os Módulos 1 a 3 forem preenchidos."));
+  else {
+    filhos.push(para(`O investimento total necessário é de ${brl(calc.investimentoTotal)}. Desse valor, ${pc(pPro, 0)} (${brl((calc.investimentoTotal * pPro) / 100)}) virá de recursos próprios dos sócios e ${pc(100 - pPro, 0)} (${brl((calc.investimentoTotal * (100 - pPro)) / 100)}) de recursos de terceiros${fontes.length ? ` (${fontes.map((x) => x.fonte).join(", ")})` : ""}.`));
+    filhos.push(tabela(["Componente", "Valor"], [["Investimentos fixos", brl(calc.investFixo)], ["Capital de giro", brl(calc.capitalGiroTotal)], ["Investimentos pré-operacionais", brl(calc.investPreOp)], ["Investimento total", brl(calc.investimentoTotal)]], [3, 2], [1], true));
+    filhos.push(esp());
+    filhos.push(tabela(["Fonte dos recursos", "%", "Valor"], [["Recursos próprios", pc(pPro, 0), brl((calc.investimentoTotal * pPro) / 100)], ["Recursos de terceiros", pc(100 - pPro, 0), brl((calc.investimentoTotal * (100 - pPro)) / 100)]], [3, 1, 2], [1, 2]));
+    add(pizza("Origem dos recursos do investimento", [{ nome: "Recursos próprios", valor: (calc.investimentoTotal * pPro) / 100 }, { nome: "Recursos de terceiros", valor: (calc.investimentoTotal * (100 - pPro)) / 100 }], 220));
+    if (fontes.length) filhos.push(tabela(["Fonte de terceiros", "Observação"], fontes.map((x) => [x.fonte, x.obs || "—"]), [3, 4]));
+  }
+
+  // ================= 2. Receitas e custos variáveis =================
+  filhos.push(h1("2. Receitas e custos variáveis"));
+  filhos.push(mod(5, "Faturamento Mensal"));
+  if (!lanc.m5.itens.length) filhos.push(vazio("Módulo 5 ainda não preenchido."));
+  else {
+    filhos.push(para(`A empresa estima vender os produtos e serviços abaixo todos os meses, o que resulta em um faturamento mensal de ${brl(f)} e anual de ${brl(calc.receitaAnual)}.`));
+    filhos.push(tabela(["Produto/serviço", "Qtde./mês", "Preço unitário", "Faturamento mensal"],
+      [...lanc.m5.itens.map((i) => [i.nome || "—", num(i.qtd), brl(i.precoUnit), brl((Number(i.qtd) || 0) * (Number(i.precoUnit) || 0))]), ["Faturamento mensal total", "", "", brl(f)]], [4, 1.4, 1.9, 2.2], [1, 2, 3], true));
+    add(pizza("Participação de cada produto/serviço no faturamento", lanc.m5.itens.map((i) => ({ nome: i.nome || "—", valor: (Number(i.qtd) || 0) * (Number(i.precoUnit) || 0) }))));
+  }
+  filhos.push(mod(6, "Matéria-prima e Insumos"));
+  if (!lanc.m6.itens.length) filhos.push(vazio("Módulo 6 (opcional, para negócios que fabricam o próprio produto) não preenchido."));
+  else {
+    filhos.push(para("Detalhamento dos materiais usados na produção de cada item. É um quadro informativo: o custo oficial de cada produto é o informado no Módulo 8."));
+    filhos.push(tabela(["Produto", "Material/insumo", "Qtde.", "Custo unitário", "Total"], lanc.m6.itens.map((i) => [i.produto || "—", i.material || "—", num(i.qtd, 2), brl(i.custoUnit), brl((Number(i.qtd) || 0) * (Number(i.custoUnit) || 0))]), [2.4, 3.2, 1, 1.6, 1.5], [2, 3, 4]));
+  }
+  filhos.push(mod(7, "Custos de Comercialização"));
+  const regime = lanc.m7.modoImposto === "simples" && lanc.m7.tipoAtividade && TABELA_SIMPLES[lanc.m7.tipoAtividade] ? `Simples Nacional — ${TABELA_SIMPLES[lanc.m7.tipoAtividade].nome} (${TABELA_SIMPLES[lanc.m7.tipoAtividade].anexo})` : "informado manualmente";
+  if (!temDados && !calc.pctImpostos && !calc.pctComissao) filhos.push(vazio("Módulo 7 ainda não preenchido."));
+  else {
+    filhos.push(para(`Sobre cada venda incidem impostos e outras despesas variáveis. Enquadramento: ${regime}, com alíquota de ${pc(calc.pctImpostos, 2)} sobre o faturamento, mais ${pc(calc.pctComissao, 2)} de comissões/taxas, o que representa ${brl(calc.custoComercializacao)} por mês.`));
+    filhos.push(tabela(["Item", "Percentual", "Valor mensal"], [["Impostos sobre vendas", pc(calc.pctImpostos, 2), brl((f * calc.pctImpostos) / 100)], ["Comissões e taxas (ex.: cartão)", pc(calc.pctComissao, 2), brl((f * calc.pctComissao) / 100)], ["Total de custos de comercialização", pc(calc.pctImpostos + calc.pctComissao, 2), brl(calc.custoComercializacao)]], [3.5, 1.5, 2], [1, 2], true));
+  }
+  filhos.push(mod(8, "Custo Unitário e CMV"));
+  if (!calc.produtosAnalise.length || calc.cmv <= 0) filhos.push(vazio("Módulo 8 ainda não preenchido."));
+  else {
+    filhos.push(para(`O custo das mercadorias vendidas (CMV) é de ${brl(calc.cmv)} por mês, equivalente a ${pc((calc.cmv / (f || 1)) * 100, 0)} do faturamento. A tabela ordena os produtos do que mais contribui para o resultado ao que menos contribui, mostrando quanto sobra de cada um depois do custo, dos impostos e das taxas.`));
+    filhos.push(tabela(["#", "Produto/serviço", "Preço", "Custo unit.", "Margem unit.", "Margem %", "Margem total", "% da margem"], calc.produtosRanking.map((p, k) => [String(k + 1), p.nome, brl(p.preco), brl(p.custoUnit), brl(p.margemUnit), pc(p.margemPct, 1), brl(p.margemTotal), pc(p.pctDaMargem, 1)]), [0.5, 2.6, 1.4, 1.4, 1.5, 1.2, 1.7, 1.3], [2, 3, 4, 5, 6, 7], false, 16));
+    filhos.push(para("Margem total negativa indica que o item está dando prejuízo.", { size: 17, italics: true, color: GRAY }));
+    filhos.push(imagem({ tipo: "barras", titulo: "Margem de contribuição total por produto (mensal)", categorias: calc.produtosRanking.map((x) => x.nome), valores: calc.produtosRanking.map((x) => x.margemTotal), cores: PALETA_GRAFICOS, alt: 290 }));
+    filhos.push(imagem({ tipo: "barras", titulo: "Preço de venda x custo unitário por produto", categorias: calc.produtosRanking.flatMap((x) => [`${x.nome} (preço)`, `${x.nome} (custo)`]), valores: calc.produtosRanking.flatMap((x) => [x.preco, x.custoUnit]), cores: ["#4f83c9", "#c9972e"], alt: 300 }));
+  }
+
+  // ================= 3. Estrutura de custos fixos =================
+  filhos.push(h1("3. Estrutura de custos fixos"));
+  filhos.push(mod(9, "Mão de Obra"));
+  if (!mo.linhas.length && !mo.prolabore.length) filhos.push(vazio("Módulo 9 ainda não preenchido."));
+  else {
+    filhos.push(para(`O custo mensal com pessoal, incluindo encargos sociais${mo.modo === "grupos" ? ` (${pc(mo.pctGrupos, 2)} sobre o salário, regime ${mo.regime === "simples" ? "Simples Nacional" : "Lucro Real/Presumido"})` : ""}, benefícios e pró-labore dos sócios, é de ${brl(mo.total)}.`));
+    const linhasMO = [...mo.linhas.map((r) => [r.funcao || "—", num(r.qtd), brl(r.salario), brl(r.encargos), brl(r.beneficios), brl(r.total)]), ...mo.prolabore.map((r) => [`${r.funcao || "Pró-labore"} (pró-labore)`, num(r.qtd), brl(r.valor), brl(r.valor * r.qtd * r.pct / 100), "—", brl(r.total)]), ["Total mensal", "", "", "", "", brl(mo.total)]];
+    filhos.push(tabela(["Função", "Qtde.", "Salário", "Encargos", "VT + VR", "Custo total"], linhasMO, [3.2, 0.9, 1.5, 1.5, 1.4, 1.6], [1, 2, 3, 4, 5], true, 18));
+    add(pizza("Composição do custo mensal de mão de obra", [{ nome: "Salários", valor: mo.linhas.reduce((s, r) => s + r.salarioTotal, 0) }, { nome: "Encargos sociais", valor: mo.linhas.reduce((s, r) => s + r.encargos, 0) }, { nome: "Benefícios (VT + VR)", valor: mo.linhas.reduce((s, r) => s + r.beneficios, 0) }, { nome: "Pró-labore dos sócios", valor: mo.totalProlabore }], 230));
+  }
+  filhos.push(mod(10, "Depreciação"));
+  if (!calc.depreciacaoLinhas.length) filhos.push(vazio("Sem bens lançados no Módulo 1."));
+  else {
+    filhos.push(para(`Os bens perdem valor com o uso. Distribuindo o valor de cada um pela sua vida útil, a depreciação da empresa é de ${brl(calc.depreciacaoMensal)} por mês (${brl(calc.depreciacaoMensal * 12)} por ano).`));
+    filhos.push(tabela(["Bem", "Valor", "Vida útil", "Deprec. anual", "Deprec. mensal"], [...calc.depreciacaoLinhas.map((r) => [r.desc || "—", brl(r.valor), `${num(r.vidaUtil)} anos`, brl(r.anual), brl(r.mensal)]), ["Total", brl(calc.investFixo), "", brl(calc.depreciacaoMensal * 12), brl(calc.depreciacaoMensal)]], [3.6, 1.6, 1.2, 1.6, 1.6], [1, 2, 3, 4], true));
+    filhos.push(imagem({ tipo: "barras", titulo: "Depreciação mensal por bem", categorias: calc.depreciacaoLinhas.map((r) => r.desc || "—"), valores: calc.depreciacaoLinhas.map((r) => r.mensal), cores: PALETA_GRAFICOS, alt: 290 }));
+  }
+  filhos.push(mod(11, "Custos Fixos"));
+  if (!lanc.m11.itens.length && !calc.maoDeObra) filhos.push(vazio("Módulo 11 ainda não preenchido."));
+  else {
+    filhos.push(para(`Os custos fixos são os gastos que a empresa tem todo mês, independentemente das vendas. Somando as despesas fixas lançadas, a mão de obra e a depreciação, chegam a ${brl(calc.custoFixoTotal)} por mês.`));
+    filhos.push(tabela(["Custo fixo", "Valor mensal"], [...lanc.m11.itens.map((i) => [i.desc || "—", brl(i.valor)]), ["Mão de obra (Módulo 9)", brl(calc.maoDeObra)], ["Depreciação (Módulo 10)", brl(calc.depreciacaoMensal)], ["Total de custos fixos", brl(calc.custoFixoTotal)]], [4, 1.8], [1], true));
+    add(pizza("Composição dos custos fixos mensais", [...lanc.m11.itens.map((i) => ({ nome: i.desc || "—", valor: Number(i.valor) || 0 })), { nome: "Mão de obra", valor: calc.maoDeObra }, { nome: "Depreciação", valor: calc.depreciacaoMensal }], 260));
+  }
+
+  // ================= 4. Resultados e viabilidade =================
+  filhos.push(h1("4. Resultados e viabilidade"));
+  filhos.push(mod(12, "Demonstrativo de Resultados"));
+  if (!temDados) filhos.push(vazio("Disponível quando o faturamento (Módulo 5) for preenchido."));
+  else {
+    const ok = calc.resultadoOperacional >= 0;
+    filhos.push(para(`Com um faturamento mensal de ${brl(f)}, a empresa projeta ${ok ? "um lucro" : "um prejuízo"} operacional de ${brl(Math.abs(calc.resultadoOperacional))} por mês (${pc((calc.resultadoOperacional / f) * 100)} do faturamento).`));
+    const p = (v) => pc((Math.abs(v) / f) * 100);
+    filhos.push(tabela(["Descrição", "R$ por mês", "% do faturamento"], [
+      ["1. Receita total com vendas", brl(f), "100,0%"], ["2. Custos variáveis totais", brl(-calc.custoVariavelTotal), p(calc.custoVariavelTotal)], ["     (–) CMV", brl(-calc.cmv), p(calc.cmv)], ["     (–) Custos de comercialização", brl(-calc.custoComercializacao), p(calc.custoComercializacao)],
+      ["3. Margem de contribuição (1 – 2)", brl(calc.margemContribuicao), p(calc.margemContribuicao)], ["4. Custos fixos totais", brl(-calc.custoFixoTotal), p(calc.custoFixoTotal)], ["5. Resultado operacional (3 – 4)", brl(calc.resultadoOperacional), p(calc.resultadoOperacional)],
+    ], [4, 2, 2], [1, 2], true));
+    add(pizza("Para onde vai o faturamento", [{ nome: "CMV (custo das mercadorias)", valor: calc.cmv }, { nome: "Impostos e taxas sobre vendas", valor: calc.custoComercializacao }, { nome: "Custos fixos", valor: calc.custoFixoTotal }, { nome: ok ? "Lucro operacional" : "(prejuízo)", valor: ok ? calc.resultadoOperacional : 0 }], 240));
+  }
+  filhos.push(mod(13, "Indicadores de Viabilidade"));
+  if (!temDados || !temInvest) filhos.push(vazio("Disponíveis quando investimento e faturamento forem preenchidos."));
+  else {
+    filhos.push(para(`O ponto de equilíbrio é de ${calc.pontoEquilibrio != null ? brl(calc.pontoEquilibrio) : "—"} por ano, frente a uma receita anual projetada de ${brl(calc.receitaAnual)}. A lucratividade é de ${pc(calc.lucratividade)} e a rentabilidade de ${pc(calc.rentabilidade)} ao ano${calc.prazoRetorno != null ? `, com prazo de retorno do investimento de ${num(calc.prazoRetorno, 1)} anos (cerca de ${Math.round(calc.prazoRetorno * 12)} meses)` : ", sem recuperação do investimento com o resultado atual"}.`));
+    filhos.push(tabela(["Indicador", "Resultado", "O que mostra"], [
+      ["Ponto de equilíbrio (anual)", calc.pontoEquilibrio != null ? brl(calc.pontoEquilibrio) : "—", "Faturamento anual necessário para cobrir todos os custos"],
+      ["Lucratividade", pc(calc.lucratividade), "Parte do faturamento que vira lucro"],
+      ["Rentabilidade (ao ano)", pc(calc.rentabilidade), "Retorno anual sobre o investimento total"],
+      ["Prazo de retorno (payback)", calc.prazoRetorno != null ? `${num(calc.prazoRetorno, 1)} anos` : "—", "Tempo para recuperar o investimento pelo lucro"],
+    ], [2.6, 1.7, 4]));
+    filhos.push(imagem({ tipo: "barras", titulo: "Receita anual x ponto de equilíbrio", categorias: ["Receita anual projetada", "Ponto de equilíbrio (anual)", "Lucro anual", "Investimento total"], valores: [calc.receitaAnual, calc.pontoEquilibrio || 0, calc.lucroAnual, calc.investimentoTotal], cores: ["#4f83c9", "#c9972e", calc.lucroAnual >= 0 ? "#2dd4a8" : "#f87171", "#5c7186"], alt: 290 }));
+    filhos.push(imagem({ tipo: "linhas", titulo: "Recuperação do investimento ao longo de 5 anos (lucro anual constante)", categorias: ["Início", "Ano 1", "Ano 2", "Ano 3", "Ano 4", "Ano 5"], series: [{ nome: "Saldo acumulado", valores: [0, 1, 2, 3, 4, 5].map((a) => -calc.investimentoTotal + calc.lucroAnual * a), cor: "#2dd4a8" }], alt: 280 }));
+  }
+
+  // ================= 5. Análise do Negócio =================
+  filhos.push(h1("5. Análise do Negócio"));
+  if (!temDados && !temInvest) filhos.push(vazio("Disponível quando investimento e faturamento forem preenchidos."));
+  else {
+    filhos.push(para("Panorama do negócio com os principais números e gráficos do plano."));
+    filhos.push(tabela(["Indicador", "Valor"], [["Investimento total", brl(calc.investimentoTotal)], ["Faturamento mensal", brl(f)], ["Resultado operacional por mês", brl(calc.resultadoOperacional)], ["Progresso de preenchimento dos módulos", `${num(calc.progresso)}%`]], [3, 2], [1]));
+    filhos.push(h2("Pontos de atenção"));
+    alertasNegocio(calc).forEach((a) => filhos.push(new Paragraph({ numbering: { reference: "marcadores", level: 0 }, spacing: { after: 60, line: 300 }, children: [run(a.texto)] })));
+    const fatias = [{ nome: "Investimentos fixos", valor: calc.investFixo, cor: "#c9972e" }, { nome: "Capital de giro", valor: calc.capitalGiroTotal, cor: "#4f83c9" }, { nome: "Pré-operacionais", valor: calc.investPreOp, cor: "#5c7186" }].filter((x) => x.valor > 0);
+    if (fatias.length) filhos.push(imagem({ tipo: "pizza", titulo: "Composição do investimento total", fatias, alt: 250 }));
+    if (temDados) filhos.push(imagem({ tipo: "barras", titulo: "Receita x custos x resultado (mensal)", categorias: ["Receita", "Custos variáveis", "Custos fixos", "Resultado"], valores: [calc.faturamento, calc.custoVariavelTotal, calc.custoFixoTotal, calc.resultadoOperacional], cores: ["#4f83c9", "#c9972e", "#5c7186", calc.resultadoOperacional >= 0 ? "#2dd4a8" : "#f87171"], alt: 280 }));
+    if (calc.produtosRanking.length && calc.cmv > 0) {
+      filhos.push(h2("Produtos mais lucrativos"));
+      filhos.push(para("Ranking por margem de contribuição total (o mesmo apresentado no Módulo 8)."));
+      filhos.push(tabela(["#", "Produto/serviço", "Margem unit.", "Margem %", "Margem total", "% da margem"], calc.produtosRanking.map((p, k) => [String(k + 1), p.nome, brl(p.margemUnit), pc(p.margemPct, 1), brl(p.margemTotal), pc(p.pctDaMargem, 1)]), [0.5, 3, 1.6, 1.3, 1.7, 1.4], [2, 3, 4, 5]));
+    }
+    if (hist.length) {
+      filhos.push(h2("Evolução dos ajustes"));
+      filhos.push(para("Cada versão salva pela equipe registra um retrato dos indicadores, para acompanhar como o plano evoluiu ao longo do projeto."));
+      filhos.push(imagem({ tipo: "linhas", titulo: "Lucro anual x ponto de equilíbrio por versão", categorias: hist.map((h, i) => `V${i + 1}`), series: [{ nome: "Lucro anual", valores: hist.map((h) => h.indicadores.lucroAnual || 0), cor: "#2dd4a8" }, { nome: "Ponto de equilíbrio", valores: hist.map((h) => h.indicadores.pontoEquilibrio || 0), cor: "#c9972e", tracejado: true }], alt: 280 }));
+      filhos.push(tabela(["Versão", "Data", "Lucro anual", "Ponto de equilíbrio", "Observação"], hist.map((h, i) => [`V${i + 1}`, new Date(h.timestamp).toLocaleDateString("pt-BR"), brl(h.indicadores.lucroAnual), h.indicadores.pontoEquilibrio ? brl(h.indicadores.pontoEquilibrio) : "—", h.nota || "—"]), [0.8, 1.4, 1.8, 2, 3.2], [2, 3]));
+    }
+  }
+
+  // ================= 6. Fluxo de Caixa Anual =================
+  filhos.push(h1("6. Fluxo de Caixa Anual"));
+  if (!temDados || !temInvest) filhos.push(vazio("Disponível quando investimento e faturamento forem preenchidos."));
+  else {
+    const pos = fluxo.find((m) => m.mes > 0 && m.saldo >= 0);
+    const neg = fluxo.filter((m) => m.mes > 0 && m.resultado < 0).length;
+    filhos.push(para(`A projeção parte do investimento total no mês 0 (${brl(-calc.investimentoTotal)})${Number(taxaCrescimento) ? ` e considera crescimento mensal do faturamento de ${num(taxaCrescimento, 1)}%` : " e repete o mesmo faturamento todos os meses"}. ${pos ? `O caixa acumulado fica positivo no ${pos.label.toLowerCase()}.` : `Ao final do mês 12 o saldo acumulado é de ${brl(fluxo[12].saldo)}, ou seja, o investimento ainda não é totalmente recuperado dentro do primeiro ano.`}`));
+    filhos.push(tabela(["Resumo", "Resultado"], [["Saldo ao final do mês 12", brl(fluxo[12].saldo)], ["Mês em que o caixa fica positivo", pos ? pos.label : "Não ocorre em 12 meses"], ["Meses com resultado negativo", `${neg} de 12`]], [3, 2], [1]));
+    filhos.push(imagem({ tipo: "linhas", titulo: "Evolução do saldo de caixa", categorias: fluxo.map((m) => (m.mes === 0 ? "Início" : `M${m.mes}`)), series: [{ nome: "Saldo de caixa acumulado", valores: fluxo.map((m) => m.saldo), cor: "#c9972e" }], alt: 280 }));
+    filhos.push(tabela(["Mês", "Receita", "Custo variável", "Custo fixo", "Resultado", "Saldo acumulado"], fluxo.map((m) => [m.mes === 0 ? "Investimento" : m.label, m.mes === 0 ? "—" : brl(m.receita), m.mes === 0 ? "—" : brl(m.custoVariavel), m.mes === 0 ? "—" : brl(m.custoFixo), brl(m.resultado), brl(m.saldo)]), [1.5, 1.6, 1.7, 1.6, 1.6, 1.9], [1, 2, 3, 4, 5], false, 17));
+    const tma = Number(tmaAnual); 
+    if (Number.isFinite(tma)) {
+      const tmaM = Math.pow(1 + tma / 100, 1 / 12) - 1;
+      const vpl = calcularVPL(fluxo, tmaM); const tirM = calcularTIRMensal(fluxo); const tirA = tirM !== null ? (Math.pow(1 + tirM, 12) - 1) * 100 : null;
+      filhos.push(h2("VPL e TIR (indicadores opcionais)"));
+      filhos.push(para(`Considerando a Taxa Mínima de Atratividade (TMA) de ${num(tma, 1)}% ao ano, o VPL do fluxo de 12 meses é de ${brl(vpl)}${vpl >= 0 ? ", ou seja, o negócio gera valor além do retorno mínimo exigido pelos sócios" : ", ou seja, nos 12 meses projetados o negócio não gera valor suficiente para cobrir a TMA"}. ${tirA !== null ? `A TIR é de ${num(tirA, 1)}% ao ano.` : "Não há TIR calculável: o investimento não é recuperado dentro dos 12 meses."}`));
+      filhos.push(tabela(["Indicador", "Resultado"], [["TMA (taxa mínima de atratividade, ao ano)", pc(tma, 1)], ["VPL (valor presente líquido)", brl(vpl)], ["TIR (taxa interna de retorno, ao ano)", tirA !== null ? pc(tirA, 1) : "Não recupera em 12 meses"]], [3, 2], [1]));
+    }
+  }
+
+  // ================= 7. Análise de Cenários =================
+  filhos.push(h1("7. Análise de Cenários"));
+  if (!temDados) filhos.push(vazio("Disponível quando o faturamento (Módulo 5) for preenchido."));
+  else if (!cens.length) filhos.push(vazio("A equipe ainda não criou cenários na plataforma."));
+  else {
+    filhos.push(para("Simulações de \"e se\" feitas pela equipe sobre o plano atual (cenário base), sem alterar os números oficiais. Cada cenário aplica variações percentuais ao faturamento, aos custos variáveis e aos custos fixos."));
+    const linhasC = [["Base (atual)", "—", "—", "—", brl(calc.faturamento), brl(calc.resultadoOperacional), calc.pontoEquilibrio != null ? brl(calc.pontoEquilibrio) : "—", pc(calc.lucratividade)], ...cens.map((c, i) => { const r = calcularCenario(calc, c); return [c.nome || `Cenário ${i + 1}`, `${num(c.variacaoFaturamento, 0)}%`, `${num(c.variacaoCustoVariavel, 0)}%`, `${num(c.variacaoCustoFixo, 0)}%`, brl(r.faturamento), brl(r.resultadoOperacional), r.pontoEquilibrio != null ? brl(r.pontoEquilibrio) : "—", pc(r.lucratividade)]; })];
+    filhos.push(tabela(["Cenário", "Δ Fat.", "Δ C. var.", "Δ C. fixo", "Faturamento/mês", "Resultado/mês", "Ponto de equilíbrio", "Lucrat."], linhasC, [1.8, 0.8, 0.9, 0.9, 1.5, 1.4, 1.6, 0.9], [1, 2, 3, 4, 5, 6, 7], false, 15));
+    filhos.push(imagem({ tipo: "barras", titulo: "Comparativo de cenários — resultado operacional mensal", categorias: ["Base (atual)", ...cens.map((c, i) => c.nome || `Cenário ${i + 1}`)], valores: [calc.resultadoOperacional, ...cens.map((c) => calcularCenario(calc, c).resultadoOperacional)], cores: ["#64748b", ...cens.map((c, i) => CENARIO_CORES[i % CENARIO_CORES.length])], alt: 260 }));
+  }
+
+  const doc = new Document({
+    creator: "CEDUP Hermann Hering", title: `Plano Financeiro — ${equipe.nomeNegocio}`,
+    styles: { default: { document: { run: { font: FONT, size: 21 } } } },
+    numbering: { config: [{ reference: "marcadores", levels: [{ level: 0, format: D.LevelFormat.BULLET, text: "•", alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: 540, hanging: 270 } } } }] }] },
+    sections: [{
+      properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } },
+      headers: { default: new Header({ children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [run(`${equipe.nomeNegocio} · Plano Financeiro`, { size: 16, color: GRAY })] })] }) },
+      footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [run("CEDUP Hermann Hering · Plataforma do Plano Financeiro · página ", { size: 16, color: GRAY }), new TextRun({ children: [PageNumber.CURRENT], font: FONT, size: 16, color: GRAY })] })] }) },
+      children: filhos,
+    }],
+  });
+  const blob = await Packer.toBlob(doc);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `Plano-Financeiro-${nomeArquivoSeguro(equipe.nomeNegocio)}.docx`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
 function SegmentoNegocioView({ equipe, onAtualizarEquipe, souVisualizador, exemplo }) {
   const status = equipe.segmentoStatus;
   const precisaEscolher = !equipe.segmento || status === "reconsiderar";
@@ -4476,6 +4832,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   const [aba, setAba] = useState("inicio");
   const [menuAberto, setMenuAberto] = useState(false);
   const [gerandoPpt, setGerandoPpt] = useState(false);
+  const [gerandoDoc, setGerandoDoc] = useState(false);
   const [erroPpt, setErroPpt] = useState("");
   const [confirmSairAberto, setConfirmSairAberto] = useState(false);
   const [decisaoGestorTomada, setDecisaoGestorTomada] = useState(false);
@@ -4664,6 +5021,19 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
                     className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent disabled:opacity-60"
                   >
                     <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{gerandoPpt ? "Gerando apresentação…" : "Baixar Apresentação (dados da equipe)"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={gerandoDoc}
+                    onClick={async () => {
+                      setErroPpt(""); setGerandoDoc(true);
+                      try { await gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo: projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0), cenarios: dados?.cenarios || [], taxaCrescimento: dados?.taxaCrescimentoFluxo ?? 0, tmaAnual: dados?.tmaAnualFluxo ?? 12, historico: dados?.historico || [] }); setMenuAberto(false); }
+                      catch { setErroPpt("Não foi possível gerar agora — confira a conexão com a internet e tente de novo."); }
+                      finally { setGerandoDoc(false); }
+                    }}
+                    className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent disabled:opacity-60"
+                  >
+                    <FileDown size={16} className="shrink-0" /> <span className="truncate flex-1">{gerandoDoc ? "Gerando documento…" : "Baixar Plano Financeiro (Word)"}</span>
                   </button>
                   <a href={MODELO_APRESENTACAO_URL} download onClick={() => setMenuAberto(false)} className="block pl-12 pr-5 pb-1.5 text-[11px] text-white/40 hover:text-white/70 underline">
                     Modelo em branco

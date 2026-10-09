@@ -1,4 +1,4 @@
-// build: 20261008_23h12m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261008_23h34m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -4172,6 +4172,166 @@ function CronogramaAlunoView({ turmaId }) {
 // professor confirmar — mas as orientações, exemplos e sugestões de itens já
 // usam a escolha normalmente nesse meio tempo (ver segmentoAprovado()), para
 // a equipe não ficar travada esperando.
+// ============================================================================
+// APRESENTAÇÃO PREENCHIDA (PPTX) — gerada no navegador, no clique, com os
+// números atuais da equipe (somente leitura: nada é gravado). A biblioteca
+// de geração é carregada da internet apenas nesse momento.
+// ============================================================================
+
+const PPTXGENJS_URL = "https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js";
+
+function carregarScriptCDN(url, globalName) {
+  return new Promise((resolve, reject) => {
+    if (window[globalName]) return resolve(window[globalName]);
+    let s = document.querySelector(`script[data-cdn="${globalName}"]`);
+    const novo = !s;
+    if (!s) { s = document.createElement("script"); s.dataset.cdn = globalName; s.async = true; }
+    s.addEventListener("load", () => (window[globalName] ? resolve(window[globalName]) : reject(new Error("biblioteca indisponível"))));
+    s.addEventListener("error", () => { s.remove(); reject(new Error("não foi possível carregar a biblioteca")); });
+    if (novo) { s.src = url; document.head.appendChild(s); }
+  });
+}
+
+function nomeArquivoSeguro(txt) {
+  return String(txt || "empresa").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "empresa";
+}
+
+async function gerarApresentacaoEquipe({ equipe, calc, fluxo }) {
+  const PptxGenJS = await carregarScriptCDN(PPTXGENJS_URL, "PptxGenJS");
+  const pptx = new PptxGenJS();
+  pptx.layout = "LAYOUT_WIDE"; // 13,33 x 7,5 pol — mesmo formato do modelo
+  pptx.author = "CEDUP Hermann Hering";
+  pptx.title = `Plano Financeiro — ${equipe.nomeNegocio}`;
+
+  const NAVY = "0F172A", AMBER = "F59E0B", SLATE = "64748B", GREEN = "059669", RED = "DC2626", LIGHT = "F8FAFC", BORDER = "CBD5E1", BROWN = "78350F";
+  const money0 = (n) => (Number(n) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+  const pct = (n, d = 1) => `${(Number(n) || 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d })}%`;
+  const rodape = `CEDUP Hermann Hering · Plataforma do Plano Financeiro · ${equipe.nomeNegocio}`;
+  const X = 0.7, Y = 1.7, W = 7.0, H = 5.0;
+
+  const temDados = (calc.faturamento || 0) > 0;
+  const temInvest = (calc.investimentoTotal || 0) > 0;
+
+  const base = (titulo, subtitulo, n, destaques) => {
+    const s = pptx.addSlide(); s.background = { color: "FFFFFF" };
+    s.addText(titulo, { x: 0.7, y: 0.5, w: 11.9, h: 0.7, fontFace: "Cambria", fontSize: 30, bold: true, color: NAVY, margin: 0 });
+    s.addText(subtitulo, { x: 0.7, y: 1.15, w: 11.9, h: 0.4, fontFace: "Calibri", fontSize: 13.5, italic: true, color: SLATE, margin: 0 });
+    s.addText(rodape, { x: 0.5, y: 7.08, w: 9, h: 0.3, fontFace: "Calibri", fontSize: 9, color: SLATE, margin: 0 });
+    s.addText(String(n), { x: 12.3, y: 7.08, w: 0.5, h: 0.3, fontFace: "Calibri", fontSize: 9, color: SLATE, align: "right", margin: 0 });
+    if (destaques) {
+      s.addShape(pptx.ShapeType.roundRect, { x: 8.0, y: Y, w: 4.65, h: H, fill: { color: "FFFBEB" }, line: { color: AMBER, width: 1 }, rectRadius: 0.08 });
+      s.addText("O QUE DESTACAR", { x: 8.3, y: Y + 0.25, w: 4.1, h: 0.35, fontFace: "Calibri", fontSize: 11, bold: true, color: BROWN, charSpacing: 3, margin: 0 });
+      s.addText(destaques.map((t) => ({ text: t, options: { bullet: true, breakLine: true } })), { x: 8.3, y: Y + 0.8, w: 4.1, h: H - 1.1, fontFace: "Calibri", fontSize: 13, color: BROWN, valign: "top", paraSpaceAfter: 6, margin: 0 });
+    }
+    return s;
+  };
+  const kpi = (s, x, y, w, h, label, valor, sub, cor) => {
+    s.addShape(pptx.ShapeType.roundRect, { x, y, w, h, fill: { color: LIGHT }, line: { color: BORDER, width: 1 }, rectRadius: 0.06 });
+    s.addText(label.toUpperCase(), { x: x + 0.12, y: y + 0.08, w: w - 0.24, h: 0.3, fontFace: "Calibri", fontSize: 9, bold: true, color: SLATE, margin: 0 });
+    s.addText(valor, { x: x + 0.12, y: y + 0.38, w: w - 0.24, h: h * 0.42, fontFace: "Cambria", fontSize: String(valor).length > 14 ? 14 : 22, bold: true, color: cor || NAVY, valign: "middle", margin: 0 });
+    if (sub) s.addText(sub, { x: x + 0.12, y: y + h - 0.4, w: w - 0.24, h: 0.32, fontFace: "Calibri", fontSize: 9.5, color: SLATE, margin: 0 });
+  };
+  const aviso = (s, texto) => {
+    s.addShape(pptx.ShapeType.roundRect, { x: X, y: Y, w: W, h: H, fill: { color: LIGHT }, line: { color: BORDER, width: 1.25, dashType: "dash" }, rectRadius: 0.08 });
+    s.addText(texto, { x: X + 0.4, y: Y, w: W - 0.8, h: H, fontFace: "Calibri", fontSize: 15, italic: true, color: SLATE, align: "center", valign: "middle" });
+  };
+
+  // 1 · Capa
+  const c = pptx.addSlide(); c.background = { color: NAVY };
+  c.addText("CEDUP HERMANN HERING", { x: 0.7, y: 2.2, w: 8, h: 0.4, fontFace: "Calibri", fontSize: 13, bold: true, color: AMBER, charSpacing: 4, margin: 0 });
+  c.addText(equipe.nomeNegocio, { x: 0.7, y: 2.8, w: 11.5, h: 1.1, fontFace: "Cambria", fontSize: 40, bold: true, color: "FFFFFF", margin: 0 });
+  c.addText("Apresentação do Plano Financeiro", { x: 0.7, y: 4.0, w: 11.5, h: 0.5, fontFace: "Calibri", fontSize: 20, color: "E2E8F0", margin: 0 });
+  c.addText((equipe.integrantes || []).join(" · ") || "Integrantes da equipe", { x: 0.7, y: 4.7, w: 11.5, h: 0.9, fontFace: "Calibri", fontSize: 14, italic: true, color: "94A3B8", valign: "top", margin: 0 });
+  c.addText(rodape, { x: 0.5, y: 7.08, w: 9, h: 0.3, fontFace: "Calibri", fontSize: 9, color: "64748B", margin: 0 });
+
+  // 2 · Visão geral
+  const s2 = base("1 · Visão Geral", "Análise do Negócio — o panorama do negócio", 2, ["Quanto foi investido", "Quanto a empresa fatura por mês", "Qual o resultado operacional"]);
+  if (!temDados && !temInvest) aviso(s2, "Esta parte ainda não pode ser montada: preencham os módulos de investimento e de faturamento (Módulos 1 a 5) e baixem a apresentação de novo.");
+  else {
+    const w3 = (W - 0.3) / 3;
+    kpi(s2, X, Y, w3, 1.2, "Investimento total", money0(calc.investimentoTotal), "fixo + giro + pré-operacional");
+    kpi(s2, X + w3 + 0.15, Y, w3, 1.2, "Faturamento mensal", money0(calc.faturamento), `receita anual ${money0(calc.receitaAnual)}`);
+    kpi(s2, X + 2 * (w3 + 0.15), Y, w3, 1.2, "Resultado operacional/mês", money0(calc.resultadoOperacional), calc.resultadoOperacional >= 0 ? "lucro" : "prejuízo", calc.resultadoOperacional >= 0 ? GREEN : RED);
+    if (temDados) {
+      s2.addChart(pptx.charts.BAR, [{ name: "R$ por mês", labels: ["Faturamento", "Custos variáveis", "Custos fixos", "Resultado"], values: [calc.faturamento, calc.custoVariavelTotal, calc.custoFixoTotal, calc.resultadoOperacional] }], {
+        x: X, y: Y + 1.35, w: W, h: H - 1.35, barDir: "col", chartColors: [AMBER, "EF4444", "64748B", GREEN], varyColors: true,
+        showTitle: true, title: "Para onde vai o faturamento de cada mês", titleFontSize: 12, titleFontFace: "Calibri", titleColor: NAVY,
+        showValue: true, dataLabelFormatCode: "R$ #,##0", dataLabelFontSize: 10, dataLabelPosition: "outEnd", valAxisHidden: true, valGridLine: { style: "none" }, catAxisLabelFontSize: 10, showLegend: false,
+      });
+    }
+  }
+
+  // 3 · DRE
+  const s3 = base("2 · Como Chegamos Até Aqui", "Demonstrativo de Resultados — o detalhamento", 3, ["Receita", "Custos variáveis", "Custos fixos", "Como esses números formam o resultado apresentado no slide anterior"]);
+  if (!temDados) aviso(s3, "Esta parte ainda não pode ser montada: o faturamento (Módulo 5) ainda não foi preenchido.");
+  else {
+    const f = calc.faturamento;
+    const linhas = [
+      ["Receita total com vendas", f, 1], ["(–) Custos variáveis totais", -calc.custoVariavelTotal, 0], ["      CMV (custo das mercadorias vendidas)", -calc.cmv, 0], ["      Impostos e taxas sobre vendas", -calc.custoComercializacao, 0],
+      ["= Margem de contribuição", calc.margemContribuicao, 1], ["(–) Custos fixos totais", -calc.custoFixoTotal, 0], ["= Resultado operacional", calc.resultadoOperacional, 1],
+    ];
+    const hd = (t, al) => ({ text: t, options: { bold: true, color: "FFFFFF", fill: { color: NAVY }, align: al, fontSize: 11 } });
+    const rows = [[hd("Descrição", "left"), hd("R$ por mês", "right"), hd("% do faturamento", "right")]];
+    linhas.forEach(([d, v, b], i) => {
+      const fill = { color: b ? "FEF3C7" : i % 2 ? "FFFFFF" : LIGHT };
+      rows.push([
+        { text: d, options: { bold: !!b, color: NAVY, fill, fontSize: 12 } },
+        { text: v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }), options: { bold: !!b, color: v < 0 ? RED : NAVY, align: "right", fill, fontSize: 12 } },
+        { text: pct((Math.abs(v) / f) * 100), options: { bold: !!b, color: SLATE, align: "right", fill, fontSize: 12 } },
+      ]);
+    });
+    s3.addTable(rows, { x: X, y: Y, w: W, colW: [3.6, 1.7, 1.7], rowH: 0.42, fontFace: "Calibri", border: { type: "none" }, valign: "middle" });
+    const ok = calc.resultadoOperacional >= 0;
+    s3.addShape(pptx.ShapeType.roundRect, { x: X, y: Y + 3.95, w: W, h: 0.85, fill: { color: ok ? "ECFDF5" : "FEF2F2" }, line: { color: ok ? GREEN : RED, width: 1.25 }, rectRadius: 0.06 });
+    s3.addText(`Resultado projetado: ${ok ? "LUCRO" : "PREJUÍZO"} de ${Math.abs(calc.resultadoOperacional).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} por mês`, { x: X, y: Y + 3.95, w: W, h: 0.85, fontFace: "Cambria", fontSize: 18, bold: true, color: ok ? GREEN : RED, align: "center", valign: "middle" });
+  }
+
+  // 4 · Indicadores
+  const s4 = base("3 · O Negócio É Viável?", "Indicadores de Viabilidade — o veredito", 4, ["Ponto de Equilíbrio", "Lucratividade", "Rentabilidade", "Prazo de Retorno (Payback)"]);
+  if (!temDados || !temInvest) aviso(s4, "Esta parte ainda não pode ser montada: faltam investimento e faturamento (Módulos 1 a 5) para calcular os indicadores.");
+  else {
+    const cw = (W - 0.15) / 2, ch = 1.45;
+    const itens = [
+      ["Ponto de equilíbrio (anual)", calc.pontoEquilibrio != null ? money0(calc.pontoEquilibrio) : "—", `Receita anual projetada: ${money0(calc.receitaAnual)}`],
+      ["Lucratividade", pct(calc.lucratividade), "% do faturamento que vira lucro"],
+      ["Rentabilidade (ao ano)", pct(calc.rentabilidade), "retorno anual sobre o investimento"],
+      ["Prazo de retorno (payback)", calc.prazoRetorno != null ? `${calc.prazoRetorno.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} anos` : "—", calc.prazoRetorno != null ? `≈ ${Math.round(calc.prazoRetorno * 12)} meses para recuperar o investimento` : "o lucro não recupera o investimento"],
+    ];
+    itens.forEach(([a, b, sub], i) => kpi(s4, X + (i % 2) * (cw + 0.15), Y + Math.floor(i / 2) * (ch + 0.15), cw, ch, a, b, sub));
+    let leitura = "";
+    if (calc.pontoEquilibrio != null && calc.receitaAnual > 0) {
+      const m = (1 - calc.pontoEquilibrio / calc.receitaAnual) * 100;
+      leitura = `Leitura: a receita projetada está ${pct(Math.abs(m), 0)} ${m >= 0 ? "acima" : "abaixo"} do ponto de equilíbrio` + (calc.prazoRetorno != null ? `; o investimento se paga em cerca de ${calc.prazoRetorno.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} anos.` : "; com o resultado atual, o investimento não se paga.");
+    }
+    const yb = Y + 2 * (ch + 0.15);
+    s4.addShape(pptx.ShapeType.roundRect, { x: X, y: yb, w: W, h: Y + H - yb, fill: { color: "FFFBEB" }, line: { color: AMBER, width: 1 }, rectRadius: 0.06 });
+    s4.addText(leitura, { x: X + 0.2, y: yb, w: W - 0.4, h: Y + H - yb, fontFace: "Calibri", fontSize: 14, bold: true, color: BROWN, align: "center", valign: "middle" });
+  }
+
+  // 5 · Fluxo de caixa
+  const s5 = base("4 · Qual a Trajetória", "Fluxo de Caixa Anual — a evolução no tempo", 5, ["Em qual mês o caixa fica positivo", "Como o investimento se recupera ao longo do primeiro ano"]);
+  if (!temDados || !temInvest) aviso(s5, "Esta parte ainda não pode ser montada: faltam investimento e faturamento (Módulos 1 a 5) para projetar o caixa.");
+  else {
+    const pos = fluxo.find((m) => m.mes > 0 && m.saldo >= 0);
+    const neg = fluxo.filter((m) => m.mes > 0 && m.resultado < 0).length;
+    const w3 = (W - 0.3) / 3;
+    kpi(s5, X, Y, w3, 1.05, "Saldo ao final do mês 12", money0(fluxo[12].saldo), "", fluxo[12].saldo >= 0 ? GREEN : SLATE);
+    kpi(s5, X + w3 + 0.15, Y, w3, 1.05, "Caixa fica positivo em", pos ? pos.label : "Não ocorre em 12 meses", "");
+    kpi(s5, X + 2 * (w3 + 0.15), Y, w3, 1.05, "Meses com resultado negativo", `${neg} de 12`, "");
+    s5.addChart(pptx.charts.LINE, [{ name: "Saldo de caixa acumulado", labels: fluxo.map((m) => (m.mes > 0 ? m.label : "Início")), values: fluxo.map((m) => Math.round(m.saldo * 100) / 100) }], {
+      x: X, y: Y + 1.2, w: W, h: H - 1.2, chartColors: [AMBER], lineSize: 3, lineDataSymbolSize: 7, showLegend: false,
+      showTitle: true, title: "Evolução do saldo de caixa (investimento no mês 0)", titleFontSize: 12, titleFontFace: "Calibri", titleColor: NAVY,
+      valAxisLabelFormatCode: "R$ #,##0", valAxisLabelFontSize: 9, catAxisLabelFontSize: 9, catAxisLabelPos: "low", valGridLine: { color: "E2E8F0", size: 0.75 },
+    });
+  }
+
+  // 6 · Conclusão (sempre em branco: é a equipe quem escreve)
+  const s6 = base("5 · Conclusão da Equipe", "O que vocês concluem sobre a viabilidade do negócio", 6, null);
+  aviso(s6, "[ Escrevam aqui, com as próprias palavras, a conclusão da equipe: o negócio é viável? Por quê? O que vocês fariam diferente? ]");
+
+  await pptx.writeFile({ fileName: `Apresentacao-Plano-Financeiro-${nomeArquivoSeguro(equipe.nomeNegocio)}.pptx` });
+}
+
 function SegmentoNegocioView({ equipe, onAtualizarEquipe, souVisualizador, exemplo }) {
   const status = equipe.segmentoStatus;
   const precisaEscolher = !equipe.segmento || status === "reconsiderar";
@@ -4315,6 +4475,8 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   const [dados, setDados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
   const [aba, setAba] = useState("inicio");
   const [menuAberto, setMenuAberto] = useState(false);
+  const [gerandoPpt, setGerandoPpt] = useState(false);
+  const [erroPpt, setErroPpt] = useState("");
   const [confirmSairAberto, setConfirmSairAberto] = useState(false);
   const [decisaoGestorTomada, setDecisaoGestorTomada] = useState(false);
   const [pdfAberto, setPdfAberto] = useState(null);
@@ -4489,15 +4651,25 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
             const active = aba === it.id;
             if (it.id === "modeloApresentacao") {
               return (
-                <a
-                  key={it.id}
-                  href={MODELO_APRESENTACAO_URL}
-                  download
-                  onClick={() => setMenuAberto(false)}
-                  className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent"
-                >
-                  <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
-                </a>
+                <div key={it.id}>
+                  <button
+                    type="button"
+                    disabled={gerandoPpt}
+                    onClick={async () => {
+                      setErroPpt(""); setGerandoPpt(true);
+                      try { await gerarApresentacaoEquipe({ equipe, calc, fluxo: projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0) }); setMenuAberto(false); }
+                      catch { setErroPpt("Não foi possível gerar agora — confira a conexão com a internet e tente de novo."); }
+                      finally { setGerandoPpt(false); }
+                    }}
+                    className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent disabled:opacity-60"
+                  >
+                    <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{gerandoPpt ? "Gerando apresentação…" : "Baixar Apresentação (dados da equipe)"}</span>
+                  </button>
+                  <a href={MODELO_APRESENTACAO_URL} download onClick={() => setMenuAberto(false)} className="block pl-12 pr-5 pb-1.5 text-[11px] text-white/40 hover:text-white/70 underline">
+                    Modelo em branco
+                  </a>
+                  {erroPpt && <div className="px-5 pb-2 text-[11px] text-rose-300">{erroPpt}</div>}
+                </div>
               );
             }
             const pdfUrl = MANUAIS_PDF[it.id];

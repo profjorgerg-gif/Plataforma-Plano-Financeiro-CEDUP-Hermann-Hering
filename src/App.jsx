@@ -1,4 +1,4 @@
-// build: 20261008_23h51m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261009_07h10m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -814,8 +814,11 @@ const MANUAL_ALUNO_PASSOS = [
   { titulo: "Leiam a teoria antes de lançar dados", texto: "Todo módulo tem uma caixa \"Teoria do módulo\" — abram-na antes de preencher. Ela traz o conceito e a fórmula que a plataforma está usando nos cálculos.", imagem: "aluno_theory" },
   { titulo: "Acompanhem a Análise do Negócio", texto: "A cada rodada de ajustes, confiram os gráficos, os alertas automáticos e o ranking \"Produtos Mais Lucrativos\" — essa aba reúne o que foi lançado em todos os módulos e mostra quais produtos/serviços mais contribuem para o resultado." },
   { titulo: "Explorem a Análise de Cenários e o Fluxo de Caixa", texto: "Na aba \"Análise de Cenários\", criem até 3 simulações de \"e se\" (ex.: preço 10% maior, custo de matéria-prima 5% mais caro) sem alterar nada do que já foi lançado. No Fluxo de Caixa Anual, vejam a projeção mês a mês do primeiro ano — e, se quiserem se aprofundar, o VPL e a TIR, indicadores opcionais que avaliam o investimento levando em conta o valor do dinheiro no tempo." },
+  { titulo: "Informem o segmento do negócio", texto: "Na aba \"Segmento do negócio\", escolham o segmento da empresa (ex.: padaria, restaurante, estética, semijoias). O botão \"Sugerir itens\" traz exemplos de itens típicos do segmento para orientar os lançamentos — são apenas sugestões, cada equipe lança os seus próprios dados." },
+  { titulo: "Lancem a folha de pagamento (Módulo 9)", texto: "No Módulo 9, cadastrem as funções, a quantidade, o salário, VT/VR e os encargos (grupos A/B/C/D). O pró-labore dos sócios entra no mesmo módulo. Usem \"ver composição\" para conferir como o custo total de cada função foi calculado." },
   { titulo: "Salvem versões ao longo do projeto", texto: "Sempre que fizerem um ajuste relevante (novo preço, novo custo, nova equipe de trabalho), cliquem em \"Salvar versão\" na Análise do Negócio. Isso registra a evolução do projeto para vocês e para o professor.", imagem: "aluno_versions" },
   { titulo: "Leiam o feedback do professor", texto: "Verifiquem regularmente a aba \"Feedback do Professor\": além dos comentários organizados por módulo, é lá que aparece a nota final ponderada (média dos módulos + Módulo 13 + Cenários/Fluxo de Caixa + Apresentação) assim que todos os componentes forem lançados." },
+  { titulo: "Baixem a Apresentação e o Plano Financeiro (Word)", texto: "No menu do aluno, \"Baixar Apresentação (dados da equipe)\" gera um PowerPoint já preenchido com Visão Geral, DRE, Indicadores e Fluxo de Caixa (a conclusão fica em branco para a equipe escrever). \"Baixar Plano Financeiro (Word)\" gera o documento com os 13 módulos, a Análise do Negócio, o Fluxo de Caixa e os Cenários, com 15 gráficos, para copiar no Plano de Negócio. Os arquivos são gerados na hora, exigem internet no clique e avisam quando faltar algum dado. O link \"Modelo em branco\" continua disponível." },
   { titulo: "Finalizem o projeto", texto: "O plano financeiro está concluído quando os 13 módulos estiverem preenchidos, enviados e corrigidos, o resultado operacional analisado e pelo menos duas versões salvas mostrando a evolução dos ajustes feitos pela equipe.", imagem: "aluno_finish" },
 ];
 
@@ -828,7 +831,8 @@ const MANUAL_PROFESSOR_PASSOS = [
   { titulo: "Liberem os módulos e definam prazos", texto: "Cada equipe começa só com o Módulo 1 liberado. Definam o Prazo de Entrega de cada módulo na revisão da equipe; quando a equipe enviar um módulo para correção, avaliem e cliquem em \"Confirmar correção\" para liberar o seguinte automaticamente. Se o prazo vencer sem envio, o módulo trava sozinho — só vocês conseguem reabrir, e é obrigatório definir um novo prazo; fica registrado que houve atraso, para aplicar o desconto de 2,0 pontos na nota." },
   { titulo: "Avaliem com o modelo ponderado", texto: "Além da nota de cada módulo, lancem também Cenários e Fluxo de Caixa e Apresentação da empresa na revisão da equipe. A nota final sai sozinha: 40% média dos módulos + 20% Módulo 13 + 20% Cenários/Fluxo de Caixa + 20% Apresentação — a equipe vê o resultado no Feedback do Professor assim que todos os componentes forem lançados." },
   { titulo: "Revisem os módulos e comentem", texto: "Abram o painel de revisão por módulo de cada equipe (modo somente leitura) e deixem comentários e ajustes solicitados. Os alunos veem esse feedback organizado por módulo na aba \"Feedback do Professor\" deles.", imagem: "prof_feedback" },
-  { titulo: "Consultem os relatórios", texto: "Em GESTÃO → Relatórios, acompanhem a visão consolidada da turma: um relatório de pendências e outros três relatórios complementares por empresa.", imagem: "prof_chart" },
+  { titulo: "Usem a Empresa Teste para demonstrar", texto: "Em GESTÃO → Empresa Teste, use \"Entrar como equipe de teste\" para mostrar o sistema aos alunos sem mexer em dados reais. Em \"Segmento do negócio\", o botão \"Preencher todos os módulos com o exemplo\" carrega um exemplo completo (padaria/confeitaria, restaurante/lanchonete, estética/beleza ou semijoias/acessórios); é possível editar durante a demonstração, \"Restaurar exemplo original\" ou \"Limpar módulos\". Use \"Corrigir como professor\" para demonstrar a correção e \"Zerar dados\"/\"Excluir\" ao final. A empresa de teste não entra em relatórios, backup nem contagens, e o F5 sai do modo teste." },
+  { titulo: "Consultem os relatórios", texto: "Em GESTÃO → Relatórios, acompanhem a visão consolidada da turma: pendências, notas por aluno e o novo Relatório Gerencial completo por empresa. A chave \"Mostrar empresa de teste\" inclui a empresa de teste só quando desejado.", imagem: "prof_chart" },
   { titulo: "Exportem um backup", texto: "Em GESTÃO → Backup, gerem um backup dos dados da turma sempre que quiserem guardar um retrato do trabalho.", imagem: "prof_download" },
   { titulo: "Excluam a turma ao final do período", texto: "Quando o período letivo terminar e o backup já estiver salvo, excluam a turma pelo ícone de lixeira. Essa ação libera a plataforma para a próxima turma e não pode ser desfeita.", imagem: "prof_delete" },
 ];
@@ -872,6 +876,7 @@ const OPERACIONAL_SECOES = [
     "31/08: novo Relatório de Notas em GESTÃO → Relatórios: uma linha por aluno (não por empresa) — a nota de cada módulo, de Cenários/Fluxo de Caixa, de Apresentação e a nota final ponderada da equipe aparecem replicadas para cada integrante vinculado a ela, com botão para baixar em CSV.",
     "31/08: domínio próprio ppfn.com.br configurado (DNS no Registro.br, domínio personalizado no GitHub Pages com HTTPS, domínio autorizado no Firebase Authentication). Foi preciso também ajustar o vite.config.js (base: \"/\" em vez de \"/Plataforma-Plano-Financeiro-CEDUP-Hermann-Hering/\"), já que o site passou a ser servido pela raiz do domínio, não mais por uma subpasta — sem esse ajuste, a página carregava em branco. O link antigo (profjorgerg-gif.github.io/...) continua funcionando, redirecionado automaticamente pelo GitHub Pages para o domínio novo.",
     "01/09: novo item de menu para o aluno — Referências Bibliográficas, com 10 fontes agrupadas em 4 categorias (Plano de Negócios e Empreendedorismo, Administração Financeira, Legislação Tributária, Normalização ABNT), como ponto de partida para a bibliografia do próprio trabalho final. Os manuais (Aluno e Professor) também tiveram os Glossários ampliados: de 11 para 24 termos no do Aluno, e de 9 para 17 no do Professor.",
+    "09/10: Empresa Teste com exemplo por segmento (Padaria/confeitaria, Restaurante/lanchonete, Estética/beleza, Semijoias/acessórios) — preenchimento, restauração e limpeza dos módulos, editável na demonstração; a empresa de teste fica fora de relatórios, backup e contagens. Módulo 9 com folha de pagamento (encargos A/B/C/D e pró-labore). Relatório Gerencial completo por empresa. Novo campo Segmento do negócio com \"Sugerir itens\". Menu do aluno com \"Baixar Apresentação (dados da equipe)\" e \"Baixar Plano Financeiro (Word)\". Manuais, Guia Pedagógico e Novidades (versão 2.1) atualizados.",
   ]},
   { titulo: "Segurança da plataforma", paragrafos: [
     "Login exclusivo via Google: o provedor \"E-mail/senha\" foi desativado no Console do Firebase; só \"Google\" está ativo. É preciso conferir, em Authentication → Domínios autorizados, se o domínio do GitHub Pages está na lista.",
@@ -1320,6 +1325,14 @@ function chamadoPassaFiltro(c, filtro) {
 // Lista do mais recente para o mais antigo — o primeiro item é a versão vigente.
 // ============================================================================
 const VERSOES = [
+  { versao: "2.1", data: "09/10/2026", itens: [
+    "Empresa Teste com exemplo completo por segmento (padaria/confeitaria, restaurante/lanchonete, estética/beleza, semijoias/acessórios), editável para demonstrações em sala.",
+    "Módulo 9 com folha de pagamento: funções, encargos (grupos A/B/C/D) e pró-labore dos sócios.",
+    "Relatório Gerencial completo por empresa em GESTÃO → Relatórios.",
+    "Segmento do negócio com sugestão de itens.",
+    "Menu do aluno: \"Baixar Apresentação (dados da equipe)\" em PowerPoint e \"Baixar Plano Financeiro (Word)\" com 13 módulos, análises e 15 gráficos.",
+    "Manuais do Aluno e do Professor e Guia Pedagógico atualizados.",
+  ]},
   { versao: "2.0", data: "16/08/2026", itens: [
     "Login exclusivo via conta Google (fim do cadastro por e-mail/senha).",
     "Professor(a) entra direto, sem aprovação; código de Mestre agora só concede o nível extra de Usuário Mestre.",

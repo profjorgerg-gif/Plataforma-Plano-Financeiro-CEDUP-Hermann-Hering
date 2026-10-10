@@ -1,4 +1,4 @@
-// build: 20261010_11h20m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261010_12h05m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -6634,7 +6634,7 @@ function baixarCanvasComoJpg(canvas, nomeArquivo) {
   }, "image/jpeg", 0.92);
 }
 
-function gerarImagemCronograma(cronograma, turmaNome) {
+function gerarImagemCronograma(cronograma, turmaNome, professor) {
   const linhas = cronograma.linhas;
   const larguras = [95, 340, 110, 80, 165, 140];
   const margem = 40;
@@ -6665,7 +6665,7 @@ function gerarImagemCronograma(cronograma, turmaNome) {
 
   ctx.fillStyle = "#94a3b8";
   ctx.font = "12px Arial, sans-serif";
-  ctx.fillText(`Atualizado em ${new Date().toLocaleString("pt-BR")}`, margem, 80);
+  ctx.fillText(`${professor ? `Professor(a): ${professor} · ` : ""}Atualizado em ${new Date().toLocaleString("pt-BR")}`, margem, 80);
 
   let y = alturaTopo;
   const x0 = margem;
@@ -6741,7 +6741,7 @@ function gerarImagemCronograma(cronograma, turmaNome) {
   return canvas;
 }
 
-function CronogramaTurmaCard({ turmaId, turmaNome }) {
+function CronogramaTurmaCard({ turmaId, turmaNome, professor }) {
   const [cronograma, setCronograma] = useSharedObject(`cronograma_${turmaId}`, null);
   const [dataInicioS1, setDataInicioS1] = useState("");
   const [horaInicioS1, setHoraInicioS1] = useState(HORARIO_CRONOGRAMA_PADRAO);
@@ -6913,7 +6913,7 @@ function CronogramaTurmaCard({ turmaId, turmaNome }) {
             </div>
             <button
               onClick={() => {
-                const canvas = gerarImagemCronograma(cronograma, turmaNome);
+                const canvas = gerarImagemCronograma(cronograma, turmaNome, professor);
                 canvas.toBlob((blob) => {
                   if (!blob) return;
                   const url = URL.createObjectURL(blob);
@@ -7285,7 +7285,7 @@ function GestaoCronogramaView({ turmas }) {
           <button onClick={() => setTurmaSelId(null)} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Escolher outra turma</button>
         )}
         <SectionTitle icon={Calendar} sub={`Gerenciando o cronograma de ${turmaSel.nome}.`}>Cronograma</SectionTitle>
-        <CronogramaTurmaCard turmaId={turmaSel.id} turmaNome={turmaSel.nome} />
+        <CronogramaTurmaCard turmaId={turmaSel.id} turmaNome={turmaSel.nome} professor={turmaSel.professor} />
       </div>
     );
   }
@@ -7841,7 +7841,7 @@ function ResumoComparativo({ turma, dadosEquipes }) {
         String(progressoAprovado),
       ]);
     });
-    const csv = linhas.map((l) => l.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";")).join("\n");
+    const csv = [["Turma", turma.nome], ...(turma.professor ? [["Professor(a)", turma.professor]] : []), [], ...linhas].map((l) => l.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";")).join("\n");
     baixarArquivo(`relatorio_${turma.nome.replace(/\s+/g, "_")}.csv`, csv, "text/csv;charset=utf-8");
   };
 
@@ -8132,6 +8132,7 @@ function gerarMarkdownGerencial(item, turma, diag) {
   out.push(`## Identificação`);
   out.push(`- Empresa: ${equipe.nomeNegocio}`);
   out.push(`- Turma: ${turma?.nome || "—"}`);
+  if (turma?.professor) out.push(`- Professor(a): ${turma.professor}`);
   out.push(`- Integrantes: ${(equipe.integrantes || []).join(", ") || "sem integrantes"}`);
   out.push(`- Segmento do negócio: ${equipe.segmento || "não informado"}${equipe.segmento ? ` (${equipe.segmentoStatus === "aprovado" || !equipe.segmentoStatus ? "aprovado" : "aguardando aprovação"})` : ""}`);
   out.push(`- Emitido em: ${new Date().toLocaleString("pt-BR")}`);
@@ -8273,7 +8274,7 @@ function RelatorioGerencialCompleto({ item, turma }) {
       <div className="mb-5">
         <div className="text-xs font-bold tracking-widest text-amber-500 uppercase">Relatório Gerencial Completo</div>
         <h2 className="text-xl font-bold text-slate-100">{equipe.nomeNegocio}</h2>
-        <div className="text-xs text-slate-400">{turma?.nome ? `${turma.nome} · ` : ""}{(equipe.integrantes || []).join(", ") || "sem integrantes"}</div>
+        <div className="text-xs text-slate-400">{turma?.nome ? `${turma.nome} · ` : ""}{turma?.professor ? `Professor(a): ${turma.professor} · ` : ""}{(equipe.integrantes || []).join(", ") || "sem integrantes"}</div>
         <div className="text-xs text-slate-500">Segmento: {equipe.segmento || "não informado"} · Emitido em {new Date().toLocaleString("pt-BR")}</div>
       </div>
 
@@ -8564,7 +8565,7 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
     });
     const canvas = gerarImagemTabela({
       titulo: `Progresso das empresas — ${turma.nome}`,
-      subtitulo: buscaLimpa ? `Filtrado por: "${buscaEmpresa.trim()}" · Gerado em ${new Date().toLocaleString("pt-BR")}` : `Gerado em ${new Date().toLocaleString("pt-BR")}`,
+      subtitulo: `${turma.professor ? `Professor(a): ${turma.professor} · ` : ""}${buscaLimpa ? `Filtrado por: "${buscaEmpresa.trim()}" · ` : ""}Gerado em ${new Date().toLocaleString("pt-BR")}`,
       colunas, larguras, linhas,
     });
     baixarCanvasComoJpg(canvas, `progresso_${turma.nome.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo()}.jpg`);
@@ -8874,6 +8875,7 @@ function gerarOrientacaoEquipe(item) {
 function orientacaoEmTexto(o, turma) {
   const L = [];
   L.push(`Orientação — ${o.nome}${turma?.nome ? ` (turma ${turma.nome})` : ""}`);
+  if (turma?.professor) L.push(`Professor(a): ${turma.professor}`);
   L.push(`Módulos corrigidos: ${o.corrigidos} de ${o.total}. Com a equipe: ${o.comEquipe}. Com o professor: ${o.comProfessor}.`);
   if (o.achados.length === 0) L.push("", "Nenhuma pendência encontrada. Parabéns, continue assim!");
   else {
@@ -8951,8 +8953,8 @@ function FolhasOrientacaoImpressao({ lista, turma, emitidoEm }) {
               <div style={{ textAlign: "right", fontSize: 10, color: "#444" }}>Emitido em {emitidoEm}</div>
             </div>
             <div className="op-meta">
-              <div><b>Turma:</b> {turma?.nome || "—"}</div><div><b>Segmento:</b> {o.segmento}</div>
-              <div><b>Integrantes:</b> {o.integrantes.join(", ") || "sem integrantes"}</div>{o.gestor && <div><b>Último Gestor:</b> {o.gestor}</div>}
+              <div><b>Turma:</b> {turma?.nome || "—"}</div><div><b>Professor(a):</b> {turma?.professor || "—"}</div>
+              <div><b>Integrantes:</b> {o.integrantes.join(", ") || "sem integrantes"}</div><div><b>Segmento:</b> {o.segmento}</div>{o.gestor && <div><b>Último Gestor:</b> {o.gestor}</div>}
             </div>
             <div className="op-res">
               <div>MÓDULOS CORRIGIDOS<b style={{ color: "#047857" }}>{o.corrigidos} de {o.total}</b></div>
@@ -9221,6 +9223,7 @@ function GestaoRelatoriosView({ turmas }) {
               );
             })}
           </div>
+          <div className="text-xs text-slate-400 mb-3">Turma: <b className="text-slate-200">{turma?.nome}</b>{turma?.professor ? <> · Professor(a): <b className="text-slate-200">{turma.professor}</b></> : null}</div>
           {(aba === "empresa" || aba === "orientacao") && (
             <label className="no-print flex items-center gap-2 text-xs text-slate-400 mb-4 cursor-pointer w-fit">
               <input type="checkbox" checked={incluirTeste} onChange={(e) => setIncluirTeste(e.target.checked)} />

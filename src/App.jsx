@@ -1,4 +1,4 @@
-// build: 20261009_07h10m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261010_11h20m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -18,6 +18,7 @@ import {
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
 } from "./firebaseAuth";
+import { createPortal } from "react-dom";
 import { extrairAlunosDoPDF, normalizarNome } from "./rosterPdf";
 
 // ============================================================================
@@ -832,7 +833,7 @@ const MANUAL_PROFESSOR_PASSOS = [
   { titulo: "Avaliem com o modelo ponderado", texto: "Além da nota de cada módulo, lancem também Cenários e Fluxo de Caixa e Apresentação da empresa na revisão da equipe. A nota final sai sozinha: 40% média dos módulos + 20% Módulo 13 + 20% Cenários/Fluxo de Caixa + 20% Apresentação — a equipe vê o resultado no Feedback do Professor assim que todos os componentes forem lançados." },
   { titulo: "Revisem os módulos e comentem", texto: "Abram o painel de revisão por módulo de cada equipe (modo somente leitura) e deixem comentários e ajustes solicitados. Os alunos veem esse feedback organizado por módulo na aba \"Feedback do Professor\" deles.", imagem: "prof_feedback" },
   { titulo: "Usem a Empresa Teste para demonstrar", texto: "Em GESTÃO → Empresa Teste, use \"Entrar como equipe de teste\" para mostrar o sistema aos alunos sem mexer em dados reais. Em \"Segmento do negócio\", o botão \"Preencher todos os módulos com o exemplo\" carrega um exemplo completo (padaria/confeitaria, restaurante/lanchonete, estética/beleza ou semijoias/acessórios); é possível editar durante a demonstração, \"Restaurar exemplo original\" ou \"Limpar módulos\". Use \"Corrigir como professor\" para demonstrar a correção e \"Zerar dados\"/\"Excluir\" ao final. A empresa de teste não entra em relatórios, backup nem contagens, e o F5 sai do modo teste." },
-  { titulo: "Consultem os relatórios", texto: "Em GESTÃO → Relatórios, acompanhem a visão consolidada da turma: pendências, notas por aluno e o novo Relatório Gerencial completo por empresa. A chave \"Mostrar empresa de teste\" inclui a empresa de teste só quando desejado.", imagem: "prof_chart" },
+  { titulo: "Consultem os relatórios", texto: "Em GESTÃO → Relatórios, acompanhem a visão consolidada da turma: pendências, notas por aluno e o novo Relatório Gerencial completo por empresa. A nova aba \"Orientação\" mostra, por equipe, quem precisa agir, o que fazer e onde, e imprime uma folha (A4 retrato) por equipe para entregar aos alunos. A chave \"Mostrar empresa de teste\" inclui a empresa de teste só quando desejado.", imagem: "prof_chart" },
   { titulo: "Exportem um backup", texto: "Em GESTÃO → Backup, gerem um backup dos dados da turma sempre que quiserem guardar um retrato do trabalho.", imagem: "prof_download" },
   { titulo: "Excluam a turma ao final do período", texto: "Quando o período letivo terminar e o backup já estiver salvo, excluam a turma pelo ícone de lixeira. Essa ação libera a plataforma para a próxima turma e não pode ser desfeita.", imagem: "prof_delete" },
 ];
@@ -877,6 +878,7 @@ const OPERACIONAL_SECOES = [
     "31/08: domínio próprio ppfn.com.br configurado (DNS no Registro.br, domínio personalizado no GitHub Pages com HTTPS, domínio autorizado no Firebase Authentication). Foi preciso também ajustar o vite.config.js (base: \"/\" em vez de \"/Plataforma-Plano-Financeiro-CEDUP-Hermann-Hering/\"), já que o site passou a ser servido pela raiz do domínio, não mais por uma subpasta — sem esse ajuste, a página carregava em branco. O link antigo (profjorgerg-gif.github.io/...) continua funcionando, redirecionado automaticamente pelo GitHub Pages para o domínio novo.",
     "01/09: novo item de menu para o aluno — Referências Bibliográficas, com 10 fontes agrupadas em 4 categorias (Plano de Negócios e Empreendedorismo, Administração Financeira, Legislação Tributária, Normalização ABNT), como ponto de partida para a bibliografia do próprio trabalho final. Os manuais (Aluno e Professor) também tiveram os Glossários ampliados: de 11 para 24 termos no do Aluno, e de 9 para 17 no do Professor.",
     "09/10: Empresa Teste com exemplo por segmento (Padaria/confeitaria, Restaurante/lanchonete, Estética/beleza, Semijoias/acessórios) — preenchimento, restauração e limpeza dos módulos, editável na demonstração; a empresa de teste fica fora de relatórios, backup e contagens. Módulo 9 com folha de pagamento (encargos A/B/C/D e pró-labore). Relatório Gerencial completo por empresa. Novo campo Segmento do negócio com \"Sugerir itens\". Menu do aluno com \"Baixar Apresentação (dados da equipe)\" e \"Baixar Plano Financeiro (Word)\". Manuais, Guia Pedagógico e Novidades (versão 2.1) atualizados.",
+    "10/10: nova aba \"Orientação\" em GESTÃO → Relatórios (versão 2.2) — só leitura, calculada no navegador, reaproveitando o diagnóstico gerencial e as regras de prazo já existentes. Resumo da turma (Com a equipe / Com o professor), detalhe por equipe (situação por módulo, quem age, o que fazer e onde), texto copiável e impressão em A4 retrato com uma folha colorida por equipe. Inspirada no kit de relatório de orientação do projeto CTC.",
   ]},
   { titulo: "Segurança da plataforma", paragrafos: [
     "Login exclusivo via Google: o provedor \"E-mail/senha\" foi desativado no Console do Firebase; só \"Google\" está ativo. É preciso conferir, em Authentication → Domínios autorizados, se o domínio do GitHub Pages está na lista.",
@@ -1325,6 +1327,10 @@ function chamadoPassaFiltro(c, filtro) {
 // Lista do mais recente para o mais antigo — o primeiro item é a versão vigente.
 // ============================================================================
 const VERSOES = [
+  { versao: "2.2", data: "10/10/2026", itens: [
+    "Nova aba \"Orientação\" em GESTÃO → Relatórios: para cada equipe, mostra quem precisa agir agora (equipe ou professor), o que está pendente, o que fazer e onde corrigir. Só leitura — não altera nenhum dado.",
+    "Resumo da turma com \"Com a equipe\" e \"Com o professor\", texto da orientação para copiar (WhatsApp/Classroom) e impressão em A4 retrato, uma folha por equipe (ou todas de uma vez).",
+  ]},
   { versao: "2.1", data: "09/10/2026", itens: [
     "Empresa Teste com exemplo completo por segmento (padaria/confeitaria, restaurante/lanchonete, estética/beleza, semijoias/acessórios), editável para demonstrações em sala.",
     "Módulo 9 com folha de pagamento: funções, encargos (grupos A/B/C/D) e pró-labore dos sócios.",
@@ -8768,11 +8774,408 @@ function RelatorioNotas({ turma, dadosEquipes }) {
   );
 }
 
+// ============================================================================
+// ORIENTAÇÃO POR EQUIPE (GESTÃO → RELATÓRIOS → "Orientação")
+// Só leitura: nada daqui grava nos dados das equipes. Mostra, para cada
+// equipe, quem precisa agir agora (equipe ou professor), o que está errado,
+// o que fazer e onde. Reaproveita o diagnóstico gerencial e as regras de
+// prazo já existentes — nenhuma regra de cálculo nova.
+// ============================================================================
+function diasDesdePrazo(prazoIso) {
+  if (!prazoIso) return null;
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const p = new Date(`${prazoIso}T00:00:00`);
+  return Math.round((hoje.getTime() - p.getTime()) / 86400000); // >0 = vencido há N dias
+}
+
+function gerarOrientacaoEquipe(item) {
+  const { equipe, dados, calc } = item;
+  const fluxoMod = dados.fluxoModulos || {};
+  const l = mergeLancamentos(dados.lancamentos);
+  const diag = diagnosticoGerencial(l, calc, fluxoMod, dados);
+  const achados = [];
+  const linhas = [];
+  const FLUXO_RE = /^(Módulo devolvido|Enviado e aguardando|Prazo vencido|Módulo com \d+ ciclos)/;
+  const RESULTADO_MOD = new Set([13]);
+  let maxVencido = 0; let proximo = null;
+
+  MODULOS.forEach((m, i) => {
+    const est = estadoModulo(fluxoMod, m.id);
+    const onde = `Menu → ${m.n} ${m.nome}`;
+    const preenchido = !!calc.preenchidos?.[i];
+    const d = diasDesdePrazo(est.prazo);
+    const vencido = (est.status === "liberado" || est.status === "ajustes") && d !== null && d > 0;
+    if (vencido) maxVencido = Math.max(maxVencido, d);
+    if ((est.status === "liberado" || est.status === "ajustes") && d !== null && d <= 0) proximo = proximo === null ? -d : Math.min(proximo, -d);
+    let prazoTxt = "—"; let prazoRuim = false;
+    if (est.status === "corrigido" || est.status === "enviado") prazoTxt = est.atraso ? "entregue com atraso" : (est.prazo ? "no prazo" : "—");
+    else if (est.status === "liberado" || est.status === "ajustes") {
+      if (d === null) prazoTxt = "sem prazo";
+      else if (d > 0) { prazoTxt = `vencido (${d} d)`; prazoRuim = true; }
+      else if (d === 0) prazoTxt = "vence hoje";
+      else prazoTxt = `em ${-d} dia(s)`;
+    }
+    let tipo; let rotulo; let quem = [];
+    if (est.status === "corrigido") { tipo = "ok"; rotulo = "✓ corrigido"; }
+    else if (est.status === "enviado") { tipo = "aw"; rotulo = "⏳ aguardando correção do professor"; quem = ["professor"]; }
+    else if (est.status === "ajustes") {
+      tipo = "bad"; rotulo = "✗ devolvido — equipe ajusta"; quem = ["equipe"];
+      achados.push({ grav: "erro", mod: m.n, modulo: `${m.n} · ${m.nome}`, titulo: `Devolvido pelo professor${est.feedback ? `: “${est.feedback}”` : ""}${vencido ? ` (prazo vencido há ${d} dia(s))` : ""}`, orientacao: "Leia o comentário do professor, ajuste o módulo e reenvie para correção.", onde, quem: "equipe" });
+    } else if (est.status === "liberado") {
+      if (vencido) {
+        tipo = "bad"; rotulo = "✗ prazo vencido sem envio"; quem = ["equipe", "professor"];
+        achados.push({ grav: "erro", mod: m.n, modulo: `${m.n} · ${m.nome}`, titulo: `Prazo vencido sem envio (prazo: ${fmtDataCurta(est.prazo)}, há ${d} dia(s))`, orientacao: "A equipe fala com o professor; só o professor reabre o módulo, com novo prazo (a entrega fica registrada com atraso).", onde, quem: "ambos" });
+      } else {
+        tipo = "lib"; rotulo = preenchido ? "● liberado — em preenchimento" : "● liberado — sem lançamentos"; quem = ["equipe"];
+        if (!preenchido) achados.push({ grav: "conferir", mod: m.n, modulo: `${m.n} · ${m.nome}`, titulo: "Módulo liberado e ainda sem lançamentos", orientacao: "Preencher o módulo e clicar em “Enviar para correção”.", onde, quem: "equipe" });
+      }
+    } else { tipo = "blq"; rotulo = "– aguardando liberação"; }
+    linhas.push({ mod: m.n, nome: m.nome, tipo, rotulo, prazoTxt, prazoRuim, quem, status: est.status });
+  });
+
+  // Problemas apontados pelo diagnóstico gerencial (regras já existentes)
+  const stDe = (n) => estadoModulo(fluxoMod, `m${n}`).status;
+  diag.forEach((x) => {
+    if (x.sev === "info" || !x.mod || FLUXO_RE.test(x.texto)) return;
+    if (RESULTADO_MOD.has(x.mod) || /^Resultado operacional mensal negativo|^O negócio não recupera/.test(x.texto)) return; // tratados abaixo
+    const st = stDe(x.mod);
+    const mm = MODULOS[x.mod - 1];
+    let grav = x.sev === "alta" ? "erro" : "conferir";
+    if (st === "corrigido") grav = "conferir";
+    achados.push({ grav, mod: x.mod, modulo: `${mm.n} · ${mm.nome}`, titulo: x.texto, orientacao: x.acao, onde: `Menu → ${mm.n} ${mm.nome}`, quem: st === "enviado" ? "professor" : "equipe" });
+  });
+
+  // Resultado do negócio (só quando há receita)
+  if (calc.faturamento > 0) {
+    const fim = (titulo, orientacao) => achados.push({ grav: "conferir", mod: 0, modulo: "Resultado do negócio", titulo, orientacao, onde: "Menu → Análise do Negócio", quem: "equipe" });
+    if (calc.resultadoOperacional < 0) fim(`Resultado operacional negativo (${fmtBRL(calc.resultadoOperacional)} por mês).`, "Revisem preços, custos e quantidades vendidas — ponto para conversar em aula.");
+    if (calc.pontoEquilibrio != null && calc.receitaAnual < calc.pontoEquilibrio) fim("O faturamento anual projetado está abaixo do ponto de equilíbrio.", "Aumentar a receita ou reduzir custos fixos/variáveis.");
+    if (calc.prazoRetorno != null && calc.prazoRetorno > 5) fim(`Prazo de retorno de ${fmtNum(calc.prazoRetorno, 1)} anos (acima de 5).`, "Reduzir o investimento inicial ou aumentar a margem de contribuição.");
+    const fluxo = projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0);
+    if (!fluxo.some((mm) => mm.mes > 0 && mm.saldo >= 0)) fim("O negócio não recupera o investimento nos 12 meses do fluxo de caixa.", "Rever receita, custos e investimento; analisar cenários alternativos.");
+  }
+
+  const ordemG = { erro: 0, conferir: 1 };
+  achados.sort((a, b) => ordemG[a.grav] - ordemG[b.grav] || a.mod - b.mod);
+  const corrigidos = linhas.filter((x) => x.tipo === "ok").length;
+  const comEquipe = linhas.filter((x) => x.quem.includes("equipe")).length;
+  const comProfessor = linhas.filter((x) => x.quem.includes("professor")).length;
+  const ordemL = { bad: 0, lib: 1, aw: 2, blq: 3, ok: 4 };
+  const linhasOrd = [...linhas].sort((a, b) => ordemL[a.tipo] - ordemL[b.tipo] || a.mod - b.mod);
+  const situacao = achados.some((a) => a.grav === "erro") ? "problema" : achados.length > 0 ? "conferir" : comProfessor > 0 ? "aguardando" : comEquipe > 0 ? "andamento" : "emdia";
+  return {
+    id: equipe.id, nome: equipe.nomeNegocio, teste: !!equipe.teste, segmento: equipe.segmento || "não informado",
+    integrantes: equipe.integrantes || [], gestor: dados.gestor?.nome || null,
+    total: MODULOS.length, corrigidos, comEquipe, comProfessor, achados, linhas: linhasOrd,
+    maxVencido, proximo, situacao,
+  };
+}
+
+function orientacaoEmTexto(o, turma) {
+  const L = [];
+  L.push(`Orientação — ${o.nome}${turma?.nome ? ` (turma ${turma.nome})` : ""}`);
+  L.push(`Módulos corrigidos: ${o.corrigidos} de ${o.total}. Com a equipe: ${o.comEquipe}. Com o professor: ${o.comProfessor}.`);
+  if (o.achados.length === 0) L.push("", "Nenhuma pendência encontrada. Parabéns, continue assim!");
+  else {
+    L.push("", "O que precisa de ajuste:");
+    o.achados.forEach((a, i) => {
+      const quem = a.quem === "ambos" ? "Equipe e Professor" : a.quem === "professor" ? "Professor" : "Equipe";
+      L.push(`${i + 1}. [${a.modulo}] ${a.titulo}  (quem age: ${quem})`);
+      L.push(`   O que fazer: ${a.orientacao}`);
+      if (a.onde) L.push(`   Onde: ${a.onde}`);
+    });
+  }
+  const aguard = o.linhas.filter((x) => x.tipo === "aw").map((x) => x.mod).sort((a, b) => a - b);
+  if (aguard.length) L.push("", `Aguardando o professor: ${aguard.length > 1 ? "Módulos" : "Módulo"} ${aguard.join(", ")}.`);
+  L.push("", "Qualquer dúvida, procure o professor em aula.");
+  return L.join("\n");
+}
+
+const ORIENT_SITUACAO = {
+  problema: { rotulo: "● problema", cls: "bg-rose-600 text-white" },
+  conferir: { rotulo: "○ conferir", cls: "border border-amber-500 text-amber-400" },
+  aguardando: { rotulo: "⏳ aguardando professor", cls: "border border-sky-500 text-sky-400" },
+  andamento: { rotulo: "em andamento", cls: "border border-slate-500 text-slate-300" },
+  emdia: { rotulo: "em dia", cls: "bg-emerald-700 text-emerald-50" },
+};
+
+function QuemAgePill({ quem }) {
+  if (!quem || quem.length === 0) return <span className="text-slate-600">—</span>;
+  return (
+    <span className="flex gap-1 flex-wrap">
+      {quem.includes("equipe") && <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-700 text-emerald-50">👥 Equipe</span>}
+      {quem.includes("professor") && <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-sky-500 text-sky-400">🧑‍🏫 Professor</span>}
+    </span>
+  );
+}
+
+// Folha impressa (A4 retrato), uma equipe por página. Estilos próprios com
+// cores fixas e fundo branco, só para a impressão (não depende do tema escuro).
+function FolhasOrientacaoImpressao({ lista, turma, emitidoEm }) {
+  const C = {
+    err: { bg: "#fef2f2", fg: "#b91c1c" }, ok: { bg: "#f0fdf4", fg: "#047857" }, aw: { bg: "#f0f9ff", fg: "#0369a1" },
+    lib: { bg: "#fffbeb", fg: "#b45309" }, blq: { bg: "#fff", fg: "#777" },
+  };
+  const cssFolha = `
+    .op-pg{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:11px;line-height:1.35;padding:0;page-break-after:always;break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .op-pg:last-child{page-break-after:auto;break-after:auto}
+    .op-pg *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .op-hd{display:flex;justify-content:space-between;border-bottom:3px solid #f59e0b;padding-bottom:8px}
+    .op-hd small{font-size:9.5px;letter-spacing:1.5px;color:#b45309;font-weight:700}
+    .op-pg h1{font-size:18px;margin:2px 0 0;color:#0f172a}
+    .op-meta{margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:3px 20px;font-size:11px}
+    .op-res{margin-top:9px;border:1.5px solid #cbd5e1;border-left:5px solid #f59e0b;background:#f8fafc;border-radius:6px;padding:8px 12px;display:flex;gap:26px}
+    .op-res div{font-size:10px;color:#444}.op-res b{display:block;font-size:17px}
+    .op-pg h2{font-size:12px;margin:12px 0 5px;text-transform:uppercase;letter-spacing:.6px;border-bottom:2px solid #fde68a;padding-bottom:3px;color:#0f172a}
+    .op-pg h2:before{content:"";display:inline-block;width:8px;height:14px;background:#f59e0b;border-radius:2px;margin-right:8px;vertical-align:-2px}
+    .op-pg table{width:100%;border-collapse:collapse}
+    .op-pg th{font-size:9.5px;letter-spacing:.6px;text-align:left;padding:5px 6px;background:#0f172a;color:#fbbf24}
+    .op-pg td{padding:3px 6px;border-bottom:1px solid #ddd;font-size:10.3px;vertical-align:top}
+    .op-pg tr,.op-obs-bloco{break-inside:avoid;page-break-inside:avoid}
+    .op-pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:10px;font-weight:700;white-space:nowrap}
+    .op-leg{font-size:9.5px;color:#555;margin-top:6px}
+    .op-obs{margin-top:8px;border:1.5px solid #cbd5e1;background:#fffdf5;border-radius:6px;height:66px;position:relative}
+    .op-obs i{position:absolute;left:10px;right:10px;border-bottom:1px solid #bbb}
+    .op-ft{margin-top:8px;font-size:9px;color:#666;display:flex;justify-content:space-between;border-top:2px solid #fde68a;padding-top:5px}
+  `;
+  return (
+    <div id="orient-print-root">
+      <style>{cssFolha}</style>
+      {lista.map((o) => {
+        const venc = o.maxVencido > 0;
+        const prazoRes = venc ? `vencido há ${o.maxVencido} dia(s)` : o.proximo !== null ? `próximo em ${o.proximo} dia(s)` : "—";
+        return (
+          <section className="op-pg" key={o.id}>
+            <div className="op-hd">
+              <div><small>CEDUP HERMANN HERING · PLATAFORMA DO PLANO FINANCEIRO</small><h1>Orientação da equipe — {o.nome}{o.teste ? " (CONTA DE TESTE)" : ""}</h1></div>
+              <div style={{ textAlign: "right", fontSize: 10, color: "#444" }}>Emitido em {emitidoEm}</div>
+            </div>
+            <div className="op-meta">
+              <div><b>Turma:</b> {turma?.nome || "—"}</div><div><b>Segmento:</b> {o.segmento}</div>
+              <div><b>Integrantes:</b> {o.integrantes.join(", ") || "sem integrantes"}</div>{o.gestor && <div><b>Último Gestor:</b> {o.gestor}</div>}
+            </div>
+            <div className="op-res">
+              <div>MÓDULOS CORRIGIDOS<b style={{ color: "#047857" }}>{o.corrigidos} de {o.total}</b></div>
+              <div>PARA A EQUIPE FAZER<b style={{ color: "#b91c1c" }}>{o.comEquipe}</b></div>
+              <div>AGUARDANDO O PROFESSOR<b style={{ color: "#0369a1" }}>{o.comProfessor}</b></div>
+              <div>PRAZO<b style={{ color: venc ? "#b91c1c" : "#0f172a", fontSize: 14 }}>{prazoRes}</b></div>
+            </div>
+
+            <h2>O que a equipe precisa fazer</h2>
+            {o.achados.length === 0 ? <div style={{ color: "#047857", fontWeight: 700 }}>Nenhuma pendência encontrada. Parabéns, continue assim!</div> : (
+              <table>
+                <thead><tr><th style={{ width: "22%" }}>MÓDULO</th><th style={{ width: "10%" }}>GRAVIDADE</th><th>PROBLEMA</th><th style={{ width: "34%" }}>O QUE FAZER E ONDE</th></tr></thead>
+                <tbody>
+                  {o.achados.map((a, i) => (
+                    <tr key={i} style={{ background: a.grav === "erro" ? "#fef2f2" : "#fffbeb" }}>
+                      <td><b>{a.modulo}</b></td>
+                      <td>{a.grav === "erro"
+                        ? <span className="op-pill" style={{ background: "#b91c1c", color: "#fff" }}>● erro</span>
+                        : <span className="op-pill" style={{ border: "1.5px solid #d97706", color: "#b45309", background: "#fffbeb" }}>○ conferir</span>}</td>
+                      <td>{a.titulo}</td>
+                      <td>{a.orientacao}<br /><span style={{ color: "#777" }}>{a.onde}</span>{a.quem === "ambos" && <><br /><span style={{ color: "#777" }}>Quem age: equipe e professor</span></>}{a.quem === "professor" && <><br /><span style={{ color: "#777" }}>Quem age: professor</span></>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            <h2>Situação por módulo</h2>
+            <table>
+              <thead><tr><th style={{ width: "38%" }}>MÓDULO</th><th style={{ width: "34%" }}>SITUAÇÃO</th><th>PRAZO</th></tr></thead>
+              <tbody>
+                {[...o.linhas].sort((a, b) => a.mod - b.mod).map((x) => {
+                  const cor = x.tipo === "bad" ? C.err : x.tipo === "ok" ? C.ok : x.tipo === "aw" ? C.aw : x.tipo === "lib" ? C.lib : C.blq;
+                  return (
+                    <tr key={x.mod} style={{ background: cor.bg }}>
+                      <td>{x.mod} · {x.nome}</td>
+                      <td style={{ color: cor.fg, fontWeight: x.tipo === "blq" ? 400 : 700 }}>{x.rotulo}</td>
+                      <td style={{ color: x.prazoRuim ? "#b91c1c" : "#111", fontWeight: x.prazoRuim ? 700 : 400 }}>{x.prazoTxt}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div className="op-leg">✓ significa “corrigido pelo professor”, não “plano financeiramente viável”. · ⏳ aguardando o professor · – ainda não liberado. ● erro precisa ser corrigido; ○ conferir vale uma revisão.</div>
+
+            <div className="op-obs-bloco"><h2>Observações do professor</h2>
+            <div className="op-obs"><i style={{ top: 22 }} /><i style={{ top: 44 }} /></div>
+            <div className="op-ft"><span>Plataforma do Plano Financeiro (PPFCHH) · ppfn.com.br</span><span>{o.nome} · Orientação</span></div></div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function RelatorioOrientacao({ turma, dadosEquipes }) {
+  const [selId, setSelId] = useState(null);
+  const [folhas, setFolhas] = useState(null); // lista de orientações a imprimir (retrato)
+  const [copiado, setCopiado] = useState(false);
+
+  const lista = useMemo(() => (dadosEquipes || []).map(gerarOrientacaoEquipe), [dadosEquipes]);
+
+  // Impressão em retrato, uma equipe por folha. A folha vai para um portal
+  // direto no <body>; durante o print() todo o resto da página some.
+  useEffect(() => {
+    if (!folhas) return undefined;
+    const titulo = folhas.length === 1 ? `Orientacao - ${folhas[0].nome} - ${sufixoDataHoraArquivo()}` : `Orientacao - ${turma.nome} - todas as equipes - ${sufixoDataHoraArquivo()}`;
+    const estilo = document.createElement("style");
+    estilo.textContent = "@media screen { #orient-print-root-wrap { display: none !important; } } @media print { @page { size: A4 portrait; margin: 10mm; } body > *:not(#orient-print-root-wrap) { display: none !important; } #orient-print-root-wrap { display: block !important; } }";
+    document.head.appendChild(estilo);
+    const original = document.title;
+    const t = setTimeout(() => {
+      document.title = titulo;
+      window.print();
+      document.title = original;
+      if (estilo.parentNode) estilo.parentNode.removeChild(estilo);
+      setFolhas(null);
+    }, 150);
+    return () => { clearTimeout(t); if (estilo.parentNode) estilo.parentNode.removeChild(estilo); };
+  }, [folhas, turma]);
+
+  if (dadosEquipes === null) return <LoadingScreen />;
+  if (dadosEquipes.length === 0) return <Card className="p-8 text-center text-slate-500">Nenhuma empresa nesta turma ainda.</Card>;
+
+  const ordemSit = { problema: 0, conferir: 1, aguardando: 2, andamento: 3, emdia: 4 };
+  const ordenada = [...lista].sort((a, b) => ordemSit[a.situacao] - ordemSit[b.situacao] || a.nome.localeCompare(b.nome, "pt-BR"));
+  const emitidoEm = new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }).replace(",", " às");
+  const sel = selId ? lista.find((o) => o.id === selId) : null;
+
+  const copiar = async (texto) => {
+    try { await navigator.clipboard.writeText(texto); }
+    catch {
+      const ta = document.createElement("textarea"); ta.value = texto; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); } catch {}
+      document.body.removeChild(ta);
+    }
+    setCopiado(true); setTimeout(() => setCopiado(false), 2500);
+  };
+
+  const portal = folhas ? createPortal(<div id="orient-print-root-wrap"><FolhasOrientacaoImpressao lista={folhas} turma={turma} emitidoEm={emitidoEm} /></div>, document.body) : null;
+  const th = "py-2 px-3 text-left text-[11px] uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40";
+  const td = "py-2 px-3 text-sm border-b border-slate-800";
+
+  if (!sel) {
+    const totEq = lista.reduce((s, o) => s + o.comEquipe, 0);
+    const totPr = lista.reduce((s, o) => s + o.comProfessor, 0);
+    const vencidas = lista.filter((o) => o.maxVencido > 0).length;
+    return (
+      <div>
+        {portal}
+        <div className="no-print flex flex-wrap items-center justify-between gap-2 mb-4">
+          <p className="text-xs text-slate-400 max-w-xl">Quem precisa agir agora, o que está pendente e onde corrigir. Calculado na hora, <b>só leitura</b> — nada é gravado nos dados das equipes.</p>
+          <div className="flex gap-2">
+            <button onClick={() => imprimirComTitulo(`Orientacao da turma - ${turma.nome} - ${sufixoDataHoraArquivo()}`, true)} className="flex items-center gap-1.5 text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800"><Printer size={13} /> Imprimir resumo (paisagem)</button>
+            <button onClick={() => setFolhas(ordenada)} className="flex items-center gap-1.5 text-xs font-semibold bg-amber-500 text-slate-900 px-2.5 py-1.5 rounded-md hover:bg-amber-400"><Printer size={13} /> Imprimir todas as equipes (1 folha cada)</button>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+          <StatCard label="Equipes" value={String(lista.length)} tone="slate" small />
+          <StatCard label="Módulos com a equipe" value={String(totEq)} tone="emerald" small />
+          <StatCard label="Módulos com o professor" value={String(totPr)} tone="blue" small />
+          <StatCard label="Equipes com prazo vencido" value={String(vencidas)} tone={vencidas ? "rose" : "slate"} small />
+        </div>
+        <Card className="p-0 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px]">
+              <thead><tr><th className={th}>Equipe / empresa</th><th className={th}>Módulos corrigidos</th><th className={`${th} text-center`}>Com a equipe</th><th className={`${th} text-center`}>Com o professor</th><th className={th}>Situação</th><th className={`${th} no-print`}></th></tr></thead>
+              <tbody>
+                {ordenada.map((o) => {
+                  const s = ORIENT_SITUACAO[o.situacao];
+                  return (
+                    <tr key={o.id}>
+                      <td className={td}><div className="font-semibold text-slate-100">{o.nome}{o.teste && <span className="ml-2 text-[10px] border border-dashed border-violet-400 text-violet-300 rounded-full px-2 py-0.5">CONTA DE TESTE</span>}</div><div className="text-xs text-slate-500">{o.segmento}</div></td>
+                      <td className={`${td} text-slate-300`}>{o.corrigidos} de {o.total}</td>
+                      <td className={`${td} text-center text-slate-200`}>{o.comEquipe}</td>
+                      <td className={`${td} text-center text-slate-200`}>{o.comProfessor}</td>
+                      <td className={td}><span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${s.cls}`}>{s.rotulo}</span></td>
+                      <td className={`${td} no-print`}><button onClick={() => setSelId(o.id)} className="text-xs border border-slate-600 text-slate-200 px-2.5 py-1 rounded-md hover:bg-slate-800">ver orientação</button></td>
+                    </tr>
+                  );
+                })}
+                <tr className="bg-slate-900/60 font-bold"><td className={td}>Total da turma</td><td className={td}></td><td className={`${td} text-center`}>{totEq}</td><td className={`${td} text-center`}>{totPr}</td><td className={td} colSpan={2}></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </Card>
+        <p className="text-[11px] text-slate-500 mt-3">“Com o professor” = módulos enviados aguardando correção. “Com a equipe” = módulos devolvidos, liberados, ou com prazo vencido (neste caso, também do professor, que reabre). Ordem: problema primeiro, em dia por último.</p>
+      </div>
+    );
+  }
+
+  const o = sel;
+  return (
+    <div>
+      {portal}
+      <div className="no-print flex flex-wrap items-center gap-2 mb-4">
+        <button onClick={() => setSelId(null)} className="text-xs border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800">← Voltar ao resumo da turma</button>
+        <button onClick={() => copiar(orientacaoEmTexto(o, turma))} className="flex items-center gap-1.5 text-xs font-semibold bg-amber-500 text-slate-900 px-2.5 py-1.5 rounded-md hover:bg-amber-400"><ClipboardList size={13} /> {copiado ? "Copiado!" : "Copiar texto da orientação"}</button>
+        <button onClick={() => setFolhas([o])} className="flex items-center gap-1.5 text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800"><Printer size={13} /> Imprimir esta equipe (A4 retrato)</button>
+      </div>
+      <div className="mb-4">
+        <h3 className="text-xl font-bold text-slate-100">Orientação — {o.nome}{o.teste && <span className="ml-2 text-[10px] border border-dashed border-violet-400 text-violet-300 rounded-full px-2 py-0.5 align-middle">CONTA DE TESTE</span>}</h3>
+        <div className="text-xs text-slate-400">{turma.nome} · Segmento: {o.segmento}{o.integrantes.length ? ` · ${o.integrantes.join(", ")}` : ""}{o.maxVencido > 0 && <> · <b className="text-rose-400">prazo vencido há {o.maxVencido} dia(s)</b></>}</div>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        <StatCard label="Corrigidos" value={`${o.corrigidos} de ${o.total}`} tone="emerald" small />
+        <StatCard label="Com a equipe" value={String(o.comEquipe)} tone="emerald" small />
+        <StatCard label="Com o professor" value={String(o.comProfessor)} tone="blue" small />
+        <StatCard label="Situação" value={ORIENT_SITUACAO[o.situacao].rotulo} tone="gold" small />
+      </div>
+
+      <h4 className="text-sm font-bold text-slate-200 mb-2">Situação por módulo</h4>
+      <Card className="p-0 overflow-hidden mb-6">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px]">
+            <thead><tr><th className={th}>Módulo</th><th className={th}>Situação</th><th className={th}>Prazo</th><th className={th}>Quem age agora</th></tr></thead>
+            <tbody>
+              {o.linhas.map((x) => (
+                <tr key={x.mod}>
+                  <td className={`${td} text-slate-200`}>{x.mod} · {x.nome}</td>
+                  <td className={`${td} font-semibold ${x.tipo === "bad" ? "text-rose-400" : x.tipo === "ok" ? "text-emerald-400" : x.tipo === "aw" ? "text-sky-400" : x.tipo === "lib" ? "text-amber-400" : "text-slate-500"}`}>{x.rotulo}</td>
+                  <td className={`${td} ${x.prazoRuim ? "text-rose-400 font-bold" : "text-slate-400"}`}>{x.prazoTxt}</td>
+                  <td className={td}><QuemAgePill quem={x.quem} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+      <p className="text-[11px] text-slate-500 -mt-4 mb-6">✓ significa “corrigido pelo professor”, <b>não</b> “plano financeiramente viável”. Ordem: problema primeiro, em dia por último.</p>
+
+      <h4 className="text-sm font-bold text-slate-200 mb-2">O que precisa de ajuste ({o.achados.length})</h4>
+      {o.achados.length === 0 ? <Card className="p-5 text-sm text-emerald-400">Nenhuma pendência encontrada.</Card> : (
+        <Card className="p-0 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px]">
+              <thead><tr><th className={th}>Módulo</th><th className={th}>Gravidade</th><th className={th}>Problema</th><th className={th}>O que fazer</th><th className={th}>Onde</th><th className={th}>Quem age</th></tr></thead>
+              <tbody>
+                {o.achados.map((a, i) => (
+                  <tr key={i}>
+                    <td className={`${td} text-slate-200 font-semibold`}>{a.modulo}</td>
+                    <td className={td}>{a.grav === "erro" ? <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-700 text-white">● erro</span> : <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-amber-500 text-amber-400">○ conferir</span>}</td>
+                    <td className={`${td} text-slate-300`}>{a.titulo}</td>
+                    <td className={`${td} text-slate-300`}>{a.orientacao}</td>
+                    <td className={`${td} text-slate-500 text-xs`}>{a.onde}</td>
+                    <td className={td}><QuemAgePill quem={a.quem === "ambos" ? ["equipe", "professor"] : [a.quem]} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 const ABAS_RELATORIO = [
   { id: "resumo", label: "Resumo Comparativo", icon: FileBarChart },
   { id: "empresa", label: "Relatório por Empresa", icon: Building2 },
   { id: "notas", label: "Relatório de Notas", icon: GraduationCap },
   { id: "pendencias", label: "Pendências", icon: ClipboardCheck },
+  { id: "orientacao", label: "Orientação", icon: ClipboardList },
 ];
 
 function GestaoRelatoriosView({ turmas }) {
@@ -8782,7 +9185,7 @@ function GestaoRelatoriosView({ turmas }) {
   const [leituraEm, setLeituraEm] = useState(null);
   const turma = turmas.find((t) => t.id === turmaId);
   const [incluirTeste, setIncluirTeste] = useState(false);
-  const dadosEquipes = useEquipesComDados(turmaId, refreshKey, incluirTeste && aba === "empresa");
+  const dadosEquipes = useEquipesComDados(turmaId, refreshKey, incluirTeste && (aba === "empresa" || aba === "orientacao"));
   // Hora da última leitura dos dados no banco — os relatórios mostram uma
   // "foto" carregada ao abrir a turma; o botão Atualizar relê tudo.
   useEffect(() => { if (dadosEquipes !== null) setLeituraEm(Date.now()); }, [dadosEquipes]);
@@ -8818,16 +9221,17 @@ function GestaoRelatoriosView({ turmas }) {
               );
             })}
           </div>
-          {aba === "empresa" && (
+          {(aba === "empresa" || aba === "orientacao") && (
             <label className="no-print flex items-center gap-2 text-xs text-slate-400 mb-4 cursor-pointer w-fit">
               <input type="checkbox" checked={incluirTeste} onChange={(e) => setIncluirTeste(e.target.checked)} />
-              🧪 Mostrar empresa de teste (só aqui; os demais relatórios nunca a incluem)
+              🧪 Mostrar empresa de teste (só aqui e em Orientação; os demais relatórios nunca a incluem)
             </label>
           )}
           {aba === "resumo" && <ResumoComparativo turma={turma} dadosEquipes={dadosEquipes} />}
           {aba === "empresa" && <RelatorioPorEmpresa dadosEquipes={dadosEquipes} turma={turma} />}
           {aba === "notas" && <RelatorioNotas turma={turma} dadosEquipes={dadosEquipes} />}
           {aba === "pendencias" && <RelatorioPendencias turma={turma} dadosEquipes={dadosEquipes} />}
+          {aba === "orientacao" && <RelatorioOrientacao turma={turma} dadosEquipes={dadosEquipes} />}
         </div>
       )}
     </div>

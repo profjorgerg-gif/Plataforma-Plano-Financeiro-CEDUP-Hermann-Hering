@@ -1,4 +1,4 @@
-// build: 20261010_12h05m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261010_12h20m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -9132,7 +9132,7 @@ function RelatorioOrientacao({ turma, dadosEquipes }) {
           <table className="w-full min-w-[560px]">
             <thead><tr><th className={th}>Módulo</th><th className={th}>Situação</th><th className={th}>Prazo</th><th className={th}>Quem age agora</th></tr></thead>
             <tbody>
-              {o.linhas.map((x) => (
+              {[...o.linhas].sort((x, y) => x.mod - y.mod).map((x) => (
                 <tr key={x.mod}>
                   <td className={`${td} text-slate-200`}>{x.mod} · {x.nome}</td>
                   <td className={`${td} font-semibold ${x.tipo === "bad" ? "text-rose-400" : x.tipo === "ok" ? "text-emerald-400" : x.tipo === "aw" ? "text-sky-400" : x.tipo === "lib" ? "text-amber-400" : "text-slate-500"}`}>{x.rotulo}</td>
@@ -9144,7 +9144,7 @@ function RelatorioOrientacao({ turma, dadosEquipes }) {
           </table>
         </div>
       </Card>
-      <p className="text-[11px] text-slate-500 -mt-4 mb-6">✓ significa “corrigido pelo professor”, <b>não</b> “plano financeiramente viável”. Ordem: problema primeiro, em dia por último.</p>
+      <p className="text-[11px] text-slate-500 -mt-4 mb-6">✓ significa “corrigido pelo professor”, <b>não</b> “plano financeiramente viável”. Módulos em ordem, do 1 ao 13.</p>
 
       <h4 className="text-sm font-bold text-slate-200 mb-2">O que precisa de ajuste ({o.achados.length})</h4>
       {o.achados.length === 0 ? <Card className="p-5 text-sm text-emerald-400">Nenhuma pendência encontrada.</Card> : (

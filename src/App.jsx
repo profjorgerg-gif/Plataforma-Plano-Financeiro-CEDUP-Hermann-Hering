@@ -1,4 +1,4 @@
-// build: 20261010_12h20m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261015_11h10m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1327,6 +1327,9 @@ function chamadoPassaFiltro(c, filtro) {
 // Lista do mais recente para o mais antigo — o primeiro item é a versão vigente.
 // ============================================================================
 const VERSOES = [
+  { versao: "2.3", data: "15/10/2026", itens: [
+    "Nova aba \"Descrições p/ Escola\" em GESTÃO → Relatórios: textos prontos de cada atividade avaliativa (Módulos 1, 2, 3, 5, 6, 7, 9, 11, 13, Cenários/Fluxo de Caixa e Apresentação) com a data de entrega do cronograma da turma, para copiar e colar no formulário \"Nova Avaliação\" do sistema da escola. Só leitura.",
+  ]},
   { versao: "2.2", data: "10/10/2026", itens: [
     "Nova aba \"Orientação\" em GESTÃO → Relatórios: para cada equipe, mostra quem precisa agir agora (equipe ou professor), o que está pendente, o que fazer e onde corrigir. Só leitura — não altera nenhum dado.",
     "Resumo da turma com \"Com a equipe\" e \"Com o professor\", texto da orientação para copiar (WhatsApp/Classroom) e impressão em A4 retrato, uma folha por equipe (ou todas de uma vez).",
@@ -9172,12 +9175,101 @@ function RelatorioOrientacao({ turma, dadosEquipes }) {
   );
 }
 
+// ============================================================================
+// DESCRIÇÕES PARA O SISTEMA DE NOTAS DA ESCOLA ("Professor On-line").
+// Só leitura: monta, a partir do cronograma da turma, o texto de cada
+// atividade avaliativa (Assunto + data de entrega) para o professor copiar e
+// colar no formulário "Nova Avaliação". Não grava nada.
+// ============================================================================
+const ATIVIDADES_DESCRICAO_ESCOLA = [
+  { id: "m1", rotulo: "Módulo 1", titulo: "Módulo 1: Investimentos Fixos", ordem: 2, conteudo: "máquinas, equipamentos, móveis, utensílios e veículos necessários ao negócio, com quantidade e valor unitário" },
+  { id: "m2", rotulo: "Módulo 2", titulo: "Módulo 2: Capital de Giro", ordem: 2, conteudo: "estoque inicial e caixa mínimo para financiar a operação, considerando prazos de vendas, estoque e compras" },
+  { id: "m3", rotulo: "Módulo 3", titulo: "Módulo 3: Investimentos Pré-Operacionais", ordem: 2, conteudo: "gastos realizados antes de começar a vender (reformas, legalização, divulgação de lançamento, treinamentos)" },
+  { id: "m5", rotulo: "Módulo 5", titulo: "Módulo 5: Faturamento Mensal", ordem: 3, conteudo: "estimativa da receita mensal a partir da quantidade vendida e do preço de venda de cada produto/serviço" },
+  { id: "m6", rotulo: "Módulo 6", titulo: "Módulo 6: Custo Unitário de Matéria-Prima", ordem: 3, conteudo: "custo dos materiais de cada unidade produzida (quantidade × custo unitário do material)" },
+  { id: "m7", rotulo: "Módulo 7", titulo: "Módulo 7: Custos de Comercialização", ordem: 3, conteudo: "impostos, comissões, taxas e demais custos incidentes sobre as vendas" },
+  { id: "m9", rotulo: "Módulo 9", titulo: "Módulo 9: Mão de Obra", ordem: 3, conteudo: "quadro de funcionários, salários, encargos e benefícios da empresa" },
+  { id: "m11", rotulo: "Módulo 11", titulo: "Módulo 11: Custos Fixos Mensais", ordem: 4, conteudo: "despesas fixas mensais (aluguel, energia, água, internet, pró-labore e outras)" },
+  { id: "m13", rotulo: "Módulo 13", titulo: "Módulo 13: Indicadores de Viabilidade", ordem: 5, conteudo: "análise dos indicadores (lucratividade, ponto de equilíbrio, retorno e prazo de retorno) e conclusão sobre a viabilidade do negócio" },
+  { id: "cen", rotulo: "Cenários / Fluxo", titulo: "Cenários e Fluxo de Caixa", ordem: 6, conteudo: "simulação de cenários (otimista, provável e pessimista) e fluxo de caixa projetado" },
+  { id: "apr", rotulo: "Apresentação", titulo: "Apresentação Final", ordem: 7, conteudo: "apresentação do plano financeiro da empresa à turma e ao professor" },
+];
+
+function montarDescricaoEscola(at, linha) {
+  const data = linha?.dataEntrega ? fmtDataCurta(linha.dataEntrega) : null;
+  const hora = (linha?.horaEntrega || HORARIO_CRONOGRAMA_PADRAO).replace(":", "h");
+  const prazo = data ? `Entrega até ${data} às ${hora}.` : "Data de entrega a definir no cronograma.";
+  return `PROJETO PPF – ${at.titulo}. Conteúdo: ${at.conteudo}. Lançamento na Plataforma PPF (ppfn.com.br). ${prazo} Avaliação de 0 a 10.`;
+}
+
+function RelatorioDescricoesEscola({ turma }) {
+  const [cronograma] = useSharedObject(`cronograma_${turma.id}`, null);
+  const [aulas, setAulas] = useState("1");
+  const [copiado, setCopiado] = useState("");
+  const copiar = async (texto, chave) => {
+    try { await navigator.clipboard.writeText(texto); }
+    catch {
+      const ta = document.createElement("textarea"); ta.value = texto; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); } catch {}
+      document.body.removeChild(ta);
+    }
+    setCopiado(chave); setTimeout(() => setCopiado(""), 2500);
+  };
+  if (cronograma === undefined) return <LoadingScreen />;
+  const linhas = cronograma?.linhas || [];
+  const itens = ATIVIDADES_DESCRICAO_ESCOLA.map((at) => {
+    const linha = linhas.find((l) => l.ordem === at.ordem);
+    return { ...at, data: linha?.dataEntrega ? fmtDataCurta(linha.dataEntrega) : "", texto: montarDescricaoEscola(at, linha) };
+  });
+  const tudo = itens.map((i) => `${i.rotulo} — Data: ${i.data || "a definir"}\n${i.texto}`).join("\n\n");
+  const th = "py-2 px-3 text-left text-[11px] uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40";
+  const td = "py-2 px-3 text-sm border-b border-slate-800 align-top";
+  return (
+    <div>
+      <p className="text-sm text-slate-400 mb-3">Textos prontos para colar no formulário <b className="text-slate-200">Nova Avaliação</b> do sistema da escola (campo Descrição/Assunto). As datas vêm do cronograma desta turma e acompanham qualquer ajuste feito nele. Somente leitura.</p>
+      {!cronograma && <Card className="p-3 mb-3 text-sm text-amber-400">Esta turma ainda não tem cronograma definido — as datas aparecem como "a definir". Configure a Semana 1 em Turmas → Cronograma.</Card>}
+      <Card className="p-3 mb-3 flex flex-wrap items-center gap-3 text-sm">
+        <span className="text-slate-300">Período: <b className="text-slate-100">1ª AVALIAÇÃO</b></span>
+        <span className="text-slate-300">Tipo: <b className="text-slate-100">Projeto</b></span>
+        <label className="text-slate-300 flex items-center gap-1.5">Total de aula(s):
+          <input type="number" min="1" value={aulas} onChange={(e) => setAulas(e.target.value)} className="w-16 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100" />
+        </label>
+        <button onClick={() => copiar(tudo, "tudo")} className="ml-auto flex items-center gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-md">
+          {copiado === "tudo" ? <><CheckCircle2 size={13} /> Copiado!</> : <><Copy size={13} /> Copiar tudo</>}
+        </button>
+      </Card>
+      <Card className="p-0 overflow-x-auto">
+        <table className="w-full">
+          <thead><tr><th className={th}>Atividade</th><th className={th}>Data</th><th className={th}>Aulas</th><th className={th}>Descrição / Assunto</th><th className={th}></th></tr></thead>
+          <tbody>
+            {itens.map((i) => (
+              <tr key={i.id}>
+                <td className={td + " font-semibold text-slate-200 whitespace-nowrap"}>{i.rotulo}</td>
+                <td className={td + " whitespace-nowrap"}>{i.data || <span className="text-amber-400">a definir</span>}</td>
+                <td className={td}>{aulas}</td>
+                <td className={td + " text-xs text-slate-300 min-w-[320px]"}>{i.texto}</td>
+                <td className={td}>
+                  <div className="flex flex-col gap-1">
+                    <button onClick={() => copiar(i.texto, i.id)} className="text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1.5 rounded-md whitespace-nowrap">{copiado === i.id ? "Copiado!" : "Copiar texto"}</button>
+                    <button onClick={() => copiar(i.data, i.id + "d")} disabled={!i.data} className="text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800 disabled:opacity-40 whitespace-nowrap">{copiado === i.id + "d" ? "Copiado!" : "Copiar data"}</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
 const ABAS_RELATORIO = [
   { id: "resumo", label: "Resumo Comparativo", icon: FileBarChart },
   { id: "empresa", label: "Relatório por Empresa", icon: Building2 },
   { id: "notas", label: "Relatório de Notas", icon: GraduationCap },
   { id: "pendencias", label: "Pendências", icon: ClipboardCheck },
   { id: "orientacao", label: "Orientação", icon: ClipboardList },
+  { id: "descricoes", label: "Descrições p/ Escola", icon: Copy },
 ];
 
 function GestaoRelatoriosView({ turmas }) {
@@ -9235,6 +9327,7 @@ function GestaoRelatoriosView({ turmas }) {
           {aba === "notas" && <RelatorioNotas turma={turma} dadosEquipes={dadosEquipes} />}
           {aba === "pendencias" && <RelatorioPendencias turma={turma} dadosEquipes={dadosEquipes} />}
           {aba === "orientacao" && <RelatorioOrientacao turma={turma} dadosEquipes={dadosEquipes} />}
+          {aba === "descricoes" && <RelatorioDescricoesEscola turma={turma} />}
         </div>
       )}
     </div>

@@ -1,0 +1,387 @@
+rules_version = '2';
+
+// Regras de segurança — CI Unidade II
+// Espelha a tabela "Regras de segurança" do documento de modelo de dados.
+// Princípio central: o aluno nunca escreve nota, prazo ou status de aprovação —
+// só o professor. O papel (aluno/professor/admin) vem de users/{uid} e NUNCA
+// é definido pelo próprio cliente (veja a nota no final sobre criação de users/{uid}).
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function signedIn() {
+      return request.auth != null;
+    }
+    function meu() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function papel() {
+      return signedIn() ? meu().papel : null;
+    }
+    function souAdmin() {
+      return papel() == 'admin';
+    }
+    function souProfessor() {
+      return papel() == 'professor';
+    }
+    function souAluno() {
+      return papel() == 'aluno';
+    }
+    function turma(turmaId) {
+      return get(/databases/$(database)/documents/turmas/$(turmaId)).data;
+    }
+    function souProfessorDaTurma(turmaId) {
+      return souProfessor() && turma(turmaId).professorId == request.auth.uid;
+    }
+    function souEsteAlunoNestaTurma(turmaId, matricula) {
+      return souAluno() && meu().turmaId == turmaId && meu().matricula == matricula;
+    }
+    function estouNaTurmaDoAluno(turmaId) {
+      return souAluno() && meu().turmaId == turmaId;
+    }
+    // Conta de teste: o professor pode agir como um aluno se, e somente se,
+    // aquele registro de aluno estiver marcado contaTeste == true. Nunca
+    // vale para um aluno de verdade — é um "aluno fictício" que só o
+    // professor consegue escrever, usado para testar o fluxo sem precisar
+    // logar com outra conta Google.
+    function souProfessorTestando(turmaId, matricula) {
+      return souProfessorDaTurma(turmaId) &&
+        get(/databases/$(database)/documents/turmas/$(turmaId)/alunos/$(matricula)).data.contaTeste == true;
+    }
+    function podeAgirComoEsteAluno(turmaId, matricula) {
+      return souEsteAlunoNestaTurma(turmaId, matricula) || souProfessorTestando(turmaId, matricula);
+    }
+
+    // ---------- users ----------
+    // Criação: o próprio usuário cria seu documento no primeiro login (sem
+    // Cloud Function, para não depender do plano Blaze) — mas só pode se
+    // auto-cadastrar como aluno novo, sem matrícula ainda. Ninguém vira
+    // professor/admin por essa porta; isso é feito manualmente no Console.
+    match /users/{uid} {
+      allow read: if signedIn() && (
+        request.auth.uid == uid ||
+        souAdmin() ||
+        (souProfessor() && resource.data.turmaId != null && souProfessorDaTurma(resource.data.turmaId))
+      );
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.papel == 'aluno'
+        && request.resource.data.matriculaConfirmada == false
+        && request.resource.data.turmaId == null
+        && request.resource.data.matricula == null;
+      allow update: if signedIn() && request.auth.uid == uid
+        && resource.data.matriculaConfirmada == false
+        && request.resource.data.papel == resource.data.papel // não muda o próprio papel
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['matricula', 'turmaId', 'matriculaConfirmada']);
+      allow delete: if false;
+    }
+
+    // ---------- turmas ----------
+    match /turmas/{turmaId} {
+      // Leitura em consulta de lista (ex.: "minhas turmas") precisa checar
+      // o campo direto em resource.data — chamar souProfessorDaTurma(turmaId)
+      // aqui faria um get() no próprio documento sendo listado, e o
+      // Firestore recusa a consulta inteira em silêncio nesse caso (ficava
+      // "Carregando turmas..." para sempre, sem nenhum erro visível).
+      allow read: if signedIn() && (
+        souAdmin() || resource.data.professorId == request.auth.uid || estouNaTurmaDoAluno(turmaId)
+      );
+      allow create: if souAdmin() || (souProfessor() && request.resource.data.professorId == request.auth.uid);
+      allow update: if souAdmin() || souProfessorDaTurma(turmaId);
+      allow delete: if souAdmin();
+
+      // ---------- turmas/{turmaId}/chamados (Suporte aluno <-> professor) ----------
+      match /chamados/{id} {
+        allow read: if signedIn() && (
+          souAdmin() || souProfessorDaTurma(turmaId) || souEsteAlunoNestaTurma(turmaId, resource.data.matricula)
+        );
+        allow create: if signedIn() && (
+          souProfessorDaTurma(turmaId) ||
+          (podeAgirComoEsteAluno(turmaId, request.resource.data.matricula) && request.resource.data.iniciadoPor == 'aluno')
+        );
+        // aluno só acrescenta mensagem / muda o estado do próprio chamado
+        allow update: if signedIn() && (
+          souProfessorDaTurma(turmaId) ||
+          (souEsteAlunoNestaTurma(turmaId, resource.data.matricula)
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['mensagens', 'status', 'naoLidoProfessor', 'naoLidoAluno', 'atualizadoEm']))
+        );
+        allow delete: if souAdmin() || souProfessorDaTurma(turmaId);
+      }
+
+      // ---------- turmas/{turmaId}/contadores (numeração dos chamados do Suporte) ----------
+      // O aluno só pode somar +1 no contador (ao abrir um chamado); o professor
+      // pode ajustar livremente (ex.: "Numerar chamados antigos").
+      match /contadores/{id} {
+        allow read: if signedIn() && (
+          souAdmin() || souProfessorDaTurma(turmaId) || (souAluno() && meu().turmaId == turmaId)
+        );
+        allow create: if signedIn() && (
+          souProfessorDaTurma(turmaId) ||
+          (souAluno() && meu().turmaId == turmaId && id == 'suporte'
+            && request.resource.data.keys().hasOnly(['ultimo']) && request.resource.data.ultimo == 1)
+        );
+        allow update: if signedIn() && (
+          souProfessorDaTurma(turmaId) ||
+          (souAluno() && meu().turmaId == turmaId && id == 'suporte'
+            && request.resource.data.keys().hasOnly(['ultimo'])
+            && request.resource.data.ultimo == resource.data.ultimo + 1)
+        );
+      }
+
+      // ---------- turmas/{turmaId}/agb (Fase 3 — Análise Gerencial de Balanços) ----------
+      // config (liberação) e periodoAnterior: o professor escreve; alunos da turma só leem.
+      match /agb/{docId} {
+        allow read: if signedIn() && (souAdmin() || souProfessorDaTurma(turmaId) || estouNaTurmaDoAluno(turmaId));
+        allow write: if souAdmin() || souProfessorDaTurma(turmaId);
+      }
+
+      // ---------- turmas/{turmaId}/ca (Fase 2 — Contabilidade Avançada) ----------
+      // config (liberação) e folha (dados do mês): o professor escreve; alunos da turma só leem.
+      match /ca/{docId} {
+        allow read: if signedIn() && (souAdmin() || souProfessorDaTurma(turmaId) || estouNaTurmaDoAluno(turmaId));
+        allow write: if souAdmin() || souProfessorDaTurma(turmaId);
+      }
+
+      // ---------- turmas/{turmaId}/roteiro (roteiro por etapas: prazos e textos) ----------
+      // O professor escreve; alunos da turma só leem.
+      match /roteiro/{docId} {
+        allow read: if signedIn() && (souAdmin() || souProfessorDaTurma(turmaId) || estouNaTurmaDoAluno(turmaId));
+        allow write: if souAdmin() || souProfessorDaTurma(turmaId);
+      }
+
+      // ---------- turmas/{turmaId}/alunos ----------
+      match /alunos/{matricula} {
+        allow read: if signedIn() && (
+          souAdmin() || souProfessorDaTurma(turmaId) || souEsteAlunoNestaTurma(turmaId, matricula)
+        );
+        // O aluno só pode vincular seu uid uma vez (primeiro login); nunca toca em
+        // nota, desconto ou prazo.
+        allow update: if souProfessorDaTurma(turmaId)
+          || (
+            souEsteAlunoNestaTurma(turmaId, matricula)
+            && resource.data.uid == null
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uid', 'dataEntrega'])
+          );
+        allow create: if souAdmin() || souProfessorDaTurma(turmaId);
+        allow delete: if souAdmin() || souProfessorDaTurma(turmaId);
+
+        // ---------- lançamentos ----------
+        // Nota: Débito = Crédito não é validado aqui — a linguagem de Security
+        // Rules não tem soma/redução de listas (não existe .filter/.map/.sum
+        // sobre arrays). Essa conferência deve ficar num Cloud Function trigger
+        // (onCreate/onUpdate de lancamentos), que já é o lugar certo para negar
+        // ou reverter um documento inconsistente — as regras abaixo só cobrem
+        // quem pode escrever o quê, não a aritmética do lançamento.
+        match /lancamentos/{id} {
+          allow read: if signedIn() && (
+            souAdmin() || souProfessorDaTurma(turmaId) || souEsteAlunoNestaTurma(turmaId, matricula)
+          );
+          allow create: if podeAgirComoEsteAluno(turmaId, matricula)
+            && request.resource.data.status in ['rascunho', 'enviado'];
+          allow update: if
+            // aluno (ou professor testando) só edita o próprio lançamento enquanto não foi aprovado
+            (podeAgirComoEsteAluno(turmaId, matricula)
+              && resource.data.status != 'aprovado'
+              && request.resource.data.status in ['rascunho', 'enviado'])
+            // professor só muda status, observação de correção e o histórico
+            // de correções (registro acumulado de todas as devoluções)
+            || (souProfessorDaTurma(turmaId)
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'obsCorrecao', 'historicoCorrecoes', 'podeExcluir']));
+          allow delete: if podeAgirComoEsteAluno(turmaId, matricula)
+            && (resource.data.status == 'rascunho'
+                // 2026-10-15 — lançamento devolvido que o professor marcou como excluível
+                || (resource.data.status == 'correcao' && resource.data.get('podeExcluir', false) == true));
+          // 2026-10-09 — "Refazer nota do aluno": o professor da turma pode apagar
+          // (e restaurar) lançamentos de uma nota para o aluno refazer.
+          allow create, delete: if souProfessorDaTurma(turmaId);
+        }
+
+        // ---------- Fase 3 (AGB): trabalho do aluno ----------
+        // O aluno (ou o professor na conta de teste) grava o próprio trabalho; o campo
+        // "devolutiva" (retorno do professor) só o professor da turma escreve.
+        match /agb/{docId} {
+          allow read: if signedIn() && (
+            souAdmin() || souProfessorDaTurma(turmaId) || souEsteAlunoNestaTurma(turmaId, matricula)
+          );
+          allow create: if podeAgirComoEsteAluno(turmaId, matricula) && docId == 'trabalho'
+            && !request.resource.data.keys().hasAny(['devolutiva', 'devolutivaEm']);
+          allow update: if (podeAgirComoEsteAluno(turmaId, matricula) && docId == 'trabalho'
+              && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['devolutiva', 'devolutivaEm']))
+            || (souProfessorDaTurma(turmaId)
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['devolutiva', 'devolutivaEm']));
+          allow delete: if souAdmin();
+        }
+
+        // ---------- Fase 2 (CA): trabalho do aluno ----------
+        // Mesmo esquema da Fase 3: o aluno (ou o professor na conta de teste) grava o próprio trabalho;
+        // "devolutiva" (retorno do professor) só o professor da turma escreve.
+        match /ca/{docId} {
+          allow read: if signedIn() && (
+            souAdmin() || souProfessorDaTurma(turmaId) || souEsteAlunoNestaTurma(turmaId, matricula)
+          );
+          allow create: if podeAgirComoEsteAluno(turmaId, matricula) && docId == 'trabalho'
+            && !request.resource.data.keys().hasAny(['devolutiva', 'devolutivaEm', 'devolutivaResc', 'devolutivaRescEm']);
+          allow update: if (podeAgirComoEsteAluno(turmaId, matricula) && docId == 'trabalho'
+              && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['devolutiva', 'devolutivaEm', 'devolutivaResc', 'devolutivaRescEm']))
+            || (souProfessorDaTurma(turmaId)
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['devolutiva', 'devolutivaEm', 'devolutivaResc', 'devolutivaRescEm']));
+          allow delete: if souAdmin();
+        }
+
+        // ---------- Roteiro por etapas: situação de cada etapa do aluno ----------
+        // "estado" (liberada, aprovada, ajustar, retorno): só o professor escreve.
+        // "entregas" (data em que o aluno marcou como entregue): o aluno (ou o professor na conta de teste) escreve.
+        match /roteiro/{docId} {
+          allow read: if signedIn() && (
+            souAdmin() || souProfessorDaTurma(turmaId) || souEsteAlunoNestaTurma(turmaId, matricula)
+          );
+          allow create, update: if (docId == 'estado' && (souAdmin() || souProfessorDaTurma(turmaId)))
+            || (docId == 'entregas' && podeAgirComoEsteAluno(turmaId, matricula));
+          allow delete: if souAdmin();
+        }
+
+
+        // ---------- Fluxo por etapas (2027.1): envio e aprovação por lote ----------
+        // Um documento por lote e passo, ex.: "L1_digitacao", "L1_analise", "L1_classificacao".
+        // status: andamento | enviado | devolvido | aprovado.
+        // O aluno (ou o professor na conta de teste) só consegue ENVIAR; quem aprova ou devolve é só o professor.
+        // Subcoleção nova: não altera nenhuma regra existente.
+        match /fluxo/{id} {
+          allow read: if signedIn() && (
+            souAdmin() || souProfessorDaTurma(turmaId) || souEsteAlunoNestaTurma(turmaId, matricula)
+          );
+          allow create: if podeAgirComoEsteAluno(turmaId, matricula)
+            && request.resource.data.status == 'enviado'
+            && request.resource.data.keys().hasOnly(['status', 'lote', 'passo', 'documentos', 'enviadoEm', 'historico']);
+          allow update: if
+            (podeAgirComoEsteAluno(turmaId, matricula)
+              && resource.data.status in ['andamento', 'devolvido']
+              && request.resource.data.status == 'enviado'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'documentos', 'enviadoEm', 'historico']))
+            || (souProfessorDaTurma(turmaId)
+              && request.resource.data.status in ['andamento', 'enviado', 'devolvido', 'aprovado']
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'orientacao', 'decididoEm', 'historico']));
+          allow delete: if souAdmin() || souProfessorDaTurma(turmaId);
+        }
+
+        // ---------- Avaliação das etapas (nota 0 a 10 e retorno) ----------
+        // Só o professor escreve. O aluno só lê as avaliações que o professor marcou como liberadas.
+        match /avaliacoes/{etapaId} {
+          allow read: if signedIn() && (
+            souAdmin() || souProfessorDaTurma(turmaId)
+            || (souEsteAlunoNestaTurma(turmaId, matricula) && resource.data.liberada == true)
+          );
+          allow write: if souAdmin() || souProfessorDaTurma(turmaId);
+        }
+
+        // ---------- lixeira de segurança (Refazer nota do aluno) ----------
+        // Cópia de tudo que o professor apaga; só o professor da turma lê/escreve.
+        match /lixeira/{id} {
+          allow read, create, delete: if souAdmin() || souProfessorDaTurma(turmaId);
+          // 2026-10-15 — o aluno só GRAVA a cópia do lançamento devolvido que vai excluir (não lê nem apaga)
+          allow create: if podeAgirComoEsteAluno(turmaId, matricula) && request.resource.data.tipo == 'lancamento';
+          allow update: if false;
+        }
+
+        // ---------- digitações de NF-e ----------
+        match /digitacoesNFe/{id} {
+          allow read: if signedIn() && (
+            souAdmin() || souProfessorDaTurma(turmaId) || souEsteAlunoNestaTurma(turmaId, matricula)
+          );
+          allow write: if podeAgirComoEsteAluno(turmaId, matricula);
+          // 2026-10-09 — professor pode apagar/restaurar (Refazer nota do aluno)
+          allow create, delete: if souProfessorDaTurma(turmaId);
+        }
+
+        // ---------- classificações contábeis ----------
+        match /classificacoes/{id} {
+          allow read: if signedIn() && (
+            souAdmin() || souProfessorDaTurma(turmaId) || souEsteAlunoNestaTurma(turmaId, matricula)
+          );
+          allow write: if podeAgirComoEsteAluno(turmaId, matricula);
+          // 2026-10-09 — professor pode apagar/restaurar (Refazer nota do aluno)
+          allow create, delete: if souProfessorDaTurma(turmaId);
+        }
+
+        // ---------- análises fiscais ----------
+        match /analisesFiscais/{id} {
+          allow read: if signedIn() && (
+            souAdmin() || souProfessorDaTurma(turmaId) || souEsteAlunoNestaTurma(turmaId, matricula)
+          );
+          allow write: if podeAgirComoEsteAluno(turmaId, matricula);
+          // 2026-10-09 — professor pode apagar/restaurar (Refazer nota do aluno)
+          allow create, delete: if souProfessorDaTurma(turmaId);
+          // 2026-10-09 — "Devolver nota ao aluno": professor reabre a análise (status) e registra a devolução
+          allow update: if souProfessorDaTurma(turmaId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'devolucao']);
+        }
+      }
+    }
+
+    // ---------- matrículas (índice leve p/ login, 2026-10-02) ----------
+    // Problema real encontrado em produção: o primeiro login do aluno
+    // precisa ACHAR seu próprio registro em turmas/*/alunos/{matricula} sem
+    // saber de antemão a turma — isso exige um collectionGroup query. Mas o
+    // Firestore recusa (permission-denied) um collectionGroup cuja regra
+    // depende de outro documento (get() dentro de souProfessorDaTurma) sem
+    // conseguir provar estaticamente que TODO resultado possível passaria —
+    // mesmo com where("uid","==",null) casando a condição, na prática a
+    // combinação com os outros termos do OR (que usam get()) faz o
+    // Firestore negar a consulta inteira. Depurado ao vivo em 2026-10-02
+    // depois de alunos reais ficarem travados no primeiro acesso.
+    //
+    // Solução: um índice plano e de baixa sensibilidade — SÓ matrícula,
+    // turmaId e uid, sem nome nem nota — que não precisa de get() nenhum
+    // para leitura, então um simples get(doc) (não um collectionGroup) ou
+    // mesmo uma regra "signedIn()" pura nunca esbarra nessa limitação.
+    // Mantido em sincronia com turmas/{turmaId}/alunos/{matricula} em todo
+    // lugar que cria ou vincula um aluno (Turmas.jsx, App.jsx).
+    match /matriculas/{matricula} {
+      allow read: if signedIn();
+      allow create: if souAdmin() || souProfessorDaTurma(request.resource.data.turmaId);
+      allow update: if souAdmin() || souProfessorDaTurma(resource.data.turmaId)
+        || (signedIn() && resource.data.uid == null
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uid']));
+      allow delete: if souAdmin() || souProfessorDaTurma(resource.data.turmaId);
+    }
+
+    // ---------- professores autorizados (não usada por enquanto) ----------
+    match /professoresAutorizados/{email} {
+      allow read, write: if souAdmin();
+    }
+
+    // ---------- configuração (senha extra do professor, etc.) ----------
+    // Só quem JÁ tem papel "professor"/"admin" (promoção sempre manual, no
+    // Console) consegue LER este documento — um aluno não consegue nem
+    // buscar a senha para tentar adivinhar. A senha em si é só uma camada
+    // extra de fricção por cima dessa promoção manual, não a barreira real.
+    // Escrita só direto no Console (bypassa as regras), por isso "if false".
+    match /configuracao/{id} {
+      allow read: if signedIn() && (souProfessor() || souAdmin());
+      allow write: if false;
+    }
+
+    // ---------- plano de contas (institucional, compartilhado) ----------
+    match /planoContas/{codigo} {
+      allow read: if signedIn();
+      allow create: if souAdmin() || souProfessor();
+      allow update: if souAdmin() || souProfessor();
+      allow delete: if false; // conta já usada em lançamento não pode sumir
+    }
+
+    // ---------- catálogo de documentos fiscais ----------
+    match /documentosFiscais/{id} {
+      allow read: if signedIn() && (
+        souAdmin() || souProfessor() ||
+        (souAluno() && meu().turmaId != null
+          && id in turma(meu().turmaId).documentosIds)
+      );
+      allow write: if souAdmin() || souProfessor();
+    }
+
+    // A conferência de Débito = Crédito fica no Cloud Function trigger de
+    // lancamentos — não dá para somar arrays dentro de uma Security Rule.
+  }
+}

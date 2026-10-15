@@ -1,0 +1,195 @@
+import { useEffect, useState } from "react";
+import { collection, addDoc, doc, updateDoc, onSnapshot, serverTimestamp } from "firebase/firestore";
+import { db } from "../../firebase.js";
+import { fmt } from "../../lib/contabil.js";
+
+// Aviso pedagógico de coerência: se o aluno já indicou na Análise Fiscal
+// deste mesmo documento que o CFOP/NCM/CST não estava correto, vale lembrar
+// de refletir esse ajuste aqui — senão a análise fiscal vira só "tabela para
+// cumprir", sem ligação real com a contabilização.
+function avisoCoerenciaFiscal(analise) {
+  if (!analise) return null;
+  const pontos = [];
+  if (analise.cfopCorreto === "nao") pontos.push("CFOP");
+  if (analise.ncmCorreto === "nao") pontos.push("NCM");
+  if (analise.cstCorreto === "nao") pontos.push("CST");
+  if (pontos.length === 0) return null;
+  return `Na Análise Fiscal deste documento você indicou que o ${pontos.join("/")} não estava correto — confira se isso muda alguma conta ou valor da classificação abaixo (ex.: destaque de imposto).`;
+}
+
+// Um documento só entra na lista de classificação depois que o aluno
+// terminou a Digitação e a Análise fiscal dele — classificar antes disso
+// seria decidir a conta contábil sem ainda saber qual foi a operação.
+function documentoProntoParaClassificar(docId, progresso) {
+  if (!progresso) return false;
+  const { digitacoes, analises } = progresso;
+  const digitado = !!(digitacoes && digitacoes[docId]);
+  const analisado = analises && analises[docId]?.status === "enviado";
+  return digitado && analisado;
+}
+
+// travado: fluxo por etapas (2027.1) — bloqueia o formulário enquanto o lote aguarda o professor ou já foi aprovado.
+export default function ClassificacaoContabil({ turmaId, matricula, documentos, progresso, contas, onUsarNoLancamento, travado }) {
+  const [documento, setDocumento] = useState("");
+  const [fato, setFato] = useState("");
+  const [contaDebito, setContaDebito] = useState("");
+  const [contaCredito, setContaCredito] = useState("");
+  const [valor, setValor] = useState("");
+  const [historico, setHistorico] = useState("");
+  const [tratamento, setTratamento] = useState("");
+  const [classificacoes, setClassificacoes] = useState([]);
+  const [analiseDoDocumento, setAnaliseDoDocumento] = useState(null);
+
+  // Rascunho automático e invisível (só neste computador): se o aluno sair da
+  // tela com o formulário preenchido e não salvar, ao voltar o texto continua
+  // lá. Não grava nada no Firestore e some assim que a classificação é salva.
+  const chaveRasc = "rascunhoLocal_classif_" + turmaId + "_" + matricula;
+  const [rascPronto, setRascPronto] = useState(false);
+  const preenchido = !!(fato.trim() || valor || contaDebito || contaCredito || historico.trim() || tratamento.trim() || documento);
+  useEffect(() => {
+    if (!turmaId || !matricula) return;
+    try {
+      const r = JSON.parse(localStorage.getItem(chaveRasc) || "null");
+      if (r && r.dados) {
+        const d = r.dados;
+        setDocumento(d.documento || ""); setFato(d.fato || ""); setContaDebito(d.contaDebito || "");
+        setContaCredito(d.contaCredito || ""); setValor(d.valor || ""); setHistorico(d.historico || ""); setTratamento(d.tratamento || "");
+      }
+    } catch (e) { /* sem armazenamento: tudo bem */ }
+    setRascPronto(true);
+  }, [chaveRasc]);
+  useEffect(() => {
+    if (!rascPronto) return;
+    const t = setTimeout(() => {
+      try {
+        if (preenchido) localStorage.setItem(chaveRasc, JSON.stringify({ dados: { documento, fato, contaDebito, contaCredito, valor, historico, tratamento }, em: new Date().toISOString() }));
+        else localStorage.removeItem(chaveRasc);
+      } catch (e) { /* idem */ }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [rascPronto, preenchido, documento, fato, contaDebito, contaCredito, valor, historico, tratamento, chaveRasc]);
+  useEffect(() => {
+    if (!preenchido) return;
+    const aviso = (e) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", aviso);
+    return () => window.removeEventListener("beforeunload", aviso);
+  }, [preenchido]);
+
+  useEffect(() => {
+    if (!turmaId || !matricula) return;
+    const ref = collection(db, "turmas", turmaId, "alunos", matricula, "classificacoes");
+    const unsub = onSnapshot(ref, (snap) => setClassificacoes(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return unsub;
+  }, [turmaId, matricula]);
+
+  // Confere a Análise Fiscal já salva pelo próprio aluno para o documento
+  // escolhido, só para o aviso de coerência acima — não impede nada.
+  useEffect(() => {
+    if (!turmaId || !matricula || !documento) { setAnaliseDoDocumento(null); return; }
+    const unsub = onSnapshot(doc(db, "turmas", turmaId, "alunos", matricula, "analisesFiscais", documento), (snap) => {
+      setAnaliseDoDocumento(snap.exists() ? snap.data() : null);
+    });
+    return unsub;
+  }, [turmaId, matricula, documento]);
+
+  const avisoFiscal = avisoCoerenciaFiscal(analiseDoDocumento);
+  const documentosProntos = (documentos || []).filter((d) => documentoProntoParaClassificar(d.id, progresso));
+  const carregandoProgresso = progresso && (progresso.digitacoes === null || progresso.analises === null);
+
+  async function salvar() {
+    if (!fato.trim() || !contaDebito || !contaCredito || !valor) return;
+    await addDoc(collection(db, "turmas", turmaId, "alunos", matricula, "classificacoes"), {
+      documento, fato, contaDebito, contaCredito, valor: Number(valor), historico, tratamento,
+      status: "pendente", criadoEm: serverTimestamp(),
+    });
+    setDocumento(""); setFato(""); setContaDebito(""); setContaCredito(""); setValor(""); setHistorico(""); setTratamento("");
+    try { localStorage.removeItem(chaveRasc); } catch (e) { /* idem */ }
+  }
+
+  async function marcarLancada(id) {
+    await updateDoc(doc(db, "turmas", turmaId, "alunos", matricula, "classificacoes", id), { status: "lançada" });
+  }
+
+  return (
+    <>
+      <div className="screen-eyebrow">07 · classificação contábil</div>
+      <h2 className="screen-title">Classificação do fato contábil</h2>
+      <p className="screen-sub">Depois de analisar o documento, identifique o fato contábil e a classificação antes de lançar no Diário. O sistema disponibiliza o Plano de Contas, mas não indica a conta correta.</p>
+      {!carregandoProgresso && documentosProntos.length === 0 && (
+        <div className="helper-note">Nenhum documento disponível ainda para classificar. Complete a Digitação e a Análise fiscal (envie a análise, não só salve o rascunho) de pelo menos um documento em "Digitação e análise fiscal" antes de classificar.</div>
+      )}
+      <fieldset disabled={!!travado} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+      <div className="panel">
+        <div className="panel-head"><h3>Nova classificação</h3></div>
+        <div className="panel-body">
+          <div className="grid-2">
+            <div className="field">
+              <label>Documento de origem</label>
+              <select value={documento} onChange={(e) => setDocumento(e.target.value)}>
+                <option value="">— sem documento —</option>
+                {documentosProntos.map((d) => <option key={d.id} value={d.id}>Nº {d.numero}</option>)}
+              </select>
+            </div>
+            <div className="field"><label>Valor</label><input className="mono" type="number" value={valor} onChange={(e) => setValor(e.target.value)} /></div>
+          </div>
+          {avisoFiscal && <div className="aviso-pedagogico">⚠ {avisoFiscal}</div>}
+          <div className="field"><label>Fato contábil identificado</label><textarea value={fato} onChange={(e) => setFato(e.target.value)} placeholder="O que aconteceu, em suas palavras — ex.: compra de mercadorias a prazo" /></div>
+          <div className="grid-2">
+            <div className="field">
+              <label>Conta a debitar</label>
+              <select value={contaDebito} onChange={(e) => setContaDebito(e.target.value)}>
+                <option value="">Selecione</option>
+                {contas.map((c) => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nome}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Conta a creditar</label>
+              <select value={contaCredito} onChange={(e) => setContaCredito(e.target.value)}>
+                <option value="">Selecione</option>
+                {contas.map((c) => <option key={c.codigo} value={c.codigo}>{c.codigo} — {c.nome}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="field"><label>Histórico</label><input value={historico} onChange={(e) => setHistorico(e.target.value)} /></div>
+          <div className="field"><label>Tratamento tributário (se houver)</label><input value={tratamento} onChange={(e) => setTratamento(e.target.value)} /></div>
+          <div className="btn-row"><button className="btn" onClick={salvar}>Salvar classificação</button></div>
+        </div>
+      </div>
+      </fieldset>
+      <div className="panel">
+        <div className="panel-head"><h3>Classificações registradas</h3></div>
+        <div className="panel-body" style={{ padding: 0 }}>
+          {classificacoes.length === 0 ? (
+            <div className="empty-state">Nenhuma classificação registrada ainda.</div>
+          ) : (
+            <table>
+              <thead><tr><th>Fato</th><th>Débito</th><th>Crédito</th><th className="num">Valor</th><th>Status</th><th></th></tr></thead>
+              <tbody>
+                {classificacoes.map((c) => (
+                  <tr key={c.id}>
+                    <td>{c.fato}</td>
+                    <td className="mono">{c.contaDebito}</td>
+                    <td className="mono">{c.contaCredito}</td>
+                    <td className="num mono">{fmt(c.valor)}</td>
+                    <td><span className={"status " + (c.status === "lançada" ? "aprovado" : "rascunho")}>{c.status}</span></td>
+                    <td>
+                      {c.status === "pendente" && (
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {onUsarNoLancamento && (
+                            <button className="btn secondary" onClick={() => onUsarNoLancamento(c)}>usar no lançamento</button>
+                          )}
+                          <button className="btn secondary" onClick={() => marcarLancada(c.id)}>marcar como lançada no Diário</button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+      <div className="helper-note">Clique em "usar no lançamento" para levar esta classificação pronta para o Livro Diário — a data e o histórico ainda podem ser ajustados lá antes de enviar. Assim que você salvar o lançamento lá (mesmo como rascunho), esta classificação já é marcada como lançada sozinha — "marcar como lançada" aqui só é necessário se você montar o lançamento no Diário sem usar esse atalho.</div>
+    </>
+  );
+}

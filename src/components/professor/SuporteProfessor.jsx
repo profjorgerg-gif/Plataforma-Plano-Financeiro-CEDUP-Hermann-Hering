@@ -1,0 +1,328 @@
+import { useState } from "react";
+import { doc, updateDoc, arrayUnion, serverTimestamp } from "firebase/firestore";
+import { db } from "../../firebase.js";
+import { useChamados } from "../../hooks/useChamados.js";
+import { useAlunosDaTurma } from "../../hooks/useAlunosDaTurma.js";
+import { useDocumentosDaTurma } from "../../hooks/useDocumentosDaTurma.js";
+import { formatarDataHora, rotuloSituacao } from "../aluno/SuporteAluno.jsx";
+import { criarChamadoNumerado, numerarChamadosAntigos, fmtNumero, textoChamado, textoVariosChamados, nomeArquivo, baixarTxt, copiarTexto, imprimirTexto } from "../../lib/chamados.js";
+import { devolverNota, ETAPAS_DEVOLUCAO, MODELO_ORIENTACAO } from "../../lib/devolucao.js";
+
+// Suporte — visão do professor (2026-10-09). Caixa de entrada de chamados da
+// turma. Só escreve na coleção "chamados".
+
+const RESPOSTAS_RAPIDAS = [
+  "Recebi seu chamado. Já estou verificando e retorno em breve.",
+  "Corrigi o gabarito da nota. Atualize a página (Ctrl+F5) e refaça a conferência.",
+  "Reabri essa nota para você refazer. Comece pela Digitação e análise fiscal.",
+  "Não consegui reproduzir o problema. Pode me enviar um print da tela e dizer o que você clicou?",
+];
+
+function Bolha({ m }) {
+  const prof = m.autor === "professor";
+  if (m.tipo === "sistema") return <div style={{ textAlign: "center", color: "#7a7466", fontSize: 12, margin: "8px 0" }}>{m.texto} · {formatarDataHora(m.em)}</div>;
+  return (
+    <div style={{
+      padding: "10px 12px", borderRadius: 8, margin: "8px 0", maxWidth: "88%", fontSize: 14, whiteSpace: "pre-wrap",
+      background: prof ? "#E5EFEA" : "#fff", border: "1px solid " + (prof ? "#b9d3c7" : "#d9d2c0"), marginLeft: prof ? "auto" : 0,
+    }}>
+      <small style={{ display: "block", color: "#7a7466", fontSize: 11, marginBottom: 3 }}>{prof ? "Professor" : "Aluno"} · {formatarDataHora(m.em)}</small>
+      {m.tipo === "devolucao" && <div style={{ marginBottom: 4 }}><b>↩ Devolução da NF {m.documentoNumero || ""}:</b> {(m.etapas || []).join(", ")}</div>}
+      {m.texto}
+    </div>
+  );
+}
+
+// De quem é a vez: "pro" (professor), "alu" (aluno) ou "res" (resolvido). A resposta automática
+// "Recebi seu chamado" não conta como resposta de verdade.
+function vezDe(c) {
+  if (c.status === "resolvido") return "res";
+  if (c.tipo === "pendenciaProfessor") return "pro";   // pendência só do professor
+  const msgs = (c.mensagens || []).filter((m) => m.autor === "aluno" || m.autor === "professor");
+  const ult = msgs[msgs.length - 1];
+  if (!ult || ult.autor === "aluno") return "pro";
+  return String(ult.texto || "").trim() === RESPOSTAS_RAPIDAS[0] ? "pro" : "alu";
+}
+
+export default function SuporteProfessor({ turma }) {
+  const turmaId = turma?.id;
+  const { chamados, erro: erroLeitura } = useChamados(turmaId, null);
+  const alunos = useAlunosDaTurma(turmaId);
+  const documentos = useDocumentosDaTurma(turmaId);
+  const [aba, setAba] = useState("pro");
+  const [selId, setSelId] = useState(null);
+  const [texto, setTexto] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState("");
+  const [devAberto, setDevAberto] = useState(false);
+  const [devDoc, setDevDoc] = useState("");
+  const [devEtapas, setDevEtapas] = useState([]);
+  const [devTexto, setDevTexto] = useState(MODELO_ORIENTACAO);
+  const [devOk, setDevOk] = useState("");
+  const [novo, setNovo] = useState(false);
+  const [nMat, setNMat] = useState("");
+  const [nAssunto, setNAssunto] = useState("");
+  const [nTexto, setNTexto] = useState("");
+  const [filtroAluno, setFiltroAluno] = useState("");
+  const [dirAberto, setDirAberto] = useState(false);
+  const [dirAluno, setDirAluno] = useState("");
+  const [dirDoc, setDirDoc] = useState("");
+  const [dirEtapas, setDirEtapas] = useState([]);
+  const [dirTexto, setDirTexto] = useState(MODELO_ORIENTACAO);
+  const [aviso, setAviso] = useState("");
+
+  if (!turma) return <div className="empty-state">Crie ou selecione uma turma em "Turmas" primeiro.</div>;
+
+  const sel = (chamados || []).find((c) => c.id === selId) || null;
+  const porAluno = (chamados || []).filter((c) => !filtroAluno || (c.matricula || c.alunoMatricula) === filtroAluno);
+  const lista = porAluno.filter((c) =>
+    vezDe(c) === aba)
+    .sort((a, b) => (b.numero || 0) - (a.numero || 0) || 0);
+  const semNumero = (chamados || []).filter((c) => !c.numero).length;
+  const ehPend = sel?.tipo === "pendenciaProfessor";
+  const nomeSel = sel ? "Chamado " + (sel.numero ? fmtNumero(sel.numero) + " - " : "") + (sel.alunoNome || sel.matricula) : "";
+  const nVez = (v) => (chamados || []).filter((c) => vezDe(c) === v).length;
+
+  async function numerarAntigos() {
+    if (!window.confirm("Numerar " + semNumero + " chamado(s) antigo(s), na ordem em que foram abertos? Só acrescenta o número; mensagens, status e notas não mudam.")) return;
+    setEnviando(true); setErro(""); setAviso("");
+    try { const n = await numerarChamadosAntigos(turmaId, chamados); setAviso(n + " chamado(s) numerado(s)."); }
+    catch (e) { setErro("Não foi possível numerar: " + e.message + ". Confira se a regra nova do Firestore foi publicada."); }
+    setEnviando(false);
+  }
+  function imprimirSel() { imprimirTexto(nomeArquivo(nomeSel), textoChamado(sel, turma)); }
+  function baixarSel() { baixarTxt(nomeArquivo(nomeSel), textoChamado(sel, turma)); }
+  async function copiarSel() { setAviso((await copiarTexto(textoChamado(sel, turma))) ? "Texto copiado." : "Não foi possível copiar; use \"Baixar texto\"."); }
+  function exportarTodos() {
+    const nome = filtroAluno ? "Chamados - " + ((alunos || []).find((a) => a.matricula === filtroAluno)?.nome || filtroAluno) : "Chamados - " + (turma.nome || "turma");
+    baixarTxt(nomeArquivo(nome), textoVariosChamados(porAluno, turma));
+  }
+
+  function alternarEtapaDireta(k) { setDirEtapas((e) => (e.includes(k) ? e.filter((x) => x !== k) : [...e, k])); }
+  function marcarTodasDireta() { setDirEtapas(dirEtapas.length === ETAPAS_DEVOLUCAO.length ? [] : ETAPAS_DEVOLUCAO.map((e) => e.key)); }
+  // Devolução direta: o professor escolhe aluno + nota + etapas, sem precisar de chamado aberto
+  // (o sistema cria um chamado numerado para registrar a orientação e avisar o aluno).
+  async function devolverDireto() {
+    const aluno = (alunos || []).find((a) => a.matricula === dirAluno);
+    const nota = (documentos || []).find((d) => d.id === dirDoc);
+    if (!aluno || !nota || dirEtapas.length === 0 || !dirTexto.trim()) { setErro("Escolha o aluno, a nota, ao menos uma etapa e escreva a orientação."); return; }
+    if (!window.confirm("Devolver a NF " + (nota.numero || nota.id) + " para " + (aluno.nome || aluno.matricula) + "? Etapas: " + dirEtapas.join(", ") + ". Lançamentos aprovados voltam para correção e classificações devolvidas vão para a lixeira de segurança. Você já baixou o backup da turma?")) return;
+    setEnviando(true); setErro(""); setDevOk("");
+    try {
+      const feitos = await devolverNota({ turmaId, matricula: aluno.matricula, alunoNome: aluno.nome, docId: nota.id, docNumero: nota.numero, etapas: dirEtapas, orientacao: dirTexto.trim(), chamado: null });
+      setDevOk("Nota devolvida a " + (aluno.nome || aluno.matricula) + ". " + (feitos.length ? feitos.join("; ") + "." : "O aluno foi avisado pelo Suporte."));
+      setDirAberto(false); setDirAluno(""); setDirDoc(""); setDirEtapas([]); setDirTexto(MODELO_ORIENTACAO); setAba("alu");
+    } catch (e) { setErro("Não foi possível devolver: " + e.message + ". Confira se as regras novas do Firestore foram publicadas."); }
+    setEnviando(false);
+  }
+
+  async function abrirChamado(c) {
+    setSelId(c.id); setTexto(""); setErro(""); setAviso("");
+    setTimeout(() => { const el = document.getElementById("chamado-aberto"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 80);
+    if (c.naoLidoProfessor) {
+      try { await updateDoc(doc(db, "turmas", turmaId, "chamados", c.id), { naoLidoProfessor: false }); } catch (e) { /* silencioso */ }
+    }
+  }
+  async function responder() {
+    if (!texto.trim() || !sel) return;
+    setEnviando(true); setErro("");
+    try {
+      await updateDoc(doc(db, "turmas", turmaId, "chamados", sel.id), {
+        mensagens: arrayUnion({ autor: "professor", texto: texto.trim(), em: new Date().toISOString() }),
+        status: "respondido", naoLidoAluno: true, atualizadoEm: serverTimestamp(),
+      });
+      const ficou = texto.trim() === RESPOSTAS_RAPIDAS[0];
+      setTexto("");
+      // volta para a lista e diz para onde o chamado foi
+      setSelId(null);
+      setAviso("Resposta enviada. O chamado " + (sel.numero ? "Nº " + fmtNumero(sel.numero) + " " : "") + (ficou ? "continua em “Aguardando você”, porque foi só a resposta automática." : "foi para “Aguardando o aluno”."));
+      setTimeout(() => { const el = document.getElementById("suporte-topo"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 80);
+    } catch (e) { setErro("Não foi possível enviar: " + e.message); }
+    setEnviando(false);
+  }
+  async function mudarStatus(status) {
+    if (!sel) return;
+    try {
+      const msgSistema = { autor: "sistema", tipo: "sistema", texto: status === "resolvido" ? "Chamado marcado como resolvido pelo professor" : "Chamado reaberto pelo professor", em: new Date().toISOString() };
+      await updateDoc(doc(db, "turmas", turmaId, "chamados", sel.id), { status, atualizadoEm: serverTimestamp(), mensagens: arrayUnion(msgSistema), ...(ehPend ? {} : { naoLidoAluno: true }) });
+      if (status === "resolvido") {
+        setAviso("Chamado " + (sel.numero ? "Nº " + fmtNumero(sel.numero) + " " : "") + "marcado como resolvido.");
+        setSelId(null);
+        setTimeout(() => { const el = document.getElementById("suporte-topo"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 80);
+      }
+    }
+    catch (e) { setErro("Não foi possível alterar: " + e.message); }
+  }
+  function alternarEtapa(k) { setDevEtapas((e) => (e.includes(k) ? e.filter((x) => x !== k) : [...e, k])); }
+  function marcarTodas() { setDevEtapas(devEtapas.length === ETAPAS_DEVOLUCAO.length ? [] : ETAPAS_DEVOLUCAO.map((e) => e.key)); }
+  async function devolver() {
+    const docId = devDoc || sel?.documentoId;
+    const nota = (documentos || []).find((d) => d.id === docId);
+    if (!sel || !docId || devEtapas.length === 0 || !devTexto.trim()) { setErro("Escolha a nota, ao menos uma etapa e escreva a orientação."); return; }
+    if (!window.confirm("Devolver a NF " + (nota?.numero || docId) + " para " + (sel.alunoNome || sel.matricula) + "? Etapas: " + devEtapas.join(", ") + ". Lançamentos aprovados voltam para correção e classificações devolvidas vão para a lixeira de segurança. Você já baixou o backup da turma?")) return;
+    setEnviando(true); setErro(""); setDevOk("");
+    try {
+      const feitos = await devolverNota({ turmaId, matricula: sel.matricula, alunoNome: sel.alunoNome, docId, docNumero: nota?.numero, etapas: devEtapas, orientacao: devTexto.trim(), chamado: sel });
+      setDevOk("Nota devolvida. " + (feitos.length ? feitos.join("; ") + "." : "O aluno foi avisado pelo Suporte."));
+      setDevAberto(false); setDevEtapas([]); setDevTexto(MODELO_ORIENTACAO);
+    } catch (e) { setErro("Não foi possível devolver: " + e.message + ". Confira se as regras novas do Firestore foram publicadas."); }
+    setEnviando(false);
+  }
+  async function iniciar() {
+    if (!nMat || !nTexto.trim()) { setErro("Escolha o aluno e escreva a mensagem."); return; }
+    setEnviando(true); setErro("");
+    try {
+      const a = (alunos || []).find((x) => x.matricula === nMat);
+      await criarChamadoNumerado(turmaId, {
+        matricula: nMat, alunoNome: a?.nome || "", assunto: nAssunto.trim() || "Mensagem do professor",
+        documentoId: null, documentoNumero: null, status: "respondido", iniciadoPor: "professor",
+        mensagens: [{ autor: "professor", texto: nTexto.trim(), em: new Date().toISOString() }],
+        naoLidoProfessor: false, naoLidoAluno: true,
+        criadoEm: serverTimestamp(), atualizadoEm: serverTimestamp(),
+      });
+      setNovo(false); setNMat(""); setNAssunto(""); setNTexto(""); setAba("alu");
+    } catch (e) { setErro("Não foi possível enviar: " + e.message); }
+    setEnviando(false);
+  }
+
+  return (
+    <>
+      <div className="screen-eyebrow">gestão da turma</div>
+      <h2 className="screen-title" id="suporte-topo">Suporte — chamados da turma</h2>
+      <p className="screen-sub">Turma {turma.nome}. O aluno vê a sua resposta no menu "Suporte" dele, com um número vermelho quando há resposta nova.</p>
+      {erroLeitura && <div className="balance-check bad">O Suporte ainda não funciona: cole as regras novas do Firestore no Console (veja as instruções da atualização).</div>}
+
+      <div className="btn-row" style={{ marginBottom: 8, flexWrap: "wrap" }}>
+        <button className={"btn" + (aba === "pro" ? "" : " secondary")} onClick={() => setAba("pro")}>Aguardando você ({nVez("pro")})</button>
+        <button className={"btn" + (aba === "alu" ? "" : " secondary")} onClick={() => setAba("alu")}>Aguardando o aluno ({nVez("alu")})</button>
+        <button className={"btn" + (aba === "res" ? "" : " secondary")} onClick={() => setAba("res")}>Resolvidos ({nVez("res")})</button>
+        <button className="btn secondary" onClick={() => { setNovo(!novo); setErro(""); }}>+ Mensagem ao aluno</button>
+        <button className="btn secondary" onClick={() => { setDirAberto(!dirAberto); setErro(""); setDevOk(""); }}>↩ Devolver nota a um aluno</button>
+      </div>
+      <div className="btn-row" style={{ marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <select value={filtroAluno} onChange={(e) => setFiltroAluno(e.target.value)}>
+          <option value="">Todos os alunos</option>
+          {(alunos || []).map((a) => <option key={a.matricula} value={a.matricula}>{a.nome || a.matricula}</option>)}
+        </select>
+        <button className="btn secondary" disabled={porAluno.length === 0} onClick={exportarTodos}>⬇ Exportar {filtroAluno ? "chamados do aluno" : "todos os chamados"} (.txt)</button>
+        {semNumero > 0 && <button className="btn secondary" disabled={enviando} onClick={numerarAntigos}>Numerar chamados antigos ({semNumero})</button>}
+      </div>
+      {aviso && (
+        <div className="balance-check ok">
+          {aviso}
+          {!sel && aba === "pro" && lista.length > 0 && (
+            <button className="btn" style={{ marginLeft: 12 }} onClick={() => abrirChamado(lista[0])}>Próximo chamado ›</button>
+          )}
+        </div>
+      )}
+      {!sel && devOk && <div className="balance-check ok">{devOk}</div>}
+      {!sel && erro && !novo && <div className="balance-check bad">{erro}</div>}
+
+      {dirAberto && (
+        <div className="panel" style={{ borderColor: "var(--amber)", borderWidth: 2 }}>
+          <div className="panel-head"><h3>Devolver nota a um aluno (sem precisar de chamado)</h3></div>
+          <div className="panel-body">
+            <div className="field"><label>Aluno</label>
+              <select value={dirAluno} onChange={(e) => setDirAluno(e.target.value)}>
+                <option value="">— escolha —</option>
+                {(alunos || []).map((a) => <option key={a.matricula} value={a.matricula}>{a.nome || a.matricula}</option>)}
+              </select></div>
+            <div className="field"><label>Nota fiscal</label>
+              <select value={dirDoc} onChange={(e) => setDirDoc(e.target.value)}>
+                <option value="">— escolha —</option>
+                {(documentos || []).map((d) => <option key={d.id} value={d.id}>Nº {d.numero} — {d.direcao === "entrada" ? "entrada" : "saída"}</option>)}
+              </select></div>
+            <div className="field"><label>Etapas a devolver (na ordem do aluno)</label>
+              <label style={{ display: "block", margin: "4px 0" }}><input type="checkbox" checked={dirEtapas.length === ETAPAS_DEVOLUCAO.length} onChange={marcarTodasDireta} /> <b>Todas, do início ao fim</b></label>
+              {ETAPAS_DEVOLUCAO.map((e) => <label key={e.key} style={{ display: "block", margin: "4px 0" }}><input type="checkbox" checked={dirEtapas.includes(e.key)} onChange={() => alternarEtapaDireta(e.key)} /> {e.rotulo}</label>)}</div>
+            <div className="field"><label>Orientação ao aluno</label><textarea rows={3} style={{ width: "100%" }} value={dirTexto} onChange={(e) => setDirTexto(e.target.value)} /></div>
+            <div className="aviso-pedagogico">⚠ Análise reabre como rascunho · Classificação vai para a lixeira de segurança (restaurável) · Lançamento volta como "correção necessária". Digitação o aluno já pode reeditar. O sistema registra tudo num chamado numerado e avisa o aluno no menu Suporte dele.</div>
+            <div className="btn-row"><button className="btn red" disabled={enviando} onClick={devolverDireto}>{enviando ? "Devolvendo…" : "Devolver ao aluno"}</button><button className="btn secondary" onClick={() => setDirAberto(false)}>Cancelar</button></div>
+          </div>
+        </div>
+      )}
+
+      {novo && (
+        <div className="panel"><div className="panel-head"><h3>Nova mensagem ao aluno</h3></div><div className="panel-body">
+          <div className="field"><label>Aluno</label>
+            <select value={nMat} onChange={(e) => setNMat(e.target.value)}>
+              <option value="">— escolha —</option>
+              {(alunos || []).map((a) => <option key={a.matricula} value={a.matricula}>{a.nome || a.matricula}</option>)}
+            </select></div>
+          <div className="field"><label>Assunto</label><input value={nAssunto} onChange={(e) => setNAssunto(e.target.value)} placeholder="Mensagem do professor" /></div>
+          <div className="field"><label>Mensagem</label><textarea rows={3} style={{ width: "100%" }} value={nTexto} onChange={(e) => setNTexto(e.target.value)} /></div>
+          {erro && <div className="balance-check bad">{erro}</div>}
+          <div className="btn-row"><button className="btn" disabled={enviando} onClick={iniciar}>Enviar</button><button className="btn secondary" onClick={() => setNovo(false)}>Cancelar</button></div>
+        </div></div>
+      )}
+
+      <div className="panel"><div className="panel-body" style={{ padding: 0 }}>
+        {chamados === null ? <div className="empty-state">Carregando…</div> : lista.length === 0 ? <div className="empty-state">Nenhum chamado nesta aba.</div> : (
+          <table>
+            <thead><tr><th>Nº</th><th>Aluno</th><th>Assunto</th><th>Nota</th><th>Atualizado</th><th>Situação</th></tr></thead>
+            <tbody>
+              {lista.map((c) => {
+                const s = rotuloSituacao(c, "professor");
+                return (
+                  <tr key={c.id} style={{ cursor: "pointer", background: c.id === selId ? "#efe9d8" : undefined }} onClick={() => abrirChamado(c)}>
+                    <td className="mono">{fmtNumero(c.numero)}</td>
+                    <td>{c.naoLidoProfessor ? <b>{c.alunoNome || c.matricula}</b> : (c.alunoNome || c.matricula)}</td>
+                    <td>{c.tipo === "pendenciaProfessor" && <span style={{ border: "1px solid #1F5C4A", color: "#1F5C4A", fontSize: 11, fontWeight: 700, padding: "1px 6px", marginRight: 6, whiteSpace: "nowrap" }}>PENDÊNCIA DO PROFESSOR</span>}{c.assunto}</td>
+                    <td className="mono">{c.documentoNumero || "—"}</td>
+                    <td>{formatarDataHora(c.atualizadoEm)}</td>
+                    <td><span className={"status " + s.cls}>{vezDe(c) === "pro" ? "sua vez" : vezDe(c) === "alu" ? "vez do aluno" : s.txt}</span></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div></div>
+
+      {sel && (<div id="chamado-aberto" />)}
+      {sel && (
+        <div className="panel">
+          <div className="panel-head"><h3>{sel.numero ? "Nº " + fmtNumero(sel.numero) + " · " : ""}{sel.alunoNome || sel.matricula || sel.alunoMatricula} — {sel.assunto}{sel.documentoNumero ? " · NF " + sel.documentoNumero : ""}</h3></div>
+          <div className="panel-body">
+            {(sel.mensagens || []).map((m, i) => <Bolha key={i} m={m} />)}
+            {!ehPend && <div className="field"><textarea rows={2} style={{ width: "100%" }} placeholder="Responder ao aluno…" value={texto} onChange={(e) => setTexto(e.target.value)} /></div>}
+            {ehPend && <div className="helper-note">Pendência só sua: o aluno não vê este chamado. Quando resolver, marque como resolvido.</div>}
+            {!ehPend && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+              {RESPOSTAS_RAPIDAS.map((r, i) => <button key={i} className="btn secondary" style={{ fontSize: 12 }} onClick={() => setTexto(r)}>{r.length > 38 ? r.slice(0, 38) + "…" : r}</button>)}
+            </div>}
+            {erro && <div className="balance-check bad">{erro}</div>}
+            {devOk && <div className="balance-check ok">{devOk}</div>}
+            {devAberto && (
+              <div className="panel" style={{ borderColor: "var(--amber)", borderWidth: 2 }}>
+                <div className="panel-head"><h3>Devolver nota ao aluno</h3></div>
+                <div className="panel-body">
+                  <div className="field"><label>Nota fiscal</label>
+                    <select value={devDoc || sel.documentoId || ""} onChange={(e) => setDevDoc(e.target.value)}>
+                      <option value="">— escolha —</option>
+                      {(documentos || []).map((d) => <option key={d.id} value={d.id}>Nº {d.numero} — {d.direcao === "entrada" ? "entrada" : "saída"}</option>)}
+                    </select></div>
+                  <div className="field"><label>Etapas a devolver (na ordem do aluno)</label>
+                    <label style={{ display: "block", margin: "4px 0" }}><input type="checkbox" checked={devEtapas.length === ETAPAS_DEVOLUCAO.length} onChange={marcarTodas} /> <b>Todas, do início ao fim</b></label>
+                    {ETAPAS_DEVOLUCAO.map((e) => <label key={e.key} style={{ display: "block", margin: "4px 0" }}><input type="checkbox" checked={devEtapas.includes(e.key)} onChange={() => alternarEtapa(e.key)} /> {e.rotulo}</label>)}</div>
+                  <div className="field"><label>Orientação ao aluno</label><textarea rows={3} style={{ width: "100%" }} value={devTexto} onChange={(e) => setDevTexto(e.target.value)} /></div>
+                  <div className="aviso-pedagogico">⚠ Análise reabre como rascunho · Classificação vai para a lixeira de segurança (restaurável) · Lançamento volta como "correção necessária". Digitação o aluno já pode reeditar.</div>
+                  <div className="btn-row"><button className="btn red" disabled={enviando} onClick={devolver}>{enviando ? "Devolvendo…" : "Devolver ao aluno"}</button><button className="btn secondary" onClick={() => setDevAberto(false)}>Cancelar</button></div>
+                </div>
+              </div>
+            )}
+            <div className="btn-row">
+              {!ehPend && <button className="btn" disabled={enviando || !texto.trim()} onClick={responder}>{enviando ? "Enviando…" : "Responder"}</button>}
+              {!ehPend && <button className="btn secondary" onClick={() => { setDevAberto(!devAberto); setDevOk(""); }}>↩ Devolver nota ao aluno</button>}
+              <button className="btn secondary" onClick={imprimirSel}>🖨 Imprimir / salvar PDF</button>
+              <button className="btn secondary" onClick={baixarSel}>⬇ Baixar texto (.txt)</button>
+              <button className="btn secondary" onClick={copiarSel}>📋 Copiar</button>
+              {sel.status !== "resolvido"
+                ? <button className="btn secondary" onClick={() => mudarStatus("resolvido")}>Marcar como resolvido</button>
+                : <button className="btn secondary" onClick={() => mudarStatus("aberto")}>Reabrir</button>}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

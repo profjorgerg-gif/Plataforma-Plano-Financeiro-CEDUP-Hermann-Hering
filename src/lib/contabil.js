@@ -1,0 +1,233 @@
+// Motor de processamento contábil — Diário aprovado → Razão → Balancete → DRE → Balanço Patrimonial
+// Portado do protótipo (mesmas funções, testadas contra os dados reais da Unidade II).
+// Funções puras: recebem lançamentos/contas, não tocam no Firestore.
+
+function contaInfo(codigo, contas){ return contas.find(c => c.codigo === codigo); }
+
+function lancamentosAprovados(lancamentos){
+  return lancamentos.filter(l => l.status === "aprovado");
+}
+
+function calcularRazao(lancamentos, contas){
+  const aprovados = lancamentosAprovados(lancamentos);
+  const porConta = {};
+  contas.forEach(c => porConta[c.codigo] = { conta:c, movimentos:[], totalD:0, totalC:0 });
+  aprovados.forEach(l => {
+    l.partidas.forEach(p => {
+      const bucket = porConta[p.conta];
+      if(!bucket) return;
+      // Correção: o valor vem como texto do campo de digitação; converte para número antes de somar
+      // (sem isso, 1345 + 200 virava "1345200"). Só afeta o cálculo/exibição, não altera o que está gravado.
+      const v = Number(p.valor) || 0;
+      bucket.movimentos.push({ data:l.data, historico:l.historico, documento:l.documento, tipo:p.tipo, valor:v, lancamentoId:l.id });
+      if(p.tipo === "D") bucket.totalD += v; else bucket.totalC += v;
+    });
+  });
+  return porConta;
+}
+
+function saldoConta(bucket){
+  const c = bucket.conta;
+  const saldo = c.natureza === "devedora" ? (bucket.totalD - bucket.totalC) : (bucket.totalC - bucket.totalD);
+  return saldo;
+}
+
+function calcularBalancete(razao){
+  return Object.values(razao).filter(b => b.movimentos.length > 0);
+}
+
+function calcularDRE(razao){
+  const linhas = Object.values(razao).filter(b => b.conta.destino === "DRE" && b.movimentos.length > 0);
+  const receitaBruta = linhas.filter(l => l.conta.grupo===4 && l.conta.subgrupo==="Receita Bruta de Vendas").reduce((s,l)=>s+saldoConta(l),0);
+  const deducoes = linhas.filter(l => l.conta.grupo===4 && l.conta.redutora).reduce((s,l)=>s+saldoConta(l),0);
+  const cmv = linhas.filter(l => l.conta.codigo.startsWith("6.2")).reduce((s,l)=>s+saldoConta(l),0);
+  const despesasOp = linhas.filter(l => l.conta.grupo===5 && l.conta.subgrupo!=="Despesas Financeiras").reduce((s,l)=>s+saldoConta(l),0);
+  const receitasFin = linhas.filter(l => l.conta.grupo===4 && l.conta.subgrupo==="Receitas Financeiras").reduce((s,l)=>s+saldoConta(l),0);
+  const despesasFin = linhas.filter(l => l.conta.grupo===5 && l.conta.subgrupo==="Despesas Financeiras").reduce((s,l)=>s+saldoConta(l),0);
+  // Correção (12/10/2026): antes a DRE ignorava as contas 4.4 (Outras Receitas Operacionais) e 6.1 (Custos de Produção).
+  // Quem lançasse nelas via o resultado errado e o Balanço não fechava. Quando essas contas não têm movimento, o resultado é idêntico ao de antes.
+  const outrasReceitas = linhas.filter(l => l.conta.grupo===4 && l.conta.subgrupo==="Outras Receitas Operacionais").reduce((s,l)=>s+saldoConta(l),0);
+  const custosProducao = linhas.filter(l => l.conta.codigo.startsWith("6.1")).reduce((s,l)=>s+saldoConta(l),0);
+  const receitaLiquida = receitaBruta - deducoes;
+  const resultadoBruto = receitaLiquida - cmv - custosProducao;
+  const resultadoFinanceiro = receitasFin - despesasFin;
+  const resultadoExercicio = resultadoBruto - despesasOp + outrasReceitas + resultadoFinanceiro;
+  return { linhas, receitaBruta, deducoes, cmv, custosProducao, despesasOp, outrasReceitas, receitasFin, despesasFin, receitaLiquida, resultadoBruto, resultadoFinanceiro, resultadoExercicio };
+}
+
+function valorBP(b){
+  // Valor com sinal para o Balanço: conta redutora (depreciação acumulada, PCLD,
+  // capital a integralizar, prejuízos acumulados etc.) SUBTRAI do total do grupo.
+  const s = saldoConta(b);
+  return b.conta.redutora ? -s : s;
+}
+
+function calcularBP(razao, resultadoExercicio){
+  const ativos = Object.values(razao).filter(b => b.conta.grupo===1 && b.movimentos.length > 0);
+  const passivos = Object.values(razao).filter(b => b.conta.grupo===2 && b.movimentos.length > 0);
+  const pl = Object.values(razao).filter(b => b.conta.grupo===3 && b.movimentos.length > 0);
+  // Correção: antes as contas redutoras eram SOMADAS ao total (ex.: depreciação acumulada
+  // aumentava o Ativo e o balanço "não fechava"). Agora são subtraídas.
+  const totalAtivo = ativos.reduce((s,l)=>s+valorBP(l),0);
+  const totalPassivo = passivos.reduce((s,l)=>s+valorBP(l),0);
+  const totalPLContas = pl.reduce((s,l)=>s+valorBP(l),0);
+  const totalPL = totalPLContas + resultadoExercicio;
+  return { ativos, passivos, pl, totalAtivo, totalPassivo, totalPL, totalPLContas, resultadoExercicio, fecha: Math.abs(totalAtivo - (totalPassivo + totalPL)) < 0.005 };
+}
+
+function fmt(v){
+  const n = Number(v)||0;
+  return n.toLocaleString("pt-BR", { minimumFractionDigits:2, maximumFractionDigits:2 });
+}
+
+function prazoEfetivo(aluno, turma){
+  return aluno.prazoIndividual || turma.prazoUnidadeII || "";
+}
+function diasAtraso(dataEntrega, prazo){
+  if(!prazo) return 0;
+  const fim = dataEntrega || new Date().toISOString().slice(0,10);
+  const d1 = new Date(prazo+"T00:00:00"), d2 = new Date(fim+"T00:00:00");
+  const dias = Math.round((d2-d1)/86400000);
+  return Math.max(0, dias);
+}
+function fmtData(iso){
+  if(!iso) return "—";
+  const [a,m,d] = iso.split("-");
+  return d+"/"+m+"/"+a;
+}
+function descontoSugerido(dias, turma){
+  if(dias <= 0) return 0;
+  return (turma.penalidadeAtrasoFixa||0) + (dias-1) * (turma.descontoPorDiaAtraso||0);
+}
+function descontoEfetivo(aluno, turma){
+  const dias = diasAtraso(aluno.dataEntrega, prazoEfetivo(aluno, turma));
+  return aluno.descontoManual ? (aluno.desconto||0) : descontoSugerido(dias, turma);
+}
+function estatisticasAluno(matricula, dadosAlunos){
+  const lancamentos = dadosAlunos[matricula]?.lancamentos || [];
+  return {
+    pendentes: lancamentos.filter(l=>l.status==="enviado").length,
+    aprovados: lancamentos.filter(l=>l.status==="aprovado").length,
+  };
+}
+
+// --------------------------------------------------------------------------
+// Rubrica de avaliação da Unidade II — três componentes, cada um em 0-10:
+//   1. Completude do ciclo (peso 45%) — automático, calculado a partir do
+//      checklist por documento (Digitação → Análise fiscal → Classificação
+//      → Livro diário aprovado), o mesmo dado que já alimenta o checklist
+//      visual em "Meu progresso".
+//   2. Qualidade técnica (peso 35%) — manual, é o julgamento do professor
+//      sobre a coerência do raciocínio contábil; continua sendo o campo
+//      "nota" já existente, só que agora representa só esta fatia, não a
+//      nota inteira.
+//   3. Autonomia (peso 20%) — automático, quanto menos rodadas de correção
+//      em média um lançamento precisou até ser aprovado, maior a autonomia.
+//      Sem lançamentos ainda, não penaliza (fica neutro em 10).
+// O desconto por atraso continua sendo aplicado por fora, no final, como já
+// era feito — juntar "pontualidade" dentro da rubrica ponderada duplicaria
+// a penalidade que o desconto automático já aplica.
+const PESOS_RUBRICA = { completude: 0.45, qualidade: 0.35, autonomia: 0.20 };
+
+function completudeCiclo(documentos, digitacoes, analises, classificacoes, lancamentos){
+  if(!documentos || documentos.length === 0) return null;
+  let completos = 0;
+  documentos.forEach((d) => {
+    const digitado = !!(digitacoes && digitacoes[d.id]);
+    const analisado = analises && analises[d.id]?.status === "enviado";
+    const classificado = (classificacoes||[]).some((c) => c.documento === d.id);
+    const lancado = (lancamentos||[]).some((l) => l.documento === d.id && l.status === "aprovado");
+    if(digitado && analisado && classificado && lancado) completos++;
+  });
+  return Math.round((completos / documentos.length) * 100); // 0-100
+}
+
+function autonomiaCorrecoes(lancamentos){
+  const lista = lancamentos || [];
+  if(lista.length === 0) return null; // ainda não deu para avaliar
+  const totalRodadas = lista.reduce((s,l) => s + (l.historicoCorrecoes?.length || 0), 0);
+  const mediaPorLancamento = totalRodadas / lista.length;
+  // cada rodada de correção, em média, reduz 25 pontos (de 100) — errar e
+  // corrigir faz parte do aprendizado, por isso o peso final desse
+  // componente é só 20%, não uma punição pesada.
+  return Math.max(0, Math.round(100 - mediaPorLancamento * 25)); // 0-100
+}
+
+// Qualidade técnica automática (2026-10-08) — substitui o texto livre que o
+// professor escrevia manualmente. São 3 checagens objetivas, só sobre dados
+// de lançamento (nenhuma leitura de texto do aluno):
+//  1. Natureza da conta: a partida foi lançada no lado (D/C) condizente com
+//     a natureza cadastrada da conta no Plano de Contas.
+//  2. Regime de competência: a data do lançamento está no mesmo mês/ano da
+//     emissão do documento de origem.
+//  3. Reação ao aviso fiscal: quando a Análise Fiscal de um documento marcou
+//     CFOP/NCM/CST como incorreto, a Classificação daquele documento
+//     preencheu o campo "tratamento tributário" (só confere se foi
+//     preenchido, não o que foi escrito).
+// Cada checagem só conta nos casos em que dá para avaliar (ex.: conta sem
+// natureza cadastrada, ou nenhum documento com aviso fiscal) — por isso cada
+// uma pode retornar null quando não há base para medir. A nota sugerida é a
+// média simples das checagens que puderam ser calculadas, numa escala 0-10.
+function naturezaDaPartidaCorreta(conta, tipo){
+  if(!conta || !conta.natureza) return null;
+  const ladoEsperado = conta.natureza === "devedora" ? "D" : "C";
+  return tipo === ladoEsperado;
+}
+
+function competenciaDoLancamentoCorreta(dataLancamento, documento){
+  if(!dataLancamento || !documento?.data) return null;
+  return dataLancamento.slice(0, 7) === documento.data.slice(0, 7);
+}
+
+function qualidadeTecnicaAutomatica({ documentos, lancamentos, analises, classificacoes, contas }){
+  const aprovados = (lancamentos || []).filter((l) => l.status === "aprovado");
+  if(!documentos || !contas || aprovados.length === 0) return null;
+
+  let totalPartidas = 0, partidasCorretas = 0;
+  let totalComp = 0, compCorretas = 0;
+  aprovados.forEach((l) => {
+    (l.partidas || []).forEach((p) => {
+      const conta = contas.find((c) => c.codigo === p.conta);
+      const r = naturezaDaPartidaCorreta(conta, p.tipo);
+      if(r !== null){ totalPartidas++; if(r) partidasCorretas++; }
+    });
+    const doc = documentos.find((d) => d.id === l.documento);
+    const rc = competenciaDoLancamentoCorreta(l.data, doc);
+    if(rc !== null){ totalComp++; if(rc) compCorretas++; }
+  });
+
+  const documentosComAvisoFiscal = documentos.filter((d) => {
+    const an = analises && analises[d.id];
+    return an && (an.cfopCorreto === "nao" || an.ncmCorreto === "nao" || an.cstCorreto === "nao");
+  });
+  const reagiu = documentosComAvisoFiscal.filter((d) =>
+    (classificacoes || []).some((c) => c.documento === d.id && c.tratamento && c.tratamento.trim())
+  ).length;
+
+  const natureza = totalPartidas > 0 ? { corretas: partidasCorretas, total: totalPartidas, pct: Math.round((partidasCorretas / totalPartidas) * 100) } : null;
+  const competencia = totalComp > 0 ? { corretas: compCorretas, total: totalComp, pct: Math.round((compCorretas / totalComp) * 100) } : null;
+  const fiscal = documentosComAvisoFiscal.length > 0 ? { corretas: reagiu, total: documentosComAvisoFiscal.length, pct: Math.round((reagiu / documentosComAvisoFiscal.length) * 100) } : null;
+
+  const partes = [natureza, competencia, fiscal].filter(Boolean).map((p) => p.pct);
+  const notaSugerida = partes.length > 0 ? Math.round((partes.reduce((s, p) => s + p, 0) / partes.length) / 10 * 10) / 10 : null;
+
+  return { natureza, competencia, fiscal, notaSugerida };
+}
+
+function notaFinalPonderada({ completudePct, qualidadeNota, autonomiaPct, desconto }){
+  if(qualidadeNota === null || qualidadeNota === undefined || qualidadeNota === "") return null;
+  const completude10 = completudePct === null || completudePct === undefined ? 0 : completudePct / 10;
+  const autonomia10 = autonomiaPct === null || autonomiaPct === undefined ? 10 : autonomiaPct / 10;
+  const bruta = completude10 * PESOS_RUBRICA.completude
+    + Number(qualidadeNota) * PESOS_RUBRICA.qualidade
+    + autonomia10 * PESOS_RUBRICA.autonomia;
+  return Math.max(0, bruta - (Number(desconto) || 0));
+}
+
+export {
+  contaInfo, lancamentosAprovados, calcularRazao, saldoConta, calcularBalancete,
+  calcularDRE, calcularBP, valorBP, fmt, prazoEfetivo, diasAtraso, fmtData,
+  descontoSugerido, descontoEfetivo, estatisticasAluno,
+  PESOS_RUBRICA, completudeCiclo, autonomiaCorrecoes, notaFinalPonderada,
+  qualidadeTecnicaAutomatica,
+};

@@ -7,11 +7,14 @@ import { useLancamentosDaTurma } from "../../hooks/useLancamentosDaTurma.js";
 import { useProgressoAluno } from "../../hooks/useProgressoAluno.js";
 import { useMeuRegistroDeAluno } from "../../hooks/useMeuRegistroDeAluno.js";
 import { useTurma } from "../../hooks/useTurma.js";
+import { useAgbTurma, useTrabalhoAgb } from "../../hooks/useAgb.js";
+import { useCaTurma, useTrabalhoCa } from "../../hooks/useCa.js";
 import {
-  fmt, completudeCiclo, autonomiaCorrecoes, notaFinalPonderada,
+  fmt, completudeCiclo, autonomiaCorrecoes, notaFinalPonderada, qualidadeTecnicaAutomatica,
   prazoEfetivo, diasAtraso, fmtData, descontoEfetivo, PESOS_RUBRICA,
 } from "../../lib/contabil.js";
 import { backupDoAluno, backupDaTurma } from "../../lib/backup.js";
+import { CriteriosAvaliacao } from "../shared/UI.jsx";
 
 import EmpresaDidatica from "../aluno/EmpresaDidatica.jsx";
 import DocumentosFiscais from "../aluno/DocumentosFiscais.jsx";
@@ -26,7 +29,18 @@ import DRE from "../aluno/DRE.jsx";
 import BalancoPatrimonial from "../aluno/BalancoPatrimonial.jsx";
 
 import Painel from "../professor/Painel.jsx";
+import Notas from "../professor/Notas.jsx";
 import DashboardCiclo from "../professor/DashboardCiclo.jsx";
+import RelatorioOrientacao from "../professor/RelatorioOrientacao.jsx";
+import ModelosMensagens from "../professor/ModelosMensagens.jsx";
+import SuporteAluno from "../aluno/SuporteAluno.jsx";
+import SuporteProfessor from "../professor/SuporteProfessor.jsx";
+import RefazerNota from "../professor/RefazerNota.jsx";
+import RegistroProcesso from "../professor/RegistroProcesso.jsx";
+import GuiaProfessor from "../professor/GuiaProfessor.jsx";
+import FluxoEtapa from "../shared/FluxoEtapa.jsx";
+import FluxoEtapaPI from "../shared/FluxoEtapaPI.jsx";
+import { useChamados } from "../../hooks/useChamados.js";
 import Turmas from "../professor/Turmas.jsx";
 import FilaCorrecao from "../professor/FilaCorrecao.jsx";
 import HistoricoAluno from "../professor/HistoricoAluno.jsx";
@@ -36,8 +50,52 @@ import ModoTeste from "../professor/ModoTeste.jsx";
 import ManualAluno from "../manuais/ManualAluno.jsx";
 import ManualProfessor from "../manuais/ManualProfessor.jsx";
 import ManualOperacao from "../manuais/ManualOperacao.jsx";
+import FluxogramaProcesso from "../manuais/FluxogramaProcesso.jsx";
 import RoteiroAluno from "../manuais/RoteiroAluno.jsx";
 import ConsultaFiscal from "../shared/ConsultaFiscal.jsx";
+import AnaliseVH from "../aluno/AnaliseVH.jsx";
+import Indicadores from "../aluno/Indicadores.jsx";
+import CapitalGiro from "../aluno/CapitalGiro.jsx";
+import AgbExercicios, { exerciciosVisiveis } from "../aluno/AgbExercicios.jsx";
+import AgbComparativo from "../aluno/AgbComparativo.jsx";
+import EtapasAluno from "../aluno/EtapasAluno.jsx";
+import NotasEtapas from "../aluno/NotasEtapas.jsx";
+import FolhaAtividade from "../aluno/FolhaAtividade.jsx";
+import RoteiroProfessor from "../professor/RoteiroProfessor.jsx";
+import { CronogramaAluno, CronogramaProfessor } from "../shared/Cronograma.jsx";
+import CadernoAluno from "../professor/CadernoAluno.jsx";
+import DiretrizSemana from "../professor/DiretrizSemana.jsx";
+import PlanosSemestrais from "../professor/PlanosSemestrais.jsx";
+import LotesFluxo from "../professor/LotesFluxo.jsx";
+import FluxoTelas from "../aluno/FluxoTelas.jsx";
+import EnviosPorLote from "../professor/EnviosPorLote.jsx";
+import { useFluxoAluno } from "../../hooks/useFluxoAluno.js";
+import { estadoFluxo } from "../../lib/fluxoLotes.js";
+import TelaComAbas from "../professor/TelaComAbas.jsx";
+import InicioAluno, { FaixaEtapa, EtapaBloqueada } from "../shared/InicioAluno.jsx";
+import InicioProfessor from "../professor/InicioProfessor.jsx";
+import RoteiroTestes, { FaixaTeste } from "../professor/RoteiroTestes.jsx";
+import { useProgressoTestes } from "../../hooks/useProgressoTestes.js";
+import { passoDoTeste } from "../../lib/roteiroTestes.js";
+import { gruposMenuAlunoPodc, gruposMenuProfessorPodc, montarEtapasAluno, etapaDaTela, ABRIR_EM, TELAS_COM_ABAS } from "../../lib/menuPodc.js";
+import AvaliacaoProfessor from "../professor/AvaliacaoProfessor.jsx";
+import { useRoteiroTurma, useRoteiroAluno, useAvaliacoesAluno } from "../../hooks/useRoteiro.js";
+import ParecerFinal from "../aluno/ParecerFinal.jsx";
+import AgbProfessor from "../professor/AgbProfessor.jsx";
+import FolhaMes from "../aluno/FolhaMes.jsx";
+import ProvisoesEncargos from "../aluno/ProvisoesEncargos.jsx";
+import ContabilizacaoFolha from "../aluno/ContabilizacaoFolha.jsx";
+import EfeitosFolha from "../aluno/EfeitosFolha.jsx";
+import ParecerFolha from "../aluno/ParecerFolha.jsx";
+import CaProfessor from "../professor/CaProfessor.jsx";
+import RescisaoProfessor from "../professor/RescisaoProfessor.jsx";
+import RescCaso from "../aluno/RescCaso.jsx";
+import RescCalculo from "../aluno/RescCalculo.jsx";
+import RescIncidencias from "../aluno/RescIncidencias.jsx";
+import RescContabilizacao from "../aluno/RescContabilizacao.jsx";
+import RescDocumentos from "../aluno/RescDocumentos.jsx";
+import RescConferencia from "../aluno/RescConferencia.jsx";
+import { useRescisaoTurma } from "../../hooks/useRescisao.js";
 
 // Casca do app: sidebar + topbar + área de conteúdo, com o papel vindo de
 // verdade do Firestore (perfil.papel), não mais de um botão de demonstração.
@@ -62,35 +120,194 @@ import ConsultaFiscal from "../shared/ConsultaFiscal.jsx";
 // Professor; admin vê os três (inclui o de Operacionalização, mais
 // técnico). Isso usa perfil.papel de verdade — não muda em modo de teste.
 
-const MENU_ALUNO = [
-  { key: "dashboard", label: "Meu progresso" },
-  { key: "roteiro", label: "Roteiro do Aluno" },
-  { key: "empresa", label: "Empresa didática" },
-  { key: "documentos", label: "Documentos fiscais" },
-  { key: "digitacao", label: "Digitação e análise fiscal" },
-  { key: "consulta", label: "Consulta CFOP/NCM" },
-  { key: "plano", label: "Plano de contas" },
-  { key: "classificacao", label: "Classificação contábil" },
-  { key: "diario", label: "Livro diário" },
-  { key: "razao", label: "Livro razão" },
-  { key: "balancete", label: "Balancete" },
-  { key: "are", label: "ARE" },
-  { key: "dre", label: "DRE" },
-  { key: "bp", label: "Balanço patrimonial" },
+// Menu do aluno reorganizado em grupos (2026-10-07, pedido do professor: os
+// alunos estavam se perdendo da sequência). Antes era uma lista única, com
+// as 10 telas da sequência da empresa didática misturadas com telas de
+// apoio/consulta (Roteiro, Consulta CFOP/NCM, Plano de contas) — agora a
+// sequência fica separada e numerada (1 a 10, na ordem real do exercício),
+// e o que é só apoio/consulta fica num grupo à parte, sem número.
+const MENU_ALUNO_GRUPOS = [
+  {
+    label: null,
+    itens: [
+      { key: "dashboard", label: "Meu progresso" },
+      { key: "minha-nota", label: "Minha nota" },
+    ],
+  },
+  {
+    label: "sequência da empresa didática",
+    numerado: true,
+    itens: [
+      { key: "empresa", label: "Empresa didática" },
+      { key: "documentos", label: "Documentos fiscais" },
+      { key: "digitacao", label: "Digitação e análise fiscal" },
+      { key: "classificacao", label: "Classificação contábil" },
+      { key: "diario", label: "Livro diário" },
+      { key: "razao", label: "Livro razão" },
+      { key: "balancete", label: "Balancete" },
+      { key: "are", label: "ARE" },
+      { key: "dre", label: "DRE" },
+      { key: "bp", label: "Balanço patrimonial" },
+    ],
+  },
+  {
+    label: "apoio e consulta",
+    itens: [
+      { key: "roteiro", label: "Roteiro do Aluno" },
+      { key: "consulta", label: "Consulta CFOP/NCM" },
+      { key: "plano", label: "Plano de contas" },
+      { key: "suporte", label: "Suporte" },
+    ],
+  },
 ];
 
-const MENU_PROFESSOR = [
-  { key: "painel", label: "Painel do professor" },
-  { key: "dashboard-ciclo", label: "Dashboard do ciclo" },
-  { key: "roteiro", label: "Roteiro do Aluno" },
-  { key: "turmas", label: "Turmas" },
-  { key: "fila", label: "Fila de correção" },
-  { key: "historico", label: "Histórico do aluno" },
-  { key: "documentos", label: "Documentos fiscais" },
-  { key: "consulta", label: "Consulta CFOP/NCM" },
-  { key: "plano", label: "Plano de contas" },
-  { key: "modoteste", label: "Modo de teste" },
+// Fase 3 — Análise Gerencial de Balanços (AGB). Grupo NOVO: só aparece para o aluno
+// quando o professor libera (ou na conta de teste). Não altera nenhum item acima.
+// Fase 2 — Contabilidade Avançada (folha de pagamento e provisões). Mesmo esquema: grupo NOVO,
+// só aparece quando o professor libera (ou na conta de teste).
+const MENU_ALUNO_CA = {
+  label: "etapas 2 e 3 · contabilidade avançada (CA)",
+  itens: [
+    { key: "ca-folha", label: "Folha do mês" },
+    { key: "ca-prov", label: "Provisões e encargos" },
+    { key: "ca-cont", label: "Contabilização" },
+    { key: "ca-efeitos", label: "Efeitos nas demonstrações" },
+    { key: "ca-parecer", label: "Parecer técnico" },
+  ],
+};
+
+// Fase 2 — Rescisão trabalhista. Grupo NOVO: aparece só quando o professor libera a rescisão (ou na conta de teste).
+const MENU_ALUNO_RESC = {
+  label: "etapa 4 · rescisão trabalhista",
+  itens: [
+    { key: "resc-caso", label: "Caso e direitos" },
+    { key: "resc-calc", label: "Cálculo das verbas" },
+    { key: "resc-inc", label: "Incidências" },
+    { key: "resc-cont", label: "Contabilização" },
+    { key: "resc-doc", label: "Documentos e prazos" },
+    { key: "resc-final", label: "Conferência final" },
+  ],
+};
+
+// Projeto interdisciplinar: roteiro por etapas e notas. Aparece quando o professor configura o roteiro (ou na conta de teste).
+const MENU_ALUNO_PI = {
+  label: "projeto interdisciplinar",
+  itens: [
+    { key: "etapas", label: "Meu roteiro por etapas" },
+    { key: "notas-etapas", label: "Notas e retornos" },
+  ],
+};
+
+const MENU_ALUNO_AGB = {
+  label: "etapas 5 e 6 · análise gerencial (AGB)",
+  itens: [
+    { key: "agb-av", label: "Análise vertical e horizontal" },
+    { key: "agb-ind", label: "Indicadores" },
+    { key: "agb-giro", label: "Capital de giro" },
+    { key: "agb-parecer", label: "Parecer e relatório final" },
+  ],
+};
+
+// Monta os grupos do menu do aluno já com o badge de pendências (no item
+// "Livro diário") e, quando for o caso, o grupo de manuais ao final — mesmo
+// padrão usado no modo de teste (sem manuais) e no aluno de verdade (com).
+function gruposMenuAluno({ incluirManuais, badgeDiario, badgeSuporte, mostrarAgb, mostrarExAgb, mostrarCa, mostrarResc, mostrarPi, mostrarAtivFolha }) {
+  const grupos = MENU_ALUNO_GRUPOS.map((grupo) => ({
+    ...grupo,
+    itens: grupo.itens.map((item) =>
+      item.key === "diario" && badgeDiario > 0 ? { ...item, badge: badgeDiario }
+        : item.key === "suporte" && badgeSuporte > 0 ? { ...item, badge: badgeSuporte } : item
+    ),
+  }));
+  if (mostrarCa) {
+    const posAgb = grupos.findIndex((g) => g.label === "apoio e consulta");
+    const menuCa = mostrarAtivFolha ? { ...MENU_ALUNO_CA, itens: [{ key: "ca-ativ", label: "Atividade · Elaborar a folha" }].concat(MENU_ALUNO_CA.itens) } : MENU_ALUNO_CA;
+    grupos.splice(posAgb < 0 ? grupos.length : posAgb, 0, menuCa);
+  }
+  if (mostrarResc) {
+    const posResc = grupos.findIndex((g) => g.label === "apoio e consulta");
+    grupos.splice(posResc < 0 ? grupos.length : posResc, 0, MENU_ALUNO_RESC);
+  }
+  if (mostrarAgb) {
+    const posApoio = grupos.findIndex((g) => g.label === "apoio e consulta");
+    const menuAgb = mostrarExAgb
+      ? { ...MENU_ALUNO_AGB, itens: MENU_ALUNO_AGB.itens.concat([{ key: "agb-ex", label: "Exercícios comparativos" }, { key: "agb-comp", label: "Comparativo entre empresas" }]) }
+      : MENU_ALUNO_AGB;
+    grupos.splice(posApoio < 0 ? grupos.length : posApoio, 0, menuAgb);
+  }
+  if (mostrarPi) {
+    const posPi = grupos.findIndex((g) => g.label === "apoio e consulta");
+    grupos.splice(posPi < 0 ? grupos.length : posPi, 0, MENU_ALUNO_PI);
+  }
+  if (incluirManuais) grupos.push({ label: "manuais", itens: manuaisPara("aluno") });
+  return grupos;
+}
+
+// Menu do professor agrupado por função (2026-10-08, mesmo pedido do
+// professor que levou ao reagrupamento do menu do aluno: tudo numa lista só
+// misturava "o que eu olho todo dia" com "ferramenta de apoio que uso de vez
+// em quando"). Sem numeração — ao contrário do aluno, o professor não segue
+// uma sequência fixa de telas.
+const MENU_PROFESSOR_GRUPOS = [
+  { label: null, itens: [{ key: "guia", label: "🧭 Guia do professor" }] },
+  {
+    label: "hoje",
+    itens: [
+      { key: "painel", label: "Painel do professor" },
+      { key: "fila", label: "Fila de correção" },
+      { key: "suporte", label: "Suporte" },
+    ],
+  },
+  {
+    label: "acompanhar",
+    itens: [
+      { key: "dashboard-ciclo", label: "Dashboard do ciclo" },
+      { key: "historico", label: "Histórico do aluno" },
+      { key: "registro", label: "Registro do processo" },
+      { key: "documentos", label: "Documentos fiscais" },
+    ],
+  },
+  {
+    label: "corrigir e orientar",
+    itens: [
+      { key: "relatorio", label: "Relatório de orientação" },
+      { key: "modelos", label: "Modelos de mensagens" },
+      { key: "refazer", label: "Refazer nota do aluno", aviso: "⚠ mexe nos dados" },
+    ],
+  },
+  { label: "etapas do projeto interdisciplinar", itens: [{ key: "ca-prof", label: "Etapa 3 · CA (turma)" }, { key: "resc-prof", label: "Etapa 4 · Rescisão (turma)" }, { key: "agb-prof", label: "Etapas 5–6 · AGB (turma)" }, { key: "roteiro-prof", label: "Roteiro por etapas (turma)" }] },
+  { label: "notas", itens: [{ key: "notas", label: "Notas" }, { key: "aval-prof", label: "Avaliação das etapas (0 a 10)" }] },
+  {
+    id: "preparar",
+    label: "preparar e consultar",
+    recolhivel: true,
+    itens: [
+      { key: "turmas", label: "Turmas" },
+      { key: "roteiro", label: "Roteiro do Aluno" },
+      { key: "consulta", label: "Consulta CFOP/NCM" },
+      { key: "plano", label: "Plano de contas" },
+    ],
+  },
 ];
+
+// Monta os grupos do menu do professor já com o badge de pendências (no
+// item "Fila de correção") e o grupo de manuais ao final — mesmo padrão
+// usado em gruposMenuAluno().
+function gruposMenuProfessor({ papel, badgeFila, badgeSuporte }) {
+  const grupos = MENU_PROFESSOR_GRUPOS.map((grupo) => ({
+    ...grupo,
+    itens: grupo.itens.map((item) =>
+      item.key === "fila" && badgeFila > 0 ? { ...item, badge: badgeFila }
+        : item.key === "suporte" && badgeSuporte > 0 ? { ...item, badge: badgeSuporte } : item
+    ),
+  }));
+  // Modo de teste + manuais ficam juntos num grupo recolhível (2026-10-09).
+  grupos.push({
+    id: "ferramentas", label: "ferramentas e manuais", recolhivel: true,
+    itens: [{ key: "modoteste", label: "Modo de teste" }, ...manuaisPara(papel)],
+  });
+  return grupos;
+}
 
 function manuaisPara(papel) {
   if (papel === "aluno") return [{ key: "manual-aluno", label: "Manual do Aluno" }];
@@ -150,7 +367,7 @@ function ChecklistProgresso({ documentos, progresso, lancamentos }) {
   );
 }
 
-// Mostra a nota da Unidade II decomposta nos três componentes da rubrica,
+// Mostra a nota da Fase 1 decomposta nos três componentes da rubrica,
 // não só um número seco — o aluno vê exatamente o que pesou em cada parte.
 // Só aparece quando o professor já liberou (mesma regra de sempre).
 function MinhaNota({ registro, turma, documentos, progresso, lancamentos }) {
@@ -165,7 +382,7 @@ function MinhaNota({ registro, turma, documentos, progresso, lancamentos }) {
 
   return (
     <div className="panel">
-      <div className="panel-head"><h3>Minha nota — Unidade II</h3></div>
+      <div className="panel-head"><h3>Minha nota — Etapa 1 · Escrituração</h3></div>
       <div className="panel-body">
         <div className="kpi-row">
           <div className="kpi"><div className="kpi-label">Completude do ciclo ({Math.round(PESOS_RUBRICA.completude * 100)}%)</div><div className="kpi-value mono">{completudePct === null ? "—" : completudePct + "%"}</div></div>
@@ -180,29 +397,268 @@ function MinhaNota({ registro, turma, documentos, progresso, lancamentos }) {
   );
 }
 
+// As 10 etapas da sequência (mesma ordem numerada do menu — ver
+// MENU_ALUNO_GRUPOS). Etapas 1–2 (Empresa didática, Documentos fiscais) são
+// só informativas, sem ação do aluno para "concluir" — por isso contam como
+// feitas assim que a turma tem ao menos um documento liberado. Etapas 3–5
+// (Digitação/análise, Classificação, Livro diário) ficam concluídas quando
+// TODOS os documentos liberados passaram por aquela etapa (lançamento só
+// conta aprovado — mesmo critério do completudeCiclo, usado na nota). As
+// etapas 6–10 (Razão → Balanço) são só consulta de relatórios calculados
+// automaticamente: ficam "concluídas" junto com a 5, já que não exigem uma
+// ação separada do aluno.
+const ETAPAS_FLUXO = [
+  { n: 1, label: "Empresa didática", desc: "Cadastro informativo da empresa que você vai escriturar: nome, CNPJ e atividade." },
+  { n: 2, label: "Documentos fiscais", desc: "Confira as notas fiscais que o professor liberou para a sua turma." },
+  { n: 3, label: "Digitação e análise fiscal", desc: "Digite os dados da NF-e e analise se CFOP, NCM e CST estão corretos." },
+  { n: 4, label: "Classificação contábil", desc: "Defina a conta de débito e a conta de crédito de cada fato contábil." },
+  { n: 5, label: "Livro diário", desc: "Lance a classificação no diário e envie para o professor aprovar." },
+  { n: 6, label: "Livro razão", desc: "Confira o razão — atualizado sozinho a partir dos lançamentos já aprovados." },
+  { n: 7, label: "Balancete", desc: "Confira se o balancete fecha: soma dos débitos igual à soma dos créditos." },
+  { n: 8, label: "ARE", desc: "Veja a Apuração do Resultado do Exercício, calculada a partir do razão." },
+  { n: 9, label: "DRE", desc: "Veja a Demonstração do Resultado do Exercício." },
+  { n: 10, label: "Balanço patrimonial", desc: "Veja o balanço final: Ativo = Passivo + Patrimônio Líquido." },
+];
+
+function FluxoEtapas({ documentos, progresso, lancamentos }) {
+  // Se o progresso ainda não carregou (ou um listener falhou), o fluxograma
+  // continua aparecendo, só que com tudo como "a fazer" — antes sumia em silêncio.
+  const digitacoes = progresso?.digitacoes || {};
+  const analises = progresso?.analises || {};
+  const classificacoes = progresso?.classificacoes || [];
+  lancamentos = lancamentos || [];
+  documentos = documentos || [];
+  const total = documentos.length;
+
+  const nDigAnalisado = documentos.filter((d) => digitacoes[d.id] && analises[d.id]?.status === "enviado").length;
+  const nClassificado = documentos.filter((d) => classificacoes.some((c) => c.documento === d.id)).length;
+  const nAprovado = documentos.filter((d) => lancamentos.some((l) => l.documento === d.id && l.status === "aprovado")).length;
+
+  const concluido = {
+    1: true,
+    2: total > 0,
+    3: total > 0 && nDigAnalisado === total,
+    4: total > 0 && nClassificado === total,
+    5: total > 0 && nAprovado === total,
+  };
+  concluido[6] = concluido[7] = concluido[8] = concluido[9] = concluido[10] = concluido[5];
+
+  // primeira etapa ainda não concluída = "você está aqui"
+  let atual = ETAPAS_FLUXO.find((e) => !concluido[e.n])?.n ?? null;
+
+  const fracao = { 3: `${nDigAnalisado}/${total}`, 4: `${nClassificado}/${total}`, 5: `${nAprovado}/${total}` };
+
+  const estilo = (n) => {
+    const feita = concluido[n], ehAtual = n === atual;
+    return {
+      feita, ehAtual,
+      bg: feita ? "var(--green-pale)" : ehAtual ? "var(--amber-pale)" : "var(--paper-deep)",
+      borda: feita ? "var(--green)" : ehAtual ? "var(--amber)" : "var(--line)",
+    };
+  };
+  const cartao = (n) => {
+    const e = ETAPAS_FLUXO[n - 1];
+    const { feita, ehAtual, bg, borda } = estilo(n);
+    return (
+      <div key={n} style={{ background: bg, border: `${ehAtual ? 2 : 1}px solid ${borda}`, borderRadius: 4, padding: "8px 10px", minHeight: 62, boxSizing: "border-box" }}>
+        <div className="mono" style={{ fontSize: 10.5, color: ehAtual ? "var(--amber)" : feita ? "var(--green)" : "var(--ink-faint)" }}>
+          {n} · {feita ? "✓ concluído" : ehAtual ? "você está aqui" : "a fazer"}
+        </div>
+        <div style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.25, color: ehAtual ? "var(--amber)" : feita ? "var(--ink)" : "var(--ink-soft)" }}>{e.label}</div>
+      </div>
+    );
+  };
+  const seta = (txt, key) => (
+    <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-faint)", fontSize: 18 }}>{txt}</div>
+  );
+  const linhaCima = [1, 2, 3, 4, 5];
+  const linhaBaixo = [10, 9, 8, 7, 6]; // volta da direita para a esquerda
+
+  return (
+    <>
+    <div className="panel">
+      <div className="panel-head"><h3>Seu caminho na sequência</h3></div>
+      <div className="panel-body" style={{ overflowX: "auto" }}>
+        <p className="helper-note" style={{ marginTop: 0 }}>Verde = concluído · âmbar = é aqui que você está agora · cinza = ainda não chegou lá.</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(110px, 1fr))", columnGap: 0, rowGap: 0, minWidth: 640 }}>
+          {/* cada célula = cartão + seta à direita (exceto a última coluna) */}
+          {linhaCima.map((n, i) => (
+            <div key={n} style={{ display: "flex", alignItems: "stretch", gap: 4 }}>
+              <div style={{ flex: 1 }}>{cartao(n)}</div>
+              {i < 4 ? seta("→", "a" + n) : <div style={{ width: 0 }} />}
+            </div>
+          ))}
+          {[0, 1, 2, 3].map((i) => <div key={"v" + i} style={{ height: 30 }} />)}
+          <div style={{ height: 30, display: "flex", justifyContent: "center", alignItems: "center", color: "var(--ink-faint)", fontSize: 18, paddingRight: 0 }}>↓</div>
+          {linhaBaixo.map((n, i) => (
+            <div key={n} style={{ display: "flex", alignItems: "stretch", gap: 4 }}>
+              <div style={{ flex: 1 }}>{cartao(n)}</div>
+              {i < 4 ? seta("←", "b" + n) : <div style={{ width: 0 }} />}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+    <div className="panel">
+      <div className="panel-head"><h3>O que fazer em cada etapa</h3></div>
+      <div className="panel-body">
+        <p className="helper-note" style={{ marginTop: 0 }}>Detalhe de cada passo da sequência acima.</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {ETAPAS_FLUXO.map((e) => {
+            const feita = concluido[e.n];
+            const ehAtual = e.n === atual;
+            const cor = feita ? "var(--green)" : ehAtual ? "var(--amber)" : "var(--ink-faint)";
+            const bg = feita ? "var(--green-pale)" : ehAtual ? "var(--amber-pale)" : "var(--paper-deep)";
+            return (
+              <div key={e.n} style={{
+                display: "flex", alignItems: "center", gap: 14, padding: "10px 14px",
+                background: bg, border: `1px solid ${feita ? "var(--green)" : ehAtual ? "var(--amber)" : "var(--line)"}`,
+                borderRadius: 4,
+              }}>
+                <div className="mono" style={{
+                  width: 28, height: 28, flexShrink: 0, borderRadius: "50%", display: "flex", alignItems: "center",
+                  justifyContent: "center", fontSize: 13, color: feita || ehAtual ? "#fff" : cor,
+                  background: feita || ehAtual ? cor : "var(--paper)", border: feita || ehAtual ? "none" : "1px solid var(--line-strong)",
+                }}>
+                  {feita ? "✓" : e.n}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: feita || ehAtual ? 700 : 600, color: ehAtual ? "var(--amber)" : "var(--ink)" }}>
+                    {e.n} · {e.label}{ehAtual ? " — você está aqui" : ""}
+                  </div>
+                  <div style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>{e.desc}</div>
+                </div>
+                {fracao[e.n] && <div className="mono" style={{ fontSize: 12, color: "var(--ink-faint)", flexShrink: 0 }}>{fracao[e.n]}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+    </>
+  );
+}
+
+// Painel do próprio aluno: valor oficial das notas liberadas pela turma
+// (igual para todos — vem do documento) comparado só com o que ESTE aluno
+// já teve aprovado. Diferente do painel do professor, não multiplica por
+// número de alunos: aqui é sempre "1 aluno".
+function MeusValoresPorTipo({ documentos, lancamentos }) {
+  if (!documentos || documentos.length === 0) return null;
+
+  const base = { entrada: 0, saida: 0 };
+  const liberado = { ...base };
+  documentos.forEach((d) => {
+    const dir = d.direcao === "entrada" ? "entrada" : "saida";
+    liberado[dir] += Number(d.valorTotal) || 0;
+  });
+
+  const aprovado = { ...base };
+  documentos.forEach((d) => {
+    const dir = d.direcao === "entrada" ? "entrada" : "saida";
+    const temAprovado = lancamentos.some((l) => l.documento === d.id && l.status === "aprovado");
+    if (temAprovado) aprovado[dir] += Number(d.valorTotal) || 0;
+  });
+
+  const totalLiberado = liberado.entrada + liberado.saida;
+  const totalAprovado = aprovado.entrada + aprovado.saida;
+
+  return (
+    <div className="panel">
+      <div className="panel-head"><h3>Meus valores por tipo (R$)</h3></div>
+      <div className="panel-body" style={{ padding: 0 }}>
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th className="num">Liberado para você</th>
+              <th className="num">Você já aprovou</th>
+              <th className="num">Ainda pendente</th>
+            </tr>
+          </thead>
+          <tbody>
+            {["entrada", "saida"].map((dir) => {
+              const pendente = liberado[dir] - aprovado[dir];
+              return (
+                <tr key={dir}>
+                  <td>{dir === "entrada" ? "Entrada" : "Saída"}</td>
+                  <td className="num mono">R$ {fmt(liberado[dir])}</td>
+                  <td className="num mono" style={{ color: "var(--green)" }}>R$ {fmt(aprovado[dir])}</td>
+                  <td className="num mono" style={{ color: pendente > 0.005 ? "var(--amber)" : "var(--green)", fontWeight: 600 }}>R$ {fmt(pendente)}</td>
+                </tr>
+              );
+            })}
+            <tr style={{ fontWeight: 700 }}>
+              <td>Total</td>
+              <td className="num mono">R$ {fmt(totalLiberado)}</td>
+              <td className="num mono" style={{ color: "var(--green)" }}>R$ {fmt(totalAprovado)}</td>
+              <td className="num mono" style={{ color: (totalLiberado - totalAprovado) > 0.005 ? "var(--amber)" : "var(--green)" }}>R$ {fmt(totalLiberado - totalAprovado)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div className="helper-note" style={{ margin: "0 16px 16px" }}>
+        "Liberado para você" é o valor oficial de todas as notas de entrada/saída que o professor já liberou para a turma (as mesmas que aparecem em "Documentos fiscais"). "Você já aprovou" soma só os seus lançamentos com status aprovado. "Ainda pendente" é a diferença — quanto em R$ falta você lançar e o professor aprovar. Aqui aparecem só os seus números, nenhum valor de colega ou da turma.
+      </div>
+    </div>
+  );
+}
+
 function TelaDashboardAluno({ identificacao, esc, documentos, progresso, registro, turma }) {
   const { lancamentos, dre, bp } = esc;
   const aprovados = lancamentos.filter((l) => l.status === "aprovado").length;
   const pendentes = lancamentos.filter((l) => l.status === "enviado").length;
   const correcao = lancamentos.filter((l) => l.status === "correcao").length;
+  const rascunhos = lancamentos.filter((l) => l.status === "rascunho").length;
 
   return (
     <>
       <div className="screen-eyebrow">01 · visão geral</div>
-      <h2 className="screen-title">Meu progresso — Unidade II</h2>
+      <h2 className="screen-title">Meu progresso — Etapa 1 · Escrituração</h2>
       <p className="screen-sub">{identificacao}. Dados ao vivo do Firestore.</p>
+      {rascunhos > 0 && (
+        <div className="aviso-pedagogico" style={{ marginBottom: 14 }}>
+          ⚠ <b>Você tem {rascunhos} {rascunhos === 1 ? "lançamento salvo como rascunho que ainda não foi enviado" : "lançamentos salvos como rascunho que ainda não foram enviados"}.</b> O professor só vê e corrige o que você <b>envia</b>. Abra o <b>Livro diário</b> e clique em <b>Enviar</b> em cada um.
+        </div>
+      )}
       <div className="kpi-row">
         <div className="kpi ok"><div className="kpi-label">Lançamentos aprovados</div><div className="kpi-value mono">{aprovados}</div></div>
         <div className="kpi warn"><div className="kpi-label">Aguardando correção</div><div className="kpi-value mono">{pendentes}</div></div>
         <div className="kpi bad"><div className="kpi-label">Com correção necessária</div><div className="kpi-value mono">{correcao}</div></div>
         <div className="kpi"><div className="kpi-label">Balanço fecha?</div><div className="kpi-value mono">{lancamentos.length === 0 ? "—" : (bp.fecha ? "sim" : "não")}</div></div>
       </div>
+      {documentos && <MeusValoresPorTipo documentos={documentos} lancamentos={lancamentos} />}
+      <FluxoEtapas documentos={documentos} progresso={progresso} lancamentos={lancamentos} />
       <div className="panel">
         <div className="panel-head"><h3>Resultado do exercício (parcial)</h3></div>
         <div className="panel-body">R$ {fmt(dre.resultadoExercicio)}</div>
       </div>
-      <MinhaNota registro={registro} turma={turma} documentos={documentos} progresso={progresso} lancamentos={lancamentos} />
       {documentos && <ChecklistProgresso documentos={documentos} progresso={progresso} lancamentos={lancamentos} />}
+    </>
+  );
+}
+
+// Tela própria para "Minha nota", com item de menu direto — antes esse
+// painel só existia dentro de "Meu progresso", escondido lá embaixo (pedido
+// do professor em 2026-10-08: acesso rápido pelo menu).
+function TelaMinhaNota({ registro, turma, documentos, progresso, lancamentos, contas }) {
+  const qualidadeAuto = documentos
+    ? qualidadeTecnicaAutomatica({
+        documentos, lancamentos,
+        analises: progresso.analises, classificacoes: progresso.classificacoes,
+        contas: contas || [],
+      })
+    : null;
+  return (
+    <>
+      <div className="screen-eyebrow">avaliação</div>
+      <h2 className="screen-title">Minha nota — Etapa 1 · Escrituração</h2>
+      <p className="screen-sub">Sua avaliação da etapa 1, liberada pelo professor quando estiver pronta.</p>
+      <CriteriosAvaliacao turma={turma} qualidade={qualidadeAuto} mostrarSugestao={false} />
+      <MinhaNota registro={registro} turma={turma} documentos={documentos} progresso={progresso} lancamentos={lancamentos} />
+      {(!registro || !registro.notaLiberada) && (
+        <div className="helper-note">Sua nota ainda não foi liberada pelo professor. Assim que ele liberar, ela aparece aqui automaticamente.</div>
+      )}
     </>
   );
 }
@@ -210,7 +666,33 @@ function TelaDashboardAluno({ identificacao, esc, documentos, progresso, registr
 export default function Shell({ usuario, perfil, onSair }) {
   const ehProfessorOuAdmin = perfil.papel === "professor" || perfil.papel === "admin";
 
-  const [screen, setScreen] = useState(ehProfessorOuAdmin ? "painel" : "dashboard");
+  // Grupos recolhíveis do menu do professor: lembra o que ficou aberto
+  // (só no navegador; não grava nada no Firestore).
+  const [gruposAbertos, setGruposAbertos] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("menuProf_abertos") || "{}") || {}; } catch { return {}; }
+  });
+  function alternarGrupo(id) {
+    setGruposAbertos((a) => {
+      const novo = { ...a, [id]: !a[id] };
+      try { localStorage.setItem("menuProf_abertos", JSON.stringify(novo)); } catch { /* sem armazenamento */ }
+      return novo;
+    });
+  }
+  const [screen, setScreenRaw] = useState("inicio");
+  // Botão "Voltar": guarda as últimas telas visitadas (só no navegador, em memória; não grava nada).
+  // Toda navegação passa por setScreen(), então qualquer botão ou item de menu entra na pilha.
+  const [pilhaTelas, setPilhaTelas] = useState([]);
+  function setScreen(nova) {
+    if (nova === screen) return;
+    setPilhaTelas((p) => [...p, screen].slice(-30));
+    setScreenRaw(nova);
+  }
+  function voltarUmaTela() {
+    const anterior = pilhaTelas[pilhaTelas.length - 1];
+    if (!anterior) { setScreenRaw("inicio"); return; }
+    setPilhaTelas(pilhaTelas.slice(0, -1));
+    setScreenRaw(anterior);
+  }
   const [menuAberto, setMenuAberto] = useState(false);
 
   // Classificação → Livro diário: ao clicar em "usar no lançamento" na tela
@@ -228,11 +710,13 @@ export default function Shell({ usuario, perfil, onSair }) {
 
   function sairDoModoTeste() {
     setTesteAtivo(null);
-    setScreen("painel");
+    setPilhaTelas([]);
+    setScreenRaw("inicio");
   }
   function entrarNoModoTeste(alvo) {
     setTesteAtivo(alvo);
-    setScreen("dashboard");
+    setPilhaTelas([]);
+    setScreenRaw("inicio");
   }
 
   // papelEfetivo/turmaId/matricula: o que as telas de aluno realmente usam,
@@ -244,13 +728,30 @@ export default function Shell({ usuario, perfil, onSair }) {
   const esc = useEscrituracao(turmaId, matricula);
   const documentos = useDocumentosDaTurma(turmaId);
   const progresso = useProgressoAluno(turmaId, matricula);
+  // Fluxo por etapas (2027.1): só vale quando o professor liga na turma. Desligado (padrão) = null e nada muda.
+  const fluxo = useFluxoAluno(papelEfetivo === "aluno" ? turmaId : null, matricula);
+  const estFluxo = papelEfetivo === "aluno" ? estadoFluxo(fluxo.cfg, fluxo.docs) : null;
+  const docsLote = estFluxo && estFluxo.lote && documentos ? documentos.filter((d) => estFluxo.lote.documentos.includes(d.id)) : [];
   const meuRegistro = useMeuRegistroDeAluno(turmaId, matricula);
   const minhaTurma = useTurma(turmaId);
+  // Fase 3 (AGB): liberação/período anterior da turma e o trabalho do aluno (um listener só para as 4 telas)
+  const agbAluno = useAgbTurma(papelEfetivo === "aluno" ? turmaId : null);
+  const caAluno = useCaTurma(papelEfetivo === "aluno" ? turmaId : null);
+  const rescAluno = useRescisaoTurma(papelEfetivo === "aluno" ? turmaId : null);
+  const trabCa = useTrabalhoCa(papelEfetivo === "aluno" ? turmaId : null, papelEfetivo === "aluno" ? matricula : null);
+  const roteiroCfg = useRoteiroTurma(papelEfetivo === "aluno" ? turmaId : null);
+  const rotAluno = useRoteiroAluno(papelEfetivo === "aluno" ? turmaId : null, papelEfetivo === "aluno" ? matricula : null);
+  const avalAluno = useAvaliacoesAluno(papelEfetivo === "aluno" ? turmaId : null, papelEfetivo === "aluno" ? matricula : null);
+  const trabAgb = useTrabalhoAgb(papelEfetivo === "aluno" ? turmaId : null, papelEfetivo === "aluno" ? matricula : null);
 
   // Indicativo no menu: lançamentos com "correção necessária" ainda não
   // reenviados pelo aluno — enquanto o ciclo aluno/professor não fecha
   // (status chega a "aprovado"), o item "Livro diário" mostra a contagem.
   const correcoesPendentesAluno = (esc.lancamentos || []).filter((l) => l.status === "correcao").length;
+
+  // Suporte: contadores de mensagens novas (aluno: respostas; professor: chamados novos)
+  const { chamados: chamadosDoAluno } = useChamados(papelEfetivo === "aluno" ? turmaId : null, papelEfetivo === "aluno" ? matricula : null);
+  const suporteNaoLidoAluno = (chamadosDoAluno || []).filter((c) => c.naoLidoAluno).length;
 
   // --- Professor/admin: turma e aluno selecionados ---
   const turmasDoProfessor = useTurmasDoProfessor(ehProfessorOuAdmin ? usuario.uid : null);
@@ -262,7 +763,38 @@ export default function Shell({ usuario, perfil, onSair }) {
   // (envio inicial ou reenvio depois de uma correção) na turma selecionada.
   const alunosParaFila = useAlunosDaTurma(ehProfessorOuAdmin && !emTeste ? turmaSelecionada?.id : null);
   const { todos: lancamentosParaFila } = useLancamentosDaTurma(ehProfessorOuAdmin && !emTeste ? turmaSelecionada?.id : null, alunosParaFila);
+  const { chamados: chamadosDaTurma } = useChamados(ehProfessorOuAdmin && !emTeste ? turmaSelecionada?.id : null, null);
+  const suporteNaoLidoProfessor = (chamadosDaTurma || []).filter((c) => c.naoLidoProfessor).length;
   const correcoesPendentesProfessor = lancamentosParaFila.filter(({ lancamento }) => lancamento.status === "enviado").length;
+
+  // --- Roteiro de testes (modo de teste): progresso só no navegador; nada vai para o Firestore ---
+  const [passoAtivoId, setPassoAtivoId] = useState(null);
+  const turmaDoTeste = turmaSelecionada ? turmaSelecionada.id : (testeAtivo ? testeAtivo.turmaId : null);
+  const progTestes = useProgressoTestes(usuario.uid, turmaDoTeste);
+  const passoAtivo = passoAtivoId ? passoDoTeste(passoAtivoId) : null;
+  const contaDeTeste = (alunosParaFila || []).find((a) => a.contaTeste) || null;
+  function irParaPasso(p) {
+    setPassoAtivoId(p.id);
+    if (!p.tela) return;
+    let trocouModo = false;
+    if (p.quem === "aluno") {
+      if (!emTeste) {
+        if (!contaDeTeste || !turmaSelecionada) { setScreen("modoteste"); return; }
+        setTesteAtivo({ turmaId: turmaSelecionada.id, matricula: contaDeTeste.matricula, nome: contaDeTeste.nome });
+        trocouModo = true;
+      }
+    } else if (emTeste) {
+      setTesteAtivo(null);
+      trocouModo = true;
+    }
+    if (trocouModo) { setPilhaTelas([]); setScreenRaw(p.tela); } else setScreen(p.tela);
+    setMenuAberto(false);
+  }
+  function voltarAoRoteiroDeTestes(concluir) {
+    if (concluir && passoAtivoId) progTestes.marcar(passoAtivoId, true);
+    setPassoAtivoId(null);
+    setScreen("roteiro-testes");
+  }
 
   function selecionarAlunoEVerHistorico(aluno) {
     setAlunoSelecionado(aluno);
@@ -280,28 +812,161 @@ export default function Shell({ usuario, perfil, onSair }) {
     }
   }
 
-  function comBadge(itens, key, contagem) {
-    return itens.map((it) => (it.key === key && contagem > 0 ? { ...it, badge: contagem } : it));
-  }
-
-  let menu = emTeste
-    ? MENU_ALUNO
-    : papelEfetivo === "aluno"
-      ? [...MENU_ALUNO, ...manuaisPara(perfil.papel)]
-      : [...MENU_PROFESSOR, ...manuaisPara(perfil.papel)];
-
+  // Menu do aluno (e do modo de teste, que usa as mesmas telas): agrupado e
+  // numerado na ordem real do exercício. Menu do professor: agrupado por
+  // função, sem numeração (2026-10-08).
+  // Menu PODC (Planejamento, Organização, Direção e Controle) — aprovado em 2026-10-12.
+  // Só muda o agrupamento do menu: as chaves das telas e as regras de liberação são as mesmas de antes.
+  const mostrarAgb = emTeste || agbAluno.liberado;
+  const mostrarExAgb = exerciciosVisiveis(agbAluno, emTeste).length > 0;
+  const mostrarCa = emTeste || caAluno.liberado;
+  const mostrarResc = emTeste || !!(caAluno.config && caAluno.config.rescisaoLiberada);
+  const mostrarPi = emTeste || !!roteiroCfg;
+  const mostrarAtivFolha = emTeste || !!(caAluno.config && caAluno.config.empregados && caAluno.config.empregados.length > 0);
+  const etapasAluno = papelEfetivo === "aluno"
+    ? montarEtapasAluno({
+        roteiroCfg, rot: rotAluno,
+        disp: { fp: mostrarCa && mostrarAtivFolha, ca: mostrarCa, resc: mostrarResc, agb: mostrarAgb, comp: mostrarAgb && mostrarExAgb },
+      })
+    : null;
+  let menuGrupos;
   if (papelEfetivo === "aluno") {
-    menu = comBadge(menu, "diario", correcoesPendentesAluno);
+    menuGrupos = gruposMenuAlunoPodc({
+      etapas: etapasAluno,
+      incluirManuais: !emTeste,
+      incluirRoteiroTestes: emTeste,
+      mostrarPi,
+      badgeDiario: correcoesPendentesAluno,
+      badgeSuporte: suporteNaoLidoAluno,
+    });
+  } else {
+    menuGrupos = gruposMenuProfessorPodc({
+      papel: perfil.papel,
+      badgeFila: correcoesPendentesProfessor,
+      badgeSuporte: suporteNaoLidoProfessor,
+    });
   }
-  if (ehProfessorOuAdmin && !emTeste) {
-    menu = comBadge(menu, "fila", correcoesPendentesProfessor);
+  // Fluxo ligado: Etapa 1 mostra os 3 passos em ordem, com cadeado no que ainda não abriu.
+  if (papelEfetivo === "aluno" && estFluxo) {
+    const trava = (p) => !estFluxo.lote || estFluxo.passos[p].status === "bloqueada";
+    menuGrupos = menuGrupos.map((g) => (!g.etapas ? g : {
+      ...g,
+      etapas: g.etapas.map((e) => (e.id !== "f1" ? e : {
+        ...e,
+        itens: e.itens.flatMap((it) => {
+          if (it.key === "digitacao") return [{ ...it, label: (trava("digitacao") ? "🔒 " : "") + "1 · Digitação da NF-e" }, { key: "analise-fiscal", label: (trava("analise") ? "🔒 " : "") + "2 · Análise fiscal" }];
+          if (it.key === "classificacao") return [{ ...it, label: (trava("classificacao") ? "🔒 " : "") + "3 · Classificação contábil" }];
+          return [it];
+        }),
+      })),
+    }));
+  }
+  // nome de cada tela, tirado do próprio menu, para o botão "Voltar" dizer para onde vai
+  const nomeDaTela = {};
+  menuGrupos.forEach((g) => { (g.itens || []).forEach((it) => { nomeDaTela[it.key] = it.label; (it.apelidos || []).forEach((k) => { nomeDaTela[k] = it.label; }); }); (g.etapas || []).forEach((e) => e.itens.forEach((it) => { nomeDaTela[it.key] = it.label; })); });
+  const telaAnterior = pilhaTelas[pilhaTelas.length - 1] || null;
+  const rotuloAnterior = telaAnterior ? (nomeDaTela[telaAnterior] || "tela anterior").replace(/^[^\p{L}\p{N}]+/u, "") : (ehProfessorOuAdmin && !emTeste ? "Hoje" : "Comece aqui");
+  const etapaDaTelaAtual = papelEfetivo === "aluno" ? etapaDaTela(screen) : null;
+  const infoEtapaTela = etapaDaTelaAtual ? etapasAluno.find((e) => e.id === etapaDaTelaAtual) : null;
+
+  // Etapas abertas/fechadas no menu do aluno (só no navegador; não grava nada no Firestore).
+  const [subsAbertas, setSubsAbertas] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("menuAluno_etapas") || "{}") || {}; } catch { return {}; }
+  });
+  function alternarEtapa(id, abertoAgora) {
+    setSubsAbertas((a) => {
+      const novo = { ...a, [id]: !abertoAgora };
+      try { localStorage.setItem("menuAluno_etapas", JSON.stringify(novo)); } catch { /* sem armazenamento */ }
+      return novo;
+    });
   }
 
-  const TELAS_COM_ESCRITURACAO = ["dashboard", "diario", "razao", "balancete", "are", "dre", "bp"];
-  const TELAS_COM_DOCUMENTOS = ["documentos", "digitacao", "classificacao"];
+  const TELAS_COM_ESCRITURACAO = ["dashboard", "minha-nota", "diario", "razao", "balancete", "are", "dre", "bp", "agb-av", "agb-ind", "agb-giro", "agb-parecer", "agb-comp", "ca-cont", "ca-efeitos"];
+  const TELAS_COM_DOCUMENTOS = ["documentos", "digitacao", "analise-fiscal", "classificacao"];
+
+  // Itens do menu do professor que reúnem telas em abas (2026-10-13). Chave antiga → item novo + aba certa.
+  const alvoAbas = ehProfessorOuAdmin && !emTeste ? (ABRIR_EM[screen] || (TELAS_COM_ABAS.includes(screen) ? [screen, null] : null)) : null;
+  function telaComAbas(item, aba) {
+    const cab = (eyebrow, titulo) => (<><div className="screen-eyebrow">{eyebrow}</div><h2 className="screen-title">{titulo}</h2></>);
+    if (item === "planejar") {
+      return (
+        <TelaComAbas key={screen} inicial={aba || "prazos"} abas={[
+          { key: "prazos", label: "Etapas e prazos", render: () => <>{cab("planejamento", "Etapas e prazos")}<RoteiroProfessor turma={turmaSelecionada} somente="cfg" /></> },
+          { key: "cronograma", label: "Cronograma", render: () => <CronogramaProfessor turma={turmaSelecionada} /> },
+          { key: "lotes", label: "Lotes (2027.1)", render: () => <LotesFluxo turma={turmaSelecionada} /> },
+          { key: "liberar", label: "Liberar etapas e situação dos alunos", render: () => <>{cab("liberação", "Liberar etapas e situação dos alunos")}<RoteiroProfessor turma={turmaSelecionada} somente="sit" /></> },
+        ]} />
+      );
+    }
+    if (item === "etapa1") {
+      return (
+        <TelaComAbas key={screen} inicial={aba || "painel"} abas={[
+          { key: "painel", label: "Painel do professor", render: () => <Painel turma={turmaSelecionada} onAbrirHistorico={selecionarAlunoEVerHistorico} /> },
+          { key: "docs", label: "Documentos fiscais", render: () => <DocumentosFiscaisProfessor turma={turmaSelecionada} /> },
+        ]} />
+      );
+    }
+    if (item === "alunos") {
+      return (
+        <TelaComAbas key={screen} inicial={aba || "historico"} abas={[
+          { key: "historico", label: "Histórico do aluno", render: () => <HistoricoAluno turmaId={turmaSelecionada?.id} alunoSelecionado={alunoSelecionado} onVoltarParaTurmas={() => setScreen("turmas")} /> },
+          { key: "registro", label: "Registro do processo", render: () => <RegistroProcesso turma={turmaSelecionada} /> },
+          { key: "orientacao", label: "Relatório de orientação", render: () => <RelatorioOrientacao turma={turmaSelecionada} /> },
+        ]} />
+      );
+    }
+    if (item === "notas-aval") {
+      return (
+        <TelaComAbas key={screen} inicial={aba || "etapa1"} abas={[
+          { key: "etapa1", label: "Notas · Etapa 1", render: () => <Notas turma={turmaSelecionada} /> },
+          { key: "etapas", label: "Avaliação das etapas (0 a 10)", render: () => <AvaliacaoProfessor turma={turmaSelecionada} /> },
+          { key: "dashboard", label: "Dashboard do ciclo", render: () => <DashboardCiclo turma={turmaSelecionada} onSelecionarAluno={selecionarAlunoEVerHistorico} /> },
+        ]} />
+      );
+    }
+    if (item === "consultas") {
+      return (
+        <TelaComAbas key={screen} inicial={aba || "plano"} abas={[
+          { key: "plano", label: "Plano de contas", render: () => <PlanoContas contas={esc.contas} papel={perfil.papel} /> },
+          { key: "cfop", label: "Consulta CFOP/NCM", render: () => <ConsultaFiscal /> },
+        ]} />
+      );
+    }
+    // ajuda
+    return (
+      <TelaComAbas key={screen} inicial={aba || "guia"} abas={[
+        { key: "guia", label: "Guia do professor", render: () => <GuiaProfessor turma={turmaSelecionada} onIr={(k) => setScreen(k)} contadores={{ fila: correcoesPendentesProfessor, suporte: suporteNaoLidoProfessor }} /> },
+        { key: "manprof", label: "Manual do Professor", render: () => <ManualProfessor /> },
+        { key: "manaluno", label: "Manual do Aluno", render: () => <ManualAluno /> },
+        { key: "fluxoproc", label: "Fluxograma do processo", render: () => <FluxogramaProcesso /> },
+        ...(perfil.papel === "admin" ? [{ key: "manop", label: "Manual de Operacionalização", render: () => <ManualOperacao /> }] : []),
+      ]} />
+    );
+  }
 
   let tela;
-  if (screen === "roteiro") {
+  if (alvoAbas) {
+    tela = telaComAbas(alvoAbas[0], alvoAbas[1]);
+  } else if (ehProfessorOuAdmin && screen === "roteiro-testes") {
+    tela = (
+      <RoteiroTestes
+        turma={turmaSelecionada}
+        feitos={progTestes.feitos}
+        passoAtivo={passoAtivo}
+        emTeste={emTeste}
+        temContaTeste={!!contaDeTeste}
+        onIr={irParaPasso}
+        onMarcar={progTestes.marcar}
+        onLimpar={progTestes.limpar}
+      />
+    );
+  } else if (screen === "inicio" && papelEfetivo === "aluno") {
+    tela = <InicioAluno etapas={etapasAluno} mostrarPi={mostrarPi} onIr={setScreen} nome={emTeste ? testeAtivo.nome : (meuRegistro && meuRegistro.nome)} />;
+  } else if (screen === "inicio" && ehProfessorOuAdmin) {
+    tela = <InicioProfessor turma={turmaSelecionada} onIr={setScreen} contadores={{ fila: correcoesPendentesProfessor, suporte: suporteNaoLidoProfessor }} />;
+  } else if (infoEtapaTela && !infoEtapaTela.disponivel) {
+    tela = <EtapaBloqueada info={infoEtapaTela} etapas={etapasAluno} onIr={setScreen} mostrarPi={mostrarPi} />;
+  } else if (screen === "roteiro") {
     tela = <RoteiroAluno />;
   } else if (screen === "manual-aluno") {
     tela = <ManualAluno />;
@@ -309,6 +974,8 @@ export default function Shell({ usuario, perfil, onSair }) {
     tela = <ManualProfessor />;
   } else if (screen === "manual-operacao") {
     tela = <ManualOperacao />;
+  } else if (ehProfessorOuAdmin && !emTeste && screen === "envios") {
+    tela = <EnviosPorLote turma={turmaSelecionada} />;
   } else if (ehProfessorOuAdmin && !emTeste && screen === "modoteste") {
     tela = <ModoTeste turma={turmaSelecionada} onEntrar={entrarNoModoTeste} />;
   } else if (papelEfetivo === "aluno" && TELAS_COM_ESCRITURACAO.includes(screen) && esc.carregando) {
@@ -317,14 +984,20 @@ export default function Shell({ usuario, perfil, onSair }) {
     tela = <div className="empty-state">Carregando documentos da turma…</div>;
   } else if (papelEfetivo === "aluno" && screen === "dashboard") {
     tela = <TelaDashboardAluno identificacao={emTeste ? "Conta de teste — " + testeAtivo.nome : "Matrícula " + perfil.matricula} esc={esc} documentos={documentos} progresso={progresso} registro={meuRegistro} turma={minhaTurma} />;
+  } else if (papelEfetivo === "aluno" && screen === "minha-nota") {
+    tela = <TelaMinhaNota registro={meuRegistro} turma={minhaTurma} documentos={documentos} progresso={progresso} lancamentos={esc.lancamentos} contas={esc.contas} />;
   } else if (papelEfetivo === "aluno" && screen === "empresa") {
     tela = <EmpresaDidatica usuario={usuario} perfil={emTeste ? { turmaId, matricula } : perfil} />;
   } else if (papelEfetivo === "aluno" && screen === "documentos") {
     tela = <DocumentosFiscais documentos={documentos} />;
-  } else if (papelEfetivo === "aluno" && screen === "digitacao") {
+  } else if (papelEfetivo === "aluno" && estFluxo && (screen === "digitacao" || screen === "analise-fiscal" || screen === "classificacao")) {
+    tela = <FluxoTelas screen={screen} est={estFluxo} erro={fluxo.erro} docsLote={docsLote} progresso={progresso} turmaId={turmaId} matricula={matricula} contas={esc.contas} onUsarNoLancamento={usarClassificacaoNoLancamento} />;
+  } else if (papelEfetivo === "aluno" && (screen === "digitacao" || screen === "analise-fiscal")) {
     tela = <DigitacaoAnaliseFiscal turmaId={turmaId} matricula={matricula} documentos={documentos} />;
   } else if (papelEfetivo === "aluno" && screen === "consulta") {
     tela = <ConsultaFiscal />;
+  } else if (papelEfetivo === "aluno" && screen === "suporte") {
+    tela = <SuporteAluno turmaId={turmaId} matricula={matricula} nome={emTeste ? testeAtivo.nome : meuRegistro?.nome} documentos={documentos || []} />;
   } else if (papelEfetivo === "aluno" && screen === "plano") {
     tela = <PlanoContas contas={esc.contas} papel={papelEfetivo} />;
   } else if (papelEfetivo === "aluno" && screen === "classificacao") {
@@ -339,6 +1012,7 @@ export default function Shell({ usuario, perfil, onSair }) {
         documentos={documentos}
         rascunhoDeClassificacao={rascunhoDeClassificacao}
         onRascunhoConsumido={() => setRascunhoDeClassificacao(null)}
+        onIrClassificacao={() => setScreen("classificacao")}
       />
     );
   } else if (papelEfetivo === "aluno" && screen === "razao") {
@@ -351,8 +1025,74 @@ export default function Shell({ usuario, perfil, onSair }) {
     tela = <DRE dre={esc.dre} />;
   } else if (papelEfetivo === "aluno" && screen === "bp") {
     tela = <BalancoPatrimonial bp={esc.bp} />;
+  } else if (papelEfetivo === "aluno" && screen === "etapas") {
+    tela = <EtapasAluno config={roteiroCfg} rot={rotAluno} nomeAluno={emTeste ? testeAtivo.nome : (meuRegistro && meuRegistro.nome)} />;
+  } else if (papelEfetivo === "aluno" && screen === "cronograma") {
+    tela = <CronogramaAluno etapas={etapasAluno} nome={emTeste ? testeAtivo.nome : (meuRegistro && meuRegistro.nome)} matricula={emTeste ? "" : perfil.matricula} turmaNome={minhaTurma && minhaTurma.nome} />;
+  } else if (papelEfetivo === "aluno" && screen === "notas-etapas") {
+    tela = <NotasEtapas avaliacoes={avalAluno} />;
+  } else if (papelEfetivo === "aluno" && screen === "ca-ativ") {
+    tela = <FolhaAtividade trab={trabCa} ca={caAluno} />;
+  } else if (papelEfetivo === "aluno" && !emTeste && ["ca-folha", "ca-prov", "ca-cont", "ca-efeitos", "ca-parecer"].includes(screen)
+    && caAluno.config && caAluno.config.fpObrigatoria
+    && !(rotAluno.estado && rotAluno.estado.etapas && rotAluno.estado.etapas.fp && rotAluno.estado.etapas.fp.status === "aprovada")) {
+    tela = <div className="empty-state">{rotAluno.carregando ? "Carregando…" : <>Esta etapa abre depois que o professor aprovar a atividade <b>“Elaborar a folha de pagamento”</b>. Faça a atividade no menu da etapa 2 e marque como entregue em “Meu roteiro por etapas”.</>}</div>;
+  } else if (papelEfetivo === "aluno" && screen === "ca-folha") {
+    tela = <FolhaMes trab={trabCa} ca={caAluno} />;
+  } else if (papelEfetivo === "aluno" && screen === "ca-prov") {
+    tela = <ProvisoesEncargos trab={trabCa} ca={caAluno} />;
+  } else if (papelEfetivo === "aluno" && screen === "ca-cont") {
+    tela = <ContabilizacaoFolha trab={trabCa} ca={caAluno} esc={esc} onLevar={usarClassificacaoNoLancamento} />;
+  } else if (papelEfetivo === "aluno" && screen === "ca-efeitos") {
+    tela = <EfeitosFolha trab={trabCa} esc={esc} />;
+  } else if (papelEfetivo === "aluno" && screen === "ca-parecer") {
+    tela = <ParecerFolha trab={trabCa} />;
+  } else if (papelEfetivo === "aluno" && screen === "resc-caso") {
+    tela = <RescCaso trab={trabCa} resc={rescAluno} />;
+  } else if (papelEfetivo === "aluno" && screen === "resc-calc") {
+    tela = <RescCalculo trab={trabCa} resc={rescAluno} />;
+  } else if (papelEfetivo === "aluno" && screen === "resc-inc") {
+    tela = <RescIncidencias trab={trabCa} />;
+  } else if (papelEfetivo === "aluno" && screen === "resc-cont") {
+    tela = <RescContabilizacao trab={trabCa} resc={rescAluno} esc={esc} onLevar={usarClassificacaoNoLancamento} />;
+  } else if (papelEfetivo === "aluno" && screen === "resc-doc") {
+    tela = <RescDocumentos trab={trabCa} resc={rescAluno} />;
+  } else if (papelEfetivo === "aluno" && screen === "resc-final") {
+    tela = <RescConferencia trab={trabCa} resc={rescAluno} esc={esc} />;
+  } else if (ehProfessorOuAdmin && screen === "resc-prof") {
+    tela = <RescisaoProfessor turma={turmaSelecionada} />;
+  } else if (ehProfessorOuAdmin && screen === "ca-prof") {
+    tela = <CaProfessor turma={turmaSelecionada} />;
+  } else if (papelEfetivo === "aluno" && screen === "agb-av") {
+    tela = <AnaliseVH esc={esc} trab={trabAgb} agb={agbAluno} />;
+  } else if (papelEfetivo === "aluno" && screen === "agb-ind") {
+    tela = <Indicadores esc={esc} trab={trabAgb} agb={agbAluno} />;
+  } else if (papelEfetivo === "aluno" && screen === "agb-giro") {
+    tela = <CapitalGiro esc={esc} trab={trabAgb} agb={agbAluno} />;
+  } else if (papelEfetivo === "aluno" && screen === "agb-ex") {
+    tela = <AgbExercicios trab={trabAgb} agb={agbAluno} emTeste={emTeste} />;
+  } else if (papelEfetivo === "aluno" && screen === "agb-comp") {
+    tela = <AgbComparativo esc={esc} trab={trabAgb} agb={agbAluno} emTeste={emTeste} />;
+  } else if (papelEfetivo === "aluno" && screen === "agb-parecer") {
+    tela = <ParecerFinal esc={esc} trab={trabAgb} agb={agbAluno} />;
+  } else if (ehProfessorOuAdmin && screen === "roteiro-folha") {
+    tela = (<><div className="screen-eyebrow">etapa 2</div><h2 className="screen-title">Atividade da folha</h2><RoteiroProfessor key={screen} turma={turmaSelecionada} somente="folha" /></>);
+  } else if (ehProfessorOuAdmin && screen === "cronograma") {
+    tela = <CronogramaProfessor turma={turmaSelecionada} />;
+  } else if (ehProfessorOuAdmin && screen === "planos") {
+    tela = <PlanosSemestrais turma={turmaSelecionada} />;
+  } else if (ehProfessorOuAdmin && screen === "diretriz") {
+    tela = <DiretrizSemana />;
+  } else if (ehProfessorOuAdmin && screen === "caderno") {
+    tela = <CadernoAluno nomePadrao={(perfil && perfil.nome) || usuario.displayName || ""} turma={turmaSelecionada} />;
+  } else if (ehProfessorOuAdmin && screen === "aval-prof") {
+    tela = <AvaliacaoProfessor turma={turmaSelecionada} />;
+  } else if (ehProfessorOuAdmin && screen === "agb-prof") {
+    tela = <AgbProfessor turma={turmaSelecionada} />;
   } else if (ehProfessorOuAdmin && screen === "painel") {
-    tela = <Painel turma={turmaSelecionada} />;
+    tela = <Painel turma={turmaSelecionada} onAbrirHistorico={selecionarAlunoEVerHistorico} />;
+  } else if (ehProfessorOuAdmin && screen === "notas") {
+    tela = <Notas turma={turmaSelecionada} />;
   } else if (ehProfessorOuAdmin && screen === "dashboard-ciclo") {
     tela = <DashboardCiclo turma={turmaSelecionada} onSelecionarAluno={selecionarAlunoEVerHistorico} />;
   } else if (ehProfessorOuAdmin && screen === "turmas") {
@@ -368,10 +1108,22 @@ export default function Shell({ usuario, perfil, onSair }) {
     tela = turmaSelecionada ? <FilaCorrecao turmaId={turmaSelecionada.id} /> : <div className="empty-state">Crie ou selecione uma turma em "Turmas" primeiro.</div>;
   } else if (ehProfessorOuAdmin && screen === "historico") {
     tela = <HistoricoAluno turmaId={turmaSelecionada?.id} alunoSelecionado={alunoSelecionado} onVoltarParaTurmas={() => setScreen("turmas")} />;
+  } else if (ehProfessorOuAdmin && screen === "suporte") {
+    tela = <SuporteProfessor turma={turmaSelecionada} />;
+  } else if (ehProfessorOuAdmin && screen === "guia") {
+    tela = <GuiaProfessor turma={turmaSelecionada} onIr={(k) => setScreen(k)} contadores={{ fila: correcoesPendentesProfessor, suporte: suporteNaoLidoProfessor }} />;
+  } else if (ehProfessorOuAdmin && screen === "registro") {
+    tela = <RegistroProcesso turma={turmaSelecionada} />;
+  } else if (ehProfessorOuAdmin && screen === "refazer") {
+    tela = <RefazerNota turma={turmaSelecionada} />;
+  } else if (ehProfessorOuAdmin && screen === "relatorio") {
+    tela = <RelatorioOrientacao turma={turmaSelecionada} />;
   } else if (ehProfessorOuAdmin && screen === "documentos") {
     tela = <DocumentosFiscaisProfessor turma={turmaSelecionada} />;
   } else if (ehProfessorOuAdmin && screen === "consulta") {
     tela = <ConsultaFiscal />;
+  } else if (ehProfessorOuAdmin && screen === "modelos") {
+    tela = <ModelosMensagens turma={turmaSelecionada} />;
   } else if (ehProfessorOuAdmin && screen === "plano") {
     tela = <PlanoContas contas={esc.contas} papel={perfil.papel} />;
   }
@@ -381,22 +1133,75 @@ export default function Shell({ usuario, perfil, onSair }) {
       <div className={"sidebar-backdrop" + (menuAberto ? " open" : "")} onClick={() => setMenuAberto(false)} />
       <div className={"sidebar" + (menuAberto ? " open" : "")}>
         <div className="sidebar-head">
-          <div className="kicker">CI · UNIDADE II</div>
-          <h1>Escrituração Contábil</h1>
+          <div className="kicker">CI–CA–AGB</div>
+          <h1>Projeto Interdisciplinar</h1>
         </div>
         <div className="nav-group">
           <div className="nav-group-label">{emTeste ? "aluno (modo de teste)" : perfil.papel}</div>
-          {menu.map((item) => (
-            <div
-              key={item.key}
-              className={"nav-item" + (screen === item.key ? " active" : "")}
-              onClick={() => { setScreen(item.key); setMenuAberto(false); }}
-            >
-              <span>{item.label}</span>
-              {!!item.badge && <span className="nav-badge">{item.badge}</span>}
-            </div>
-          ))}
         </div>
+        {menuGrupos.map((grupo, gi) => {
+          const itensDaEtapa = (grupo.etapas || []).flatMap((e) => e.itens);
+          const itemAtivo = (it) => it.key === screen || (it.apelidos || []).includes(screen);
+          const temAtivo = grupo.itens.some(itemAtivo) || itensDaEtapa.some((it) => it.key === screen);
+          const aberto = !grupo.recolhivel || !!gruposAbertos[grupo.id] || temAtivo;
+          const pendencias = grupo.itens.reduce((t, it) => t + (it.badge || 0), 0);
+          function irPara(key) { setScreen(key); setMenuAberto(false); }
+          function renderItem(item, num) {
+            return (
+              <div
+                key={item.key}
+                className={"nav-item" + (itemAtivo(item) ? " active" : "") + (item.bloqueado ? " bloq" : "")}
+                onClick={() => irPara(item.key)}
+              >
+                {num != null && <span className="num">{num}</span>}
+                <span>{item.label}</span>
+                {item.aviso && <span style={{ fontSize: 11, color: "#e9c77d", marginLeft: 6 }}>{item.aviso}</span>}
+                {!!item.badge && <span className="nav-badge">{item.badge}</span>}
+              </div>
+            );
+          }
+          return (
+            <div className="nav-group" key={gi}>
+              {grupo.podc && (
+                <div className="nav-group-label podc">
+                  <span className="podc-letra">{grupo.podc.letra}</span>
+                  <span><b>{grupo.podc.titulo}</b><small>{grupo.podc.sub}</small></span>
+                </div>
+              )}
+              {grupo.label && (grupo.recolhivel ? (
+                <div
+                  className="nav-group-label"
+                  style={{ cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                  onClick={() => { if (!temAtivo) alternarGrupo(grupo.id); }}
+                >
+                  <span>{grupo.label}</span>
+                  <span>{!aberto && pendencias > 0 && <span className="nav-badge" style={{ marginRight: 6 }}>{pendencias}</span>}{aberto ? "▾" : "▸"}</span>
+                </div>
+              ) : <div className="nav-group-label">{grupo.label}</div>)}
+              {aberto && grupo.itens.map((item) => renderItem(item, null))}
+              {(grupo.etapas || []).map((e) => {
+                const contemAtiva = e.itens.some((it) => it.key === screen);
+                const salvo = subsAbertas[e.id];
+                const aberta = contemAtiva || (salvo !== undefined ? !!salvo : !!e.atual);
+                const pend = e.itens.reduce((t, it) => t + (it.badge || 0), 0);
+                return (
+                  <div key={e.id} className={"nav-etapa" + (e.disponivel ? "" : " bloq") + (e.atual ? " atual" : "")}>
+                    <div className="nav-etapa-head" onClick={() => { if (!contemAtiva) alternarEtapa(e.id, aberta); }} title={e.rotulo}>
+                      <span className="nav-etapa-n">{e.n}</span>
+                      <span className="nav-etapa-t">
+                        {e.label}<small>{e.disc}</small>
+                        <span className={"nav-chip " + (e.classe || "")}>{e.disponivel ? e.curto : "Bloqueada"}</span>
+                      </span>
+                      {!aberta && pend > 0 && <span className="nav-badge">{pend}</span>}
+                      <span className="nav-etapa-seta">{aberta ? "▾" : "▸"}</span>
+                    </div>
+                    {aberta && e.itens.map((item, ii) => renderItem({ ...item, bloqueado: !e.disponivel }, e.numerado ? ii + 1 : null))}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
         <div className="sidebar-foot">{usuario.email}</div>
       </div>
       <div className="main">
@@ -420,11 +1225,29 @@ export default function Shell({ usuario, perfil, onSair }) {
           </div>
         </div>
         <div className="content">
+          {(screen !== "inicio" || (ehProfessorOuAdmin && passoAtivo)) && (
+            <div className="nav-topo no-print">
+              {screen !== "inicio" && (
+                <div className="voltar-bar">
+                  <button className="btn secondary" onClick={voltarUmaTela}>← Voltar</button>
+                  <span className="voltar-para">para {rotuloAnterior}</span>
+                </div>
+              )}
+              {ehProfessorOuAdmin && passoAtivo && screen !== "roteiro-testes" && (
+                <FaixaTeste passo={passoAtivo} emTeste={emTeste} onConcluir={() => voltarAoRoteiroDeTestes(true)} onVoltar={() => voltarAoRoteiroDeTestes(false)} />
+              )}
+            </div>
+          )}
           {emTeste && (
             <div className="balance-check bad no-print" style={{ marginBottom: 18 }}>
               🧪 Você está agindo como a conta de teste <b>{testeAtivo.nome}</b> ({testeAtivo.matricula}) — não é um aluno real.
             </div>
           )}
+          {papelEfetivo === "aluno" && infoEtapaTela && infoEtapaTela.disponivel && (
+            <FaixaEtapa info={infoEtapaTela} total={etapasAluno.length} mostrarLink={mostrarPi} onRoteiro={() => setScreen("etapas")} />
+          )}
+          {papelEfetivo === "aluno" && <FluxoEtapa key={screen} etapa={screen} onSuporte={() => setScreen("suporte")} />}
+          {papelEfetivo === "aluno" && <FluxoEtapaPI key={"pi" + screen} tela={screen} onSuporte={() => setScreen("suporte")} />}
           {tela}
         </div>
       </div>

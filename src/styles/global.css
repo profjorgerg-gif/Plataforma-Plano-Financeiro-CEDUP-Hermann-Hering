@@ -1,0 +1,432 @@
+/* Portado do protótipo (mesma linguagem visual — papel, serifada + mono) */
+
+  :root{
+    --paper:#F6F2E9;
+    --paper-deep:#EFE9DA;
+    --line:#D9CFBB;
+    --line-strong:#C3B79E;
+    --ink:#1E2A38;
+    --ink-soft:#5B6672;
+    --ink-faint:#8B8477;
+    --green:#1F5C4A;
+    --green-dark:#163F33;
+    --green-pale:#E4EEE9;
+    --blue:#2B4C7E;
+    --blue-pale:#E7ECF3;
+    --red:#8C2F2F;
+    --red-pale:#F3E7E5;
+    --amber:#9C6B1F;
+    --amber-pale:#F3ECDD;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Source Serif 4', Georgia, serif;
+    font-size:15px;
+    line-height:1.5;
+  }
+  .mono{font-family:'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums;}
+  #root{min-height:100vh;}
+
+  .app{display:flex; min-height:100vh;}
+
+  /* Sidebar */
+  .sidebar{
+    width:236px; flex-shrink:0;
+    background:var(--green-dark);
+    color:#EDE7D8;
+    display:flex; flex-direction:column;
+    border-right:1px solid var(--line-strong);
+  }
+  .sidebar-head{
+    padding:22px 20px 16px 20px;
+    border-bottom:1px solid rgba(237,231,216,0.18);
+  }
+  .sidebar-head .kicker{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10.5px; letter-spacing:0.06em;
+    color:#B7C9C0; text-transform:none;
+  }
+  .sidebar-head h1{
+    font-size:19px; margin:4px 0 0 0; font-weight:600; line-height:1.25;
+  }
+  .nav-group{padding:14px 0;}
+  .nav-group-label{
+    padding:6px 20px; font-family:'IBM Plex Mono', monospace;
+    font-size:10.5px; color:#8FA79C; letter-spacing:0.04em;
+  }
+  .nav-item{
+    display:flex; align-items:flex-start; gap:10px;
+    padding:8px 20px; cursor:pointer;
+    color:#D9D2C2; font-size:14.5px; line-height:1.3;
+    border-left:2px solid transparent;
+  }
+  /* align-items:flex-start (não baseline) — com o menu numerado e
+     agrupado (2026-10-07), rótulos longos como "Digitação e análise
+     fiscal" quebram em 2 linhas dentro dos 244px da sidebar; com
+     baseline o número ficava alinhado com a ÚLTIMA linha do texto, bem
+     abaixo do esperado (bug reportado pelo professor, print em
+     2026-10-08). flex-start alinha o número com o topo do rótulo, quebrando ou não. */
+  .nav-item .num{font-family:'IBM Plex Mono', monospace; font-size:11px; color:#7C9A8D; width:16px; flex-shrink:0; margin-top:2px;}
+  .nav-item > span:not(.num){flex:1; min-width:0;}
+  .nav-item{justify-content:space-between;}
+  .nav-badge{
+    font-family:'IBM Plex Mono', monospace; font-size:10.5px; font-weight:700;
+    color:#fff; background:var(--red); border-radius:999px;
+    padding:1px 7px; line-height:1.5; flex-shrink:0; margin-top:1px;
+  }
+  .nav-item:hover{background:rgba(237,231,216,0.06);}
+  .aluno-chip{
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:13px; font-weight:600; color:var(--ink);
+    background:var(--paper-deep); border:1px solid var(--line);
+    border-radius:999px; padding:3px 12px; margin-bottom:8px;
+  }
+  .aluno-chip .mono{font-weight:400; font-size:11.5px; color:var(--ink-faint);}
+  .nav-item.active{
+    background:rgba(237,231,216,0.1);
+    border-left:2px solid #C9A24A;
+    color:#FBF8EF; font-weight:600;
+  }
+  .nav-item.active .num{color:#C9A24A;}
+  /* Menu PODC (2026-10-12): letras P/O/D/C, etapas recolhíveis com situação e etapas bloqueadas visíveis */
+  .nav-group-label.podc{display:flex; gap:10px; align-items:baseline; padding:4px 20px 6px; color:#D9B25E;}
+  .nav-group-label.podc .podc-letra{font-family:'IBM Plex Mono', monospace; font-size:12px; min-width:14px;}
+  .nav-group-label.podc b{font-size:11px; letter-spacing:0.1em; text-transform:uppercase; font-weight:600;}
+  .nav-group-label.podc small{display:block; font-size:11px; letter-spacing:0; text-transform:none; color:#8FA79C; font-weight:400; margin-top:1px;}
+  .nav-etapa{margin:2px 0;}
+  .nav-etapa-head{display:flex; align-items:flex-start; gap:8px; padding:7px 14px 7px 20px; cursor:pointer; color:#E8E2D2; font-size:14px; line-height:1.3;}
+  .nav-etapa-head:hover{background:rgba(237,231,216,0.06);}
+  .nav-etapa-n{font-family:'IBM Plex Mono', monospace; font-size:11px; color:#C9A24A; width:16px; flex-shrink:0;}
+  .nav-etapa-t{flex:1; min-width:0; font-weight:600;}
+  .nav-etapa-t small{margin-left:6px; font-family:'IBM Plex Mono', monospace; font-size:10px; color:#8FA79C; font-weight:400;}
+  .nav-etapa-seta{font-size:11px; color:#8FA79C; width:10px; flex-shrink:0;}
+  .nav-etapa .nav-item{padding-left:44px;}
+  .nav-etapa.atual .nav-etapa-head{border-left:2px solid #C9A24A; padding-left:18px;}
+  .nav-etapa.bloq .nav-etapa-head, .nav-etapa.bloq .nav-item{opacity:0.6;}
+  .nav-etapa-t .nav-chip{display:block; width:fit-content; margin-top:3px;}
+  .nav-chip{font-size:10px; font-weight:600; border-radius:4px; padding:1px 6px; white-space:nowrap; flex-shrink:0; background:rgba(237,231,216,0.12); color:#C9D4CD;}
+  .nav-chip.warn{background:rgba(217,164,78,0.22); color:#EBC27A;}
+  .nav-chip.ok{background:rgba(111,207,160,0.2); color:#8FE0B6;}
+  .nav-chip.bad{background:rgba(224,120,120,0.22); color:#F0A0A0;}
+  .nav-chip.gray{background:rgba(237,231,216,0.1); color:#9FB3A8;}
+
+  .sidebar-foot{
+    margin-top:auto; padding:16px 20px; border-top:1px solid rgba(237,231,216,0.18);
+    font-family:'IBM Plex Mono', monospace; font-size:11px; color:#8FA79C;
+  }
+
+  /* Main */
+  .main{flex:1; display:flex; flex-direction:column; min-width:0;}
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 32px; border-bottom:1px solid var(--line-strong);
+    background:var(--paper-deep);
+  }
+  .topbar .empresa{font-size:14px; color:var(--ink-soft);}
+  .topbar .empresa b{color:var(--ink);}
+  .role-switch{display:flex; align-items:center; gap:10px; font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--ink-soft);}
+  .role-btn{
+    font-family:'IBM Plex Mono', monospace; font-size:11.5px;
+    padding:5px 11px; border:1px solid var(--line-strong); background:var(--paper);
+    color:var(--ink-soft); cursor:pointer;
+  }
+  .role-btn.active{background:var(--green); border-color:var(--green); color:#fff;}
+
+  .content{padding:30px 36px 60px 36px; max-width:1080px;}
+  /* Botão "Voltar" (2026-10-12): fixo no topo do conteúdo para não precisar subir a tela nem usar o menu */
+  .nav-topo{position:sticky; top:0; z-index:6; background:var(--paper); padding:8px 0 2px 0; margin:-8px 0 8px 0;}
+  .voltar-bar{display:flex; align-items:center; gap:10px; margin-bottom:10px; min-width:0;}
+  .voltar-bar .btn{padding:5px 14px; font-weight:600; flex-shrink:0;}
+  .voltar-para{font-size:13px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;}
+  .screen-eyebrow{font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--ink-faint); margin-bottom:6px;}
+  h2.screen-title{font-size:24px; margin:0 0 4px 0; font-weight:600;}
+  .screen-sub{color:var(--ink-soft); font-size:14px; margin:0 0 26px 0; max-width:640px;}
+
+  .panel{background:#fff; border:1px solid var(--line-strong); margin-bottom:22px;}
+  .panel-head{
+    padding:12px 18px; border-bottom:1px solid var(--line);
+    display:flex; align-items:center; justify-content:space-between;
+    background:var(--paper-deep);
+  }
+  .panel-head h3{margin:0; font-size:15px; font-weight:600;}
+  .panel-body{padding:16px 18px;}
+
+  table{width:100%; border-collapse:collapse; font-size:13.5px;}
+  th{
+    text-align:left; font-family:'IBM Plex Mono', monospace; font-weight:500;
+    font-size:10.5px; letter-spacing:0.03em; color:var(--ink-faint);
+    padding:0 10px 8px 10px; border-bottom:1px solid var(--line-strong);
+  }
+  td{padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top;}
+  tr:last-child td{border-bottom:none;}
+  td.num, th.num{text-align:right; font-family:'IBM Plex Mono', monospace;}
+  tr.clickable{cursor:pointer;}
+  tr.clickable:hover td{background:var(--green-pale);}
+
+  .status{
+    display:inline-block; font-family:'IBM Plex Mono', monospace; font-size:10.5px;
+    padding:2px 8px; border:1px solid; letter-spacing:0.02em;
+  }
+  .status.rascunho{color:var(--ink-faint); border-color:var(--ink-faint); background:#F1EEE6;}
+  .status.enviado{color:var(--amber); border-color:var(--amber); background:var(--amber-pale);}
+  .status.aprovado{color:var(--green); border-color:var(--green); background:var(--green-pale);}
+  .status.correcao{color:var(--red); border-color:var(--red); background:var(--red-pale);}
+
+  .btn{
+    font-family:'Source Serif 4', serif; font-size:13.5px; font-weight:600;
+    padding:7px 14px; border:1px solid var(--ink); background:var(--ink); color:#fff;
+    cursor:pointer;
+  }
+  .btn.secondary{background:transparent; color:var(--ink); border:1px solid var(--line-strong);}
+  .btn.green{background:var(--green); border-color:var(--green);}
+  .btn.red{background:var(--red); border-color:var(--red);}
+  .btn:disabled{opacity:0.4; cursor:not-allowed;}
+  .btn-row{display:flex; gap:8px; margin-top:14px;}
+
+  .grid-2{display:grid; grid-template-columns:1fr 1fr; gap:20px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block; font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--ink-faint); margin-bottom:5px; letter-spacing:0.02em;}
+  .field input, .field select, .field textarea{
+    width:100%; font-family:'Source Serif 4', serif; font-size:14px;
+    padding:8px 10px; border:1px solid var(--line-strong); background:var(--paper);
+    color:var(--ink);
+  }
+  .field textarea{min-height:56px; resize:vertical;}
+  .field input.mono, .field select.mono{font-family:'IBM Plex Mono', monospace;}
+
+  .helper-note{
+    font-size:12.5px; color:var(--ink-soft); border-left:2px solid var(--line-strong);
+    padding:6px 12px; margin:10px 0; background:var(--paper-deep);
+  }
+  .balance-check{
+    display:flex; align-items:center; gap:8px; font-family:'IBM Plex Mono', monospace; font-size:12px;
+    padding:9px 12px; margin-top:10px; border:1px solid;
+  }
+  .balance-check.ok{color:var(--green); border-color:var(--green); background:var(--green-pale);}
+  .balance-check.bad{color:var(--red); border-color:var(--red); background:var(--red-pale);}
+
+  /* Avisos pedagógicos: nunca bloqueiam envio, só chamam atenção para um
+     ponto conceitual (natureza de conta, competência, coerência entre
+     etapas) no momento em que o aluno está decidindo. */
+  .aviso-pedagogico{
+    font-size:12.5px; color:var(--amber); border-left:2px solid var(--amber);
+    padding:6px 12px; margin:8px 0; background:var(--amber-pale);
+  }
+
+  .kpi-row{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px;}
+  .kpi{background:#fff; border:1px solid var(--line-strong); padding:14px 16px;}
+  .kpi .kpi-label{font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--ink-faint); margin-bottom:8px;}
+  .kpi .kpi-value{font-family:'IBM Plex Mono', monospace; font-size:26px; font-weight:600; color:var(--ink);}
+  .kpi.warn .kpi-value{color:var(--amber);}
+  .kpi.ok .kpi-value{color:var(--green);}
+  .kpi.bad .kpi-value{color:var(--red);}
+
+  .dre-row{display:flex; justify-content:space-between; padding:9px 4px; border-bottom:1px solid var(--line); font-size:14px;}
+  .dre-row.total{font-weight:700; border-top:1px solid var(--line-strong); border-bottom:none; margin-top:4px; padding-top:10px;}
+  .dre-row.sub{padding-left:18px; color:var(--ink-soft); font-size:13.5px;}
+  .dre-row .val{font-family:'IBM Plex Mono', monospace;}
+  .dre-row.clickable{cursor:pointer;}
+  .dre-row.clickable:hover{background:var(--green-pale);}
+
+  .bp-cols{display:grid; grid-template-columns:1fr 1fr; gap:0;}
+  .bp-col{padding:16px 18px;}
+  .bp-col + .bp-col{border-left:1px solid var(--line-strong);}
+  .bp-group-label{font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--ink-faint); margin:14px 0 6px 0;}
+  .bp-group-label:first-child{margin-top:0;}
+
+  .modal-backdrop{
+    position:fixed; inset:0; background:rgba(30,42,56,0.5);
+    display:flex; align-items:center; justify-content:center; z-index:50; padding:20px;
+  }
+  .modal{background:#fff; border:1px solid var(--line-strong); width:560px; max-width:100%; max-height:80vh; overflow:auto;}
+  .modal-head{padding:14px 20px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; background:var(--paper-deep);}
+  .modal-head h3{margin:0; font-size:15px;}
+  .modal-body{padding:16px 20px;}
+  .modal-close{cursor:pointer; font-family:'IBM Plex Mono', monospace; font-size:13px; color:var(--ink-soft); background:none; border:none;}
+
+  .breadcrumb-trail{font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--ink-soft); margin-bottom:10px;}
+  .breadcrumb-trail span{color:var(--green);}
+
+  .tag-pill{
+    display:inline-block; font-family:'IBM Plex Mono', monospace; font-size:10.5px;
+    padding:2px 7px; background:var(--blue-pale); color:var(--blue); margin-right:5px;
+  }
+  .tag-pill.warn{background:var(--amber-pale); color:var(--amber);}
+  .tag-pill.ok{background:var(--green-pale); color:var(--green);}
+  .tag-pill.bad{background:var(--red-pale); color:var(--red);}
+  .empty-state{padding:34px 18px; text-align:center; color:var(--ink-faint); font-size:13.5px;}
+
+  /* Painel "O que será avaliado" (CriteriosAvaliacao em shared/UI.jsx),
+     usado tanto na tela do professor (Notas) quanto na do aluno (Minha
+     nota) — 2026-10-08. */
+  .criterio-avaliacao-row{display:flex; gap:14px; padding:12px 0; border-bottom:1px solid var(--paper-deep);}
+  .criterio-avaliacao-peso{
+    font-family:'IBM Plex Mono', monospace; font-size:13px; font-weight:700; color:var(--green);
+    width:46px; flex-shrink:0; text-align:center; background:var(--green-pale); border-radius:3px;
+    padding:4px 0; height:fit-content;
+  }
+  .criterio-avaliacao-nome{font-size:14px; font-weight:700; margin-bottom:3px;}
+  .criterio-avaliacao-desc{font-size:13px; color:var(--ink-soft); line-height:1.4;}
+  .criterio-avaliacao-desc.a-definir{color:var(--amber); font-style:italic;}
+  .sub-criterios{margin-top:10px; border-left:2px solid var(--line); padding-left:14px;}
+  .sub-criterio{margin-bottom:12px;}
+  .sub-criterio:last-child{margin-bottom:0;}
+  .sub-criterio-nome{font-size:13px; font-weight:700; display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .sub-criterio-pct{font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--green); background:var(--green-pale); border-radius:999px; padding:1px 8px;}
+  .sub-criterio-desc{font-size:12.5px; color:var(--ink-soft); line-height:1.4; margin-top:2px;}
+
+  .partida-row{display:grid; grid-template-columns:2fr 90px 110px 110px 30px; gap:8px; align-items:center; margin-bottom:8px;}
+  .partida-row select, .partida-row input{padding:7px 8px; font-size:13px;}
+
+  /* Linha de item (Digitação/Gabarito): os campos ficam soltos no grid, sem
+     a classe .field — sem isto, cada <input> assume a largura padrão do
+     navegador (bem maior que a coluna) e "engole" visualmente as colunas
+     vizinhas (2026-10-03, bug reportado pelo professor). */
+  .item-grid-row input, .item-grid-row select{
+    width:100%; padding:7px 8px; font-size:13px; border:1px solid var(--line-strong); background:var(--paper); color:var(--ink);
+  }
+  .item-grid-row input:disabled{background:var(--paper-deep); color:var(--ink-faint);}
+  .remove-partida{background:none; border:none; color:var(--red); cursor:pointer; font-family:'IBM Plex Mono', monospace; font-size:16px; line-height:1;}
+
+/* ============================================================
+   RESPONSIVIDADE — computador continua prioritário (layout acima
+   é o padrão), mas a consulta em celular/tablet precisa funcionar.
+   ============================================================ */
+
+.menu-toggle{
+  display:none; width:38px; height:38px; align-items:center; justify-content:center;
+  border:1px solid var(--line-strong); background:var(--paper); cursor:pointer; flex-shrink:0;
+}
+.sidebar-backdrop{display:none;}
+
+@media (max-width: 860px){
+  .app{position:relative;}
+  .menu-toggle{display:inline-flex;}
+
+  .sidebar{
+    position:fixed; top:0; left:0; bottom:0; z-index:45; width:240px;
+    transform:translateX(-100%); transition:transform 0.2s ease;
+  }
+  .sidebar.open{transform:translateX(0); box-shadow:2px 0 18px rgba(0,0,0,0.28);}
+
+  .sidebar-backdrop.open{
+    display:block; position:fixed; inset:0; background:rgba(22,30,25,0.4); z-index:40;
+  }
+
+  .main{width:100%;}
+  .topbar{padding:12px 16px; flex-wrap:wrap; gap:10px;}
+  .topbar .empresa{font-size:13px;}
+  .role-switch{flex-wrap:wrap; gap:6px;}
+  .content{padding:20px 16px 48px 16px;}
+
+  h2.screen-title{font-size:21px;}
+  .grid-2{grid-template-columns:1fr;}
+  .kpi-row{grid-template-columns:repeat(2,1fr);}
+  .bp-cols{grid-template-columns:1fr;}
+  .bp-col + .bp-col{border-left:none; border-top:1px solid var(--line-strong);}
+
+  /* tabelas: preferimos rolagem horizontal a espremer colunas ilegíveis */
+  .panel-body{overflow-x:auto;}
+  .panel-body table{min-width:540px;}
+
+  .partida-row{grid-template-columns:1fr 1fr; gap:6px;}
+  .partida-row .remove-partida{grid-column:span 2; justify-self:end;}
+
+  .modal{width:100%; margin:0 12px;}
+}
+
+@media (max-width: 480px){
+  .kpi-row{grid-template-columns:1fr 1fr;}
+  .kpi .kpi-value{font-size:21px;}
+  h2.screen-title{font-size:19px;}
+  .sidebar-head h1{font-size:17px;}
+  .btn, .btn.secondary, .btn.green, .btn.red{font-size:13px; padding:8px 12px;}
+}
+
+/* ============================================================
+   IMPRESSÃO / SALVAR COMO PDF — usado nos manuais (botão .no-print
+   chama window.print(); o navegador já oferece "Salvar como PDF"
+   no próprio diálogo de impressão, sem precisar de biblioteca nenhuma).
+   ============================================================ */
+@media print {
+  .no-print{ display:none !important; }
+  .sidebar, .sidebar-backdrop, .topbar, .menu-toggle{ display:none !important; }
+  .app{ display:block; }
+  .main{ width:100%; }
+  .content{ padding:0; max-width:none; }
+  body{ background:#fff; color:#000; }
+
+  /* evita que um passo do manual corte ao meio entre duas páginas */
+  .panel{ break-inside:avoid; page-break-inside:avoid; border:1px solid #999; box-shadow:none; }
+  .panel-head{ background:#f0f0f0 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+
+  h2.screen-title{ break-after:avoid; }
+  .screen-eyebrow{ break-after:avoid; }
+}
+@page{
+  margin: 16mm;
+}
+
+/* ============================================================
+   CRONOGRAMA (2026-10-12): a folha é um SVG com cores fixas, igual na tela, no PDF e na imagem.
+   ============================================================ */
+.crono-folha{background:#fff; border:1px solid var(--line-strong, #c9c4b4); border-radius:6px; overflow-x:auto;}
+.crono-folha svg{display:block; width:100%; min-width:760px; height:auto;}
+@media print{
+  .nav-topo, .voltar-bar{ display:none !important; }
+  .crono-folha{ border:none; border-radius:0; overflow:visible; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .crono-folha svg{ min-width:0; width:auto; max-width:100%; height:calc(210mm - 20mm); margin:0 auto; }
+}
+
+/* ============================================================
+   CADERNO DO ALUNO (2026-10-12): 39 páginas A4 fixas; escala só na tela.
+   ============================================================ */
+.caderno-lista{display:flex; flex-direction:column; align-items:center; gap:18px; padding-bottom:24px;}
+.caderno-moldura{position:relative; background:#fff; box-shadow:0 1px 6px rgba(0,0,0,.25); overflow:hidden;}
+.caderno-pagina{width:794px; height:1122px; overflow:hidden; transform-origin:top left; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
+@media print{
+  .nav-topo, .voltar-bar{ display:none !important; }
+  .caderno-lista{ display:block; padding:0; gap:0; }
+  .caderno-moldura{ width:794px !important; height:1122px !important; box-shadow:none; margin:0; break-after:page; page-break-after:always; }
+  .caderno-moldura:last-child{ break-after:auto; page-break-after:auto; }
+  .caderno-pagina{ transform:none !important; }
+}
+
+/* ============================================================
+   DIRETRIZ DA SEMANA (2026-10-12): quadro por semana, só professor; pensado para o celular.
+   ============================================================ */
+.diretriz-semanas{display:flex; gap:8px; overflow-x:auto; padding:2px 0 10px; -webkit-overflow-scrolling:touch;}
+.diretriz-chip{flex:0 0 auto; min-height:44px; padding:8px 14px; border:1px solid var(--line-strong); background:#fff; color:var(--ink); font-family:inherit; font-size:15px; cursor:pointer;}
+.diretriz-chip.on{background:var(--green); color:#fff; border-color:var(--green); font-weight:600;}
+.diretriz-barra{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px;}
+.diretriz-barra .btn{min-height:44px;}
+.diretriz-tam{display:flex; gap:6px;}
+.diretriz-aviso{font-size:13.5px; color:var(--green);}
+.diretriz-quadro{background:#fff; border:1px solid var(--line-strong); padding:18px 18px 8px; margin-bottom:14px;}
+.diretriz-kicker{font-family:'IBM Plex Mono', ui-monospace, monospace; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--green);}
+.diretriz-titulo{margin:4px 0 8px; font-size:1.35em; line-height:1.2; font-weight:700;}
+.diretriz-linha{margin-bottom:4px;}
+.diretriz-prazo{display:inline-block; margin:4px 0; padding:4px 10px; background:var(--red-pale); color:var(--red); border:1px solid var(--red);}
+.diretriz-extra{margin-top:6px; font-style:italic;}
+.diretriz-sec{margin:16px 0; padding-top:12px; border-top:1px solid var(--line);}
+.diretriz-sec h4{margin:0 0 6px; font-size:.85em; letter-spacing:.08em; text-transform:uppercase; color:var(--green);}
+.diretriz-sec p{margin:0;}
+.diretriz-sec ol, .diretriz-sec ul{margin:0; padding-left:22px;}
+.diretriz-sec li{margin-bottom:5px;}
+.diretriz-meta p{font-weight:600; color:var(--green-dark);}
+.diretriz-caixas{list-style:none; padding-left:0 !important;}
+.diretriz-nav{display:flex; justify-content:space-between; gap:8px; margin-bottom:24px;}
+.diretriz-nav .btn{min-height:44px;}
+.diretriz{font-size:16px; line-height:1.5;}
+.diretriz-t1{font-size:19px;}
+.diretriz-t2{font-size:23px;}
+@media (max-width:480px){
+  .diretriz-quadro{padding:14px 12px 4px;}
+}
+@media print{
+  .diretriz-semanas, .diretriz-barra, .diretriz-nav, .helper-note{display:none !important;}
+  .diretriz-quadro{border:none; padding:0;}
+}

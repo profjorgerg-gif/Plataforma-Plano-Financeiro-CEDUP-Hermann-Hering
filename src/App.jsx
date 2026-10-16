@@ -1,4 +1,4 @@
-// build: 20261016_15h53m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261016_19h20m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1327,6 +1327,11 @@ function chamadoPassaFiltro(c, filtro) {
 // Lista do mais recente para o mais antigo — o primeiro item é a versão vigente.
 // ============================================================================
 const VERSOES = [
+  { versao: "2.6", data: "16/10/2026", itens: [
+    "Módulo 6 (Custo Unit. Matéria-Prima): agora cada linha tem unidade de medida — a unidade da quantidade usada (g, kg, ml, L, un, dz) e a unidade em que o preço foi pago (R$ por kg, L, un…). A plataforma converte sozinha (150 g × R$ 20,00/kg = R$ 3,00) e avisa se as unidades forem incompatíveis.",
+    "Módulo 6: novo \"Resumo por produto\" com custo da receita, rendimento (quantas unidades a receita rende), custo por unidade e alerta visual quando o custo fica acima do preço de venda do Módulo 5. É um quadro informativo — não altera o Módulo 8 nem as notas.",
+    "Segurança dos dados: linhas já lançadas sem unidade continuam calculando exatamente como antes (quantidade × custo). Nenhum valor existente é alterado; os campos novos só são gravados quando a equipe os preenche. Word e PDF passam a mostrar as unidades.",
+  ]},
   { versao: "2.5", data: "16/10/2026", itens: [
     "Nova \"Mesa de janelas\" (opcional): botão \"Abrir Mesa de janelas\" no fim do menu lateral (professor e aluno, em telas largas). As mesmas telas passam a abrir em janelas flutuantes, com menus no topo — duas telas ficam lado a lado automaticamente, e dá para arrastar, redimensionar, encaixar à esquerda/direita, minimizar e voltar ao menu lateral com um clique. Nada foi retirado: o menu lateral continua sendo o padrão.",
     "Professor — novas telas (só leitura): \"Hoje do professor\" (o que precisa de você agora), \"Registro do processo\" (linha do tempo de cada empresa), \"Caminho do aluno\" (mapa dos 13 módulos), \"Diretriz da semana\" (ligada ao cronograma) e \"Mensagens Classroom\" (textos prontos de lembrete, ajustes, liberação e parabéns).",
@@ -2738,44 +2743,159 @@ function M5Form({ data, update, segmento }) {
   );
 }
 
+// ── Módulo 6: unidades de medida padrão ─────────────────────────────────────
+// Cada linha pode (opcionalmente) ter `unPreco` (unidade em que o preço foi pago,
+// ex.: R$ 20,00 por kg) e `unQtd` (unidade em que a quantidade foi usada, ex.: 150 g).
+// A plataforma converte sozinha. Linhas antigas, sem unidades, continuam
+// calculando exatamente como antes (quantidade × custo unitário).
+const UNIDADES_M6 = {
+  kg: { grupo: "massa", f: 1000, nome: "kg (quilo)" },
+  g:  { grupo: "massa", f: 1,    nome: "g (grama)" },
+  L:  { grupo: "volume", f: 1000, nome: "L (litro)" },
+  ml: { grupo: "volume", f: 1,    nome: "ml" },
+  un: { grupo: "contagem", f: 1,  nome: "un (unidade)" },
+  dz: { grupo: "contagem", f: 12, nome: "dz (dúzia)" },
+};
+function fatorUnidadeM6(unQtd, unPreco) {
+  const a = UNIDADES_M6[unQtd]; const b = UNIDADES_M6[unPreco];
+  if (!a || !b || a.grupo !== b.grupo) return null;
+  return a.f / b.f;
+}
+function totalLinhaM6(it) {
+  const q = Number(it.qtd) || 0; const c = Number(it.custoUnit) || 0;
+  if (it.unQtd && it.unPreco) { const f = fatorUnidadeM6(it.unQtd, it.unPreco); return f == null ? 0 : q * f * c; }
+  return q * c;
+}
+function resumoProdutosM6(data, m5itens) {
+  const itens = (data && data.itens) || [];
+  const rend = (data && data.rendimentos) || {};
+  const ordem = []; const mapa = {};
+  itens.forEach((it) => {
+    const nome = String(it.produto || "").trim();
+    if (!nome) return;
+    if (!mapa[nome]) { mapa[nome] = { nome, total: 0, linhas: 0 }; ordem.push(nome); }
+    mapa[nome].total += totalLinhaM6(it); mapa[nome].linhas += 1;
+  });
+  return ordem.map((nome) => {
+    const r = mapa[nome];
+    const rendimento = Number(rend[nome]) > 0 ? Number(rend[nome]) : 0;
+    const porUnidade = r.total / (rendimento > 0 ? rendimento : 1);
+    const prod = (m5itens || []).find((p) => String(p.nome || "").trim().toLowerCase() === nome.toLowerCase());
+    const preco = prod ? Number(prod.precoUnit) || 0 : 0;
+    return { nome, linhas: r.linhas, total: r.total, rendimento, porUnidade, preco, acima: preco > 0 && porUnidade > preco };
+  });
+}
+
+function SelUnM6({ value, onChange, titulo }) {
+  return (
+    <select value={value || ""} onChange={(e) => onChange(e.target.value)} title={titulo} className="border border-slate-600 rounded-md px-1.5 py-2 text-sm w-[6.4rem] shrink-0">
+      <option value="">—</option>
+      {Object.keys(UNIDADES_M6).map((k) => <option key={k} value={k}>{UNIDADES_M6[k].nome}</option>)}
+    </select>
+  );
+}
+
 function M6Form({ data, update, m5itens }) {
   const itens = data.itens;
   const setItens = (next) => update({ ...data, itens: next });
+  const mudar = (id, campos) => setItens(itens.map((r) => (r.id === id ? { ...r, ...campos } : r)));
+  const resumo = resumoProdutosM6(data, m5itens);
+  const temSemUnidade = itens.some((it) => !(it.unQtd && it.unPreco));
   return (
     <div>
       <p className="text-sm text-slate-400 mb-3">Detalhamento opcional — útil apenas para negócios industriais que fabricam o próprio produto. O resultado é apenas informativo; o cálculo oficial de custo (Módulo 8) usa o custo unitário que você definir lá.</p>
+      <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 mb-3 text-xs text-slate-300 leading-relaxed">
+        <b className="text-sky-300">Como preencher as unidades:</b> em <b>Custo unit.</b> informe o preço de compra e escolha a unidade desse preço (ex.: <b>R$ 20,00</b> por <b>kg</b>). Em <b>Qtde.</b> informe quanto a receita usa e a unidade usada (ex.: <b>150</b> <b>g</b>). A plataforma converte sozinha: 150 g × R$ 20,00/kg = <b>R$ 3,00</b>. Use o preço de <b>uma</b> unidade (1 kg, 1 litro, 1 ovo) e a mesma unidade para o mesmo ingrediente em todas as receitas.
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs uppercase text-slate-400 border-b border-slate-700">
               <th className="py-2 pr-2 w-36">Produto</th>
               <th className="py-2 pr-2">Material/Insumo</th>
-              <th className="py-2 pr-2 w-24">Qtde.</th>
-              <th className="py-2 pr-2 w-28">Custo Unit. (R$)</th>
+              <th className="py-2 pr-2 w-56">Qtde. usada</th>
+              <th className="py-2 pr-2 w-64">Custo unit. (R$) por</th>
               <th className="py-2 pr-2 w-28">Total (R$)</th>
               <th className="w-8"></th>
             </tr>
           </thead>
           <tbody>
-            {itens.map((it) => (
-              <tr key={it.id} className="border-b border-slate-800">
-                <td className="py-1.5 pr-2">
-                  <select value={it.produto || ""} onChange={(e) => setItens(itens.map((r) => (r.id === it.id ? { ...r, produto: e.target.value } : r)))} className="w-full border border-slate-600 rounded-md px-2 py-2 text-sm">
-                    <option value="">Selecione…</option>
-                    {m5itens.map((p) => <option key={p.id} value={p.nome}>{p.nome || "(sem nome)"}</option>)}
-                  </select>
-                </td>
-                <td className="py-1.5 pr-2"><TxtInput value={it.material} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, material: v } : r)))} placeholder="Ex.: Tecido" /></td>
-                <td className="py-1.5 pr-2"><NumInput value={it.qtd} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, qtd: v } : r)))} /></td>
-                <td className="py-1.5 pr-2"><NumInput value={it.custoUnit} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, custoUnit: v } : r)))} /></td>
-                <td className="py-1.5 pr-2 font-semibold text-slate-200">{fmtBRL((Number(it.qtd) || 0) * (Number(it.custoUnit) || 0))}</td>
-                <td><RemoveBtn onClick={() => setItens(itens.filter((r) => r.id !== it.id))} /></td>
-              </tr>
-            ))}
+            {itens.map((it) => {
+              const temUn = !!(it.unQtd && it.unPreco);
+              const incompat = temUn && fatorUnidadeM6(it.unQtd, it.unPreco) == null;
+              const faltaUma = (!!it.unQtd) !== (!!it.unPreco);
+              return (
+                <tr key={it.id} className="border-b border-slate-800 align-top">
+                  <td className="py-1.5 pr-2">
+                    <select value={it.produto || ""} onChange={(e) => mudar(it.id, { produto: e.target.value })} className="w-full border border-slate-600 rounded-md px-2 py-2 text-sm">
+                      <option value="">Selecione…</option>
+                      {m5itens.map((p) => <option key={p.id} value={p.nome}>{p.nome || "(sem nome)"}</option>)}
+                    </select>
+                  </td>
+                  <td className="py-1.5 pr-2"><TxtInput value={it.material} onChange={(v) => mudar(it.id, { material: v })} placeholder="Ex.: Farinha de trigo" /></td>
+                  <td className="py-1.5 pr-2">
+                    <div className="flex gap-1.5">
+                      <div className="min-w-0 flex-1"><NumInput value={it.qtd} onChange={(v) => mudar(it.id, { qtd: v })} /></div>
+                      <SelUnM6 value={it.unQtd} onChange={(v) => mudar(it.id, { unQtd: v })} titulo="Unidade da quantidade usada" />
+                    </div>
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    <div className="flex gap-1.5 items-center">
+                      <div className="min-w-0 flex-1"><NumInput value={it.custoUnit} onChange={(v) => mudar(it.id, { custoUnit: v })} /></div>
+                      <span className="text-xs text-slate-500">/</span>
+                      <SelUnM6 value={it.unPreco} onChange={(v) => mudar(it.id, { unPreco: v })} titulo="Unidade em que o preço foi pago" />
+                    </div>
+                    {incompat && <div className="text-[11px] text-red-400 mt-1">Unidades incompatíveis (peso × volume × unidade) — o total ficou zerado.</div>}
+                    {faltaUma && <div className="text-[11px] text-amber-400 mt-1">Escolha as duas unidades para a conversão.</div>}
+                  </td>
+                  <td className="py-1.5 pr-2 font-semibold text-slate-200">{fmtBRL(totalLinhaM6(it))}</td>
+                  <td><RemoveBtn onClick={() => setItens(itens.filter((r) => r.id !== it.id))} /></td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
-      <AddBtn onClick={() => setItens([...itens, { id: uid(), produto: "", material: "", qtd: 1, custoUnit: 0 }])}>Adicionar material</AddBtn>
+      <AddBtn onClick={() => setItens([...itens, { id: uid(), produto: "", material: "", qtd: 1, unQtd: "un", custoUnit: 0, unPreco: "un" }])}>Adicionar material</AddBtn>
+      {temSemUnidade && itens.length > 0 && <p className="text-[11px] text-slate-500 mt-2">Linhas com “—” nas unidades continuam sendo calculadas como antes (quantidade × custo). Escolha as unidades para a plataforma converter.</p>}
+
+      {resumo.length > 0 && (
+        <div className="mt-6">
+          <h4 className="text-sm font-semibold text-slate-200 mb-1">Resumo por produto — custo da receita e custo por unidade</h4>
+          <p className="text-xs text-slate-400 mb-2">Informe quantas unidades vendáveis (fatias, copos, unidades) a receita rende. Custo por unidade = custo dos ingredientes ÷ rendimento. Se não informar, a plataforma considera 1.</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase text-slate-400 border-b border-slate-700">
+                  <th className="py-2 pr-2">Produto</th>
+                  <th className="py-2 pr-2 w-28">Custo da receita</th>
+                  <th className="py-2 pr-2 w-28">Rende (un.)</th>
+                  <th className="py-2 pr-2 w-28">Custo/unidade</th>
+                  <th className="py-2 pr-2 w-28">Preço (M5)</th>
+                  <th className="py-2 pr-2 w-56">Situação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resumo.map((r) => (
+                  <tr key={r.nome} className="border-b border-slate-800">
+                    <td className="py-1.5 pr-2 text-slate-200">{r.nome}</td>
+                    <td className="py-1.5 pr-2">{fmtBRL(r.total)}</td>
+                    <td className="py-1.5 pr-2"><NumInput value={r.rendimento || ""} onChange={(v) => update({ ...data, rendimentos: { ...(data.rendimentos || {}), [r.nome]: v } })} placeholder="1" /></td>
+                    <td className="py-1.5 pr-2 font-semibold text-slate-200">{fmtBRL(r.porUnidade)}</td>
+                    <td className="py-1.5 pr-2 text-slate-300">{r.preco > 0 ? fmtBRL(r.preco) : "—"}</td>
+                    <td className="py-1.5 pr-2 text-xs">
+                      {r.acima ? <span className="text-red-400">⚠ Custo acima do preço de venda — confira unidades e rendimento.</span>
+                        : r.total === 0 ? <span className="text-amber-400">Sem custo lançado.</span>
+                        : <span className="text-emerald-400">Custo dentro do preço.</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-2">Quadro informativo: nada aqui altera o Módulo 8 nem as notas.</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -4574,7 +4694,7 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
   if (!lanc.m6.itens.length) filhos.push(vazio("Módulo 6 (opcional, para negócios que fabricam o próprio produto) não preenchido."));
   else {
     filhos.push(para("Detalhamento dos materiais usados na produção de cada item. É um quadro informativo: o custo oficial de cada produto é o informado no Módulo 8."));
-    filhos.push(tabela(["Produto", "Material/insumo", "Qtde.", "Custo unitário", "Total"], lanc.m6.itens.map((i) => [i.produto || "—", i.material || "—", num(i.qtd, 2), brl(i.custoUnit), brl((Number(i.qtd) || 0) * (Number(i.custoUnit) || 0))]), [2.4, 3.2, 1, 1.6, 1.5], [2, 3, 4]));
+    filhos.push(tabela(["Produto", "Material/insumo", "Qtde.", "Custo unitário", "Total"], lanc.m6.itens.map((i) => [i.produto || "—", i.material || "—", `${num(i.qtd, 2)}${i.unQtd ? " " + i.unQtd : ""}`, `${brl(i.custoUnit)}${i.unPreco ? " /" + i.unPreco : ""}`, brl(totalLinhaM6(i))]), [2.4, 3.2, 1.2, 1.8, 1.5], [2, 3, 4]));
   }
   filhos.push(mod(7, "Custos de Comercialização"));
   const regime = lanc.m7.modoImposto === "simples" && lanc.m7.tipoAtividade && TABELA_SIMPLES[lanc.m7.tipoAtividade] ? `Simples Nacional — ${TABELA_SIMPLES[lanc.m7.tipoAtividade].nome} (${TABELA_SIMPLES[lanc.m7.tipoAtividade].anexo})` : "informado manualmente";
@@ -8083,8 +8203,8 @@ function dadosTabelaModulo(modId, l, calc) {
     case "m6":
       return {
         colunas: ["Produto", "Material", "Qtde.", "Custo unit.", "Total"],
-        linhas: l.m6.itens.map((it) => [nome(it.produto, "—"), nome(it.material, "—"), q(it.qtd), fmtBRL(Number(it.custoUnit) || 0), fmtBRL((Number(it.qtd) || 0) * (Number(it.custoUnit) || 0))]),
-        rodape: [["Total de materiais", fmtBRL(l.m6.itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.custoUnit) || 0), 0))]],
+        linhas: l.m6.itens.map((it) => [nome(it.produto, "—"), nome(it.material, "—"), `${q(it.qtd)}${it.unQtd ? " " + it.unQtd : ""}`, `${fmtBRL(Number(it.custoUnit) || 0)}${it.unPreco ? " /" + it.unPreco : ""}`, fmtBRL(totalLinhaM6(it))]),
+        rodape: [["Total de materiais", fmtBRL(l.m6.itens.reduce((s, it) => s + totalLinhaM6(it), 0))]],
       };
     case "m7":
       return {

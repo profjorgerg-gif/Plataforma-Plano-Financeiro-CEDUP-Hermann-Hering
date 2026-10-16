@@ -1,4 +1,4 @@
-// build: 20261015_15h30m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261016_15h53m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1327,6 +1327,13 @@ function chamadoPassaFiltro(c, filtro) {
 // Lista do mais recente para o mais antigo — o primeiro item é a versão vigente.
 // ============================================================================
 const VERSOES = [
+  { versao: "2.5", data: "16/10/2026", itens: [
+    "Nova \"Mesa de janelas\" (opcional): botão \"Abrir Mesa de janelas\" no fim do menu lateral (professor e aluno, em telas largas). As mesmas telas passam a abrir em janelas flutuantes, com menus no topo — duas telas ficam lado a lado automaticamente, e dá para arrastar, redimensionar, encaixar à esquerda/direita, minimizar e voltar ao menu lateral com um clique. Nada foi retirado: o menu lateral continua sendo o padrão.",
+    "Professor — novas telas (só leitura): \"Hoje do professor\" (o que precisa de você agora), \"Registro do processo\" (linha do tempo de cada empresa), \"Caminho do aluno\" (mapa dos 13 módulos), \"Diretriz da semana\" (ligada ao cronograma) e \"Mensagens Classroom\" (textos prontos de lembrete, ajustes, liberação e parabéns).",
+    "Relatório de Notas: sugestão automática de nota (10 − 1,0 por devolução − 2,0 se entregue com atraso) mostrada ao lado da nota lançada, apenas informativa e fora da impressão/CSV — a nota continua sendo decisão do professor.",
+    "Aluno — novas telas: \"Guia da semana\" (módulo atual, prazo, devolutiva e passo a passo), \"Minha trajetória\" (linha do tempo da equipe) e o \"Caminho da equipe\" no Início (\"vocês estão aqui\").",
+    "Lixeira de segurança: itens excluídos de um módulo ficam guardados por 30 dias numa cópia separada (chave própria); a equipe pode restaurá-los em \"Lixeira de segurança\" e o professor acompanha pela mesma tela. Nenhum lançamento existente é alterado por esse recurso.",
+  ]},
   { versao: "2.4", data: "15/10/2026", itens: [
     "Nova aba \"Plano Semestral\" em GESTÃO → Relatórios: plano semestral de Administração Financeira no modelo do CEDUP Hermann Hering (cabeçalho com brasão e logo), editável e salvo por turma, com as datas previstas do Projeto vindas do cronograma. Impressão/PDF em A4 paisagem.",
   ]},
@@ -4862,7 +4869,17 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   const [confirmSairAberto, setConfirmSairAberto] = useState(false);
   const [decisaoGestorTomada, setDecisaoGestorTomada] = useState(false);
   const [pdfAberto, setPdfAberto] = useState(null);
-  const irPara = (id) => { setAba(id); setMenuAberto(false); };
+  const [modoMesa, setModoMesa] = useModoMesa("ppf_modo_mesa_aluno");
+  const larga = useTelaLarga();
+  const mesa = useMesa();
+  const mesaAtiva = modoMesa && larga;
+  useEffect(() => {
+    if (!mesaAtiva) return undefined;
+    const t = setTimeout(() => { if (Object.keys(mesa.wins).length === 0) mesa.abrir("inicio"); }, 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mesaAtiva]);
+  const irPara = (id) => { if (mesaAtiva) { mesa.abrir(id); return; } setAba(id); setMenuAberto(false); };
 
   const lanc = mergeLancamentos(dados?.lancamentos);
   const calc = useMemo(() => calcular(lanc), [JSON.stringify(lanc)]);
@@ -4954,8 +4971,20 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
 
   const updateModulo = (modId, val) => {
     if (souVisualizador) return; // trava extra — a tela já fica sem interação para quem visualiza
+    // Lixeira de segurança: guarda uma CÓPIA do que foi excluído (chave própria); nunca altera os lançamentos.
+    if (equipe?.teste !== true) { const removidos = itensRemovidos(lanc[modId], val); if (removidos.length) registrarNaLixeira(equipe.id, user.nome, modId, removidos); }
     const novo = { ...dados, lancamentos: { ...lanc, [modId]: val } };
     setDados(novo);
+  };
+
+  // Restaura da Lixeira: reinclui o item no mesmo módulo (mesmo caminho de gravação de um item novo).
+  const restaurarDaLixeira = (e) => {
+    if (souVisualizador || equipe?.teste === true) return false;
+    const mod = lanc[e.modId];
+    if (!mod || !Array.isArray(mod[e.campo])) return false;
+    if (mod[e.campo].some((x) => x && x.id === e.item.id)) return true;
+    setDados({ ...dados, lancamentos: { ...lanc, [e.modId]: { ...mod, [e.campo]: [...mod[e.campo], e.item] } } });
+    return true;
   };
 
   // Exemplo por segmento — EXCLUSIVO da Empresa de teste. Escreve apenas nos
@@ -4995,6 +5024,9 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
     { id: "modeloApresentacao", label: "Baixar Modelo de Apresentação", icon: FileDown, num: null },
     { id: "feedback", label: "Feedback do Professor", icon: MessageSquare, num: null },
     { id: "notas", label: "Minhas Notas", icon: Target, num: null },
+    { id: "guia", label: "Guia da semana", icon: ListChecks, num: null },
+    { id: "trajetoria", label: "Minha trajetória", icon: History, num: null },
+    { id: "lixeira", label: "Lixeira de segurança", icon: Trash2, num: null },
     { id: "referencias", label: "Referências Bibliográficas", icon: Library, num: null },
     { id: "suporte", label: "Suporte", icon: LifeBuoy, num: null },
     { id: "novidades", label: "Novidades", icon: Megaphone, num: null },
@@ -5007,148 +5039,8 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
     baixarArquivo(`backup_${equipe.nomeNegocio.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo(agora)}.json`, JSON.stringify(pacote, null, 2));
   };
 
-  return (
-    <div className="min-h-screen flex bg-slate-950 relative">
-      <header className="app-mobile-header md:hidden fixed top-0 inset-x-0 z-20 bg-slate-900 border-b border-white/10 flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-2 text-sm text-white/80 font-semibold truncate"><Building2 size={16} className="shrink-0" /> <span className="truncate">{equipe.nomeNegocio}</span></div>
-        <button onClick={() => setMenuAberto(true)} className="relative text-white/80 p-1 shrink-0">
-          <Menu size={22} />
-          {naoLidos > 0 && <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-slate-900" />}
-        </button>
-      </header>
-
-      {menuAberto && <div onClick={() => setMenuAberto(false)} className="md:hidden fixed inset-0 bg-black/60 z-30" />}
-
-      <aside className={`app-sidebar w-72 bg-slate-900 text-white flex flex-col shrink-0 fixed inset-y-0 left-0 z-40 transition-transform duration-200 md:static md:translate-x-0 ${menuAberto ? "translate-x-0" : "-translate-x-full"}`}>
-        <div className="p-5 border-b border-white/10 flex items-start justify-between gap-2">
-          <div>
-            <div className="flex items-center gap-2 text-sm text-white/70"><Building2 size={16} /> {equipe.nomeNegocio}</div>
-            <div className="text-xs text-white/50 mt-1">Equipe · {equipe.integrantes.join(", ")}</div>
-          </div>
-          <button onClick={() => setMenuAberto(false)} className="md:hidden text-white/60 hover:text-white shrink-0"><X size={18} /></button>
-        </div>
-        <nav className="flex-1 overflow-y-auto py-3">
-          {menuItems.map((it) => {
-            const Icon = it.icon;
-            const active = aba === it.id;
-            if (it.id === "modeloApresentacao") {
-              return (
-                <div key={it.id}>
-                  <button
-                    type="button"
-                    disabled={gerandoPpt}
-                    onClick={async () => {
-                      setErroPpt(""); setGerandoPpt(true);
-                      try { await gerarApresentacaoEquipe({ equipe, calc, fluxo: projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0) }); setMenuAberto(false); }
-                      catch { setErroPpt("Não foi possível gerar agora — confira a conexão com a internet e tente de novo."); }
-                      finally { setGerandoPpt(false); }
-                    }}
-                    className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent disabled:opacity-60"
-                  >
-                    <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{gerandoPpt ? "Gerando apresentação…" : "Baixar Apresentação (dados da equipe)"}</span>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={gerandoDoc}
-                    onClick={async () => {
-                      setErroPpt(""); setGerandoDoc(true);
-                      try { await gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo: projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0), cenarios: dados?.cenarios || [], taxaCrescimento: dados?.taxaCrescimentoFluxo ?? 0, tmaAnual: dados?.tmaAnualFluxo ?? 12, historico: dados?.historico || [] }); setMenuAberto(false); }
-                      catch { setErroPpt("Não foi possível gerar agora — confira a conexão com a internet e tente de novo."); }
-                      finally { setGerandoDoc(false); }
-                    }}
-                    className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent disabled:opacity-60"
-                  >
-                    <FileDown size={16} className="shrink-0" /> <span className="truncate flex-1">{gerandoDoc ? "Gerando documento…" : "Baixar Plano Financeiro (Word)"}</span>
-                  </button>
-                  <a href={MODELO_APRESENTACAO_URL} download onClick={() => setMenuAberto(false)} className="block pl-12 pr-5 pb-1.5 text-[11px] text-white/40 hover:text-white/70 underline">
-                    Modelo em branco
-                  </a>
-                  {erroPpt && <div className="px-5 pb-2 text-[11px] text-rose-300">{erroPpt}</div>}
-                </div>
-              );
-            }
-            const pdfUrl = MANUAIS_PDF[it.id];
-            if (pdfUrl) {
-              if (user.mestre) {
-                return (
-                  <a
-                    key={it.id}
-                    href={pdfUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => setMenuAberto(false)}
-                    className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent"
-                  >
-                    {it.num && <span className="text-[10px] font-mono w-5 shrink-0 text-white/30">{it.num}</span>}
-                    <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
-                    <Printer size={13} className="shrink-0 text-slate-500" />
-                  </a>
-                );
-              }
-              return (
-                <button
-                  key={it.id}
-                  onClick={() => { setPdfAberto({ url: pdfUrl, titulo: it.label }); setMenuAberto(false); }}
-                  className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent"
-                >
-                  {it.num && <span className="text-[10px] font-mono w-5 shrink-0 text-white/30">{it.num}</span>}
-                  <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
-                </button>
-              );
-            }
-            return (
-              <button
-                key={it.id}
-                onClick={() => irPara(it.id)}
-                className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${active ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}
-              >
-                {it.num && <span className={`text-[10px] font-mono w-5 shrink-0 ${active ? "text-amber-500" : "text-white/30"}`}>{it.num}</span>}
-                <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
-                {it.moduloStatus && <BadgeStatusModuloMenu status={it.moduloStatus} />}
-                {it.id === "feedback" && naoLidos > 0 && (
-                  <span className="text-[10px] font-bold bg-amber-500 text-slate-900 rounded-full px-1.5 py-0.5 shrink-0">{naoLidos}</span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
-        <div className="p-4 border-t border-white/10">
-          <div className="text-xs text-white/50 mb-2">Progresso geral (módulos aprovados)</div>
-          <div className="w-full bg-white/10 rounded-full h-2 mb-3"><div className="bg-amber-500 h-2 rounded-full transition-all" style={{ width: `${progressoAprovado}%` }} /></div>
-          {onTrocarEmpresa && (
-            <button onClick={onTrocarEmpresa} className="flex items-center gap-2 text-sm text-white/70 hover:text-white mb-2"><Building2 size={15} /> Trocar de empresa</button>
-          )}
-          <button onClick={() => setConfirmSairAberto(true)} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><LogOut size={15} /> Sair</button>
-        </div>
-      </aside>
-
-      {confirmSairAberto && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-5">
-          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-sm w-full p-6 text-center">
-            <Save size={30} className="mx-auto text-amber-500 mb-3" />
-            <h3 className="font-bold text-slate-100 mb-2">Baixar um backup antes de sair?</h3>
-            <p className="text-xs text-slate-400 mb-5">Baixa um arquivo com os lançamentos e o histórico de versões da equipe {equipe.nomeNegocio}. Recomendado, mas opcional.</p>
-            <button onClick={() => { baixarBackupEquipe(); setConfirmSairAberto(false); onSair(true); }} className="w-full bg-amber-500 text-slate-900 font-bold py-2.5 rounded-md hover:bg-amber-400 mb-2">Sim, baixar backup e sair</button>
-            <button onClick={() => { setConfirmSairAberto(false); onSair(false); }} className="w-full text-sm text-slate-400 hover:text-slate-100 py-1.5">Sair sem backup</button>
-          </div>
-        </div>
-      )}
-
-      {onVerNovidades && <NovidadesOverlay perfil={{ ultimaVersaoVista }} onFechar={onVerNovidades} onIrParaHistorico={() => { onVerNovidades(); irPara("novidades"); }} />}
-
-      {gestaoLivre && !decisaoGestorTomada && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-5">
-          <div className="bg-slate-900 border border-amber-500/50 rounded-xl max-w-sm w-full p-6 text-center">
-            <UserCog size={30} className="mx-auto text-amber-500 mb-3" />
-            <h3 className="font-bold text-slate-100 mb-2">Você vai gerir os lançamentos agora?</h3>
-            <p className="text-xs text-slate-400 mb-5">Só uma pessoa da equipe {equipe.nomeNegocio} lança dados por vez — evita que dois integrantes sobrescrevam um ao outro. Os demais acompanham em modo de visualização.</p>
-            <button onClick={assumirGestao} className="w-full bg-amber-500 text-slate-900 font-bold py-2.5 rounded-md hover:bg-amber-400 mb-2">Sim, eu vou lançar agora</button>
-            <button onClick={continuarVisualizando} className="w-full text-sm text-slate-400 hover:text-slate-100 py-1.5">Só visualizar por enquanto</button>
-          </div>
-        </div>
-      )}
-
-      <main className="flex-1 overflow-y-auto p-4 pt-20 md:p-8 md:pt-8 max-w-5xl mx-auto w-full">
+  const avisosAluno = (
+    <>
         {equipe?.teste === true && dados?.exemploAplicado && (
           <div className="mb-4 bg-violet-950/30 border border-violet-700/50 rounded-md px-4 py-2 text-xs text-violet-200 flex items-center gap-2">
             <span>📋</span><span><b>Dados fictícios de exemplo</b> — {dados.exemploAplicado}. Você pode editar qualquer valor para demonstrar; para voltar ao original, use "Restaurar exemplo" em Segmento do negócio.</span>
@@ -5167,6 +5059,40 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
           </div>
         )}
 
+    </>
+  );
+  const modalSair = (
+    <>
+      {confirmSairAberto && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-5">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-sm w-full p-6 text-center">
+            <Save size={30} className="mx-auto text-amber-500 mb-3" />
+            <h3 className="font-bold text-slate-100 mb-2">Baixar um backup antes de sair?</h3>
+            <p className="text-xs text-slate-400 mb-5">Baixa um arquivo com os lançamentos e o histórico de versões da equipe {equipe.nomeNegocio}. Recomendado, mas opcional.</p>
+            <button onClick={() => { baixarBackupEquipe(); setConfirmSairAberto(false); onSair(true); }} className="w-full bg-amber-500 text-slate-900 font-bold py-2.5 rounded-md hover:bg-amber-400 mb-2">Sim, baixar backup e sair</button>
+            <button onClick={() => { setConfirmSairAberto(false); onSair(false); }} className="w-full text-sm text-slate-400 hover:text-slate-100 py-1.5">Sair sem backup</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+  const modalGestor = (
+    <>
+      {gestaoLivre && !decisaoGestorTomada && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-5">
+          <div className="bg-slate-900 border border-amber-500/50 rounded-xl max-w-sm w-full p-6 text-center">
+            <UserCog size={30} className="mx-auto text-amber-500 mb-3" />
+            <h3 className="font-bold text-slate-100 mb-2">Você vai gerir os lançamentos agora?</h3>
+            <p className="text-xs text-slate-400 mb-5">Só uma pessoa da equipe {equipe.nomeNegocio} lança dados por vez — evita que dois integrantes sobrescrevam um ao outro. Os demais acompanham em modo de visualização.</p>
+            <button onClick={assumirGestao} className="w-full bg-amber-500 text-slate-900 font-bold py-2.5 rounded-md hover:bg-amber-400 mb-2">Sim, eu vou lançar agora</button>
+            <button onClick={continuarVisualizando} className="w-full text-sm text-slate-400 hover:text-slate-100 py-1.5">Só visualizar por enquanto</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+  const renderAba = (aba, setAba) => (
+    <>
         {aba === "manual" && <ManualAlunoView equipe={equipe} onIrPara={setAba} />}
 
         {aba === "cronograma" && <CronogramaAlunoView turmaId={turmaId} />}
@@ -5192,6 +5118,11 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
               <StatCard label="Resultado/mês" value={fmtBRL(calc.resultadoOperacional)} tone={calc.resultadoOperacional >= 0 ? "emerald" : "rose"} small />
               <StatCard label="Progresso (aprovados)" value={`${progressoAprovado}%`} tone="gold" small />
             </div>
+
+            <Card className="p-4 mb-6">
+              <SectionTitle icon={Target} sub="Cada círculo é um módulo; o amarelo mostra onde vocês estão agora.">Caminho da equipe</SectionTitle>
+              <CaminhoSvg fluxo={fluxo} rotuloAqui="▼ vocês estão aqui" />
+            </Card>
 
             <Card className="p-4">
               <SectionTitle icon={ClipboardList} sub="Os módulos são liberados um a um: conclua e envie o atual para o professor(a) liberar o próximo.">Índice de módulos</SectionTitle>
@@ -5433,6 +5364,204 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
         {aba === "referencias" && <ReferenciasBibliograficasView />}
         {aba === "novidades" && <NovidadesView />}
         {aba === "tutoriais" && <TutoriaisView categoria="aluno" />}
+        {aba === "guia" && <GuiaSemanaAlunoView fluxo={fluxo} equipeKey={equipeKey} onIrPara={setAba} />}
+        {aba === "trajetoria" && <TrajetoriaAlunoView dados={dados} />}
+        {aba === "lixeira" && <LixeiraAlunoView equipe={equipe} fluxo={fluxo} onRestaurar={restaurarDaLixeira} podeEditar={!souVisualizador && equipe?.teste !== true} />}
+    </>
+  );
+
+  const acaoBaixarPpt = async () => {
+    setErroPpt(""); setGerandoPpt(true);
+    try { await gerarApresentacaoEquipe({ equipe, calc, fluxo: projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0) }); }
+    catch { setErroPpt("Não foi possível gerar agora — confira a conexão com a internet e tente de novo."); }
+    finally { setGerandoPpt(false); }
+  };
+  const acaoBaixarDoc = async () => {
+    setErroPpt(""); setGerandoDoc(true);
+    try { await gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo: projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0), cenarios: dados?.cenarios || [], taxaCrescimento: dados?.taxaCrescimentoFluxo ?? 0, tmaAnual: dados?.tmaAnualFluxo ?? 12, historico: dados?.historico || [] }); }
+    catch { setErroPpt("Não foi possível gerar agora — confira a conexão com a internet e tente de novo."); }
+    finally { setGerandoDoc(false); }
+  };
+  const abrirManualAluno = () => { const url = MANUAIS_PDF.manualAlunoRef; if (user.mestre) window.open(url, "_blank", "noopener"); else setPdfAberto({ url, titulo: "Manual do Aluno" }); };
+  const menuMesaAluno = [
+    { direct: true, key: "inicio", label: "Início" },
+    { label: "Projeto", itens: [
+      { key: "manual", label: "Manual do Aluno", acao: abrirManualAluno },
+      { key: "segmento", label: "Segmento do negócio" }, { key: "cronograma", label: "Cronograma do projeto" },
+      { key: "guia", label: "Guia da semana", novo: true },
+    ] },
+    { label: "Módulos", itens: MODULOS.map((m) => ({ key: m.id, label: `${String(m.n).padStart(2, "0")} · ${m.nome}`, status: estadoModulo(fluxo, m.id).status })) },
+    { label: "Análises", itens: [{ key: "analise", label: "Análise do Negócio" }, { key: "cenarios", label: "Análise de Cenários" }, { key: "fluxocaixa", label: "Fluxo de Caixa Anual" }] },
+    { label: "Entregas", itens: [
+      { key: "ppt", label: gerandoPpt ? "Gerando apresentação…" : "Baixar Apresentação (dados da equipe)", acao: acaoBaixarPpt },
+      { key: "doc", label: gerandoDoc ? "Gerando documento…" : "Baixar Plano Financeiro (Word)", acao: acaoBaixarDoc },
+      { key: "modelo", label: "Modelo de apresentação em branco", acao: () => window.open(MODELO_APRESENTACAO_URL, "_blank", "noopener") },
+    ] },
+    { label: "Acompanhamento", badge: naoLidos || 0, itens: [
+      { key: "feedback", label: "Feedback do Professor", badge: naoLidos || 0 },
+      { key: "notas", label: "Minhas Notas" },
+      { key: "trajetoria", label: "Minha trajetória", novo: true },
+      { key: "lixeira", label: "Lixeira de segurança", novo: true },
+    ] },
+    { label: "Ajuda", itens: [{ key: "referencias", label: "Referências Bibliográficas" }, { key: "suporte", label: "Suporte" }, { key: "novidades", label: "Novidades" }, { key: "tutoriais", label: "Tutoriais" }] },
+  ];
+  const tituloMesaAluno = (k) => {
+    const m = MODULOS.find((x) => x.id === k);
+    if (m) return `${String(m.n).padStart(2, "0")} · ${m.nome}`;
+    for (const mm of menuMesaAluno) { if (mm.key === k) return mm.label; for (const it of (mm.itens || [])) if (it.key === k) return it.label; }
+    return k;
+  };
+
+  if (mesaAtiva) {
+    return (
+      <>
+        <MesaJanelas
+          menu={menuMesaAluno} mesa={mesa} renderTela={(k) => renderAba(k, (id) => mesa.abrir(id))} tituloDe={tituloMesaAluno}
+          brand="PPF · Aluno" homeChave="inicio" onVoltar={() => setModoMesa(false)}
+          avisos={<>{avisosAluno}{erroPpt && <div className="px-4 py-1 text-xs text-rose-300 bg-slate-900">{erroPpt}</div>}</>}
+          info={<>
+            <span className="truncate max-w-[200px]" title={equipe.nomeNegocio}>{equipe.nomeNegocio}</span>
+            <span className="flex items-center gap-1.5" title="Progresso geral (módulos aprovados)"><span className="inline-block w-20 h-1.5 bg-slate-700 rounded-full"><span className="block h-1.5 bg-amber-500 rounded-full" style={{ width: `${progressoAprovado}%` }} /></span>{progressoAprovado}%</span>
+            {onTrocarEmpresa && <button onClick={onTrocarEmpresa} className="border border-slate-600 rounded px-2.5 py-1 text-slate-100 hover:bg-slate-800">Trocar de empresa</button>}
+            <button onClick={() => setConfirmSairAberto(true)} className="border border-slate-600 rounded px-2.5 py-1 text-slate-100 hover:bg-slate-800">Sair</button>
+          </>}
+        />
+        {modalSair}
+        {modalGestor}
+        {onVerNovidades && <NovidadesOverlay perfil={{ ultimaVersaoVista }} onFechar={onVerNovidades} onIrParaHistorico={() => { onVerNovidades(); irPara("novidades"); }} />}
+        {pdfAberto && <VisualizadorManualPDF url={pdfAberto.url} titulo={pdfAberto.titulo} onFechar={() => setPdfAberto(null)} />}
+      </>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex bg-slate-950 relative">
+      <header className="app-mobile-header md:hidden fixed top-0 inset-x-0 z-20 bg-slate-900 border-b border-white/10 flex items-center justify-between px-4 py-3">
+        <div className="flex items-center gap-2 text-sm text-white/80 font-semibold truncate"><Building2 size={16} className="shrink-0" /> <span className="truncate">{equipe.nomeNegocio}</span></div>
+        <button onClick={() => setMenuAberto(true)} className="relative text-white/80 p-1 shrink-0">
+          <Menu size={22} />
+          {naoLidos > 0 && <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-slate-900" />}
+        </button>
+      </header>
+
+      {menuAberto && <div onClick={() => setMenuAberto(false)} className="md:hidden fixed inset-0 bg-black/60 z-30" />}
+
+      <aside className={`app-sidebar w-72 bg-slate-900 text-white flex flex-col shrink-0 fixed inset-y-0 left-0 z-40 transition-transform duration-200 md:static md:translate-x-0 ${menuAberto ? "translate-x-0" : "-translate-x-full"}`}>
+        <div className="p-5 border-b border-white/10 flex items-start justify-between gap-2">
+          <div>
+            <div className="flex items-center gap-2 text-sm text-white/70"><Building2 size={16} /> {equipe.nomeNegocio}</div>
+            <div className="text-xs text-white/50 mt-1">Equipe · {equipe.integrantes.join(", ")}</div>
+          </div>
+          <button onClick={() => setMenuAberto(false)} className="md:hidden text-white/60 hover:text-white shrink-0"><X size={18} /></button>
+        </div>
+        <nav className="flex-1 overflow-y-auto py-3">
+          {menuItems.map((it) => {
+            const Icon = it.icon;
+            const active = aba === it.id;
+            if (it.id === "modeloApresentacao") {
+              return (
+                <div key={it.id}>
+                  <button
+                    type="button"
+                    disabled={gerandoPpt}
+                    onClick={async () => {
+                      setErroPpt(""); setGerandoPpt(true);
+                      try { await gerarApresentacaoEquipe({ equipe, calc, fluxo: projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0) }); setMenuAberto(false); }
+                      catch { setErroPpt("Não foi possível gerar agora — confira a conexão com a internet e tente de novo."); }
+                      finally { setGerandoPpt(false); }
+                    }}
+                    className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent disabled:opacity-60"
+                  >
+                    <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{gerandoPpt ? "Gerando apresentação…" : "Baixar Apresentação (dados da equipe)"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={gerandoDoc}
+                    onClick={async () => {
+                      setErroPpt(""); setGerandoDoc(true);
+                      try { await gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo: projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0), cenarios: dados?.cenarios || [], taxaCrescimento: dados?.taxaCrescimentoFluxo ?? 0, tmaAnual: dados?.tmaAnualFluxo ?? 12, historico: dados?.historico || [] }); setMenuAberto(false); }
+                      catch { setErroPpt("Não foi possível gerar agora — confira a conexão com a internet e tente de novo."); }
+                      finally { setGerandoDoc(false); }
+                    }}
+                    className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent disabled:opacity-60"
+                  >
+                    <FileDown size={16} className="shrink-0" /> <span className="truncate flex-1">{gerandoDoc ? "Gerando documento…" : "Baixar Plano Financeiro (Word)"}</span>
+                  </button>
+                  <a href={MODELO_APRESENTACAO_URL} download onClick={() => setMenuAberto(false)} className="block pl-12 pr-5 pb-1.5 text-[11px] text-white/40 hover:text-white/70 underline">
+                    Modelo em branco
+                  </a>
+                  {erroPpt && <div className="px-5 pb-2 text-[11px] text-rose-300">{erroPpt}</div>}
+                </div>
+              );
+            }
+            const pdfUrl = MANUAIS_PDF[it.id];
+            if (pdfUrl) {
+              if (user.mestre) {
+                return (
+                  <a
+                    key={it.id}
+                    href={pdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setMenuAberto(false)}
+                    className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent"
+                  >
+                    {it.num && <span className="text-[10px] font-mono w-5 shrink-0 text-white/30">{it.num}</span>}
+                    <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
+                    <Printer size={13} className="shrink-0 text-slate-500" />
+                  </a>
+                );
+              }
+              return (
+                <button
+                  key={it.id}
+                  onClick={() => { setPdfAberto({ url: pdfUrl, titulo: it.label }); setMenuAberto(false); }}
+                  className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent"
+                >
+                  {it.num && <span className="text-[10px] font-mono w-5 shrink-0 text-white/30">{it.num}</span>}
+                  <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
+                </button>
+              );
+            }
+            return (
+              <button
+                key={it.id}
+                onClick={() => irPara(it.id)}
+                className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${active ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}
+              >
+                {it.num && <span className={`text-[10px] font-mono w-5 shrink-0 ${active ? "text-amber-500" : "text-white/30"}`}>{it.num}</span>}
+                <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
+                {it.moduloStatus && <BadgeStatusModuloMenu status={it.moduloStatus} />}
+                {it.id === "feedback" && naoLidos > 0 && (
+                  <span className="text-[10px] font-bold bg-amber-500 text-slate-900 rounded-full px-1.5 py-0.5 shrink-0">{naoLidos}</span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+        <div className="p-4 border-t border-white/10">
+          {larga && <button onClick={() => setModoMesa(true)} className="flex items-center gap-2 text-sm text-amber-400 hover:text-amber-300 mb-3" title="Mostra as mesmas telas em janelas flutuantes, lado a lado">▦ Abrir Mesa de janelas</button>}
+          <div className="text-xs text-white/50 mb-2">Progresso geral (módulos aprovados)</div>
+          <div className="w-full bg-white/10 rounded-full h-2 mb-3"><div className="bg-amber-500 h-2 rounded-full transition-all" style={{ width: `${progressoAprovado}%` }} /></div>
+          {onTrocarEmpresa && (
+            <button onClick={onTrocarEmpresa} className="flex items-center gap-2 text-sm text-white/70 hover:text-white mb-2"><Building2 size={15} /> Trocar de empresa</button>
+          )}
+          <button onClick={() => setConfirmSairAberto(true)} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><LogOut size={15} /> Sair</button>
+        </div>
+      </aside>
+
+
+      {onVerNovidades && <NovidadesOverlay perfil={{ ultimaVersaoVista }} onFechar={onVerNovidades} onIrParaHistorico={() => { onVerNovidades(); irPara("novidades"); }} />}
+
+
+      {modalSair}
+
+      {modalGestor}
+
+      <main className="flex-1 overflow-y-auto p-4 pt-20 md:p-8 md:pt-8 max-w-5xl mx-auto w-full">
+        {avisosAluno}
+
+        {renderAba(aba, setAba)}
       </main>
       {pdfAberto && <VisualizadorManualPDF url={pdfAberto.url} titulo={pdfAberto.titulo} onFechar={() => setPdfAberto(null)} />}
     </div>
@@ -8709,7 +8838,7 @@ function RelatorioNotas({ turma, dadosEquipes }) {
     const notaPonderada = calcularNotaPonderada({ media, notaFinal, notaCenariosFluxo, notaApresentacao, totalModulos: NOTA_MODULOS_AVALIAVEIS.length, notasDadasLength: notasDadas.length });
     const integrantes = (equipe.integrantes && equipe.integrantes.length > 0) ? equipe.integrantes : ["(sem integrantes ainda)"];
     integrantes.forEach((nomeAluno) => {
-      linhas.push({ nomeAluno, empresa: equipe.nomeNegocio, notas, notaCenariosFluxo, notaApresentacao, notaPonderada });
+      linhas.push({ nomeAluno, empresa: equipe.nomeNegocio, notas, notaCenariosFluxo, notaApresentacao, notaPonderada, fluxo: dados.fluxoModulos });
     });
   });
   linhas.sort((a, b) => a.nomeAluno.localeCompare(b.nomeAluno, "pt-BR"));
@@ -8766,7 +8895,7 @@ function RelatorioNotas({ turma, dadosEquipes }) {
                   <td className="py-2 px-3 text-slate-100 font-medium">{l.nomeAluno}</td>
                   <td className="py-2 px-3 text-slate-400">{l.empresa}</td>
                   {modulosColuna.map((m) => (
-                    <td key={m.id} className="py-2 px-2 text-center text-slate-300">{!vazio(l.notas[m.id]) ? l.notas[m.id] : "—"}</td>
+                    <td key={m.id} className="py-2 px-2 text-center text-slate-300">{!vazio(l.notas[m.id]) ? l.notas[m.id] : "—"}{(() => { const sg = sugerirNotaModulo(estadoModulo(l.fluxo, m.id)); return sg !== null && String(sg) !== String(l.notas[m.id]) ? <span className="no-print block text-[10px] text-violet-300" title="Sugestão automática (10 − 1 por devolução − 2 se entregue com atraso). Só informativa: a nota é sua.">sug. {sg}</span> : null; })()}</td>
                   ))}
                   <td className="py-2 px-2 text-center text-slate-300">{!vazio(l.notaCenariosFluxo) ? l.notaCenariosFluxo : "—"}</td>
                   <td className="py-2 px-2 text-center text-slate-300">{!vazio(l.notaApresentacao) ? l.notaApresentacao : "—"}</td>
@@ -8777,6 +8906,7 @@ function RelatorioNotas({ turma, dadosEquipes }) {
           </table>
         </div>
       </Card>
+      <p className="no-print text-[11px] text-slate-500 mt-2"><span className="text-violet-300 font-semibold">sug.</span> = sugestão automática (10 − 1,0 por devolução − 2,0 se entregue com atraso), exibida só quando difere da nota lançada. Não grava nada: a nota continua sendo decisão do professor.</p>
     </div>
   );
 }
@@ -9524,9 +9654,10 @@ const ABAS_RELATORIO = [
   { id: "plano", label: "Plano Semestral", icon: FileText },
 ];
 
-function GestaoRelatoriosView({ turmas }) {
-  const [turmaId, setTurmaId] = useState("");
-  const [aba, setAba] = useState("resumo");
+function GestaoRelatoriosView({ turmas, abaInicial, semAbas }) {
+  const [turmaId, setTurmaIdLocal] = useState(() => (semAbas ? (turmas.some((t) => t.id === ULTIMA_TURMA_SEL) ? ULTIMA_TURMA_SEL : (turmas[0]?.id || "")) : ""));
+  const setTurmaId = (v) => { if (semAbas) ULTIMA_TURMA_SEL = v; setTurmaIdLocal(v); };
+  const [aba, setAba] = useState(abaInicial || "resumo");
   const [refreshKey, setRefreshKey] = useState(0);
   const [leituraEm, setLeituraEm] = useState(null);
   const turma = turmas.find((t) => t.id === turmaId);
@@ -9538,7 +9669,7 @@ function GestaoRelatoriosView({ turmas }) {
 
   return (
     <div>
-      <SectionTitle icon={FileBarChart} sub="Escolha a turma e o tipo de relatório para acompanhar o desempenho das equipes.">Relatórios</SectionTitle>
+      <SectionTitle icon={FileBarChart} sub="Escolha a turma e o tipo de relatório para acompanhar o desempenho das equipes.">{semAbas ? ((ABAS_RELATORIO.find((a) => a.id === aba) || {}).label || "Relatórios") : "Relatórios"}</SectionTitle>
       <div className="no-print mb-4 flex flex-wrap items-center gap-3">
         <SeletorTurma turmas={turmas} value={turmaId} onChange={setTurmaId} />
         {turmaId && (
@@ -9555,7 +9686,7 @@ function GestaoRelatoriosView({ turmas }) {
 
       {turmaId && (
         <div>
-          <div className="no-print flex flex-wrap gap-2 mb-5 border-b border-slate-800 pb-4">
+          {!semAbas && (<div className="no-print flex flex-wrap gap-2 mb-5 border-b border-slate-800 pb-4">
             {ABAS_RELATORIO.map((a) => {
               const Icon = a.icon;
               const ativo = aba === a.id;
@@ -9566,7 +9697,7 @@ function GestaoRelatoriosView({ turmas }) {
                 </button>
               );
             })}
-          </div>
+          </div>)}
           <div className="text-xs text-slate-400 mb-3">Turma: <b className="text-slate-200">{turma?.nome}</b>{turma?.professor ? <> · Professor(a): <b className="text-slate-200">{turma.professor}</b></> : null}</div>
           {(aba === "empresa" || aba === "orientacao") && (
             <label className="no-print flex items-center gap-2 text-xs text-slate-400 mb-4 cursor-pointer w-fit">
@@ -10125,6 +10256,758 @@ function GestaoEmpresaTesteView({ turmas, onEntrar, onAbrirCorrecao }) {
   );
 }
 
+// ============================================================================
+// MESA DE JANELAS (v2.5) — modo OPCIONAL de apresentar as MESMAS telas do
+// sistema em janelas flutuantes (menus no topo, janelas que se arrastam,
+// redimensionam e se encaixam lado a lado). Não cria nenhuma tela nem dado
+// novo por si: cada janela mostra exatamente a tela que o menu lateral
+// mostraria. O menu lateral continua sendo o padrão; a preferência de modo
+// fica só neste navegador (localStorage), nunca no banco de dados.
+// ============================================================================
+const MESA_GAP = 6;
+const MESA_LARGURA_MIN = 900;
+
+function useTelaLarga() {
+  const [larga, setLarga] = useState(() => typeof window !== "undefined" && window.innerWidth >= MESA_LARGURA_MIN);
+  useEffect(() => {
+    const f = () => setLarga(window.innerWidth >= MESA_LARGURA_MIN);
+    window.addEventListener("resize", f);
+    return () => window.removeEventListener("resize", f);
+  }, []);
+  return larga;
+}
+
+function useModoMesa(chave) {
+  const [on, setOn] = useState(() => { try { return localStorage.getItem(chave) === "1"; } catch { return false; } });
+  const definir = (v) => { setOn(v); try { localStorage.setItem(chave, v ? "1" : "0"); } catch {} };
+  return [on, definir];
+}
+
+function mesaOrganizar(wins, d, modo) {
+  const ks = Object.keys(wins).filter((k) => !wins[k].min).sort((a, b) => (wins[a].ord || 0) - (wins[b].ord || 0));
+  if (ks.length === 0) return wins;
+  const out = { ...wins };
+  const n = ks.length; const W = d.w; const H = d.h; const g = MESA_GAP;
+  const put = (k, x, y, w, h) => { out[k] = { ...out[k], x: x + g / 2, y: y + g / 2, w: Math.max(300, w - g), h: Math.max(160, h - g), max: false }; };
+  if (modo === "casc") {
+    ks.forEach((k, i) => { out[k] = { ...out[k], x: 30 + i * 30, y: 15 + i * 30, w: Math.min(760, W - 80), h: Math.min(520, H - 60), max: false }; });
+  } else if (n === 1) put(ks[0], 0, 0, W, H);
+  else if (n === 2) { put(ks[0], 0, 0, W / 2, H); put(ks[1], W / 2, 0, W / 2, H); }
+  else if (n === 3) { put(ks[0], 0, 0, W / 2, H); put(ks[1], W / 2, 0, W / 2, H / 2); put(ks[2], W / 2, H / 2, W / 2, H / 2); }
+  else if (n === 4) ks.forEach((k, i) => put(k, (i % 2) * W / 2, Math.floor(i / 2) * H / 2, W / 2, H / 2));
+  else { const c = 3; const r = Math.ceil(n / c); ks.forEach((k, i) => put(k, (i % c) * W / c, Math.floor(i / c) * H / r, W / c, H / r)); }
+  return out;
+}
+
+function useMesa() {
+  const [wins, setWins] = useState({});
+  const [auto, setAuto] = useState(true);
+  const deskRef = useRef(null);
+  const cont = useRef({ z: 10, ord: 0 });
+  const autoRef = useRef(true);
+  useEffect(() => { autoRef.current = auto; }, [auto]);
+  const dim = () => { const el = deskRef.current; return { w: el ? el.clientWidth : 1000, h: el ? el.clientHeight : 600 }; };
+
+  const abrir = useCallback((k, ctx) => {
+    setWins((prev) => {
+      const d = dim();
+      if (prev[k]) {
+        const eraMin = prev[k].min;
+        const nx = { ...prev, [k]: { ...prev[k], min: false, z: ++cont.current.z, ctx: ctx !== undefined ? ctx : prev[k].ctx } };
+        return eraMin && autoRef.current ? mesaOrganizar(nx, d, "lado") : nx;
+      }
+      const o = (Object.keys(prev).length % 7) * 28;
+      const nx = { ...prev, [k]: { x: 40 + o, y: 20 + o, w: Math.min(760, d.w - 10), h: Math.min(520, d.h - 10), max: false, min: false, z: ++cont.current.z, ord: ++cont.current.ord, ctx } };
+      return autoRef.current ? mesaOrganizar(nx, d, "lado") : nx;
+    });
+  }, []);
+  const foco = useCallback((k) => setWins((p) => (p[k] ? { ...p, [k]: { ...p[k], z: ++cont.current.z } } : p)), []);
+  const fechar = useCallback((k) => setWins((p) => { const n = { ...p }; delete n[k]; return autoRef.current ? mesaOrganizar(n, dim(), "lado") : n; }), []);
+  const minimizar = useCallback((k) => setWins((p) => { if (!p[k]) return p; const n = { ...p, [k]: { ...p[k], min: true } }; return autoRef.current ? mesaOrganizar(n, dim(), "lado") : n; }), []);
+  const alternarMax = useCallback((k) => setWins((p) => (p[k] ? { ...p, [k]: { ...p[k], max: !p[k].max } } : p)), []);
+  const geometria = useCallback((k, patch) => setWins((p) => (p[k] ? { ...p, [k]: { ...p[k], ...patch } } : p)), []);
+  const encaixar = useCallback((k, lado) => { const d = dim(); geometria(k, lado === "L" ? { x: 0, y: 0, w: d.w / 2, h: d.h, max: false } : lado === "R" ? { x: d.w / 2, y: 0, w: d.w / 2, h: d.h, max: false } : { max: true }); }, [geometria]);
+  const organizar = useCallback((modo) => setWins((p) => mesaOrganizar(p, dim(), modo)), []);
+  const minimizarTodas = useCallback(() => setWins((p) => Object.fromEntries(Object.entries(p).map(([k, w]) => [k, { ...w, min: true }]))), []);
+  const fecharTodas = useCallback(() => setWins({}), []);
+  let ativo = null; let zMax = -1;
+  Object.keys(wins).forEach((k) => { if (!wins[k].min && wins[k].z > zMax) { zMax = wins[k].z; ativo = k; } });
+  return { wins, auto, setAuto, deskRef, ativo, abrir, foco, fechar, minimizar, alternarMax, geometria, encaixar, organizar, minimizarTodas, fecharTodas, dim };
+}
+
+// menu: [{ direct, key, label, badge, itens: [{ key, label, badge, novo, cab, sep, acao, status }] }]
+function MesaJanelas({ menu, mesa, renderTela, tituloDe, brand, homeChave, info, onVoltar, avisos }) {
+  const [menuAberto, setMenuAberto] = useState(null);
+  const [snap, setSnap] = useState(null);
+  const drag = useRef(null);
+  const mesaRef = useRef(mesa);
+  mesaRef.current = mesa;
+  const { wins, ativo } = mesa;
+
+  useEffect(() => {
+    const fecha = () => setMenuAberto(null);
+    document.addEventListener("click", fecha);
+    return () => document.removeEventListener("click", fecha);
+  }, []);
+
+  useEffect(() => {
+    const mv = (e) => {
+      const g = drag.current; const m = mesaRef.current; if (!g) return;
+      const d = m.dim();
+      if (g.t === "m") {
+        const rect = m.deskRef.current.getBoundingClientRect();
+        const px = e.clientX - rect.left; const py = e.clientY - rect.top;
+        g.sn = px < 14 ? "L" : px > d.w - 14 ? "R" : py < 6 ? "T" : null;
+        setSnap(g.sn);
+        m.geometria(g.k, { x: g.ox + e.clientX - g.sx, y: Math.max(0, g.oy + e.clientY - g.sy) });
+      } else {
+        m.geometria(g.k, { w: Math.max(300, g.ow + e.clientX - g.sx), h: Math.max(160, g.oh + e.clientY - g.sy) });
+      }
+    };
+    const up = () => {
+      const g = drag.current; if (!g) return;
+      if (g.t === "m" && g.sn) mesaRef.current.encaixar(g.k, g.sn);
+      drag.current = null; setSnap(null);
+    };
+    window.addEventListener("pointermove", mv);
+    window.addEventListener("pointerup", up);
+    return () => { window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); };
+  }, []);
+
+  const iniciarMover = (e, k) => {
+    if (e.target.tagName === "BUTTON" || wins[k].max) return;
+    drag.current = { t: "m", k, sx: e.clientX, sy: e.clientY, ox: wins[k].x, oy: wins[k].y, sn: null };
+    e.preventDefault();
+  };
+  const iniciarRedim = (e, k) => {
+    drag.current = { t: "r", k, sx: e.clientX, sy: e.clientY, ow: wins[k].w, oh: wins[k].h };
+    e.preventDefault(); e.stopPropagation();
+  };
+  const escolher = (it) => { setMenuAberto(null); if (it.acao) it.acao(); else mesa.abrir(it.key); };
+  const d = mesa.dim();
+  const teclas = Object.keys(wins);
+
+  return (
+    <div className="mesa-root h-screen flex flex-col bg-slate-950 text-slate-100 isolate">
+      <style>{`
+        @media print {
+          .mesa-root { height: auto !important; display: block !important; }
+          .mesa-desk { position: static !important; overflow: visible !important; display: block !important; }
+          .mesa-win { display: none !important; }
+          .mesa-win.mesa-ativa { display: block !important; position: static !important; width: auto !important; height: auto !important; border: 0 !important; box-shadow: none !important; overflow: visible !important; }
+          .mesa-wb { overflow: visible !important; padding: 0 !important; }
+          .mesa-wt, .mesa-rz, .mesa-bar, .mesa-task { display: none !important; }
+        }
+      `}</style>
+      <div className="mesa-bar no-print flex items-stretch h-9 shrink-0 bg-slate-900 border-b border-slate-700 relative z-50 select-none">
+        <div className="px-4 flex items-center font-bold text-amber-400 whitespace-nowrap text-sm">{brand}</div>
+        {menu.map((m, i) => (
+          <div key={m.label} className="relative" onMouseEnter={() => { if (menuAberto !== null && !m.direct) setMenuAberto(i); }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); if (m.direct) { setMenuAberto(null); mesa.abrir(m.key); } else setMenuAberto(menuAberto === i ? null : i); }}
+              className={`h-full px-3 text-sm whitespace-nowrap flex items-center gap-1.5 ${menuAberto === i ? "bg-slate-800 text-amber-400" : "text-slate-300 hover:bg-slate-800 hover:text-amber-400"}`}
+            >
+              {m.label}
+              {m.badge ? <span className="bg-rose-600 text-white text-[11px] font-bold rounded-full px-1.5">{m.badge}</span> : null}
+              {!m.direct && <span className="text-[10px]">▾</span>}
+            </button>
+            {!m.direct && menuAberto === i && (
+              <div className="absolute top-full left-0 min-w-[270px] bg-slate-800 border border-slate-600 shadow-2xl py-1 z-50" onClick={(e) => e.stopPropagation()}>
+                {m.itens.map((it, j) => it.cab ? (
+                  <div key={j} className="px-4 pt-2 pb-1 text-[10px] font-bold tracking-widest text-slate-400 uppercase border-t border-slate-700 mt-1">{it.cab}</div>
+                ) : it.sep ? (
+                  <div key={j} className="border-t border-slate-700 my-1" />
+                ) : (
+                  <button key={it.key || j} onClick={() => escolher(it)} className="w-full flex items-center justify-between gap-4 text-left px-4 py-1.5 text-sm text-slate-100 hover:bg-amber-900">
+                    <span>{it.label}{it.novo && <span className="ml-1.5 text-[10px] font-bold text-amber-400">NOVO</span>}</span>
+                    <span className="flex items-center gap-2">
+                      {it.status && <BadgeStatusModuloMenu status={it.status} />}
+                      {it.badge ? <span className="bg-rose-600 text-white text-[11px] font-bold rounded-full px-1.5">{it.badge}</span> : null}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+        <div className="flex-1" />
+        <div className="flex items-center gap-2 px-3 text-xs text-slate-400 whitespace-nowrap">
+          {info}
+          <button onClick={onVoltar} className="border border-slate-600 rounded px-2.5 py-1 text-slate-100 hover:bg-slate-800">Ver menu lateral</button>
+        </div>
+      </div>
+      {avisos}
+      <div ref={mesa.deskRef} className="mesa-desk relative flex-1 min-h-0 overflow-hidden bg-slate-950">
+        {snap && (
+          <div className="absolute z-40 pointer-events-none border-2 border-dashed border-amber-400 bg-amber-400/10" style={{ top: 0, height: d.h, left: snap === "R" ? d.w / 2 : 0, width: snap === "T" ? d.w : d.w / 2 }} />
+        )}
+        {teclas.map((k) => {
+          const w = wins[k];
+          const on = k === ativo;
+          const estilo = w.max ? { inset: 0, zIndex: w.z } : { left: w.x, top: w.y, width: w.w, height: w.h, zIndex: w.z };
+          return (
+            <div key={k} onPointerDown={() => { if (ativo !== k) mesa.foco(k); }}
+              className={`mesa-win ${on ? "mesa-ativa" : ""} absolute flex flex-col bg-slate-950 border border-slate-600 shadow-2xl rounded overflow-hidden ${w.min ? "hidden" : ""}`} style={estilo}>
+              <div className={`mesa-wt h-8 shrink-0 flex items-center gap-1 pl-3 pr-1 text-white font-bold text-sm cursor-move select-none ${on ? "bg-amber-800" : "bg-slate-700"}`}
+                onPointerDown={(e) => iniciarMover(e, k)} onDoubleClick={(e) => { if (e.target.tagName !== "BUTTON") mesa.alternarMax(k); }}>
+                <span className="flex-1 truncate">{tituloDe(k)}</span>
+                <button title="Encaixar à esquerda" onClick={() => mesa.encaixar(k, "L")} className="w-7 h-6 bg-white/15 hover:bg-white/30">◧</button>
+                <button title="Encaixar à direita" onClick={() => mesa.encaixar(k, "R")} className="w-7 h-6 bg-white/15 hover:bg-white/30">◨</button>
+                <button title="Minimizar" onClick={() => mesa.minimizar(k)} className="w-7 h-6 bg-white/15 hover:bg-white/30">–</button>
+                <button title="Maximizar / restaurar" onClick={() => mesa.alternarMax(k)} className="w-7 h-6 bg-white/15 hover:bg-white/30">▢</button>
+                <button title="Fechar" onClick={() => mesa.fechar(k)} className="w-7 h-6 bg-white/15 hover:bg-rose-700">✕</button>
+              </div>
+              <div className="mesa-wb flex-1 overflow-auto p-4 md:p-5">{renderTela(k, w.ctx)}</div>
+              {!w.max && <div className="mesa-rz absolute right-0 bottom-0 w-4 h-4 cursor-nwse-resize" onPointerDown={(e) => iniciarRedim(e, k)} style={{ background: "linear-gradient(135deg, transparent 55%, #64748b 55% 62%, transparent 62% 72%, #64748b 72% 79%, transparent 79%)" }} />}
+            </div>
+          );
+        })}
+        {teclas.length === 0 && <div className="absolute inset-0 flex items-center justify-center text-slate-600 text-sm">Abra uma tela pelos menus acima.</div>}
+      </div>
+      <div className="mesa-task no-print shrink-0 h-9 flex items-center gap-1.5 px-2 bg-slate-900 border-t border-slate-700 overflow-x-auto">
+        <button onClick={() => mesa.abrir(homeChave)} className="shrink-0 bg-amber-800 text-white font-bold text-xs rounded px-3 py-1">⌂ {tituloDe(homeChave)}</button>
+        {teclas.map((k) => (
+          <button key={k} onClick={() => { const w = wins[k]; if (!w.min && ativo === k) mesa.minimizar(k); else mesa.abrir(k); }}
+            className={`shrink-0 text-xs rounded px-3 py-1 border whitespace-nowrap ${k === ativo ? "border-amber-400 text-white bg-slate-800" : "border-slate-600 text-slate-300 bg-slate-800/60"} ${wins[k].min ? "opacity-50" : ""}`}>{tituloDe(k)}</button>
+        ))}
+        <span className="mx-1 h-5 border-l border-slate-700" />
+        <button onClick={() => mesa.setAuto(!mesa.auto)} className={`shrink-0 text-xs rounded px-3 py-1 border whitespace-nowrap ${mesa.auto ? "border-amber-400 text-white" : "border-slate-600 text-slate-300"}`}>{mesa.auto ? "☑" : "☐"} Organizar sozinho</button>
+        <button onClick={() => mesa.organizar("lado")} className="shrink-0 text-xs rounded px-3 py-1 border border-slate-600 text-slate-300 whitespace-nowrap">▦ Lado a lado</button>
+        <button onClick={() => mesa.organizar("casc")} className="shrink-0 text-xs rounded px-3 py-1 border border-slate-600 text-slate-300 whitespace-nowrap">❐ Cascata</button>
+        <button onClick={mesa.minimizarTodas} className="shrink-0 text-xs rounded px-3 py-1 border border-slate-600 text-slate-300 whitespace-nowrap">Minimizar todas</button>
+        <button onClick={mesa.fecharTodas} className="shrink-0 text-xs rounded px-3 py-1 border border-slate-600 text-slate-300 whitespace-nowrap">Fechar todas</button>
+        <span className="ml-auto text-[11px] text-slate-500 whitespace-nowrap">{teclas.length} janela(s)</span>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// TELAS NOVAS (v2.5) — todas SOMENTE LEITURA sobre os dados que o sistema já
+// grava (fluxoModulos, histórico, comentários, cronograma). A única gravação
+// nova é a da Lixeira de segurança, em chaves próprias e separadas
+// (lixeira_equipe_{id}); nenhum dado existente é alterado por elas.
+// ============================================================================
+let ULTIMA_TURMA_SEL = "";
+function useTurmaSelecionada(turmas) {
+  const [id, setId] = useState(() => (turmas.some((t) => t.id === ULTIMA_TURMA_SEL) ? ULTIMA_TURMA_SEL : (turmas[0]?.id || "")));
+  const definir = (v) => { ULTIMA_TURMA_SEL = v; setId(v); };
+  return [id, definir];
+}
+
+function hojeISO() { return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+
+// Sugestão de nota (apenas exibição — o professor decide e lança a nota de sempre):
+// 10, menos 1,0 por devolução, menos 2,0 se entregue com atraso (mesma regra de
+// pontualidade já informada aos alunos). Só aparece em módulo já corrigido.
+function sugerirNotaModulo(estado) {
+  if (!estado || estado.status !== "corrigido") return null;
+  const devolucoes = (estado.historico || []).filter((h) => h.tipo === "devolucao").length;
+  return Math.max(0, 10 - devolucoes - (estado.atraso ? 2 : 0));
+}
+
+const COR_STATUS_SVG = { corrigido: "#10b981", ajustes: "#f59e0b", liberado: "#3b82f6", enviado: "#8b5cf6", pendente: "#334155" };
+function CaminhoSvg({ fluxo, rotuloAqui = "▼ aqui" }) {
+  const x = (i) => 34 + i * 52;
+  const nos = [...MODULOS.map((m, i) => ({ k: String(i + 1), st: estadoModulo(fluxo, m.id).status, n: m.n })), { k: "C", st: "pendente", r: "Cenários" }, { k: "A", st: "pendente", r: "Apresent." }];
+  const atual = MODULOS.findIndex((m) => { const s = estadoModulo(fluxo, m.id).status; return s !== "corrigido" && s !== "pendente"; });
+  return (
+    <div className="overflow-x-auto">
+      <svg width={34 + 15 * 52} height="104" role="img" aria-label="Caminho da equipe pelos 13 módulos">
+        <line x1="34" y1="50" x2={x(14)} y2="50" stroke="#475569" strokeWidth="4" />
+        {nos.map((n, i) => (
+          <g key={n.k}>
+            <circle cx={x(i)} cy="50" r="14" fill={COR_STATUS_SVG[n.st]} />
+            <text x={x(i)} y="54" textAnchor="middle" fontSize="10" fill="#fff" fontWeight="700">{n.k}</text>
+            {n.r && <text x={x(i)} y="86" textAnchor="middle" fontSize="9" fill="#94a3b8">{n.r}</text>}
+          </g>
+        ))}
+        {atual >= 0 && <text x={x(atual)} y="24" textAnchor="middle" fontSize="11" fill="#fbbf24" fontWeight="700">{rotuloAqui}</text>}
+      </svg>
+      <div className="flex flex-wrap gap-2 text-[11px] text-slate-400 mt-1">
+        <span className="text-emerald-400">● corrigido</span><span className="text-amber-400">● ajustes</span><span className="text-blue-400">● liberado</span><span className="text-violet-400">● enviado</span><span className="text-slate-500">● bloqueado</span>
+      </div>
+    </div>
+  );
+}
+
+function linhaTempoEquipe(dados, modFiltro) {
+  const L = [];
+  const fluxo = dados.fluxoModulos || {};
+  MODULOS.forEach((m) => {
+    if (modFiltro && modFiltro !== m.n) return;
+    (estadoModulo(fluxo, m.id).historico || []).forEach((h) => L.push({ t: h.data, n: m.n, tipo: h.tipo, fb: h.feedback }));
+  });
+  (dados.comentarios || []).forEach((c) => {
+    const n = Number(String(c.modulo || "").replace(/\D/g, "")) || 0;
+    if (modFiltro && modFiltro !== n) return;
+    L.push({ t: c.timestamp, n, tipo: "comentario", fb: c.texto, autor: c.autor });
+  });
+  return L.sort((a, b) => a.t - b.t);
+}
+
+function LinhaTempoEventos({ eventos }) {
+  if (eventos.length === 0) return <div className="text-sm text-slate-500">Nenhum evento registrado ainda.</div>;
+  return (
+    <div className="space-y-2.5">
+      {eventos.map((ev, i) => {
+        const info = ev.tipo === "comentario" ? { label: "Comentário do professor", Icon: MessageSquare, cor: "text-sky-400" } : (HISTORICO_EVENTO_INFO[ev.tipo] || HISTORICO_EVENTO_INFO.envio);
+        const Icon = info.Icon;
+        return (
+          <div key={i} className="flex gap-3">
+            <div className={`w-6 h-6 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 ${info.cor}`}><Icon size={12} /></div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-slate-200">{ev.n ? `Módulo ${ev.n} · ` : ""}{info.label}</span>
+                <span className="text-[11px] text-slate-500">{fmtData(ev.t)}</span>
+              </div>
+              {ev.fb && <div className="mt-1 text-xs text-slate-300 bg-slate-800/60 border border-slate-700 rounded-md p-2 whitespace-pre-wrap">{ev.fb}</div>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function BarraTurmaEquipe({ turmas, turmaId, setTurmaId, dadosEquipes, equipeId, setEquipeId, onAtualizar }) {
+  return (
+    <div className="no-print mb-4 flex flex-wrap items-center gap-3">
+      <SeletorTurma turmas={turmas} value={turmaId} onChange={(v) => { setTurmaId(v); if (setEquipeId) setEquipeId(""); }} />
+      {setEquipeId && (
+        <select value={equipeId} onChange={(e) => setEquipeId(e.target.value)} className="border border-slate-600 bg-slate-900 text-slate-100 rounded-md px-3 py-2 text-sm">
+          <option value="">{dadosEquipes === null ? "Carregando…" : "Selecione a empresa…"}</option>
+          {(dadosEquipes || []).map(({ equipe }) => <option key={equipe.id} value={equipe.id}>{equipe.nomeNegocio}</option>)}
+        </select>
+      )}
+      {onAtualizar && <button onClick={onAtualizar} className="flex items-center gap-1.5 text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-2 rounded-md hover:bg-slate-800"><RefreshCw size={13} /> Atualizar</button>}
+    </div>
+  );
+}
+
+// ---------- Hoje do professor ----------
+function HojeProfessorView({ turmas, onAbrirCorrecao }) {
+  const [turmaId, setTurmaId] = useTurmaSelecionada(turmas);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const dadosEquipes = useEquipesComDados(turmaId, refreshKey);
+  const [cron] = useSharedObject(turmaId ? `cronograma_${turmaId}` : null, null);
+  const lista = useMemo(() => {
+    if (!dadosEquipes) return [];
+    const L = [];
+    dadosEquipes.forEach((item) => {
+      const o = gerarOrientacaoEquipe(item);
+      o.linhas.forEach((ln) => {
+        if (ln.tipo === "aw") L.push({ prio: 1, cor: "sky", rot: "corrigir", o, ln, txt: `${o.nome} enviou o Módulo ${ln.mod} — aguardando a sua correção` });
+        else if (ln.tipo === "bad" && ln.status === "ajustes") L.push({ prio: ln.prazoRuim ? 2 : 3, cor: ln.prazoRuim ? "rose" : "amber", rot: ln.prazoRuim ? "atrasado" : "devolvido", o, ln, txt: `${o.nome} · Módulo ${ln.mod} devolvido — aguardando a equipe (${ln.prazoTxt})` });
+        else if (ln.tipo === "bad") L.push({ prio: 2, cor: "rose", rot: "vencido", o, ln, txt: `${o.nome} · Módulo ${ln.mod} com prazo vencido sem envio (${ln.prazoTxt})` });
+      });
+    });
+    return L.sort((a, b) => a.prio - b.prio);
+  }, [dadosEquipes]);
+  const proxima = useMemo(() => {
+    const h = hojeISO();
+    return (cron?.linhas || []).filter((l) => l.dataEntrega >= h).sort((a, b) => a.dataEntrega.localeCompare(b.dataEntrega))[0] || null;
+  }, [cron]);
+  const nCorrigir = lista.filter((x) => x.prio === 1).length;
+  const nAguard = lista.filter((x) => x.rot === "devolvido" || x.rot === "atrasado").length;
+  const nVenc = lista.filter((x) => x.rot === "vencido" || x.rot === "atrasado").length;
+  const corCls = { sky: "bg-sky-950/40 text-sky-300", rose: "bg-rose-950/40 text-rose-300", amber: "bg-amber-950/40 text-amber-300" };
+  return (
+    <div>
+      <SectionTitle icon={ClipboardCheck} sub="Uma lista só com o que precisa de você hoje — calculada com os mesmos dados que o sistema já grava; nada é alterado aqui.">Hoje do professor</SectionTitle>
+      <BarraTurmaEquipe turmas={turmas} turmaId={turmaId} setTurmaId={setTurmaId} onAtualizar={() => setRefreshKey((k) => k + 1)} />
+      {dadosEquipes === null && <LoadingScreen />}
+      {dadosEquipes !== null && (
+        <>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <StatCard label="Para corrigir" value={String(nCorrigir)} tone="blue" small />
+            <StatCard label="Aguardando a equipe" value={String(nAguard)} tone="gold" small />
+            <StatCard label="Prazo vencido" value={String(nVenc)} tone="rose" small />
+          </div>
+          {proxima && <Card className="p-3 mb-4 text-sm text-slate-300"><b className="text-amber-400">Próxima entrega:</b> {fmtDataCurta(proxima.dataEntrega)} às {proxima.horaEntrega || HORARIO_CRONOGRAMA_PADRAO} — {proxima.etapa}</Card>}
+          {nCorrigir === 0 && <Card className="p-3 mb-4 text-sm text-emerald-300">✔ Nenhuma correção pendente agora.</Card>}
+          {lista.length === 0 ? <Card className="p-6 text-center text-slate-500">Nada pendente nesta turma.</Card> : (
+            <Card className="p-0 overflow-hidden">
+              <table className="w-full text-sm">
+                <tbody>
+                  {lista.map((x, i) => (
+                    <tr key={i} className="border-b border-slate-800 last:border-0">
+                      <td className="py-2 px-3 w-28"><span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${corCls[x.cor]}`}>{x.rot}</span></td>
+                      <td className="py-2 px-3 text-slate-200">{x.txt}</td>
+                      <td className="py-2 px-3 text-right">
+                        {x.prio === 1 && onAbrirCorrecao && <button onClick={() => onAbrirCorrecao(turmaId, x.o.id, `m${x.ln.mod}`)} className="text-xs font-semibold text-amber-400 hover:text-amber-300">corrigir ›</button>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------- Registro do processo ----------
+function RegistroProcessoView({ turmas }) {
+  const [turmaId, setTurmaId] = useTurmaSelecionada(turmas);
+  const [equipeId, setEquipeId] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const dadosEquipes = useEquipesComDados(turmaId, refreshKey);
+  const item = (dadosEquipes || []).find((x) => x.equipe.id === equipeId);
+  const eventos = useMemo(() => (item ? linhaTempoEquipe(item.dados) : []), [item]);
+  return (
+    <div>
+      <SectionTitle icon={History} sub="Linha do tempo de cada empresa, montada com o histórico de envios/devoluções e os comentários que o sistema já guarda. Só leitura.">Registro do processo</SectionTitle>
+      <BarraTurmaEquipe turmas={turmas} turmaId={turmaId} setTurmaId={setTurmaId} dadosEquipes={dadosEquipes} equipeId={equipeId} setEquipeId={setEquipeId} onAtualizar={() => setRefreshKey((k) => k + 1)} />
+      {!item && <Card className="p-6 text-center text-slate-500">Selecione a empresa para ver o registro.</Card>}
+      {item && (
+        <div>
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="text-sm text-slate-300"><b className="text-slate-100">{item.equipe.nomeNegocio}</b> · {(item.equipe.integrantes || []).join(", ")}</div>
+            <button onClick={() => imprimirComTitulo(`Registro do processo - ${item.equipe.nomeNegocio} - ${sufixoDataHoraArquivo()}`)} className="no-print flex items-center gap-2 text-xs font-semibold border border-slate-600 text-slate-100 px-3 py-2 rounded-md hover:bg-slate-800"><Printer size={14} /> Imprimir / PDF</button>
+          </div>
+          <Card className="p-4"><LinhaTempoEventos eventos={eventos} /></Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- Caminho do aluno (visão do professor) ----------
+function CaminhoProfessorView({ turmas }) {
+  const [turmaId, setTurmaId] = useTurmaSelecionada(turmas);
+  const [equipeId, setEquipeId] = useState("");
+  const dadosEquipes = useEquipesComDados(turmaId, 0);
+  const item = (dadosEquipes || []).find((x) => x.equipe.id === equipeId);
+  return (
+    <div>
+      <SectionTitle icon={Target} sub="O mapa da trajetória da equipe pelos 13 módulos — o mesmo que o aluno vê em “Início”.">Caminho do aluno</SectionTitle>
+      <BarraTurmaEquipe turmas={turmas} turmaId={turmaId} setTurmaId={setTurmaId} dadosEquipes={dadosEquipes} equipeId={equipeId} setEquipeId={setEquipeId} />
+      {!item && dadosEquipes && (
+        <div className="space-y-3">
+          {dadosEquipes.map(({ equipe, dados }) => (
+            <Card key={equipe.id} className="p-4">
+              <div className="text-sm font-semibold text-slate-100 mb-1">{equipe.nomeNegocio}</div>
+              <CaminhoSvg fluxo={dados.fluxoModulos} rotuloAqui="▼ aqui" />
+            </Card>
+          ))}
+        </div>
+      )}
+      {item && <Card className="p-4"><div className="text-sm font-semibold text-slate-100 mb-1">{item.equipe.nomeNegocio}</div><CaminhoSvg fluxo={item.dados.fluxoModulos} /></Card>}
+    </div>
+  );
+}
+
+// ---------- Diretriz da semana ----------
+const DIRETRIZ_POR_ORDEM = {
+  1: { prof: "Apresentar a plataforma, formar os grupos e cadastrar as empresas.", equipe: "Entrar na plataforma, escolher o negócio e o segmento." },
+  2: { prof: "Orientar o Bloco 1 (Módulos 1 a 4); corrigir e liberar o próximo módulo conforme chegam os envios.", equipe: "Pesquisar preços reais, lançar os Módulos 1 a 4 e enviar para correção." },
+  3: { prof: "Orientar receitas e custos (Módulos 5 a 9); devolver ajustes com feedback claro.", equipe: "Lançar faturamento, custos e mão de obra; responder às devolutivas." },
+  4: { prof: "Orientar custos fixos e depreciação (Módulos 10 e 11).", equipe: "Concluir depreciação e custos fixos mensais." },
+  5: { prof: "Acompanhar DRE e viabilidade (Módulos 12 e 13); lançar a nota final de síntese.", equipe: "Interpretar os indicadores e escrever a conclusão de viabilidade." },
+  6: { prof: "Orientar Cenários e Fluxo de Caixa.", equipe: "Criar simulações e analisar o fluxo de caixa anual." },
+  7: { prof: "Conduzir as apresentações finais e o encerramento.", equipe: "Apresentar o plano financeiro da empresa." },
+};
+function DiretrizSemanaView({ turmas }) {
+  const [turmaId, setTurmaId] = useTurmaSelecionada(turmas);
+  const [cron] = useSharedObject(turmaId ? `cronograma_${turmaId}` : null, null);
+  const linhas = cron?.linhas || [];
+  return (
+    <div>
+      <SectionTitle icon={Calendar} sub="O que fazer em cada semana, ligado às datas do cronograma da turma. Texto-guia fixo; o cronograma continua sendo editado em Gestão → Cronograma.">Diretriz da semana</SectionTitle>
+      <BarraTurmaEquipe turmas={turmas} turmaId={turmaId} setTurmaId={setTurmaId} />
+      {cron === undefined && <LoadingScreen />}
+      {cron === null && <Card className="p-6 text-center text-slate-500">Esta turma ainda não tem cronograma definido (Gestão → Cronograma).</Card>}
+      {linhas.length > 0 && (
+        <div className="space-y-3">
+          {linhas.map((l) => {
+            const sit = situacaoCronograma(l);
+            const d = DIRETRIZ_POR_ORDEM[l.ordem] || { prof: "", equipe: "" };
+            return (
+              <Card key={l.ordem} className={`p-4 ${sit === "em_andamento" ? "border-amber-500/70" : ""}`}>
+                <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+                  <div className="text-sm font-bold text-slate-100">{l.semana} · {l.etapa}</div>
+                  <BadgeSituacaoCronograma status={sit} />
+                </div>
+                <div className="text-xs text-slate-400 mb-2">{fmtDataCurta(l.dataInicio)} → entrega {fmtDataCurta(l.dataEntrega)} às {l.horaEntrega || HORARIO_CRONOGRAMA_PADRAO}</div>
+                <div className="grid sm:grid-cols-2 gap-3 text-xs">
+                  <div className="bg-slate-900 border border-slate-800 rounded-md p-2.5"><div className="font-bold text-slate-400 mb-1">O PROFESSOR</div><div className="text-slate-300">{d.prof}</div></div>
+                  <div className="bg-slate-900 border border-slate-800 rounded-md p-2.5"><div className="font-bold text-slate-400 mb-1">A EQUIPE</div><div className="text-slate-300">{d.equipe}</div></div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- Mensagens para o Classroom ----------
+function MensagensClassroomView({ turmas }) {
+  const [turmaId, setTurmaId] = useTurmaSelecionada(turmas);
+  const [equipeId, setEquipeId] = useState("");
+  const [modN, setModN] = useState(1);
+  const [tipo, setTipo] = useState("lem");
+  const [copiado, setCopiado] = useState(false);
+  const [editado, setEditado] = useState(null);
+  const dadosEquipes = useEquipesComDados(turmaId, 0);
+  const turma = turmas.find((t) => t.id === turmaId);
+  const item = (dadosEquipes || []).find((x) => x.equipe.id === equipeId);
+  const gerado = useMemo(() => {
+    if (!item) return "";
+    const m = MODULOS[modN - 1];
+    const est = estadoModulo(item.dados.fluxoModulos, m.id);
+    const prazo = est.prazo ? fmtDataCurta(est.prazo) : "(prazo a definir)";
+    const dev = [...(est.historico || [])].reverse().find((h) => h.tipo === "devolucao");
+    const prof = (turma?.professor || "").split(" ")[0] || "Professor(a)";
+    const nome = item.equipe.nomeNegocio;
+    const T = {
+      lem: `Olá, equipe ${nome}!\nLembrete: o Módulo ${m.n} (${m.nome}) deve ser enviado na plataforma PPF até ${prazo} às ${HORARIO_CRONOGRAMA_PADRAO}.\nQualquer dúvida, falem comigo na aula.\nProf. ${prof}`,
+      aj: `Olá, equipe ${nome}!\nO Módulo ${m.n} (${m.nome}) foi devolvido para ajustes:\n“${est.feedback || dev?.feedback || "(descreva os ajustes aqui)"}”\nReenviem pela plataforma PPF até ${prazo}.\nProf. ${prof}`,
+      lib: `Olá, equipe ${nome}!\nO Módulo ${m.n} (${m.nome}) já está liberado na plataforma PPF. Prazo de envio: ${prazo} às ${HORARIO_CRONOGRAMA_PADRAO}.\nProf. ${prof}`,
+      ok: `Parabéns, equipe ${nome}!\nO Módulo ${m.n} (${m.nome}) foi corrigido e aprovado. Podem seguir para a próxima etapa.\nProf. ${prof}`,
+    };
+    return T[tipo];
+  }, [item, modN, tipo, turma]);
+  useEffect(() => { setEditado(null); setCopiado(false); }, [gerado]);
+  const texto = editado !== null ? editado : gerado;
+  const copiar = async () => {
+    try { await navigator.clipboard.writeText(texto); }
+    catch { const ta = document.createElement("textarea"); ta.value = texto; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch {} document.body.removeChild(ta); }
+    setCopiado(true); setTimeout(() => setCopiado(false), 2500);
+  };
+  return (
+    <div>
+      <SectionTitle icon={Send} sub="Escolha a empresa, o módulo e o tipo: o texto sai pronto, com o prazo do cronograma. Copie e cole no Classroom. Nada é enviado nem gravado.">Mensagens para o Classroom</SectionTitle>
+      <BarraTurmaEquipe turmas={turmas} turmaId={turmaId} setTurmaId={setTurmaId} dadosEquipes={dadosEquipes} equipeId={equipeId} setEquipeId={setEquipeId} />
+      <div className="flex flex-wrap gap-3 mb-3">
+        <select value={modN} onChange={(e) => setModN(Number(e.target.value))} className="border border-slate-600 bg-slate-900 text-slate-100 rounded-md px-3 py-2 text-sm">
+          {MODULOS.map((m) => <option key={m.id} value={m.n}>M{m.n} · {m.nome}</option>)}
+        </select>
+        <select value={tipo} onChange={(e) => setTipo(e.target.value)} className="border border-slate-600 bg-slate-900 text-slate-100 rounded-md px-3 py-2 text-sm">
+          <option value="lem">Lembrete de prazo</option><option value="aj">Ajustes solicitados</option><option value="lib">Módulo liberado</option><option value="ok">Parabéns / aprovado</option>
+        </select>
+      </div>
+      {!item ? <Card className="p-6 text-center text-slate-500">Selecione a empresa para gerar a mensagem.</Card> : (
+        <div>
+          <textarea value={texto} onChange={(e) => setEditado(e.target.value)} rows={8} className="w-full bg-slate-900 border border-slate-600 text-slate-100 rounded-md p-3 text-sm leading-relaxed" />
+          <button onClick={copiar} className="mt-2 flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold px-4 py-2 rounded-md"><Copy size={14} /> {copiado ? "Copiado ✔" : "Copiar mensagem"}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- Lixeira de segurança ----------
+const LIXEIRA_DIAS = 30;
+const LIXEIRA_MAX = 60;
+const chaveLixeira = (equipeId) => `lixeira_equipe_${equipeId}`;
+
+function itensRemovidos(anterior, novo) {
+  const out = [];
+  if (!anterior || !novo || typeof anterior !== "object" || typeof novo !== "object") return out;
+  Object.keys(anterior).forEach((campo) => {
+    const a = anterior[campo]; const n = novo[campo];
+    if (!Array.isArray(a) || !Array.isArray(n)) return;
+    const ids = new Set(n.map((x) => x && x.id).filter((v) => v !== undefined && v !== null));
+    a.forEach((it) => { if (it && it.id !== undefined && it.id !== null && !ids.has(it.id)) out.push({ campo, item: it }); });
+  });
+  return out;
+}
+
+async function lerLixeira(equipeId) {
+  try {
+    const r = await window.storage.get(chaveLixeira(equipeId), true);
+    const lista = r ? JSON.parse(r.value) : [];
+    const limite = Date.now() - LIXEIRA_DIAS * 86400000;
+    return Array.isArray(lista) ? lista.filter((e) => e.em > limite) : [];
+  } catch { return []; }
+}
+
+// Guarda uma CÓPIA do que foi excluído numa chave própria. Nunca altera os
+// lançamentos; qualquer falha aqui é ignorada para não atrapalhar a equipe.
+async function registrarNaLixeira(equipeId, quem, modId, removidos) {
+  try {
+    const atual = await lerLixeira(equipeId);
+    const novos = removidos.map((r) => ({ id: uid(), em: Date.now(), modId, campo: r.campo, item: r.item, por: quem, restaurado: false }));
+    await window.storage.set(chaveLixeira(equipeId), JSON.stringify([...atual, ...novos].slice(-LIXEIRA_MAX)), true);
+  } catch {}
+}
+
+function descreverItemLixeira(it) {
+  const x = it || {};
+  const nome = x.desc || x.nome || x.cargo || x.descricao || x.produto || "(item sem nome)";
+  const valor = x.valorUnit ?? x.precoUnit ?? x.valor ?? x.salario;
+  const qtd = x.qtd !== undefined ? `${x.qtd} × ` : "";
+  return `${nome}${valor !== undefined ? ` · ${qtd}${fmtBRL(Number(valor))}` : ""}`;
+}
+
+function LixeiraProfessorView({ turmas }) {
+  const [turmaId, setTurmaId] = useTurmaSelecionada(turmas);
+  const dadosEquipes = useEquipesComDados(turmaId, 0);
+  const [mapa, setMapa] = useState(null);
+  useEffect(() => {
+    if (!dadosEquipes) { setMapa(null); return; }
+    let alive = true;
+    (async () => {
+      const m = {};
+      await Promise.all(dadosEquipes.map(async ({ equipe }) => { m[equipe.id] = await lerLixeira(equipe.id); }));
+      if (alive) setMapa(m);
+    })();
+    return () => { alive = false; };
+  }, [dadosEquipes]);
+  const linhas = [];
+  (dadosEquipes || []).forEach(({ equipe }) => ((mapa && mapa[equipe.id]) || []).forEach((e) => linhas.push({ equipe, e })));
+  linhas.sort((a, b) => b.e.em - a.e.em);
+  return (
+    <div>
+      <SectionTitle icon={Trash2} sub={`Itens que os alunos excluíram dos módulos ficam guardados por ${LIXEIRA_DIAS} dias. A equipe restaura na própria Lixeira; aqui você só acompanha.`}>Lixeira de segurança</SectionTitle>
+      <BarraTurmaEquipe turmas={turmas} turmaId={turmaId} setTurmaId={setTurmaId} />
+      {mapa === null && <LoadingScreen />}
+      {mapa !== null && linhas.length === 0 && <Card className="p-6 text-center text-slate-500">Nenhum item excluído nos últimos {LIXEIRA_DIAS} dias.</Card>}
+      {linhas.length > 0 && (
+        <Card className="p-0 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead><tr className="text-left text-xs uppercase text-slate-500 bg-slate-900/40"><th className="py-2 px-3">Empresa</th><th className="py-2 px-3">Módulo</th><th className="py-2 px-3">Item</th><th className="py-2 px-3">Excluído em</th><th className="py-2 px-3">Situação</th></tr></thead>
+            <tbody>
+              {linhas.map(({ equipe, e }) => (
+                <tr key={e.id} className="border-t border-slate-800">
+                  <td className="py-2 px-3 text-slate-100">{equipe.nomeNegocio}</td>
+                  <td className="py-2 px-3 text-slate-400">{(MODULOS.find((m) => m.id === e.modId) || {}).n ? `M${MODULOS.find((m) => m.id === e.modId).n}` : e.modId}</td>
+                  <td className="py-2 px-3 text-slate-300">{descreverItemLixeira(e.item)}</td>
+                  <td className="py-2 px-3 text-slate-500 text-xs">{fmtData(e.em)}{e.por ? ` · ${e.por}` : ""}</td>
+                  <td className="py-2 px-3 text-xs">{e.restaurado ? <span className="text-emerald-400">restaurado</span> : <span className="text-amber-400">na lixeira</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function LixeiraAlunoView({ equipe, fluxo, onRestaurar, podeEditar }) {
+  const [lista, setLista] = useState(null);
+  const [rev, setRev] = useState(0);
+  useEffect(() => { let alive = true; lerLixeira(equipe.id).then((l) => { if (alive) setLista(l); }); return () => { alive = false; }; }, [equipe.id, rev]);
+  const restaurar = async (e) => {
+    if (!podeEditar) return;
+    const ok = onRestaurar(e);
+    if (!ok) return;
+    try {
+      const atual = await lerLixeira(equipe.id);
+      await window.storage.set(chaveLixeira(equipe.id), JSON.stringify(atual.map((x) => (x.id === e.id ? { ...x, restaurado: true } : x))), true);
+    } catch {}
+    setRev((r) => r + 1);
+  };
+  const pendentes = (lista || []).filter((e) => !e.restaurado).sort((a, b) => b.em - a.em);
+  return (
+    <div>
+      <SectionTitle icon={Trash2} sub={`Se alguém excluir um item de um módulo por engano, uma cópia fica aqui por ${LIXEIRA_DIAS} dias e pode ser restaurada.`}>Lixeira de segurança</SectionTitle>
+      {lista === null && <LoadingScreen />}
+      {lista !== null && pendentes.length === 0 && <Card className="p-6 text-center text-slate-500">Nenhum item excluído recentemente. Tudo certo!</Card>}
+      {pendentes.length > 0 && (
+        <Card className="p-0 overflow-hidden">
+          <table className="w-full text-sm">
+            <tbody>
+              {pendentes.map((e) => {
+                const m = MODULOS.find((mm) => mm.id === e.modId);
+                const bloqueado = !!(m && estadoModulo(fluxo, m.id).status !== "liberado" && estadoModulo(fluxo, m.id).status !== "ajustes");
+                return (
+                  <tr key={e.id} className="border-b border-slate-800 last:border-0">
+                    <td className="py-2 px-3 text-slate-300">{descreverItemLixeira(e.item)}<div className="text-[11px] text-slate-500">Módulo {m ? m.n : e.modId} · excluído em {fmtData(e.em)}</div></td>
+                    <td className="py-2 px-3 text-right">
+                      <button disabled={!podeEditar || bloqueado} title={bloqueado ? "O módulo está travado (enviado/corrigido). Peça ao professor para reabrir." : ""} onClick={() => restaurar(e)} className="text-xs font-semibold border border-amber-600 text-amber-400 px-3 py-1.5 rounded-md hover:bg-amber-950/30 disabled:opacity-40">Restaurar</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ---------- Telas do aluno: Guia da semana e Minha trajetória ----------
+const PASSOS_GUIA_MODULO = {
+  m1: ["Listar máquinas, equipamentos, móveis e utensílios", "Pesquisar o preço real de cada item (guardar a fonte)", "Informar quantidade e valor unitário", "Conferir o total e enviar"],
+  m2: ["Definir o estoque inicial", "Informar prazos de vendas, compras e estoque", "Conferir o capital de giro calculado", "Enviar"],
+  m3: ["Listar os gastos antes de abrir (alvará, reforma, divulgação)", "Informar o valor de cada um", "Conferir o total e enviar"],
+  m4: ["Conferir o total consolidado (cálculo automático)", "Enviar"],
+  m5: ["Cadastrar cada produto/serviço", "Definir quantidade mensal e preço de venda", "Ter a justificativa dos preços (pesquisa) para apresentar", "Enviar"],
+  m6: ["Escolher o produto", "Listar matérias-primas e quantidades", "Informar o custo unitário de cada material", "Enviar"],
+  m7: ["Informar impostos, comissões e taxas", "Conferir os percentuais", "Enviar"],
+  m8: ["Conferir o CMV (cálculo automático)", "Enviar"],
+  m9: ["Listar funcionários e cargos", "Informar salários e encargos", "Enviar"],
+  m10: ["Conferir a depreciação (cálculo automático)", "Conferir a vida útil de cada bem", "Enviar"],
+  m11: ["Listar aluguel, energia, água, internet, pró-labore e outros", "Informar os valores mensais", "Enviar"],
+  m12: ["Conferir o DRE (cálculo automático)", "Enviar"],
+  m13: ["Interpretar os indicadores", "Escrever a conclusão sobre a viabilidade", "Enviar"],
+};
+
+function GuiaSemanaAlunoView({ fluxo, equipeKey, onIrPara }) {
+  const mod = MODULOS.find((m) => { const s = estadoModulo(fluxo, m.id).status; return s !== "corrigido" && s !== "pendente"; });
+  const [marcados, setMarcados] = useState({});
+  const chave = mod ? `guia_check_${equipeKey}_${mod.id}` : null;
+  useEffect(() => {
+    if (!chave) return;
+    try { setMarcados(JSON.parse(localStorage.getItem(chave) || "{}")); } catch { setMarcados({}); }
+  }, [chave]);
+  const marcar = (i) => {
+    const novo = { ...marcados, [i]: !marcados[i] };
+    setMarcados(novo);
+    try { localStorage.setItem(chave, JSON.stringify(novo)); } catch {}
+  };
+  if (!mod) {
+    const todos = MODULOS.every((m) => estadoModulo(fluxo, m.id).status === "corrigido");
+    return (
+      <div>
+        <SectionTitle icon={Target} sub="O que fazer agora no projeto.">Guia da semana</SectionTitle>
+        <Card className="p-5 text-sm text-slate-300">{todos ? "✔ Todos os módulos foram corrigidos. Falta só a apresentação final!" : "Aguardem o(a) professor(a) liberar o próximo módulo — por enquanto não há nada pendente com vocês."}</Card>
+      </div>
+    );
+  }
+  const est = estadoModulo(fluxo, mod.id);
+  const atrasado = moduloAtrasadoSemEnvio(est);
+  const dev = [...(est.historico || [])].reverse().find((h) => h.tipo === "devolucao");
+  const passos = PASSOS_GUIA_MODULO[mod.id] || [];
+  return (
+    <div>
+      <SectionTitle icon={Target} sub="O módulo em que vocês estão agora, o prazo e o passo a passo. Os ✓ ficam só neste navegador.">Guia da semana</SectionTitle>
+      <Card className={`p-4 mb-3 ${atrasado ? "border-rose-700/70" : ""}`}>
+        <div className="flex items-center gap-2 flex-wrap"><span className="font-bold text-slate-100">Foco: Módulo {mod.n} — {mod.nome}</span><BadgeStatusModuloMenu status={est.status} /></div>
+        <div className="text-sm text-slate-300 mt-1">Prazo: <b>{est.prazo ? `${fmtDataCurta(est.prazo)} às ${HORARIO_CRONOGRAMA_PADRAO}` : "a definir pelo(a) professor(a)"}</b>{atrasado && <span className="ml-2 text-rose-400 text-xs font-bold">prazo vencido — falem com o(a) professor(a)</span>}</div>
+      </Card>
+      {(est.status === "ajustes") && (est.feedback || dev?.feedback) && (
+        <Card className="p-4 mb-3 border-amber-700/60"><div className="text-xs font-bold text-amber-400 mb-1">Devolutiva do professor{dev ? ` (${fmtData(dev.data)})` : ""}</div><div className="text-sm text-amber-100 whitespace-pre-wrap">{est.feedback || dev.feedback}</div></Card>
+      )}
+      <Card className="p-4 mb-3">
+        <div className="text-sm font-bold text-slate-200 mb-2">Passo a passo</div>
+        {passos.map((p, i) => (
+          <label key={i} className="flex items-start gap-2 text-sm text-slate-300 mb-1.5 cursor-pointer"><input type="checkbox" checked={!!marcados[i]} onChange={() => marcar(i)} className="mt-1" /> <span>{p}</span></label>
+        ))}
+      </Card>
+      <button onClick={() => onIrPara(mod.id)} className="bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm">Abrir o Módulo {mod.n}</button>
+    </div>
+  );
+}
+
+function TrajetoriaAlunoView({ dados }) {
+  const eventos = useMemo(() => linhaTempoEquipe(dados || {}), [dados]);
+  return (
+    <div>
+      <SectionTitle icon={History} sub="A história do projeto de vocês, do primeiro envio até agora — envios, devoluções, aprovações e comentários do professor.">Minha trajetória</SectionTitle>
+      <Card className="p-4"><LinhaTempoEventos eventos={eventos} /></Card>
+    </div>
+  );
+}
+
 function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades }) {
   const chaveMinhas = `turmas_prof_${user.uid}`;
   const [minhasTurmas, setMinhasTurmas] = useSharedList(chaveMinhas);
@@ -10141,6 +11024,16 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
   const [testeAtivo, setTesteAtivo] = useState(null); // { turmaId, equipeId, turmaNome } | null — modo "Empresa Teste"
 
   const pendentesCorrecao = usePendentesCorrecao(turmas);
+  const [modoMesa, setModoMesa] = useModoMesa("ppf_modo_mesa_prof");
+  const larga = useTelaLarga();
+  const mesa = useMesa();
+  const mesaAtiva = modoMesa && larga;
+  useEffect(() => {
+    if (!mesaAtiva) return undefined;
+    const t = setTimeout(() => { if (Object.keys(mesa.wins).length === 0) mesa.abrir("inicio"); }, 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mesaAtiva]);
 
   if (turmas === null) return <LoadingScreen />;
 
@@ -10191,16 +11084,101 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
   };
 
   const turmaAtiva = turmas.find((t) => t.id === turmaAtivaId) || null;
-  const irPara = (id) => { setAba(id); if (id !== "turmas") setTurmaAtivaId(null); setMenuAberto(false); };
+  const irPara = (id) => {
+    if (mesaAtiva) { mesa.abrir(id); return; }
+    setAba(id); if (id !== "turmas") setTurmaAtivaId(null); setMenuAberto(false);
+  };
   const abrirCorrecao = (turmaId, equipeId, moduloId) => {
     setTurmaAtivaId(turmaId);
     setAlvoCorrecao({ equipeId, moduloId, trigger: Date.now() });
+    if (mesaAtiva) { mesa.abrir("turmas"); return; }
     setAba("turmas");
     setMenuAberto(false);
   };
 
   const itensMenu = user.mestre ? [...GESTAO_ITENS, ITEM_APROVACOES] : GESTAO_ITENS;
   const itensManuais = user.mestre ? [...MANUAIS_ITENS_BASE, ...MANUAIS_ITENS_MESTRE] : MANUAIS_ITENS_BASE;
+
+  const renderAbaProf = (aba) => (
+    <>
+        {aba === "inicio" && <ProfessorInicio user={user} turmas={turmas} onIrPara={irPara} />}
+        {aba === "turmas" && (
+          turmaAtiva
+
+            ? <TurmaDetail turma={turmaAtiva} professorNome={user.nome} onVoltar={() => { setTurmaAtivaId(null); setAlvoCorrecao(null); }} alvoCorrecao={alvoCorrecao} />
+            : <GestaoTurmasView turmas={turmas} onCriar={criarTurma} onAbrir={setTurmaAtivaId} onExcluir={removerTurmaDaLista} mestre={user.mestre} />
+        )}
+        {aba === "correcoes" && <CorrecoesPendentesView pendentes={pendentesCorrecao} onAbrir={abrirCorrecao} />}
+        {aba === "usuarios" && <GestaoUsuariosView turmas={turmas} />}
+        {aba === "cronograma" && <GestaoCronogramaView turmas={turmas} />}
+        {aba === "integrantes" && <GestaoIntegrantesView turmas={turmas} user={user} />}
+        {aba === "acessos" && <GestaoAcessosView turmas={turmas} user={user} />}
+        {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}
+        {aba === "empresaTeste" && <GestaoEmpresaTesteView turmas={turmas} onEntrar={(t, eq) => setTesteAtivo({ turmaId: t.id, equipeId: eq.id, turmaNome: t.nome })} onAbrirCorrecao={abrirCorrecao} />}
+        {aba === "backup" && <GestaoBackupView turmas={turmas} onExcluir={removerTurmaDaLista} />}
+        {aba === "auditoria" && <GestaoAuditoriaView turmas={turmas} />}
+        {aba === "aprovacoes" && user.mestre && <GestaoAprovacoesView usuarioAtualUid={user.uid} />}
+        {aba === "manualProfessor" && <ManualProfessorView />}
+        {aba === "manualAlunoRef" && <ManualAlunoView contexto="professor" />}
+        {aba === "manualOperacional" && user.mestre && <ManualOperacionalView />}
+        {aba === "checklistStatus" && user.mestre && <ChecklistStatusView />}
+        {aba === "guiaPedagogico" && <GuiaPedagogicoView />}
+        {aba === "suporte" && (
+          <SuporteView ctx={{ uid: user.uid, nome: user.nome, papel: "professor", mestre: !!user.mestre }} />
+        )}
+        {aba === "novidades" && <NovidadesView />}
+        {aba === "tutoriais" && <TutoriaisView categoria="professor" />}
+        {aba === "hoje" && <HojeProfessorView turmas={turmas} onAbrirCorrecao={abrirCorrecao} />}
+        {aba === "registro" && <RegistroProcessoView turmas={turmas} />}
+        {aba === "caminho" && <CaminhoProfessorView turmas={turmas} />}
+        {aba === "diretriz" && <DiretrizSemanaView turmas={turmas} />}
+        {aba === "mensagens" && <MensagensClassroomView turmas={turmas} />}
+        {aba === "lixeira" && <LixeiraProfessorView turmas={turmas} />}
+    </>
+  );
+
+  const badgeCorr = (pendentesCorrecao || []).filter((p) => !p.teste).length;
+  const menuMesaProf = [
+    { direct: true, key: "inicio", label: "Início" },
+    { label: "Gestão", itens: itensMenu.filter((i) => i.id !== "relatorios").map((i) => ({ key: i.id, label: i.label, badge: i.id === "correcoes" ? badgeCorr : 0 })) },
+    { label: "Relatórios", itens: ABAS_RELATORIO.map((a) => ({ key: `rel:${a.id}`, label: a.label })) },
+    { label: "Acompanhar", itens: [
+      { key: "hoje", label: "Hoje do professor", novo: true },
+      { key: "registro", label: "Registro do processo", novo: true },
+      { key: "caminho", label: "Caminho do aluno", novo: true },
+      { key: "diretriz", label: "Diretriz da semana", novo: true },
+      { key: "mensagens", label: "Mensagens Classroom", novo: true },
+    ] },
+    { label: "Manuais", itens: itensManuais.map((i) => ({ key: i.id, label: i.label, acao: MANUAIS_PDF[i.id] ? () => window.open(MANUAIS_PDF[i.id], "_blank", "noopener") : undefined })) },
+    { label: "Pedagógico", itens: [{ key: "guiaPedagogico", label: "Guia Pedagógico" }] },
+    { label: "Outros", itens: [
+      { key: "suporte", label: "Suporte" }, { key: "novidades", label: "Novidades" }, { key: "tutoriais", label: "Tutoriais" },
+      { sep: true }, { key: "lixeira", label: "Lixeira de segurança", novo: true },
+    ] },
+  ];
+  const tituloMesaProf = (k) => {
+    if (k.startsWith("rel:")) return (ABAS_RELATORIO.find((a) => a.id === k.slice(4)) || {}).label || "Relatórios";
+    for (const m of menuMesaProf) {
+      if (m.key === k) return m.label;
+      for (const it of (m.itens || [])) if (it.key === k) return it.label;
+    }
+    return (itensMenu.find((i) => i.id === k) || {}).label || k;
+  };
+  const renderTelaProf = (k) => (k.startsWith("rel:") ? <GestaoRelatoriosView turmas={turmas} abaInicial={k.slice(4)} semAbas /> : renderAbaProf(k));
+
+  if (mesaAtiva) {
+    return (
+      <>
+        <MesaJanelas
+          menu={menuMesaProf} mesa={mesa} renderTela={renderTelaProf} tituloDe={tituloMesaProf}
+          brand="PPF · Professor" homeChave="inicio" onVoltar={() => setModoMesa(false)}
+          info={<><span>Prof. <b className="text-slate-200">{user.nome}</b></span><button onClick={onSair} className="border border-slate-600 rounded px-2.5 py-1 text-slate-100 hover:bg-slate-800">Sair</button></>}
+        />
+        {onVerNovidades && <NovidadesOverlay perfil={{ ultimaVersaoVista }} onFechar={onVerNovidades} onIrParaHistorico={() => { onVerNovidades(); irPara("novidades"); }} />}
+        {pdfAberto && <VisualizadorManualPDF url={pdfAberto.url} titulo={pdfAberto.titulo} onFechar={() => setPdfAberto(null)} />}
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen flex bg-slate-950 relative">
@@ -10295,6 +11273,22 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
           <button onClick={() => irPara("guiaPedagogico")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "guiaPedagogico" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
             <GraduationCap size={16} className="shrink-0" /> Guia Pedagógico
           </button>
+          <div className="px-5 pt-5 pb-2 text-[10px] font-bold tracking-widest text-white/40">ACOMPANHAR</div>
+          <button onClick={() => irPara("hoje")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "hoje" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
+            <span className="flex-1">Hoje do professor</span> <span className="text-[9px] font-bold text-amber-400">NOVO</span>
+          </button>
+          <button onClick={() => irPara("registro")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "registro" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
+            <span className="flex-1">Registro do processo</span> <span className="text-[9px] font-bold text-amber-400">NOVO</span>
+          </button>
+          <button onClick={() => irPara("caminho")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "caminho" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
+            <span className="flex-1">Caminho do aluno</span> <span className="text-[9px] font-bold text-amber-400">NOVO</span>
+          </button>
+          <button onClick={() => irPara("diretriz")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "diretriz" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
+            <span className="flex-1">Diretriz da semana</span> <span className="text-[9px] font-bold text-amber-400">NOVO</span>
+          </button>
+          <button onClick={() => irPara("mensagens")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "mensagens" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
+            <span className="flex-1">Mensagens Classroom</span> <span className="text-[9px] font-bold text-amber-400">NOVO</span>
+          </button>
           <div className="px-5 pt-5 pb-2 text-[10px] font-bold tracking-widest text-white/40">OUTROS</div>
           <button onClick={() => irPara("suporte")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "suporte" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
             <LifeBuoy size={16} className="shrink-0" /> Suporte
@@ -10305,8 +11299,12 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
           <button onClick={() => irPara("tutoriais")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "tutoriais" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
             <Video size={16} className="shrink-0" /> Tutoriais
           </button>
+          <button onClick={() => irPara("lixeira")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "lixeira" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
+            <span className="flex-1">Lixeira de segurança</span> <span className="text-[9px] font-bold text-amber-400">NOVO</span>
+          </button>
         </nav>
         <div className="p-4 border-t border-white/10">
+          {larga && <button onClick={() => setModoMesa(true)} className="flex items-center gap-2 text-sm text-amber-400 hover:text-amber-300 mb-3" title="Mostra as mesmas telas em janelas flutuantes, lado a lado">▦ Abrir Mesa de janelas</button>}
           <button onClick={onSair} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><LogOut size={15} /> Sair</button>
         </div>
       </aside>
@@ -10314,33 +11312,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
       {onVerNovidades && <NovidadesOverlay perfil={{ ultimaVersaoVista }} onFechar={onVerNovidades} onIrParaHistorico={() => { onVerNovidades(); irPara("novidades"); }} />}
 
       <main className="flex-1 overflow-y-auto p-4 pt-20 md:p-8 md:pt-8 max-w-6xl mx-auto w-full">
-        {aba === "inicio" && <ProfessorInicio user={user} turmas={turmas} onIrPara={irPara} />}
-        {aba === "turmas" && (
-          turmaAtiva
-
-            ? <TurmaDetail turma={turmaAtiva} professorNome={user.nome} onVoltar={() => { setTurmaAtivaId(null); setAlvoCorrecao(null); }} alvoCorrecao={alvoCorrecao} />
-            : <GestaoTurmasView turmas={turmas} onCriar={criarTurma} onAbrir={setTurmaAtivaId} onExcluir={removerTurmaDaLista} mestre={user.mestre} />
-        )}
-        {aba === "correcoes" && <CorrecoesPendentesView pendentes={pendentesCorrecao} onAbrir={abrirCorrecao} />}
-        {aba === "usuarios" && <GestaoUsuariosView turmas={turmas} />}
-        {aba === "cronograma" && <GestaoCronogramaView turmas={turmas} />}
-        {aba === "integrantes" && <GestaoIntegrantesView turmas={turmas} user={user} />}
-        {aba === "acessos" && <GestaoAcessosView turmas={turmas} user={user} />}
-        {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}
-        {aba === "empresaTeste" && <GestaoEmpresaTesteView turmas={turmas} onEntrar={(t, eq) => setTesteAtivo({ turmaId: t.id, equipeId: eq.id, turmaNome: t.nome })} onAbrirCorrecao={abrirCorrecao} />}
-        {aba === "backup" && <GestaoBackupView turmas={turmas} onExcluir={removerTurmaDaLista} />}
-        {aba === "auditoria" && <GestaoAuditoriaView turmas={turmas} />}
-        {aba === "aprovacoes" && user.mestre && <GestaoAprovacoesView usuarioAtualUid={user.uid} />}
-        {aba === "manualProfessor" && <ManualProfessorView />}
-        {aba === "manualAlunoRef" && <ManualAlunoView contexto="professor" />}
-        {aba === "manualOperacional" && user.mestre && <ManualOperacionalView />}
-        {aba === "checklistStatus" && user.mestre && <ChecklistStatusView />}
-        {aba === "guiaPedagogico" && <GuiaPedagogicoView />}
-        {aba === "suporte" && (
-          <SuporteView ctx={{ uid: user.uid, nome: user.nome, papel: "professor", mestre: !!user.mestre }} />
-        )}
-        {aba === "novidades" && <NovidadesView />}
-        {aba === "tutoriais" && <TutoriaisView categoria="professor" />}
+        {renderAbaProf(aba)}
       </main>
       {pdfAberto && <VisualizadorManualPDF url={pdfAberto.url} titulo={pdfAberto.titulo} onFechar={() => setPdfAberto(null)} />}
     </div>

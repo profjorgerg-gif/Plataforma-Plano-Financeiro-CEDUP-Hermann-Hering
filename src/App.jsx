@@ -1,4 +1,4 @@
-// build: 20261020_22h10m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261021_19h40m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1327,6 +1327,11 @@ function chamadoPassaFiltro(c, filtro) {
 // Lista do mais recente para o mais antigo — o primeiro item é a versão vigente.
 // ============================================================================
 const VERSOES = [
+  { versao: "2.8", data: "21/10/2026", itens: [
+    "Nova \"Fase de ajustes finais\" na tela de cada turma (Gestão → Turmas): o professor libera, de uma vez, todos os módulos corrigidos das equipes que chegaram ao final (Módulo 13 corrigido), com prazo único e mensagem para a equipe.",
+    "É a mesma \"reabertura pós-correção\" de um módulo, só que em lote: as notas, os lançamentos e os comentários são mantidos; a equipe reenvia cada módulo e o professor reaprova um a um.",
+    "Segurança: cada liberação guarda o estado anterior em registro próprio e pode ser desfeita (\"Desfazer\") enquanto os módulos não tiverem sido reenviados.",
+  ]},
   { versao: "2.7", data: "20/10/2026", itens: [
     "Novo perfil \"Coordenação\" (somente leitura) para acompanhar o processo das empresas: escolhe-se \"Coordenação\" no primeiro acesso, o Usuário Mestre aprova em Aprovações e marca quais turmas ela pode ver.",
     "Coordenação vê: situação de hoje, caminho dos módulos, registro do processo, diretriz da semana, relatórios (Resumo, por Empresa, Notas e Pendências, com impressão/PDF/CSV) e abre cada empresa em modo somente leitura (lançamentos, devolutivas e notas).",
@@ -7572,6 +7577,192 @@ function GestaoCronogramaView({ turmas }) {
   );
 }
 
+// ============================================================================
+// FASE DE AJUSTES FINAIS (v2.8) — libera, de uma vez, todos os módulos já
+// corrigidos das equipes que chegaram ao final (Módulo 13 corrigido) para a
+// equipe fazer ajustes. Usa exatamente o mesmo mecanismo da "reabertura pós-
+// correção" de um módulo (status "ajustes", nota mantida, histórico
+// "reaberto_pos_correcao"), só que em lote. NADA é apagado: só muda o campo
+// `fluxoModulos` de cada equipe; lançamentos, notas e comentários não são
+// tocados. Cada lote guarda o estado anterior (chave própria) e pode ser
+// DESFEITO enquanto os módulos não tiverem sido reenviados.
+// ============================================================================
+const MSG_AJUSTES_PADRAO = "Fase de ajustes finais — vocês concluíram o projeto. Revisem todos os módulos conferindo valores, unidades e a coerência entre eles, façam os ajustes necessários e reenviem cada módulo até {prazo}. As notas já atribuídas foram mantidas.";
+const chaveLotesAjustes = (turmaId) => `lotes_ajustes_${turmaId}`;
+
+async function lerDadosEquipeFresco(equipeId) {
+  try { const r = await window.storage.get(`dados_equipe_${equipeId}`, true); return r ? JSON.parse(r.value) : null; } catch { return null; }
+}
+async function lerLotesAjustes(turmaId) {
+  try { const r = await window.storage.get(chaveLotesAjustes(turmaId), true); return r ? JSON.parse(r.value) : []; } catch { return []; }
+}
+function equipeChegouAoFinal(fluxo) {
+  return estadoModulo(fluxo, NOTA_MODULO_FINAL).status === "corrigido";
+}
+function fmtDataBR(iso) { const [a, m, d] = String(iso || "").split("-"); return d ? `${d}/${m}/${a}` : iso; }
+
+function AjustesFinaisTurma({ turma, equipes, professorNome }) {
+  const [aberto, setAberto] = useState(false);
+  const [info, setInfo] = useState(null);   // { [equipeId]: { fluxo, corrigidos, final } }
+  const [sel, setSel] = useState(new Set());
+  const [prazo, setPrazo] = useState("");
+  const [msg, setMsg] = useState(MSG_AJUSTES_PADRAO);
+  const [lotes, setLotes] = useState([]);
+  const [ocupado, setOcupado] = useState(false);
+  const [aviso, setAviso] = useState("");
+
+  const carregar = async () => {
+    const mapa = {};
+    await Promise.all((equipes || []).map(async (e) => {
+      const d = await lerDadosEquipeFresco(e.id);
+      const fluxo = (d && d.fluxoModulos) || fluxoModulosPadrao();
+      mapa[e.id] = { fluxo, corrigidos: MODULOS.filter((m) => estadoModulo(fluxo, m.id).status === "corrigido").length, final: equipeChegouAoFinal(fluxo) };
+    }));
+    setInfo(mapa);
+    setLotes(await lerLotesAjustes(turma.id));
+  };
+  useEffect(() => { if (aberto) carregar(); /* eslint-disable-next-line */ }, [aberto]);
+
+  const aptas = (equipes || []).filter((e) => info && info[e.id] && info[e.id].final);
+  const alternar = (id) => setSel((a) => { const n = new Set(a); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const hoje = new Date().toISOString().slice(0, 10);
+
+  const liberar = async () => {
+    setAviso("");
+    const ids = aptas.filter((e) => sel.has(e.id)).map((e) => e.id);
+    if (ids.length === 0) { setAviso("Marque ao menos uma equipe apta."); return; }
+    if (!prazo || prazo < hoje) { setAviso("Informe uma data limite que não esteja no passado."); return; }
+    const nomes = aptas.filter((e) => sel.has(e.id)).map((e) => e.nomeNegocio).join(", ");
+    if (!window.confirm(`Liberar TODOS os módulos corrigidos para ajustes em ${ids.length} equipe(s)?\n\n${nomes}\n\nPrazo: ${fmtDataBR(prazo)}.\nAs notas e os lançamentos são mantidos; a equipe precisará reenviar cada módulo. Você poderá desfazer enquanto não houver reenvio.`)) return;
+    setOcupado(true);
+    try {
+      const agora = Date.now();
+      const texto = (msg || MSG_AJUSTES_PADRAO).replace(/\{prazo\}/g, fmtDataBR(prazo));
+      const loteId = uid();
+      const plano = []; // [{ equipe, dados, novoFluxo, antes }]
+      for (const id of ids) {
+        const d = await lerDadosEquipeFresco(id);              // leitura fresca, logo antes de gravar
+        if (!d) continue;
+        const fluxo = d.fluxoModulos || fluxoModulosPadrao();
+        if (!equipeChegouAoFinal(fluxo)) continue;             // reconfere elegibilidade
+        const novo = { ...fluxo }; const antes = {};
+        MODULOS.forEach((m) => {
+          const atual = estadoModulo(fluxo, m.id);
+          if (atual.status !== "corrigido") return;            // só reabre o que está corrigido
+          antes[m.id] = atual;
+          novo[m.id] = {
+            ...atual, status: "ajustes", feedback: texto, ciclo: (atual.ciclo || 1) + 1, prazo, prazoManual: true,
+            historico: [...(atual.historico || []), { tipo: "reaberto_pos_correcao", data: agora, feedback: texto, lote: loteId }],
+          };
+        });
+        if (Object.keys(antes).length) plano.push({ id, nome: (equipes.find((e) => e.id === id) || {}).nomeNegocio || id, d, novo, antes });
+      }
+      if (plano.length === 0) { setAviso("Nenhuma equipe apta no momento (releitura do banco)."); setOcupado(false); return; }
+      // 1) grava primeiro o registro do lote (estado anterior) — se falhar, nada é alterado
+      const registro = { id: loteId, em: agora, por: professorNome, prazo, mensagem: texto, equipes: plano.map((p) => ({ id: p.id, nome: p.nome, antes: p.antes })) };
+      const lista = await lerLotesAjustes(turma.id);
+      await window.storage.set(chaveLotesAjustes(turma.id), JSON.stringify([...lista, registro]), true);
+      // 2) altera SOMENTE fluxoModulos de cada equipe
+      for (const p of plano) await window.storage.set(`dados_equipe_${p.id}`, JSON.stringify({ ...p.d, fluxoModulos: p.novo }), true);
+      setAviso(`Pronto: ${plano.length} equipe(s) com ${plano.reduce((s, p) => s + Object.keys(p.antes).length, 0)} módulos liberados para ajustes até ${fmtDataBR(prazo)}.`);
+      setSel(new Set());
+      await carregar();
+    } catch (e) { setAviso("Não foi possível concluir. Verifique a conexão e tente de novo."); }
+    setOcupado(false);
+  };
+
+  const desfazer = async (lote) => {
+    if (!window.confirm("Desfazer este lote?\n\nSó voltam ao estado anterior (corrigido) os módulos que a equipe ainda NÃO reenviou. Os que já foram reenviados ficam como estão.")) return;
+    setOcupado(true); setAviso("");
+    try {
+      let revertidos = 0; let mantidos = 0;
+      for (const eq of lote.equipes) {
+        const d = await lerDadosEquipeFresco(eq.id);
+        if (!d || !d.fluxoModulos) continue;
+        const fluxo = { ...d.fluxoModulos }; let mudou = false;
+        Object.keys(eq.antes).forEach((modId) => {
+          const prev = eq.antes[modId]; const atual = fluxo[modId];
+          const intacto = atual && atual.status === "ajustes" && (atual.ciclo || 1) === (prev.ciclo || 1) + 1;
+          if (intacto) { fluxo[modId] = prev; revertidos++; mudou = true; } else mantidos++;
+        });
+        if (mudou) await window.storage.set(`dados_equipe_${eq.id}`, JSON.stringify({ ...d, fluxoModulos: fluxo }), true);
+      }
+      const lista = await lerLotesAjustes(turma.id);
+      await window.storage.set(chaveLotesAjustes(turma.id), JSON.stringify(lista.map((l) => (l.id === lote.id ? { ...l, desfeitoEm: Date.now() } : l))), true);
+      setAviso(`Lote desfeito: ${revertidos} módulo(s) voltaram a "corrigido"; ${mantidos} já tinham sido reenviados e foram mantidos.`);
+      await carregar();
+    } catch { setAviso("Não foi possível desfazer. Tente de novo."); }
+    setOcupado(false);
+  };
+
+  return (
+    <Card className="p-4">
+      <button onClick={() => setAberto((v) => !v)} className="w-full flex items-center justify-between text-left">
+        <span className="flex items-center gap-2 font-bold text-slate-100"><RotateCcw size={16} className="text-amber-500" /> Fase de ajustes finais <span className="text-xs font-normal text-slate-500">— liberar todos os módulos de equipes que chegaram ao final</span></span>
+        {aberto ? <ChevronDown size={18} className="text-slate-500" /> : <ChevronRight size={18} className="text-slate-500" />}
+      </button>
+      {aberto && (
+        <div className="mt-4">
+          <p className="text-xs text-slate-400 mb-3">Reabre, em uma única ação, todos os módulos <b>corrigidos</b> das equipes que concluíram o Módulo 13. As notas, os lançamentos e os comentários não são alterados; a equipe reenvia cada módulo e você reaprova um a um, como sempre.</p>
+          {info === null ? <div className="text-xs text-slate-500">Lendo situação das equipes…</div> : (
+            <>
+              <div className="space-y-1.5 mb-4">
+                {(equipes || []).length === 0 && <div className="text-xs text-slate-500">Nenhuma empresa nesta turma.</div>}
+                {(equipes || []).map((e) => {
+                  const i = info[e.id]; const apta = !!(i && i.final);
+                  return (
+                    <label key={e.id} className={`flex items-center gap-3 text-sm rounded-md border px-3 py-2 ${apta ? "border-slate-700 bg-slate-900/60 cursor-pointer" : "border-slate-800 bg-slate-900/20 text-slate-500"}`}>
+                      <input type="checkbox" disabled={!apta || ocupado} checked={sel.has(e.id)} onChange={() => alternar(e.id)} />
+                      <span className="flex-1 truncate text-slate-200">{e.nomeNegocio}</span>
+                      <span className="text-xs">{i ? `${i.corrigidos}/${MODULOS.length} corrigidos` : "—"}</span>
+                      <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 border ${apta ? "text-emerald-300 border-emerald-700" : "text-slate-500 border-slate-700"}`}>{apta ? "Chegou ao final" : "Ainda em andamento"}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              {aptas.length > 0 && (
+                <div className="grid md:grid-cols-[200px_1fr] gap-3 mb-3">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Prazo da fase de ajustes (obrigatório)</label>
+                    <input type="date" value={prazo} min={hoje} onChange={(e) => setPrazo(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Mensagem que a equipe verá em cada módulo ({"{prazo}"} vira a data)</label>
+                    <textarea value={msg} onChange={(e) => setMsg(e.target.value)} rows={3} className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm" />
+                  </div>
+                </div>
+              )}
+              {aptas.length > 0 && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <button onClick={liberar} disabled={ocupado || sel.size === 0 || !prazo} className="bg-amber-500 text-slate-900 font-bold text-sm px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40">{ocupado ? "Processando…" : `Liberar ajustes (${sel.size} equipe${sel.size === 1 ? "" : "s"})`}</button>
+                  <button onClick={() => setSel(new Set(aptas.map((e) => e.id)))} className="text-xs text-slate-400 hover:text-slate-100 underline">Marcar todas as aptas</button>
+                </div>
+              )}
+              {aptas.length === 0 && <div className="text-xs text-slate-500">Nenhuma equipe chegou ao final (Módulo 13 corrigido) ainda.</div>}
+            </>
+          )}
+          {aviso && <div className="mt-3 text-xs text-amber-300 bg-amber-950/30 border border-amber-800/50 rounded-md px-3 py-2">{aviso}</div>}
+          {lotes.length > 0 && (
+            <div className="mt-5 pt-4 border-t border-slate-800">
+              <div className="text-xs font-bold text-slate-300 mb-2">Liberações anteriores</div>
+              <div className="space-y-1.5">
+                {[...lotes].reverse().map((l) => (
+                  <div key={l.id} className="flex flex-wrap items-center gap-2 text-xs bg-slate-900/60 border border-slate-800 rounded-md px-3 py-2">
+                    <span className="text-slate-300">{fmtData(l.em)}</span>
+                    <span className="text-slate-500">· {l.equipes.length} equipe(s) · prazo {fmtDataBR(l.prazo)} · por {l.por}</span>
+                    <span className="text-slate-500 truncate flex-1">{l.equipes.map((e) => e.nome).join(", ")}</span>
+                    {l.desfeitoEm ? <span className="text-slate-500">desfeito em {fmtData(l.desfeitoEm)}</span> : <button onClick={() => desfazer(l)} disabled={ocupado} className="border border-slate-600 text-slate-200 font-semibold rounded-md px-2.5 py-1 hover:bg-slate-800 disabled:opacity-40">Desfazer</button>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function TurmaDetail({ turma, onVoltar, professorNome, alvoCorrecao }) {
   const [equipes, setEquipes] = useSharedList(`equipes_${turma.id}`);
   const [equipeSel, setEquipeSel] = useState(alvoCorrecao?.equipeId || null);
@@ -7653,6 +7844,8 @@ function TurmaDetail({ turma, onVoltar, professorNome, alvoCorrecao }) {
       </div>
 
       <PainelRoster turmaId={turma.id} turmaNome={turma.nome} professorUid={turma.professorUid} professorNome={turma.professor} />
+
+      {equipes !== null && equipesReais.length > 0 && <AjustesFinaisTurma turma={turma} equipes={equipesReais} professorNome={professorNome} />}
 
       {equipesAguardandoSegmento.length > 0 && (
         <Card className="p-4 border-amber-800/50">

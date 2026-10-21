@@ -1,4 +1,4 @@
-// build: 20261016_19h20m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261020_22h10m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1327,6 +1327,11 @@ function chamadoPassaFiltro(c, filtro) {
 // Lista do mais recente para o mais antigo — o primeiro item é a versão vigente.
 // ============================================================================
 const VERSOES = [
+  { versao: "2.7", data: "20/10/2026", itens: [
+    "Novo perfil \"Coordenação\" (somente leitura) para acompanhar o processo das empresas: escolhe-se \"Coordenação\" no primeiro acesso, o Usuário Mestre aprova em Aprovações e marca quais turmas ela pode ver.",
+    "Coordenação vê: situação de hoje, caminho dos módulos, registro do processo, diretriz da semana, relatórios (Resumo, por Empresa, Notas e Pendências, com impressão/PDF/CSV) e abre cada empresa em modo somente leitura (lançamentos, devolutivas e notas).",
+    "Segurança dos dados: a Coordenação não corrige, não comenta, não lança e não altera nada — toda gravação é descartada na origem. Nenhum dado existente é alterado; só é gravado o cadastro do próprio usuário e a liberação de turmas feita pelo Mestre.",
+  ]},
   { versao: "2.6", data: "16/10/2026", itens: [
     "Módulo 6 (Custo Unit. Matéria-Prima): agora cada linha tem unidade de medida — a unidade da quantidade usada (g, kg, ml, L, un, dz) e a unidade em que o preço foi pago (R$ por kg, L, un…). A plataforma converte sozinha (150 g × R$ 20,00/kg = R$ 3,00) e avisa se as unidades forem incompatíveis.",
     "Módulo 6: novo \"Resumo por produto\" com custo da receita, rendimento (quantas unidades a receita rende), custo por unidade e alerta visual quando o custo fica acima do preço de venda do Módulo 5. É um quadro informativo — não altera o Módulo 8 nem as notas.",
@@ -4979,15 +4984,17 @@ function PainelExemploSegmento({ segmento, exemplo }) {
   );
 }
 
-function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades, onAtualizarEquipe }) {
-  const [dados, setDados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
+function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades, onAtualizarEquipe, somenteLeitura }) {
+  const [dados, setDadosReal] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
+  // Modo Coordenação (somente leitura): TODA gravação em dados da equipe é descartada aqui, na origem.
+  const setDados = somenteLeitura ? () => {} : setDadosReal;
   const [aba, setAba] = useState("inicio");
   const [menuAberto, setMenuAberto] = useState(false);
   const [gerandoPpt, setGerandoPpt] = useState(false);
   const [gerandoDoc, setGerandoDoc] = useState(false);
   const [erroPpt, setErroPpt] = useState("");
   const [confirmSairAberto, setConfirmSairAberto] = useState(false);
-  const [decisaoGestorTomada, setDecisaoGestorTomada] = useState(false);
+  const [decisaoGestorTomada, setDecisaoGestorTomada] = useState(!!somenteLeitura);
   const [pdfAberto, setPdfAberto] = useState(null);
   const [modoMesa, setModoMesa] = useModoMesa("ppf_modo_mesa_aluno");
   const larga = useTelaLarga();
@@ -5079,7 +5086,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   const gestor = dados.gestor || null;
   const gestorAtivo = !!(gestor && Date.now() - (gestor.ultimoPing || 0) < GESTOR_TIMEOUT_MS);
   const souGestor = gestorAtivo && gestor.uid === user.uid;
-  const souVisualizador = gestorAtivo && !souGestor;
+  const souVisualizador = !!somenteLeitura || (gestorAtivo && !souGestor);
   const gestaoLivre = !gestorAtivo;
 
   const assumirGestao = () => {
@@ -5169,7 +5176,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
         {souVisualizador && (
           <div className="mb-4 bg-slate-900 border border-sky-800/60 rounded-md px-4 py-2.5 flex items-center gap-2.5 text-sm text-sky-300">
             <Eye size={16} className="shrink-0" />
-            <span><b>{gestor.nome}</b> está gerindo os lançamentos agora. Você está no modo visualização.</span>
+            <span>{somenteLeitura ? <><b>Modo Coordenação — somente leitura.</b> Você acompanha exatamente o que a equipe lançou; nada aqui pode ser alterado.</> : <><b>{gestor.nome}</b> está gerindo os lançamentos agora. Você está no modo visualização.</>}</span>
           </div>
         )}
         {souGestor && (
@@ -5477,8 +5484,9 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
           </div>
         )}
 
-        {aba === "suporte" && (
-          <SuporteView ctx={{ uid: user.uid, nome: user.nome, papel: "aluno", mestre: false, professorUid, professorNome, turmaNome }} />
+        {aba === "suporte" && (somenteLeitura
+          ? <Card className="p-6 text-sm text-slate-400">O Suporte (chamados da equipe) não está disponível no modo Coordenação.</Card>
+          : <SuporteView ctx={{ uid: user.uid, nome: user.nome, papel: "aluno", mestre: false, professorUid, professorNome, turmaNome }} />
         )}
 
         {aba === "referencias" && <ReferenciasBibliograficasView />}
@@ -9774,10 +9782,11 @@ const ABAS_RELATORIO = [
   { id: "plano", label: "Plano Semestral", icon: FileText },
 ];
 
-function GestaoRelatoriosView({ turmas, abaInicial, semAbas }) {
+function GestaoRelatoriosView({ turmas, abaInicial, semAbas, abasPermitidas }) {
+  const abasVisiveis = abasPermitidas ? ABAS_RELATORIO.filter((a) => abasPermitidas.includes(a.id)) : ABAS_RELATORIO;
   const [turmaId, setTurmaIdLocal] = useState(() => (semAbas ? (turmas.some((t) => t.id === ULTIMA_TURMA_SEL) ? ULTIMA_TURMA_SEL : (turmas[0]?.id || "")) : ""));
   const setTurmaId = (v) => { if (semAbas) ULTIMA_TURMA_SEL = v; setTurmaIdLocal(v); };
-  const [aba, setAba] = useState(abaInicial || "resumo");
+  const [aba, setAba] = useState(abaInicial || (abasVisiveis[0] || {}).id || "resumo");
   const [refreshKey, setRefreshKey] = useState(0);
   const [leituraEm, setLeituraEm] = useState(null);
   const turma = turmas.find((t) => t.id === turmaId);
@@ -9807,7 +9816,7 @@ function GestaoRelatoriosView({ turmas, abaInicial, semAbas }) {
       {turmaId && (
         <div>
           {!semAbas && (<div className="no-print flex flex-wrap gap-2 mb-5 border-b border-slate-800 pb-4">
-            {ABAS_RELATORIO.map((a) => {
+            {abasVisiveis.map((a) => {
               const Icon = a.icon;
               const ativo = aba === a.id;
               return (
@@ -11480,13 +11489,201 @@ function LinhaUsuarioPendente({ usuario, onAprovar, onRejeitar, onMudarPapel, on
   );
 }
 
+// ============================================================================
+// COORDENAÇÃO (v2.7) — perfil SOMENTE LEITURA para acompanhar o processo das
+// empresas. O Usuário Mestre aprova o cadastro e libera as turmas que a
+// coordenação pode ver. Nada aqui grava dados dos alunos: as telas de
+// acompanhamento só leem, e a área da empresa abre em modo somente leitura
+// (toda gravação é descartada na origem — ver `somenteLeitura` no AlunoWorkspace).
+// ============================================================================
+function SecaoCoordenacaoAprovacoes({ coordenacao, onAtualizar, onExcluir }) {
+  const turmasTodas = useTodasTurmas(0);
+  return (
+    <div className="mb-8">
+      <h3 className="text-sm font-bold text-slate-200 mb-1 mt-2 flex items-center gap-2"><Eye size={15} className="text-sky-400" /> Coordenação — somente leitura ({coordenacao.length})</h3>
+      <p className="text-xs text-slate-500 mb-3">Quem se cadastra como Coordenação só enxerga as turmas marcadas aqui e nada pode alterar. Marque as turmas e aprove; as mudanças valem no próximo acesso.</p>
+      <div className="space-y-3">
+        {coordenacao.length === 0 && <Card className="p-5 text-center text-slate-500 text-sm">Nenhum cadastro de Coordenação ainda.</Card>}
+        {coordenacao.map((u) => <LinhaCoordenacao key={u.uid} usuario={u} turmas={turmasTodas} onAtualizar={onAtualizar} onExcluir={onExcluir} />)}
+      </div>
+    </div>
+  );
+}
+
+function LinhaCoordenacao({ usuario, turmas, onAtualizar, onExcluir }) {
+  const [sel, setSel] = useState(() => new Set(usuario.turmasLiberadas || []));
+  const [msg, setMsg] = useState("");
+  const aprovado = usuario.status === "aprovado";
+  const alternar = (id) => setSel((a) => { const n = new Set(a); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const salvar = async (status) => {
+    await onAtualizar(usuario.uid, { status, turmasLiberadas: [...sel] });
+    setMsg(status === "aprovado" ? "Salvo." : "Acesso suspenso.");
+    setTimeout(() => setMsg(""), 2500);
+  };
+  return (
+    <Card className="p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+        <div>
+          <div className="font-semibold text-slate-100">{usuario.nome}</div>
+          <div className="text-xs text-slate-500">{usuario.email}</div>
+        </div>
+        <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 border ${aprovado ? "text-emerald-300 border-emerald-700 bg-emerald-950/40" : usuario.status === "rejeitado" ? "text-rose-300 border-rose-700 bg-rose-950/40" : "text-amber-300 border-amber-700 bg-amber-950/40"}`}>
+          {aprovado ? "Aprovada" : usuario.status === "rejeitado" ? "Acesso suspenso" : "Aguardando aprovação"}
+        </span>
+      </div>
+      <div className="text-xs font-semibold text-slate-400 mb-1.5">Turmas liberadas para acompanhamento:</div>
+      {turmas === null ? <div className="text-xs text-slate-500">Carregando turmas…</div> : turmas.length === 0 ? <div className="text-xs text-slate-500">Nenhuma turma cadastrada.</div> : (
+        <div className="grid sm:grid-cols-2 gap-1.5 mb-3">
+          {turmas.map((t) => (
+            <label key={t.id} className="flex items-center gap-2 text-sm text-slate-200 bg-slate-900/60 border border-slate-700 rounded-md px-2.5 py-1.5 cursor-pointer">
+              <input type="checkbox" checked={sel.has(t.id)} onChange={() => alternar(t.id)} />
+              <span className="truncate">{t.nome}{t.professor ? <span className="text-slate-500"> · {t.professor}</span> : null}</span>
+            </label>
+          ))}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={() => salvar("aprovado")} disabled={sel.size === 0} title={sel.size === 0 ? "Marque ao menos uma turma" : ""} className="bg-emerald-500 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-md hover:bg-emerald-400 disabled:opacity-40">{aprovado ? "Salvar turmas" : "Aprovar e liberar turmas"}</button>
+        {aprovado && <button onClick={() => salvar("rejeitado")} className="border border-slate-600 text-slate-300 text-xs font-semibold px-3 py-1.5 rounded-md hover:bg-slate-800">Suspender acesso</button>}
+        <button onClick={() => onExcluir(usuario)} title="Excluir esta conta permanentemente" className="text-slate-500 hover:text-rose-400 ml-auto"><Trash2 size={14} /></button>
+        {msg && <span className="text-xs text-emerald-400">{msg}</span>}
+      </div>
+    </Card>
+  );
+}
+
+const ABAS_COORD = [
+  { id: "inicio", label: "Início" },
+  { id: "empresas", label: "Empresas" },
+  { id: "hoje", label: "Situação de hoje" },
+  { id: "caminho", label: "Caminho dos módulos" },
+  { id: "registro", label: "Registro do processo" },
+  { id: "diretriz", label: "Diretriz da semana" },
+  { id: "relatorios", label: "Relatórios" },
+];
+
+// Lista as empresas das turmas liberadas e abre a área da empresa SOMENTE LEITURA.
+function CoordEmpresasView({ turmas, onAbrir }) {
+  const [turmaId, setTurmaId] = useState(turmas[0]?.id || "");
+  const [equipes] = useSharedList(turmaId ? `equipes_${turmaId}` : null);
+  const turma = turmas.find((t) => t.id === turmaId);
+  const reais = (equipes || []).filter((e) => e.teste !== true);
+  return (
+    <div>
+      <SectionTitle icon={Building2} sub="Escolha a turma e abra a empresa para ver, módulo a módulo, o que a equipe lançou, as devolutivas e as notas. Somente leitura.">Empresas</SectionTitle>
+      <div className="mb-4"><SeletorTurma turmas={turmas} value={turmaId} onChange={setTurmaId} /></div>
+      {!turmaId && <Card className="p-8 text-center text-slate-500">Selecione uma turma.</Card>}
+      {turmaId && equipes === null && <LoadingScreen />}
+      {turmaId && equipes !== null && reais.length === 0 && <Card className="p-8 text-center text-slate-500">Nenhuma empresa cadastrada nesta turma.</Card>}
+      <div className="grid md:grid-cols-2 gap-3">
+        {reais.map((e) => (
+          <Card key={e.id} className="p-4">
+            <div className="font-bold text-slate-100">{e.nomeNegocio || "(sem nome)"}</div>
+            <div className="text-xs text-slate-500 mb-1">{e.segmento ? `Segmento: ${e.segmento}` : "Segmento não definido"}</div>
+            <div className="text-xs text-slate-400 mb-3 line-clamp-2">{(e.integrantes || []).map((i) => (typeof i === "string" ? i : i.nome)).filter(Boolean).join(", ") || "Sem integrantes informados"}</div>
+            <button onClick={() => onAbrir({ turmaId, equipeId: e.id, turmaNome: turma?.nome || "", professorUid: turma?.professorUid, professorNome: turma?.professor })} className="text-xs font-bold bg-amber-500 text-slate-900 rounded-md px-3 py-1.5 hover:bg-amber-400">Abrir (somente leitura)</button>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CoordenacaoDashboard({ user, onSair }) {
+  const [perfilAtual, setPerfilAtual] = useState(null); // relê (só leitura) o cadastro: turmas liberadas podem ter mudado
+  useEffect(() => {
+    let vivo = true;
+    (async () => { try { const p = await buscarUsuario(user.uid); if (vivo) setPerfilAtual(p || false); } catch { if (vivo) setPerfilAtual(false); } })();
+    return () => { vivo = false; };
+  }, [user.uid]);
+  const todas = useTodasTurmas(0);
+  const [aba, setAba] = useState("inicio");
+  const [alvo, setAlvo] = useState(null);
+
+  if (perfilAtual === null || todas === null) return <LoadingScreen />;
+  const liberadas = (perfilAtual && perfilAtual.status === "aprovado" ? (perfilAtual.turmasLiberadas || []) : []);
+  const turmas = todas.filter((t) => liberadas.includes(t.id));
+
+  if (alvo) {
+    return (
+      <div>
+        <div className="sticky top-0 z-[60] h-10 flex items-center justify-between gap-3 px-4 bg-sky-950 border-b border-sky-700/70 text-sky-200 text-xs font-semibold">
+          <span className="truncate">👁 Modo Coordenação — somente leitura · {alvo.turmaNome}</span>
+          <button onClick={() => setAlvo(null)} className="shrink-0 bg-sky-400 text-slate-900 font-bold rounded-md px-3 py-1 hover:bg-sky-300">Voltar à Coordenação</button>
+        </div>
+        <AlunoWorkspaceCarregado
+          userSessao={{ uid: user.uid, nome: user.nome, email: user.email, papel: "aluno" }}
+          turmaId={alvo.turmaId} equipeId={alvo.equipeId} somenteLeitura
+          onSair={() => setAlvo(null)} onTrocarEmpresa={() => setAlvo(null)}
+          professorUid={alvo.professorUid} professorNome={alvo.professorNome} turmaNome={alvo.turmaNome}
+          ultimaVersaoVista={APP_VERSION} onVerNovidades={undefined}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100">
+      <style>{`@media print { .coord-topo, .no-print { display: none !important; } }`}</style>
+      <header className="coord-topo sticky top-0 z-30 bg-slate-900 border-b border-slate-700">
+        <div className="max-w-6xl mx-auto px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="font-bold text-amber-400 text-sm whitespace-nowrap">PPF · Coordenação</div>
+          <nav className="flex flex-wrap gap-1 flex-1">
+            {ABAS_COORD.map((a) => (
+              <button key={a.id} onClick={() => setAba(a.id)} className={`text-sm px-3 py-1.5 rounded-md ${aba === a.id ? "bg-white/10 text-amber-400 font-semibold" : "text-slate-300 hover:text-amber-400"}`}>{a.label}</button>
+            ))}
+          </nav>
+          <div className="flex items-center gap-3 text-xs text-slate-400">
+            <span className="hidden sm:inline">{user.nome}</span>
+            <span className="text-[10px] font-bold text-sky-300 border border-sky-700 rounded-full px-2 py-0.5">SOMENTE LEITURA</span>
+            <button onClick={onSair} className="border border-slate-600 rounded px-2.5 py-1 text-slate-100 hover:bg-slate-800">Sair</button>
+          </div>
+        </div>
+      </header>
+      <main className="max-w-6xl mx-auto px-4 py-6">
+        {perfilAtual === false || perfilAtual.status !== "aprovado" ? (
+          <Card className="p-8 text-center text-slate-400">Seu acesso de Coordenação não está ativo no momento. Procure o Usuário Mestre.</Card>
+        ) : turmas.length === 0 ? (
+          <Card className="p-8 text-center text-slate-400">Nenhuma turma foi liberada para você ainda. Peça ao Usuário Mestre para liberar as turmas que deseja acompanhar.</Card>
+        ) : (
+          <>
+            {aba === "inicio" && (
+              <div>
+                <div className="text-xs font-bold tracking-widest text-amber-500 mb-2">CURSO TÉCNICO EM ADMINISTRAÇÃO E CONTABILIDADE</div>
+                <h1 className="text-3xl font-bold text-slate-50 mb-3">Acompanhamento da Coordenação</h1>
+                <p className="text-slate-400 max-w-2xl mb-6">Bem-vindo(a), {user.nome}. Aqui você acompanha o processo das empresas — situação dos módulos, prazos, devolutivas e notas — e emite relatórios. O acesso é somente leitura: nada do que os alunos lançaram pode ser alterado.</p>
+                <h3 className="text-sm font-bold text-slate-200 mb-2">Turmas liberadas ({turmas.length})</h3>
+                <div className="grid sm:grid-cols-2 gap-3 mb-6">
+                  {turmas.map((t) => <Card key={t.id} className="p-4"><div className="font-semibold text-slate-100">{t.nome}</div><div className="text-xs text-slate-500">Professor(a): {t.professor || "—"}</div></Card>)}
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <button onClick={() => setAba("empresas")} className="bg-amber-500 text-slate-900 font-bold px-5 py-2.5 rounded-md hover:bg-amber-400 text-sm">Ver empresas</button>
+                  <button onClick={() => setAba("hoje")} className="border border-slate-600 text-slate-100 px-5 py-2.5 rounded-md hover:bg-slate-800 text-sm font-semibold">Situação de hoje</button>
+                  <button onClick={() => setAba("relatorios")} className="border border-slate-600 text-slate-100 px-5 py-2.5 rounded-md hover:bg-slate-800 text-sm font-semibold">Relatórios</button>
+                </div>
+              </div>
+            )}
+            {aba === "empresas" && <CoordEmpresasView turmas={turmas} onAbrir={setAlvo} />}
+            {aba === "hoje" && <HojeProfessorView turmas={turmas} />}
+            {aba === "caminho" && <CaminhoProfessorView turmas={turmas} />}
+            {aba === "registro" && <RegistroProcessoView turmas={turmas} />}
+            {aba === "diretriz" && <DiretrizSemanaView turmas={turmas} />}
+            {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} abasPermitidas={["resumo", "empresa", "notas", "pendencias"]} />}
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
+
 function GestaoAprovacoesView({ usuarioAtualUid }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const usuarios = useListaUsuarios(refreshKey);
   if (usuarios === null) return <LoadingScreen />;
 
-  const pendentes = usuarios.filter((u) => u.status === "pendente");
-  const aprovados = usuarios.filter((u) => u.status === "aprovado");
+  const coordenacao = usuarios.filter((u) => u.papel === "coordenacao");
+  const pendentes = usuarios.filter((u) => u.status === "pendente" && u.papel !== "coordenacao");
+  const aprovados = usuarios.filter((u) => u.status === "aprovado" && u.papel !== "coordenacao");
 
   const atualizar = async (uidAlvo, mudancas) => {
     await atualizarUsuario(uidAlvo, mudancas);
@@ -11511,6 +11708,8 @@ function GestaoAprovacoesView({ usuarioAtualUid }) {
   return (
     <div>
       <SectionTitle icon={Crown} sub="Aprove ou recuse os cadastros novos. Esta tela só aparece para Usuários Mestre.">Aprovações</SectionTitle>
+
+      <SecaoCoordenacaoAprovacoes coordenacao={coordenacao} onAtualizar={atualizar} onExcluir={excluir} />
 
       <h3 className="text-sm font-bold text-slate-200 mb-2 mt-2">Pendentes ({pendentes.length})</h3>
       <div className="space-y-3 mb-8">
@@ -11962,7 +12161,7 @@ function EscolherEmpresa({ perfil, turmaId, turmaNome, onSair, onEscolhida }) {
   );
 }
 
-function AlunoWorkspaceCarregado({ userSessao, turmaId, equipeId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades }) {
+function AlunoWorkspaceCarregado({ userSessao, turmaId, equipeId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades, somenteLeitura }) {
   // Trocado de useEquipeSalva (leitura única) para useSharedList: a equipe
   // precisa de um jeito de gravar sua própria escolha de segmento de volta
   // na mesma lista `equipes_{turmaId}` que a tela da turma usa — sem isso,
@@ -11974,7 +12173,7 @@ function AlunoWorkspaceCarregado({ userSessao, turmaId, equipeId, onSair, onTroc
   const atualizarEquipe = async (patch) => {
     await setEquipes(equipes.map((e) => (e.id === equipeId ? { ...e, ...patch } : e)));
   };
-  return <AlunoWorkspace user={userSessao} equipe={equipe} equipeKey={`dados_equipe_${equipe.id}`} turmaId={turmaId} onSair={onSair} onTrocarEmpresa={() => onTrocarEmpresa(equipe)} professorUid={professorUid} professorNome={professorNome} turmaNome={turmaNome} ultimaVersaoVista={ultimaVersaoVista} onVerNovidades={onVerNovidades} onAtualizarEquipe={atualizarEquipe} />;
+  return <AlunoWorkspace user={userSessao} equipe={equipe} equipeKey={`dados_equipe_${equipe.id}`} turmaId={turmaId} onSair={onSair} onTrocarEmpresa={() => onTrocarEmpresa(equipe)} professorUid={professorUid} professorNome={professorNome} turmaNome={turmaNome} ultimaVersaoVista={ultimaVersaoVista} onVerNovidades={onVerNovidades} onAtualizarEquipe={somenteLeitura ? undefined : atualizarEquipe} somenteLeitura={!!somenteLeitura} />;
 }
 
 function AlunoRoteador({ perfil, onSair, onVirarProfessor }) {
@@ -12092,7 +12291,7 @@ function TelaAguardandoAprovacao({ perfil, onSair, rejeitado, onTrocarTurma, onV
             <Clock size={40} className="mx-auto text-amber-500 mb-3" />
             <h2 className="text-lg font-bold text-slate-100 mb-2">Cadastro em análise</h2>
             <p className="text-sm text-slate-400 mb-1">
-              Olá, {perfil.nome}! Seu cadastro como {perfil.papel === "professor" ? "professor(a)" : "aluno(a)"}
+              Olá, {perfil.nome}! Seu cadastro como {perfil.papel === "professor" ? "professor(a)" : perfil.papel === "coordenacao" ? "coordenação (somente leitura)" : "aluno(a)"}
               {perfil.turmaNome ? <> para a turma <b>{perfil.turmaNome}</b></> : ""} foi enviado e está aguardando aprovação de um Usuário Mestre.
             </p>
             <p className="text-xs text-slate-500 mb-3">Assim que for aprovado, é só entrar novamente com sua conta Google.</p>
@@ -12166,14 +12365,18 @@ function TelaLogin({ onEscolherPerfil }) {
       <p className="text-sm text-slate-400 mb-5">Entre com sua conta Google para acessar a Plataforma do Plano Financeiro.</p>
 
       <Field label="Perfil de acesso" hint="Só é usado na primeira vez que esta conta entra no sistema. Depois disso, o perfil só pode ser alterado por um Usuário Mestre, no painel de Usuários.">
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-1.5">
           <button type="button" onClick={() => setPapel("aluno")} className={`flex items-center justify-center gap-2 py-2 rounded-md text-sm font-semibold border ${papel === "aluno" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300 hover:border-slate-400"}`}>
             <GraduationCap size={15} /> Aluno(a)
           </button>
           <button type="button" onClick={() => setPapel("professor")} className={`flex items-center justify-center gap-2 py-2 rounded-md text-sm font-semibold border ${papel === "professor" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300 hover:border-slate-400"}`}>
             <UserCog size={15} /> Professor(a)
           </button>
+          <button type="button" onClick={() => setPapel("coordenacao")} className={`flex items-center justify-center gap-1.5 px-1 py-2 rounded-md text-[13px] font-semibold border ${papel === "coordenacao" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300 hover:border-slate-400"}`}>
+            <Eye size={15} /> Coordenação
+          </button>
         </div>
+        {papel === "coordenacao" && <p className="text-[11px] text-sky-300 mt-2">Acesso somente de leitura para acompanhar o processo das empresas. Depende de aprovação do Usuário Mestre, que libera as turmas.</p>}
       </Field>
 
       {papel === "professor" && (
@@ -12353,6 +12556,7 @@ export default function App() {
       papel,
       status: papel === "professor" ? "aprovado" : "pendente",
       mestre: souMestre,
+      ...(papel === "coordenacao" ? { turmasLiberadas: [] } : {}),
       turmaId: null, turmaNome: null, equipeId: null,
       criadoEm: Date.now(),
     };
@@ -12394,6 +12598,12 @@ export default function App() {
       const atualizado = await atualizarUsuario(perfil.uid, mudancas);
       if (atualizado) setPerfilRecemCriado(atualizado);
     }} />;
+  }
+
+  // coordenação (somente leitura): precisa de aprovação do Mestre, que também libera as turmas
+  if (perfil.papel === "coordenacao") {
+    if (perfil.status !== "aprovado") return <TelaAguardandoAprovacao perfil={perfil} onSair={efetuarSaidaComLog} rejeitado={perfil.status === "rejeitado"} />;
+    return <CoordenacaoDashboard user={{ uid: perfil.uid, nome: perfil.nome, email: perfil.email, turmasLiberadas: perfil.turmasLiberadas || [] }} onSair={efetuarSaidaComLog} />;
   }
 
   // professor

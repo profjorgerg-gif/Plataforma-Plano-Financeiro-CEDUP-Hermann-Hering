@@ -1,4 +1,4 @@
-// build: 20261021_19h40m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261022_09h30m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1327,6 +1327,11 @@ function chamadoPassaFiltro(c, filtro) {
 // Lista do mais recente para o mais antigo — o primeiro item é a versão vigente.
 // ============================================================================
 const VERSOES = [
+  { versao: "2.9", data: "22/10/2026", itens: [
+    "Pré-análise automática dos módulos 1 a 13: quando a equipe envia um módulo, o professor pode clicar em \"Analisar este módulo\" e o sistema confere o que foi lançado (campos vazios, valores zerados, itens repetidos, quantidades e custos fora do padrão, custo acima do preço, coerência entre módulos etc.).",
+    "Cada achado vira uma orientação já escrita para a equipe, que o professor pode editar ou desmarcar. O botão coloca o texto no campo de feedback; nada é enviado, devolvido ou aprovado sem o clique do professor.",
+    "A análise só lê os dados: não grava nada nos lançamentos da equipe.",
+  ]},
   { versao: "2.8", data: "21/10/2026", itens: [
     "Nova \"Fase de ajustes finais\" na tela de cada turma (Gestão → Turmas): o professor libera, de uma vez, todos os módulos corrigidos das equipes que chegaram ao final (Módulo 13 corrigido), com prazo único e mensagem para a equipe.",
     "É a mesma \"reabertura pós-correção\" de um módulo, só que em lote: as notas, os lançamentos e os comentários são mantidos; a equipe reenvia cada módulo e o professor reaprova um a um.",
@@ -5892,7 +5897,274 @@ function LinhaPrazoCronogramaEntrega({ prazoCronograma, enviadoEm }) {
   );
 }
 
-function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes, onReabrirPosCorrecao, nota, prazoCronograma }) {
+// ============================================================================
+// PRÉ-ANÁLISE AUTOMÁTICA DOS MÓDULOS (v2.9)
+// Regras fixas (sem IA e sem rede) que conferem o que a equipe enviou e
+// montam um RASCUNHO de orientações. Só LÊ os dados: nada é gravado,
+// devolvido ou aprovado sozinho. O professor revisa/edita o texto e, se
+// quiser, usa o botão "Devolver para ajustes" que já existe.
+// ============================================================================
+const SALARIO_MINIMO_REF = 1621; // referência para conferir salários (ajuste aqui quando mudar)
+const normTxt = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+const fmtN = (n) => (Number(n) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+const medianaN = (arr) => { const a = [...arr].sort((x, y) => x - y); const m = Math.floor(a.length / 2); return a.length ? (a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2) : 0; };
+
+function achado(sev, titulo, onde, linhas, orientacao) { return { sev, titulo, onde, linhas: linhas || [], orientacao }; }
+
+function duplicados(itens, campo) {
+  const vistos = {}; const dup = [];
+  itens.forEach((it) => { const k = normTxt(it[campo]); if (!k) return; vistos[k] = (vistos[k] || 0) + 1; });
+  Object.keys(vistos).forEach((k) => { if (vistos[k] > 1) { const nome = (itens.find((it) => normTxt(it[campo]) === k) || {})[campo]; dup.push(String(nome).trim()); } });
+  return dup;
+}
+
+function analisarModulo(modId, lancBruto, calc) {
+  const l = mergeLancamentos(lancBruto);
+  const a = [];
+  const nomesProd = (l.m5.itens || []).map((p) => String(p.nome || "").trim()).filter(Boolean);
+
+  if (modId === "m1") {
+    const it = l.m1.itens;
+    if (it.length === 0) a.push(achado("crit", "Nenhum investimento fixo lançado", "Módulo 1", [], "O Módulo 1 está vazio. Listem máquinas, equipamentos, móveis e utensílios necessários para operar, com quantidade e valor de cada um."));
+    const semDesc = it.filter((x) => !String(x.desc || "").trim());
+    if (semDesc.length) a.push(achado("att", `${semDesc.length} item(ns) sem descrição`, "Módulo 1", [], "Há itens sem descrição. Descrevam cada item (ex.: “Forno industrial 3 esteiras”) para ser possível conferir o valor."));
+    const zerados = it.filter((x) => !(Number(x.qtd) > 0) || !(Number(x.valorUnit) > 0));
+    if (zerados.length) a.push(achado("crit", `${zerados.length} item(ns) com quantidade ou valor zerado`, "Módulo 1", zerados.slice(0, 6).map((x) => [String(x.desc || "(sem descrição)").trim(), `qtd ${fmtN(x.qtd)} · R$ ${fmtN(x.valorUnit)}`]), "Revisem os itens com quantidade ou valor zerado: informem o valor pesquisado ou retirem o item, porque ele não entra no investimento."));
+    const dup = duplicados(it, "desc");
+    if (dup.length) a.push(achado("att", "Itens repetidos", "Módulo 1", dup.slice(0, 6).map((d) => [d, "aparece mais de uma vez"]), "Alguns itens aparecem repetidos. Se forem equipamentos diferentes, diferenciem o nome; se for o mesmo, somem as quantidades em uma só linha."));
+    const semCat = it.filter((x) => !String(x.categoria || "").trim());
+    if (semCat.length) a.push(achado("sug", `${semCat.length} item(ns) sem categoria`, "Módulo 1", [], "Classifiquem cada item na categoria correta (máquinas, móveis, veículos etc.)."));
+  }
+
+  if (modId === "m2") {
+    const g = l.m2;
+    if (!(Number(g.estoqueInicial) > 0)) a.push(achado("att", "Estoque inicial zerado", "Módulo 2", [], "O estoque inicial está zerado. Se o negócio compra mercadoria ou insumos antes de vender, informem quanto será preciso ter em estoque no primeiro dia."));
+    const pv = Number(g.prazoVendasDias) || 0, pc = Number(g.prazoComprasDias) || 0, pe = Number(g.prazoEstoqueDias) || 0;
+    if (pv + pe === 0 && pc === 0) a.push(achado("att", "Todos os prazos estão zerados", "Módulo 2", [], "Os prazos de vendas, compras e estoque estão zerados. Pesquisem os prazos reais do negócio, porque eles definem o caixa mínimo."));
+    [["vendas", pv], ["compras", pc], ["estoque", pe]].forEach(([n, v]) => { if (v < 0 || v > 180) a.push(achado("crit", `Prazo de ${n} fora do razoável (${fmtN(v)} dias)`, "Módulo 2", [], `O prazo médio de ${n} está em ${fmtN(v)} dias. Confiram o valor: normalmente fica entre 0 e 90 dias.`)); });
+    if (calc && calc.cmv > 0 && Number(g.estoqueInicial) > calc.cmv * 3) a.push(achado("att", "Estoque inicial muito maior que o custo mensal", "Módulo 2", [["Estoque inicial", `R$ ${fmtN(g.estoqueInicial)}`], ["CMV mensal", `R$ ${fmtN(calc.cmv)}`]], "O estoque inicial é mais de 3 vezes o custo de mercadorias de um mês. Expliquem a necessidade ou revisem o valor."));
+  }
+
+  if (modId === "m3") {
+    const it = l.m3.itens;
+    if (it.length === 0) a.push(achado("crit", "Nenhum investimento pré-operacional lançado", "Módulo 3", [], "O Módulo 3 está vazio. Listem os gastos antes de abrir (reforma, documentação, marketing de lançamento, treinamento etc.)."));
+    const z = it.filter((x) => !(Number(x.valor) > 0));
+    if (z.length) a.push(achado("crit", `${z.length} item(ns) com valor zerado`, "Módulo 3", z.slice(0, 6).map((x) => [String(x.desc || "(sem descrição)").trim(), "R$ 0"]), "Há itens com valor zerado. Informem o valor pesquisado ou retirem o item."));
+    const sd = it.filter((x) => !String(x.desc || "").trim());
+    if (sd.length) a.push(achado("att", `${sd.length} item(ns) sem descrição`, "Módulo 3", [], "Descrevam cada gasto pré-operacional para podermos conferir."));
+    const dup = duplicados(it, "desc");
+    if (dup.length) a.push(achado("att", "Itens repetidos", "Módulo 3", dup.slice(0, 6).map((d) => [d, "aparece mais de uma vez"]), "Verifiquem os itens repetidos: se for o mesmo gasto, ele está sendo contado duas vezes."));
+    if (!it.some((x) => /document|alvara|registro|licen|cnpj|abertura|contab/.test(normTxt(x.desc)))) a.push(achado("sug", "Nenhum gasto de documentação/abertura", "Módulo 3", [], "Não encontrei gastos de documentação (registro, alvará, licenças, abertura de CNPJ). Verifiquem se se aplicam ao negócio."));
+  }
+
+  if (modId === "m4") {
+    const p = Number(l.m4.pctProprio);
+    const fontes = (l.m4.fontesTerceiros || []);
+    if (!(p >= 0 && p <= 100)) a.push(achado("crit", "Percentual de capital próprio inválido", "Módulo 4", [["Capital próprio", `${fmtN(p)}%`]], "O percentual de capital próprio deve ficar entre 0% e 100%. Corrijam o valor."));
+    if (p < 100 && fontes.length === 0) a.push(achado("crit", "Há capital de terceiros, mas nenhuma fonte informada", "Módulo 4", [["Capital próprio", `${fmtN(p)}%`]], "O capital próprio é menor que 100%, mas não há fonte de terceiros. Informem de onde virá o restante (empréstimo, sócio, financiamento…)."));
+    if (p >= 100 && fontes.length > 0) a.push(achado("att", "Fonte de terceiros informada com 100% de capital próprio", "Módulo 4", [], "Vocês informaram fonte de terceiros, mas o capital próprio está em 100%. Ajustem o percentual ou retirem a fonte."));
+    if (fontes.some((f) => !String(f.fonte || "").trim())) a.push(achado("att", "Fonte de terceiros sem nome", "Módulo 4", [], "Há uma fonte de terceiros sem identificação. Preencham o nome da fonte."));
+    if (calc && !(calc.investimentoTotal > 0)) a.push(achado("crit", "Investimento total zerado", "Módulo 4", [], "O investimento total está zerado: o resultado depende dos Módulos 1, 2 e 3. Revisem esses módulos."));
+  }
+
+  if (modId === "m5") {
+    const it = l.m5.itens;
+    if (it.length === 0) a.push(achado("crit", "Nenhum produto/serviço lançado", "Módulo 5", [], "O Módulo 5 está vazio. Lancem os produtos ou serviços com quantidade mensal prevista e preço de venda."));
+    const z = it.filter((x) => !(Number(x.qtd) > 0) || !(Number(x.precoUnit) > 0));
+    if (z.length) a.push(achado("crit", `${z.length} produto(s) com quantidade ou preço zerado`, "Módulo 5", z.slice(0, 8).map((x) => [String(x.nome || "(sem nome)").trim(), `qtd ${fmtN(x.qtd)} · R$ ${fmtN(x.precoUnit)}`]), "Há produtos com quantidade ou preço zerado. Completem os dados ou retirem o item da lista."));
+    const sn = it.filter((x) => !String(x.nome || "").trim());
+    if (sn.length) a.push(achado("att", `${sn.length} item(ns) sem nome`, "Módulo 5", [], "Deem nome a todos os produtos/serviços."));
+    const dup = duplicados(it, "nome");
+    if (dup.length) a.push(achado("att", "Produtos repetidos", "Módulo 5", dup.slice(0, 6).map((d) => [d, "repetido"]), "Há produtos com o mesmo nome. Se forem iguais, o faturamento está duplicado; se forem diferentes, diferenciem o nome."));
+    if (it.length >= 4) {
+      const pr = it.map((x) => Number(x.precoUnit) || 0).filter((v) => v > 0); const med = medianaN(pr);
+      const out = it.filter((x) => med > 0 && ((Number(x.precoUnit) || 0) > med * 8 || (Number(x.precoUnit) > 0 && Number(x.precoUnit) < med / 8)));
+      if (out.length) a.push(achado("att", "Preço muito diferente dos demais produtos", "Módulo 5", out.slice(0, 6).map((x) => [String(x.nome).trim(), `R$ ${fmtN(x.precoUnit)} (mediana R$ ${fmtN(med)})`]), "Confiram os preços destacados, porque estão muito distantes do padrão dos demais produtos (erro de vírgula ou de unidade?)."));
+    }
+  }
+
+  if (modId === "m6") {
+    const it = l.m6.itens;
+    if (it.length === 0) { a.push(achado("sug", "Módulo 6 sem lançamentos", "Módulo 6", [], "O Módulo 6 é opcional, mas ajuda a justificar o custo unitário do Módulo 8. Se o negócio fabrica o produto, detalhem os insumos de cada receita.")); }
+    const g = {}; it.forEach((x) => { const k = normTxt(x.material); if (k) (g[k] = g[k] || []).push(x); });
+    const qtdFora = []; const custoFora = [];
+    Object.keys(g).forEach((k) => {
+      const linhas = g[k]; if (linhas.length < 3) return;
+      const qs = linhas.map((x) => Number(x.qtd) || 0).filter((v) => v > 0); const md = medianaN(qs);
+      const cs = linhas.map((x) => Number(x.custoUnit) || 0).filter((v) => v > 0); const mc = medianaN(cs);
+      linhas.forEach((x) => {
+        const q = Number(x.qtd) || 0; const c = Number(x.custoUnit) || 0;
+        const mesmaUn = (x.unQtd || "") === (linhas[0].unQtd || "");
+        if (md > 0 && q > 0 && mesmaUn && (q / md >= 20 || q / md <= 1 / 20)) qtdFora.push({ prod: String(x.produto).trim(), mat: String(x.material).trim(), q, md });
+        if (mc > 0 && c > 0 && (c / mc >= 4 || c / mc <= 1 / 4)) custoFora.push({ prod: String(x.produto).trim(), mat: String(x.material).trim(), c, mc });
+      });
+    });
+    if (qtdFora.length) {
+      const muitas = qtdFora.length > 15;
+      a.push(achado(muitas ? "att" : "crit", `${qtdFora.length} quantidade(s) muito fora do padrão do mesmo insumo`, "Módulo 6",
+        qtdFora.sort((x, y) => Math.abs(Math.log(y.q / y.md)) - Math.abs(Math.log(x.q / x.md))).slice(0, 8).map((x) => [`${x.prod} · ${x.mat}`, `${fmtN(x.q)} (mediana nos outros produtos: ${fmtN(x.md)})`]),
+        muitas
+          ? `Em ${qtdFora.length} linhas a quantidade de um mesmo insumo varia mais de 20 vezes entre produtos (ex.: 0,7 em um e 25 em outro), o que indica mistura de unidades (kg e g, por exemplo). Usem os campos de unidade do Módulo 6 em cada linha para a planilha converter sozinha, e confiram principalmente os casos mais extremos.`
+          : "Nas linhas listadas a quantidade do insumo está 20 vezes maior (ou menor) que nos demais produtos. Confiram a vírgula e a unidade (g, kg, un) e usem a mesma unidade para o mesmo insumo."));
+    }
+    if (custoFora.length) a.push(achado("att", `${custoFora.length} custo(s) unitário(s) muito diferente(s) para o mesmo insumo`, "Módulo 6", custoFora.slice(0, 8).map((x) => [`${x.prod} · ${x.mat}`, `R$ ${fmtN(x.c)} (mediana: R$ ${fmtN(x.mc)})`]), "O mesmo insumo aparece com preços muito diferentes. Se for o mesmo produto, usem o mesmo custo; se não for, diferenciem o nome do insumo."));
+    const semUn = it.filter((x) => !(x.unQtd && x.unPreco));
+    if (it.length && semUn.length) a.push(achado("sug", `${semUn.length} de ${it.length} linhas sem unidade de medida`, "Módulo 6", [], "Informem a unidade de medida (kg, g, L, ml, un ou dz) em cada insumo, no preço e na quantidade. A planilha converte sozinha e evita erros de grandeza."));
+    const resumo = resumoProdutosM6(l.m6, l.m5.itens);
+    const acima = resumo.filter((r) => r.acima && r.rendimento > 0);
+    if (acima.length) a.push(achado("crit", `${acima.length} produto(s) com custo acima do preço de venda`, "Módulo 6", acima.slice(0, 8).map((r) => [r.nome, `custo R$ ${fmtN(r.porUnidade)} · preço R$ ${fmtN(r.preco)}`]), "O custo calculado de alguns produtos é maior que o preço de venda. Conferam o rendimento da receita e as quantidades, ou revisem o preço no Módulo 5."));
+    const semRend = resumo.filter((r) => !(r.rendimento > 0));
+    if (resumo.length && semRend.length) a.push(achado("att", `${semRend.length} produto(s) sem rendimento informado`, "Módulo 6", semRend.slice(0, 8).map((r) => [r.nome, "rendimento não informado"]), "Informem quantas unidades cada receita rende, para obter o custo por unidade vendida."));
+    const nomesM6 = new Set(resumo.map((r) => normTxt(r.nome)));
+    const sem = nomesProd.filter((n) => !nomesM6.has(normTxt(n)));
+    if (it.length && sem.length) a.push(achado("att", `${sem.length} produto(s) do Módulo 5 sem receita no Módulo 6`, "Módulo 6", sem.slice(0, 8).map((n) => [n, "sem insumos"]), "Alguns produtos do Módulo 5 não têm receita no Módulo 6. Detalhem os insumos ou expliquem por que não se aplica."));
+  }
+
+  if (modId === "m7") {
+    const pi = Number(l.m7.pctImpostos) || 0, pc = Number(l.m7.pctComissao) || 0;
+    if (pi === 0) a.push(achado("att", "Impostos zerados", "Módulo 7", [], "O percentual de impostos está zerado. Todo negócio formalizado paga algum imposto sobre a venda (Simples, MEI…). Confiram o enquadramento e a alíquota."));
+    if (!String(l.m7.tipoAtividade || "").trim() && l.m7.modoImposto === "simples") a.push(achado("att", "Tipo de atividade não informado", "Módulo 7", [], "Informem o tipo de atividade (comércio, indústria, serviços) para a alíquota do Simples."));
+    if (pi > 35) a.push(achado("crit", `Impostos muito altos (${fmtN(pi)}%)`, "Módulo 7", [], "O percentual de impostos está acima do que o Simples costuma cobrar. Revisem a alíquota e a base de cálculo."));
+    if (pc > 30) a.push(achado("att", `Comissão/taxas altas (${fmtN(pc)}%)`, "Módulo 7", [], "Confiram a taxa de comissão, cartão ou aplicativo: está acima de 30% da venda."));
+    if (pc === 0) a.push(achado("sug", "Comissões e taxas zeradas", "Módulo 7", [], "Se o negócio aceita cartão, PIX com taxa ou usa aplicativo de entrega, incluam essa taxa. Se não há, expliquem no relatório."));
+  }
+
+  if (modId === "m8") {
+    const cu = l.m8.custosUnit || {};
+    const sem = l.m5.itens.filter((x) => !(Number(cu[x.id]) > 0));
+    if (l.m5.itens.length === 0) a.push(achado("crit", "Sem produtos no Módulo 5", "Módulo 8", [], "O Módulo 8 depende dos produtos do Módulo 5, que está vazio."));
+    if (sem.length) a.push(achado("crit", `${sem.length} produto(s) sem custo unitário`, "Módulo 8", sem.slice(0, 10).map((x) => [String(x.nome || "(sem nome)").trim(), "custo não informado"]), "Informem o custo unitário (CMV/CMD) de todos os produtos. Sem custo, o lucro fica superestimado."));
+    const acima = l.m5.itens.filter((x) => Number(cu[x.id]) > 0 && Number(x.precoUnit) > 0 && Number(cu[x.id]) >= Number(x.precoUnit));
+    if (acima.length) a.push(achado("crit", `${acima.length} produto(s) com custo igual ou maior que o preço`, "Módulo 8", acima.slice(0, 8).map((x) => [String(x.nome).trim(), `custo R$ ${fmtN(cu[x.id])} · preço R$ ${fmtN(x.precoUnit)}`]), "Nestes produtos o custo é igual ou maior que o preço de venda: cada venda gera prejuízo. Revisem o custo ou o preço."));
+    const baixa = l.m5.itens.filter((x) => Number(cu[x.id]) > 0 && Number(x.precoUnit) > Number(cu[x.id]) && (1 - Number(cu[x.id]) / Number(x.precoUnit)) < 0.15);
+    if (baixa.length) a.push(achado("att", `${baixa.length} produto(s) com margem bruta abaixo de 15%`, "Módulo 8", baixa.slice(0, 8).map((x) => [String(x.nome).trim(), `margem ${fmtN((1 - cu[x.id] / x.precoUnit) * 100)}%`]), "A margem bruta é muito baixa. Verifiquem se o custo está completo e se o preço cobre os demais custos."));
+    const alta = l.m5.itens.filter((x) => Number(cu[x.id]) > 0 && Number(x.precoUnit) > 0 && (1 - Number(cu[x.id]) / Number(x.precoUnit)) > 0.9);
+    if (alta.length) a.push(achado("att", `${alta.length} produto(s) com margem bruta acima de 90%`, "Módulo 8", alta.slice(0, 8).map((x) => [String(x.nome).trim(), `margem ${fmtN((1 - cu[x.id] / x.precoUnit) * 100)}%`]), "Margens acima de 90% costumam indicar custo incompleto (faltaram insumos, embalagem ou perdas). Confiram."));
+    // coerência com o M6, quando existir
+    const r6 = resumoProdutosM6(l.m6, l.m5.itens).filter((r) => r.rendimento > 0 && r.porUnidade > 0);
+    const dif = [];
+    r6.forEach((r) => { const p = l.m5.itens.find((x) => normTxt(x.nome) === normTxt(r.nome)); const c = p ? Number(cu[p.id]) : 0; if (c > 0 && (c / r.porUnidade >= 2 || c / r.porUnidade <= 0.5)) dif.push([r.nome, `M8: R$ ${fmtN(c)} · M6: R$ ${fmtN(r.porUnidade)}`]); });
+    if (dif.length) a.push(achado("att", "Custo do Módulo 8 diferente do calculado no Módulo 6", "Módulo 8", dif.slice(0, 8), "Para os produtos listados, o custo do Módulo 8 difere muito do custo da receita (Módulo 6). Expliquem a diferença ou alinhem os valores."));
+  }
+
+  if (modId === "m9") {
+    const md = detalheMaoDeObra(l.m9);
+    if (md.linhas.length === 0 && md.prolabore.length === 0) a.push(achado("crit", "Nenhum funcionário nem pró-labore lançado", "Módulo 9", [], "O Módulo 9 está vazio. Incluam funcionários e/ou o pró-labore dos sócios. Se não houver funcionários, o pró-labore é obrigatório para remunerar o trabalho dos sócios."));
+    else if (md.prolabore.length === 0) a.push(achado("att", "Sem pró-labore dos sócios", "Módulo 9", [], "Não há pró-labore. Incluam a retirada dos sócios, que é um custo do negócio, ou justifiquem."));
+    const baixo = md.linhas.filter((r) => r.salario > 0 && r.salario < SALARIO_MINIMO_REF);
+    if (baixo.length) a.push(achado("crit", `${baixo.length} função(ões) com salário abaixo do mínimo`, "Módulo 9", baixo.slice(0, 6).map((r) => [String(r.funcao || "(sem função)"), `R$ ${fmtN(r.salario)} (mínimo de referência R$ ${fmtN(SALARIO_MINIMO_REF)})`]), "Há salários abaixo do salário mínimo. Corrijam ou, se for jornada parcial, expliquem."));
+    const zer = md.linhas.filter((r) => !(r.qtd > 0) || !(r.salario > 0));
+    if (zer.length) a.push(achado("crit", `${zer.length} função(ões) com quantidade ou salário zerado`, "Módulo 9", zer.slice(0, 6).map((r) => [String(r.funcao || "(sem função)"), `qtd ${fmtN(r.qtd)} · R$ ${fmtN(r.salario)}`]), "Completem quantidade e salário das funções listadas ou retirem a linha."));
+    if (md.linhas.some((r) => !String(r.funcao || "").trim())) a.push(achado("att", "Função sem nome", "Módulo 9", [], "Identifiquem a função de cada linha."));
+    if (calc && calc.faturamento > 0 && md.total > calc.faturamento * 0.6) a.push(achado("att", "Mão de obra pesa mais de 60% do faturamento", "Módulo 9", [["Mão de obra mensal", `R$ ${fmtN(md.total)}`], ["Faturamento mensal", `R$ ${fmtN(calc.faturamento)}`]], "A mão de obra consome mais de 60% do faturamento previsto. Revisem a equipe, os salários ou o faturamento do Módulo 5."));
+  }
+
+  if (modId === "m10") {
+    const it = l.m1.itens;
+    if (it.length === 0) a.push(achado("att", "Sem itens do Módulo 1 para depreciar", "Módulo 10", [], "A depreciação depende dos itens do Módulo 1, que está vazio."));
+    const v = l.m10.vidasUteis || {};
+    const padrao = it.filter((x) => v[x.id] === undefined || v[x.id] === null || v[x.id] === "");
+    if (it.length && padrao.length === it.length) a.push(achado("att", "Nenhuma vida útil definida", "Módulo 10", [], "Todos os itens estão com a vida útil padrão (5 anos). Definam a vida útil de cada bem (equipamentos, móveis, veículos, informática) com base em tabela de referência."));
+    const ruins = it.filter((x) => v[x.id] !== undefined && v[x.id] !== "" && (Number(v[x.id]) <= 0 || Number(v[x.id]) > 50));
+    if (ruins.length) a.push(achado("crit", `${ruins.length} vida(s) útil(eis) fora do razoável`, "Módulo 10", ruins.slice(0, 6).map((x) => [String(x.desc || "").trim(), `${fmtN(v[x.id])} anos`]), "Vida útil deve ser maior que zero e plausível (em geral até 25 anos; imóvel, até 50). Corrijam as linhas listadas."));
+    const pc = it.filter((x) => /computador|notebook|celular|impressora|tablet/.test(normTxt(x.desc)) && Number(v[x.id]) > 10);
+    if (pc.length) a.push(achado("att", "Vida útil longa para equipamento de informática", "Módulo 10", pc.slice(0, 5).map((x) => [String(x.desc).trim(), `${fmtN(v[x.id])} anos`]), "Equipamentos de informática costumam ter vida útil de 3 a 5 anos. Revisem."));
+  }
+
+  if (modId === "m11") {
+    const it = l.m11.itens;
+    if (it.length === 0) a.push(achado("crit", "Nenhum custo fixo lançado", "Módulo 11", [], "O Módulo 11 está vazio. Incluam aluguel, energia, água, internet, contador, marketing, manutenção e demais custos que existem mesmo sem vender."));
+    const z = it.filter((x) => !(Number(x.valor) > 0));
+    if (z.length) a.push(achado("crit", `${z.length} custo(s) fixo(s) com valor zerado`, "Módulo 11", z.slice(0, 6).map((x) => [String(x.desc || x.nome || "(sem descrição)").trim(), "R$ 0"]), "Há custos com valor zerado. Informem o valor ou retirem."));
+    const textos = it.map((x) => normTxt(x.desc || x.nome)).join(" | ");
+    const faltam = [["aluguel", /alugu/], ["energia", /energia|luz/], ["água", /agua/], ["internet/telefone", /internet|telefone/], ["contabilidade", /contab|contador/]].filter(([, rx]) => !rx.test(textos)).map(([n]) => n);
+    if (it.length && faltam.length) a.push(achado("sug", "Custos usuais não encontrados", "Módulo 11", faltam.map((n) => [n, "não encontrado"]), `Não encontrei: ${faltam.join(", ")}. Se existirem no negócio, incluam; se não existirem, justifiquem no relatório.`));
+    const dup = duplicados(it, "desc");
+    if (dup.length) a.push(achado("att", "Custos repetidos", "Módulo 11", dup.slice(0, 6).map((d) => [d, "repetido"]), "Há custos repetidos. Confiram se não estão sendo contados duas vezes."));
+    if (calc && calc.faturamento > 0 && calc.custoFixoManual > calc.faturamento * 0.5) a.push(achado("att", "Custos fixos acima de 50% do faturamento", "Módulo 11", [["Custos fixos lançados", `R$ ${fmtN(calc.custoFixoManual)}`], ["Faturamento mensal", `R$ ${fmtN(calc.faturamento)}`]], "Os custos fixos lançados superam metade do faturamento. Revisem os valores ou o faturamento."));
+  }
+
+  if (modId === "m12" && calc) {
+    if (!(calc.faturamento > 0)) a.push(achado("crit", "Faturamento zerado", "Módulo 12", [], "O Demonstrativo não tem receita: revisem o Módulo 5."));
+    if (!(calc.cmv > 0) && calc.faturamento > 0) a.push(achado("crit", "Custo de mercadorias zerado", "Módulo 12", [], "O CMV está zerado, o que superestima o lucro. Revisem o Módulo 8."));
+    if (calc.margemContribuicao <= 0 && calc.faturamento > 0) a.push(achado("crit", "Margem de contribuição negativa ou zero", "Módulo 12", [["Margem de contribuição", `R$ ${fmtN(calc.margemContribuicao)}`]], "Os custos variáveis consomem toda a receita. Revisem preços (Módulo 5), custos (Módulo 8) e taxas (Módulo 7)."));
+    if (calc.resultadoOperacional < 0 && calc.margemContribuicao > 0) a.push(achado("att", "Resultado operacional negativo", "Módulo 12", [["Resultado mensal", `R$ ${fmtN(calc.resultadoOperacional)}`]], "O negócio dá prejuízo no mês. Expliquem no relatório o que farão para equilibrar (preços, volume, redução de custos fixos) e confiram se algum custo está superestimado."));
+    if (calc.lucratividade > 40) a.push(achado("att", `Lucratividade muito alta (${fmtN(calc.lucratividade)}%)`, "Módulo 12", [], "Lucratividade acima de 40% é rara. Confiram se não faltam custos (mão de obra, custos fixos, perdas, impostos)."));
+    if (calc.maoDeObra === 0) a.push(achado("att", "Mão de obra zerada no demonstrativo", "Módulo 12", [], "Não há custo de mão de obra. Revisem o Módulo 9 (pró-labore)."));
+  }
+
+  if (modId === "m13" && calc) {
+    if (calc.lucroAnual <= 0) a.push(achado("crit", "Lucro anual zero ou negativo", "Módulo 13", [["Lucro anual", `R$ ${fmtN(calc.lucroAnual)}`]], "Os indicadores mostram que o negócio, como planejado, não se paga. Reavaliem o plano nos Módulos 5, 8 e 11 e expliquem a decisão."));
+    else if (calc.prazoRetorno && calc.prazoRetorno > 8) a.push(achado("att", `Retorno do investimento em ${fmtN(calc.prazoRetorno)} anos`, "Módulo 13", [], "O prazo de retorno é muito longo. Discutam se o investimento se justifica e o que pode melhorar."));
+    if (calc.pontoEquilibrio && calc.pontoEquilibrio > calc.receitaAnual) a.push(achado("crit", "Ponto de equilíbrio acima da receita anual", "Módulo 13", [["Ponto de equilíbrio", `R$ ${fmtN(calc.pontoEquilibrio)}`], ["Receita anual", `R$ ${fmtN(calc.receitaAnual)}`]], "O faturamento previsto não alcança o ponto de equilíbrio. Revisem preços, volume e custos fixos."));
+    if (calc.rentabilidade > 100) a.push(achado("att", `Rentabilidade muito alta (${fmtN(calc.rentabilidade)}% ao ano)`, "Módulo 13", [], "Rentabilidade acima de 100% ao ano é pouco realista. Revisem investimentos e receitas."));
+    if (calc.rentabilidade > 0 && calc.rentabilidade < 12) a.push(achado("sug", `Rentabilidade abaixo de 12% ao ano (${fmtN(calc.rentabilidade)}%)`, "Módulo 13", [], "Compare com alternativas de investimento (renda fixa). Expliquem por que vale empreender com essa rentabilidade."));
+  }
+
+  const ord = { crit: 0, att: 1, sug: 2 };
+  return a.sort((x, y) => ord[x.sev] - ord[y.sev]);
+}
+
+function textoOrientacoes(nomeModulo, achados) {
+  const n = achados.length;
+  if (n === 0) return "";
+  const lista = achados.map((x, i) => `${i + 1}. ${x.orientacao}`).join("\n\n");
+  return `Olá, equipe! Analisamos o ${nomeModulo} e há ${n === 1 ? "1 ponto" : n + " pontos"} para ajustar antes da aprovação:\n\n${lista}\n\nDepois de corrigir, reenviem o módulo.`;
+}
+
+function PreAnaliseModulo({ modId, nome, lanc, calc, onUsar }) {
+  const [achados, setAchados] = useState(null);
+  const [marcados, setMarcados] = useState({});
+  const [textos, setTextos] = useState({});
+  const gerar = () => {
+    let r = [];
+    try { r = analisarModulo(modId, lanc, calc); } catch { r = []; }
+    setAchados(r);
+    setMarcados(Object.fromEntries(r.map((_, i) => [i, true])));
+    setTextos(Object.fromEntries(r.map((x, i) => [i, x.orientacao])));
+  };
+  const cont = (s) => (achados || []).filter((x) => x.sev === s).length;
+  const rotulo = { crit: "Crítico", att: "Atenção", sug: "Sugestão" };
+  const cor = { crit: "text-rose-300 bg-rose-950/40 border-rose-500/40", att: "text-amber-300 bg-amber-950/40 border-amber-500/40", sug: "text-emerald-300 bg-emerald-950/40 border-emerald-500/40" };
+  const sel = (achados || []).map((x, i) => ({ ...x, orientacao: textos[i] })).filter((_, i) => marcados[i]);
+  return (
+    <div className="border border-sky-500/30 bg-sky-500/5 rounded-md p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[11px] font-bold tracking-wider text-sky-300">PRÉ-ANÁLISE AUTOMÁTICA <span className="font-normal text-slate-400">· só leitura: nada é enviado sem o seu clique</span></span>
+        <button onClick={gerar} className="text-xs font-bold border border-sky-500/50 text-sky-300 rounded-md px-3 py-1.5 hover:bg-sky-500/10">{achados === null ? "Analisar este módulo" : "Analisar de novo"}</button>
+      </div>
+      {achados !== null && achados.length === 0 && <div className="mt-2 text-xs text-emerald-300">Nenhuma pendência encontrada pelas regras automáticas. A decisão continua sendo sua.</div>}
+      {achados !== null && achados.length > 0 && (
+        <div className="mt-3 space-y-2">
+          <div className="flex flex-wrap gap-2 text-[11px] font-bold">
+            {cont("crit") > 0 && <span className={`border rounded-full px-2 py-0.5 ${cor.crit}`}>{cont("crit")} crítico(s)</span>}
+            {cont("att") > 0 && <span className={`border rounded-full px-2 py-0.5 ${cor.att}`}>{cont("att")} atenção</span>}
+            {cont("sug") > 0 && <span className={`border rounded-full px-2 py-0.5 ${cor.sug}`}>{cont("sug")} sugestão(ões)</span>}
+          </div>
+          {achados.map((x, i) => (
+            <div key={i} className={`rounded-md border border-slate-700 p-2.5 ${marcados[i] ? "" : "opacity-50"}`}>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input type="checkbox" checked={!!marcados[i]} onChange={() => setMarcados((m) => ({ ...m, [i]: !m[i] }))} className="mt-0.5" />
+                <span className="flex-1 text-xs font-semibold text-slate-100">{x.titulo}</span>
+                <span className={`text-[10px] font-bold border rounded-full px-2 py-0.5 shrink-0 ${cor[x.sev]}`}>{rotulo[x.sev]}</span>
+              </label>
+              {x.linhas.length > 0 && (
+                <div className="overflow-x-auto mt-1.5"><table className="text-[11px] text-slate-300"><tbody>
+                  {x.linhas.map((r, j) => (<tr key={j}><td className="pr-4 py-0.5 border-b border-slate-800">{r[0]}</td><td className="py-0.5 border-b border-slate-800 text-slate-400">{r[1]}</td></tr>))}
+                </tbody></table></div>
+              )}
+              <textarea value={textos[i] || ""} onChange={(e) => setTextos((t) => ({ ...t, [i]: e.target.value }))} rows={2} className="mt-1.5 w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-100" />
+            </div>
+          ))}
+          <button onClick={() => onUsar(textoOrientacoes(nome, sel))} disabled={sel.length === 0} className="text-xs font-bold bg-sky-600 text-white rounded-md px-3 py-1.5 hover:bg-sky-500 disabled:opacity-40">Colocar no campo de feedback ({sel.length})</button>
+          <span className="ml-2 text-[11px] text-slate-500">O texto vai para o campo abaixo para você revisar; só é enviado quando clicar em “Devolver para ajustes”.</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PainelFluxoModulo({ modId, nomeModulo, lanc, calc, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes, onReabrirPosCorrecao, nota, prazoCronograma }) {
   const [prazoInput, setPrazoInput] = useState(estado.prazo || "");
   useEffect(() => { setPrazoInput(estado.prazo || ""); }, [estado.prazo]);
   const [novoPrazoReabrir, setNovoPrazoReabrir] = useState("");
@@ -5935,6 +6207,7 @@ function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrec
 
       {estado.status === "enviado" && (
         <div className="space-y-2.5">
+          {modId && <PreAnaliseModulo modId={modId} nome={nomeModulo} lanc={lanc} calc={calc} onUsar={(t) => setFeedbackInput(t)} />}
           <div>
             <label className="flex items-center gap-1.5 text-[11px] text-slate-400 mb-1"><Pencil size={12} /> Feedback orientativo (obrigatório para devolver)</label>
             <textarea
@@ -6075,7 +6348,7 @@ function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentario
       </button>
       {aberto && (
         <div className="px-4 pb-4 border-t border-slate-800">
-          <PainelFluxoModulo estado={estado} ultimoModulo={ultimoModulo} onSetPrazo={onSetPrazo} onConfirmarCorrecao={onConfirmarCorrecao} onReabrir={onReabrir} onRestaurarPrazoAutomatico={onRestaurarPrazoAutomatico} onDevolverAjustes={onDevolverAjustes} onReabrirPosCorrecao={onReabrirPosCorrecao} nota={nota} prazoCronograma={prazoCronograma} />
+          <PainelFluxoModulo modId={m.id} nomeModulo={`Módulo ${m.n} (${m.nome})`} lanc={lanc} calc={calc} estado={estado} ultimoModulo={ultimoModulo} onSetPrazo={onSetPrazo} onConfirmarCorrecao={onConfirmarCorrecao} onReabrir={onReabrir} onRestaurarPrazoAutomatico={onRestaurarPrazoAutomatico} onDevolverAjustes={onDevolverAjustes} onReabrirPosCorrecao={onReabrirPosCorrecao} nota={nota} prazoCronograma={prazoCronograma} />
           <OrientacaoAlunoParaProfessor modId={m.id} segmento={segmento} />
           <div className="pt-4"><ModuloLeitura mId={m.id} lanc={lanc} calc={calc} /></div>
           {(avaliavel || ehFinal) && <NotaModulo nota={nota} onSetNota={onSetNota} ehFinal={ehFinal} />}

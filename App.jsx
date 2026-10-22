@@ -1,5 +1,5 @@
-// build: 2026-09-01_06h35m39s (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+// build: 20261022_21h00m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, LineChart, Line, ReferenceLine,
@@ -13,11 +13,12 @@ import {
   Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
   ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
   LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows, Monitor, FileDown, Info, Library,
-  Calendar, RefreshCw, Undo2, CircleDot, Inbox, LogIn, Users2, ImageDown,
+  FileText, Calendar, RefreshCw, Undo2, CircleDot, Inbox, LogIn, Users2, ImageDown, Sparkles, Link2, Tag, FlaskConical,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
 } from "./firebaseAuth";
+import { createPortal } from "react-dom";
 import { extrairAlunosDoPDF, normalizarNome } from "./rosterPdf";
 
 // ============================================================================
@@ -59,7 +60,7 @@ const TEORIA = {
   m6: { conceito: "Custo de materiais para cada unidade fabricada — detalhamento opcional, útil para negócios industriais.", formula: "Custo Unitário = Σ (Quantidade do material × Custo Unitário do material)" },
   m7: { conceito: "Gastos variáveis que incidem diretamente sobre as vendas: impostos e comissões. O imposto pode ser calculado automaticamente pela tabela do Simples Nacional, a partir do tipo de atividade e do faturamento anual.", formula: "Custo de Comercialização = Faturamento × (% Impostos + % Comissão)\nAlíquota efetiva do Simples = (RBT12 × Alíquota nominal − Parcela a deduzir) ÷ RBT12" },
   m8: { conceito: "Valor baixado do estoque em função da venda efetiva (CMD para indústria, CMV para comércio).", formula: "CMD/CMV = Σ (Quantidade Vendida × Custo Unitário de Aquisição/Produção)" },
-  m9: { conceito: "Custo com salários e encargos sociais (FGTS, férias, 13º, INSS etc.) da equipe contratada. Os encargos podem ser calculados automaticamente por grupo (A: básicos/legais, B: período não trabalhado, C: pagos em dinheiro, D: incidências cruzadas), conforme o regime tributário da empresa.", formula: "Custo com Mão de Obra = Σ [ Salário × (1 + % Encargos Sociais) ]\n% Encargos (por grupos) = Σ Grupo A + Σ Grupo B + Σ Grupo C + Σ Grupo D" },
+  m9: { conceito: "Custo com salários, encargos sociais (FGTS, férias, 13º, INSS etc.), benefícios (vale-transporte e vale-refeição) e pró-labore dos sócios. Os encargos podem ser calculados automaticamente por grupo (A: básicos/legais, B: período não trabalhado, C: pagos em dinheiro, D: incidências cruzadas), conforme o regime tributário da empresa.", formula: "Custo com Mão de Obra = Σ [ Salário × (1 + % Encargos Sociais) + Vale-transporte + Vale-refeição ] + Pró-labore dos sócios\n% Encargos (por grupos) = Σ Grupo A + Σ Grupo B + Σ Grupo C + Σ Grupo D" },
   m10: { conceito: "Perda de valor dos bens do ativo fixo pelo uso ao longo do tempo.", formula: "Depreciação Mensal = (Valor do Bem ÷ Vida Útil em anos) ÷ 12" },
   m11: { conceito: "Gastos que não variam com o volume de produção/vendas: aluguel, energia, pró-labore etc. — inclui automaticamente a mão de obra e a depreciação.", formula: "Custo Fixo Total = Σ custos fixos + Mão de Obra + Depreciação" },
   m12: { conceito: "Consolida faturamento e custos para apurar se a empresa projeta lucro ou prejuízo.", formula: "Resultado Operacional = (Receita − Custos Variáveis) − Custos Fixos" },
@@ -103,7 +104,7 @@ const GUIA_MODULOS_EXTRA = {
     exemplo: "600 pães vendidos × R$ 2,25 de custo de matéria-prima cada = R$ 1.350 de CMD no mês.",
   },
   m9: {
-    lancamento: "Para cada função/cargo da equipe: nome, quantidade de pessoas e salário. Os encargos sociais podem ser calculados automaticamente por grupo (A/B/C/D), bastando escolher o regime tributário (Simples Nacional ou Lucro Real/Presumido) — ou, se preferir, informar um percentual manual por função.",
+    lancamento: "Para cada função/cargo da equipe: nome, quantidade de pessoas e salário (e, se houver, vale-transporte e vale-refeição por pessoa). Os sócios que trabalham no negócio entram em \"Pró-labore\". Os encargos sociais podem ser calculados automaticamente por grupo (A/B/C/D), bastando escolher o regime tributário (Simples Nacional ou Lucro Real/Presumido) — ou, se preferir, informar um percentual manual por função.",
     exemplo: "1 padeiro, salário R$ 1.800, no Simples Nacional (encargos de 33,00% pelo cálculo por grupos) → custo real de R$ 2.394/mês com essa função.",
   },
   m10: {
@@ -123,6 +124,285 @@ const GUIA_MODULOS_EXTRA = {
     exemplo: "Com Custo Fixo de R$ 4.100,83 e margem de contribuição de 63%, o Ponto de Equilíbrio fica perto de R$ 6.500/mês de faturamento.",
   },
 };
+
+// Disciplinas do curso relacionadas a cada módulo do Plano Financeiro — o
+// Plano Financeiro é a disciplina de Administração Financeira, mas vários
+// módulos dependem de conceitos/decisões de outras disciplinas do curso
+// (Empreendedorismo, Marketing, Gestão da Produção, Contabilidade de
+// Custos). Mostrado como apoio orientativo para a equipe saber com qual
+// professor buscar ajuda complementar, se precisar. Combinado com o
+// professor em 2026-10-01.
+const DISCIPLINAS_RELACIONADAS = {
+  m1: {
+    disciplinas: ["Empreendedorismo", "Gestão da Produção"],
+    texto: "Identificação dos bens necessários à operação, considerando capacidade produtiva, estrutura do negócio e recursos para aquisição.",
+  },
+  m2: {
+    disciplinas: ["Gestão da Produção", "Marketing", "Contabilidade de Custos"],
+    texto: "Estimativa dos recursos necessários para manter a operação, considerando estoque inicial, caixa mínimo e prazos de recebimento e pagamento.",
+  },
+  m3: {
+    disciplinas: ["Empreendedorismo", "Marketing"],
+    texto: "Levantamento dos gastos anteriores ao início das atividades, como formalização, preparação do estabelecimento e divulgação de lançamento.",
+  },
+  m4: {
+    disciplinas: ["Empreendedorismo"],
+    texto: "Consolidação dos investimentos fixos, do capital de giro e dos investimentos pré-operacionais, permitindo avaliar a necessidade total de recursos e suas fontes.",
+  },
+  m5: {
+    disciplinas: ["Marketing", "Contabilidade de Custos", "Gestão da Produção"],
+    texto: "Projeção das vendas a partir da demanda, dos preços, dos custos e da capacidade de produção ou atendimento.",
+  },
+  m6: {
+    disciplinas: ["Contabilidade de Custos", "Gestão da Produção"],
+    texto: "Apuração do custo dos materiais utilizados por unidade, com base na ficha técnica, nas quantidades, nas perdas e no rendimento da produção.",
+  },
+  m7: {
+    disciplinas: ["Contabilidade de Custos", "Marketing"],
+    texto: "Estimativa dos gastos associados às vendas, como tributos incidentes, comissões e taxas, considerando seus efeitos sobre a margem e o resultado.",
+  },
+  m8: {
+    disciplinas: ["Contabilidade de Custos", "Gestão da Produção"],
+    texto: "Apuração dos custos dos materiais diretos e/ou das mercadorias vendidas, conforme a atividade da empresa e a estrutura adotada no módulo.",
+  },
+  m9: {
+    disciplinas: ["Contabilidade de Custos", "Gestão da Produção"],
+    texto: "Dimensionamento da equipe e estimativa de salários, encargos e benefícios, considerando a classificação desses gastos e seu impacto financeiro.",
+  },
+  m10: {
+    disciplinas: ["Contabilidade de Custos", "Gestão da Produção"],
+    texto: "Distribuição do valor depreciável dos bens ao longo da vida útil, com apropriação como custo ou despesa conforme sua utilização.",
+  },
+  m11: {
+    disciplinas: ["Contabilidade de Custos", "Gestão da Produção"],
+    texto: "Identificação e estimativa dos custos e das despesas fixas necessários à manutenção do negócio.",
+  },
+  m12: {
+    disciplinas: ["Contabilidade de Custos", "Marketing", "Gestão da Produção"],
+    texto: "Organização das receitas, dos custos e das despesas projetados para apurar e analisar o resultado esperado do negócio.",
+  },
+  m13: {
+    disciplinas: ["Empreendedorismo", "Contabilidade de Custos"],
+    texto: "Cálculo e interpretação de indicadores, como ponto de equilíbrio, lucratividade, rentabilidade e prazo de retorno do investimento, para fundamentar a decisão empreendedora.",
+  },
+};
+
+// Segmento de negócio da empresa — campo opcional, definido pelo professor
+// na tela "Empresas da turma" (equipe.segmento). Usado para escolher um
+// exemplo de lançamento mais próximo da realidade de cada negócio, quando
+// existir conteúdo pronto para aquele módulo+segmento (ver ORIENTACAO_SEGMENTO
+// abaixo). Enquanto não houver conteúdo para a combinação, a plataforma volta
+// automaticamente ao exemplo genérico de GUIA_MODULOS_EXTRA — nenhuma equipe
+// fica sem orientação.
+const SEGMENTOS_NEGOCIO = [
+  "Restaurante / lanchonete",
+  "Padaria / confeitaria",
+  "Estética / beleza",
+  "Moda / brechó",
+  "Semijoias / acessórios",
+  "Sorveteria",
+  "Papelaria / livraria",
+  "Pet shop",
+  "Academia / estúdio fitness",
+  "Loja de conveniência / mercadinho",
+  "Oficina mecânica / autopeças",
+  "Salão de festas / eventos",
+  "Lavanderia",
+  "Floricultura",
+  "Outro / genérico",
+];
+
+// Descrição curta das características típicas de cada segmento — usada na
+// tela do aluno "Segmento do negócio" para ajudar a equipe a se identificar
+// com a opção certa antes de escolher. Só os 5 primeiros segmentos (+ "Outro
+// / genérico") têm conteúdo "inteligente" completo (orientação por módulo,
+// exemplo de lançamento e itens sugeridos); os demais usam o conteúdo
+// genérico até serem escritos em um lote futuro (combinado em 2026-10-01).
+const SEGMENTO_CARACTERISTICAS = {
+  "Restaurante / lanchonete": "Preparo e venda de refeições/lanches no local ou para viagem, com cozinha, salão de atendimento e expedição.",
+  "Padaria / confeitaria": "Produção própria de pães, bolos e doces, com forno e vitrine de exposição dos produtos.",
+  "Estética / beleza": "Serviços de beleza e bem-estar (cabelo, estética facial/corporal, unhas), com maca/cadeira profissional.",
+  "Moda / brechó": "Venda de roupas, calçados ou acessórios novos ou usados, com araras, provador e vitrine.",
+  "Semijoias / acessórios": "Venda de semijoias, bijuterias, bolsas e outros acessórios (colares, brincos, pulseiras, clutches), com vitrine/expositor próprio.",
+  "Sorveteria": "Venda de sorvetes, açaí ou sobremesas geladas, com freezers e balcão de atendimento.",
+  "Papelaria / livraria": "Venda de materiais escolares, de escritório e livros, com prateleiras e expositor.",
+  "Pet shop": "Venda de produtos para animais e/ou serviços de banho e tosa, com espaço para atendimento dos pets.",
+  "Academia / estúdio fitness": "Prestação de serviços de atividade física, com equipamentos e espaço de treino.",
+  "Loja de conveniência / mercadinho": "Venda de produtos variados do dia a dia, com prateleiras, geladeiras e caixa.",
+  "Oficina mecânica / autopeças": "Manutenção de veículos e/ou venda de peças, com ferramentas e elevador/bancada.",
+  "Salão de festas / eventos": "Locação de espaço e organização de festas/eventos, com estrutura para montagem e recepção.",
+  "Lavanderia": "Lavagem e passagem de roupas, com máquinas de lavar/secar industriais.",
+  "Floricultura": "Venda de flores, plantas e arranjos, com câmara fria ou expositor refrigerado.",
+  "Outro / genérico": "Nenhuma das opções acima descreve bem o seu negócio — use esta opção e detalhe nos lançamentos.",
+};
+
+// Uma empresa é considerada com segmento aprovado quando: (a) o professor
+// marcou explicitamente segmentoStatus "aprovado" (aprovação manual, ou
+// edição direta do professor no card, que já aprova automaticamente); ou
+// (b) tem um segmento definido e NUNCA passou pelo novo fluxo de aprovação
+// (segmentoStatus ainda não existe) — isso cobre, sem precisar de nenhuma
+// migração de dados, todas as empresas que já tinham segmento atribuído
+// antes desta atualização (2026-10-01), preservando exatamente o
+// comportamento que elas já tinham.
+function segmentoAprovado(equipe) {
+  if (!equipe?.segmento) return false;
+  if (equipe.segmentoStatus === "pendente") return false;
+  return true;
+}
+
+// Conteúdo de exemplo específico por módulo + segmento — preenchido aos
+// poucos, em lotes revisados com o professor (combinado em 2026-09-30).
+// Começa com o Módulo 3 para os segmentos Restaurante e Padaria, a partir
+// dos roteiros detalhados enviados pelo professor para Sabor Fronteira e
+// Padaria Golden Crumb.
+const ORIENTACAO_SEGMENTO = {
+  m3: {
+    "Restaurante / lanchonete": {
+      itens: [
+        "Reforma e adequação da cozinha e do salão",
+        "Instalação da coifa e do sistema de exaustão",
+        "Adequações de prevenção e combate a incêndio (CBMSC)",
+        "Elaboração e diagramação do cardápio",
+        "Divulgação de inauguração e campanha de lançamento",
+        "Licenças, alvarás e vistorias (Prefeitura, Vigilância Sanitária, CBMSC)",
+      ],
+      exemplo: "Reforma do salão e cozinha R$ 3.200 + coifa e exaustão R$ 1.800 + alvarás e vistorias R$ 650 + cardápio R$ 400 = R$ 6.050 de investimento pré-operacional.",
+    },
+    "Padaria / confeitaria": {
+      itens: [
+        "Reforma e adequação da área de produção",
+        "Sistema de ventilação e exaustão, quando necessário",
+        "Desenvolvimento de embalagens, rótulos e etiquetas",
+        "Capacitação para operação segura dos equipamentos",
+        "Licenças, alvarás e vistorias para abertura",
+        "Higienização técnica e controle inicial de pragas, se exigido",
+      ],
+      exemplo: "Reforma da área de produção R$ 2.600 + embalagens e rótulos R$ 350 + licenças e alvarás R$ 500 + controle de pragas R$ 180 = R$ 3.630 de investimento pré-operacional.",
+    },
+  },
+};
+
+// Itens sugeridos por segmento, para os módulos onde a equipe tem mais
+// dificuldade de saber "o que lançar" (Módulos 1, 3, 5 e 11). É só uma lista
+// de nomes prontos (sem quantidade/valor) que a equipe pode aceitar, editar
+// ou excluir — nunca escreve nada sozinho, só oferece quando a equipe clica
+// no botão "Sugerir itens". Combinado com o professor em 2026-10-01; o
+// Módulo 6 (Custo Unit. Matéria-Prima) fica para um lote futuro.
+const ITENS_SUGERIDOS_M1 = {
+  "Restaurante / lanchonete": ["Fogão industrial", "Freezer", "Geladeira/expositor", "Fritadeira", "Exaustor/coifa", "Balcão de atendimento", "Mesas e cadeiras", "Kit de utensílios de cozinha"],
+  "Padaria / confeitaria": ["Forno industrial", "Batedeira planetária", "Balcão de vitrine para doces", "Bancada de inox", "Freezer/expositor refrigerado", "Kit de utensílios de panificação"],
+  "Estética / beleza": ["Maca de atendimento", "Cadeira hidráulica", "Espelho com iluminação", "Carrinho auxiliar", "Esterilizadora", "Sofá/recepção"],
+  "Moda / brechó": ["Araras de roupas", "Provador com espelho", "Balcão/caixa", "Cabides", "Manequim", "Leitor de código de barras"],
+  "Sorveteria": ["Freezer/expositor de sorvete", "Balcão de atendimento", "Mesas e cadeiras", "Kit de utensílios (colheres, potes)"],
+  "Outro / genérico": ["Balcão de atendimento", "Computador/sistema de vendas", "Móveis básicos"],
+};
+
+const ITENS_SUGERIDOS_M3 = {
+  "Restaurante / lanchonete": ["Instalação da coifa e sistema de exaustão", "Adequações de prevenção e combate a incêndio (CBMSC)", "Elaboração e diagramação do cardápio", "Divulgação de inauguração", "Licenças, alvarás e vistorias"],
+  "Padaria / confeitaria": ["Reforma e adequação da área de produção", "Sistema de ventilação e exaustão", "Desenvolvimento de embalagens e rótulos", "Licenças e alvarás para abertura", "Controle inicial de pragas"],
+  "Estética / beleza": ["Curso de capacitação/atualização técnica", "Licença de funcionamento e vigilância sanitária", "Divulgação de inauguração", "Criação da identidade visual"],
+  "Moda / brechó": ["Criação da identidade visual e fachada", "Divulgação de inauguração", "Pequenos reparos no espaço"],
+  "Sorveteria": ["Licenças e vigilância sanitária", "Instalação elétrica para freezers", "Divulgação de inauguração"],
+  "Outro / genérico": ["Registro/legalização da empresa", "Divulgação de lançamento", "Pequenos reparos iniciais"],
+};
+
+// Módulo 11 varia pouco por segmento — mesma lista para todas as empresas.
+const ITENS_SUGERIDOS_M11 = ["Aluguel", "Água", "Energia elétrica", "Internet", "Contador"];
+
+// Módulo 5: aqui "item" é o próprio produto/serviço vendido, então em vez de
+// nomes de produtos (muito específicos de cada negócio), sugerimos categorias
+// de produto/serviço típicas do segmento, para a equipe detalhar.
+const CATEGORIAS_SUGERIDAS_M5 = {
+  "Restaurante / lanchonete": ["Pratos principais", "Lanches", "Bebidas", "Sobremesas"],
+  "Padaria / confeitaria": ["Pães", "Bolos e doces", "Salgados", "Bebidas"],
+  "Estética / beleza": ["Serviços de cabelo", "Serviços de unha", "Serviços estéticos", "Produtos para revenda"],
+  "Moda / brechó": ["Roupas femininas", "Roupas masculinas", "Acessórios", "Calçados"],
+  "Sorveteria": ["Sorvetes/açaí", "Sobremesas geladas", "Bebidas", "Complementos"],
+  "Outro / genérico": ["Produto/serviço principal", "Produto/serviço complementar"],
+};
+
+// ============================================================================
+// EXEMPLOS PRONTOS POR SEGMENTO — usados SOMENTE na Empresa de teste, para o
+// professor demonstrar o plano completo (Módulos 1 a 11) com dados fictícios.
+// Cada linha é um valor típico de negócio em escala de aluno; o imposto do
+// Módulo 7 é calculado na hora pela tabela do Simples (mesma conta do sistema).
+// Formatos: m1 [desc, categoria, qtd, valorUnit, vidaÚtilAnos] · m2 [estoque
+// inicial, prazo vendas, prazo estoque, prazo compras] · m3/m11 [desc, valor]
+// · m5 [nome, qtd/mês, preço, custoUnit(M8)] · m6 [índiceDoProduto, material,
+// qtd, custoUnit] · func [função, qtd, salário, VT, VR] · pro [função, qtd, valor].
+// ============================================================================
+const EXEMPLOS_SEGMENTO = {
+  "Padaria / confeitaria": {
+    tipoAtividade: "industria", pctComissao: 2, pctProprio: 70,
+    m2: [6000, 2, 10, 15],
+    m1: [["Forno industrial","Máquinas",1,15000,10],["Batedeira planetária","Máquinas",1,4500,10],["Balcão de vitrine para doces","Móveis",2,3200,10],["Bancada de inox","Móveis",2,1800,10],["Freezer/expositor refrigerado","Máquinas",1,4200,10],["Kit de utensílios de panificação","Máquinas",1,2500,3],["Computador e sistema de caixa","Equipamentos de Informática",1,2800,5]],
+    m3: [["Reforma e adequação da área de produção",9000],["Sistema de ventilação e exaustão",3500],["Embalagens e rótulos de lançamento",1200],["Licenças e alvarás para abertura",1800],["Divulgação de inauguração",1500]],
+    m5: [["Pão francês (kg)",800,18,6.8],["Pães especiais (unid.)",300,12,4.9],["Bolo caseiro (fatia)",1100,7,2.4],["Doces e tortas (unid.)",500,9,3.3],["Salgados (unid.)",1500,7,2.7],["Café e bebidas (unid.)",2000,5,1.5]],
+    m6: [[0,"Farinha de trigo",0.65,4.2],[0,"Fermento, sal, melhorador e energia do forno",1,2.6],[2,"Farinha, ovos e açúcar",1,1.5],[2,"Leite, manteiga e cobertura",1,0.9]],
+    func: [["Padeiro",1,2300,180,250],["Auxiliar de produção",1,1700,180,250],["Atendente de balcão",2,1650,180,250]],
+    pro: [["Sócios (administração)",2,2300]],
+    m11: [["Aluguel",4200],["Água",450],["Energia elétrica",1400],["Internet",150],["Contador",600],["Gás de cozinha",600],["Marketing e redes sociais",600],["Manutenção e limpeza",500],["Sistema de gestão e embalagens",300]],
+  },
+  "Restaurante / lanchonete": {
+    tipoAtividade: "comercio", pctComissao: 2.5, pctProprio: 70,
+    m2: [8000, 2, 7, 10],
+    m1: [["Fogão industrial","Máquinas",1,4500,10],["Freezer","Máquinas",2,3800,10],["Geladeira/expositor","Máquinas",1,5200,10],["Fritadeira","Máquinas",1,2200,8],["Exaustor/coifa","Máquinas",1,6500,10],["Balcão de atendimento","Móveis",1,4800,10],["Mesas e cadeiras (12 conjuntos)","Móveis",12,650,8],["Kit de utensílios de cozinha","Máquinas",1,3500,3],["Computador e sistema de caixa","Equipamentos de Informática",1,3200,5]],
+    m3: [["Instalação da coifa e sistema de exaustão",4500],["Adequações de prevenção e combate a incêndio (CBMSC)",3500],["Elaboração e diagramação do cardápio",900],["Divulgação de inauguração",2000],["Licenças, alvarás e vistorias",2400]],
+    m5: [["Pratos executivos",900,32,11.5],["Lanches",800,22,8.2],["Bebidas",1800,7,2.4],["Sobremesas",450,12,4.3]],
+    m6: [],
+    func: [["Cozinheiro",1,2600,180,280],["Auxiliar de cozinha",1,1800,180,280],["Garçom",2,1700,180,280],["Caixa",1,1750,180,280]],
+    pro: [["Sócios (administração)",2,2300]],
+    m11: [["Aluguel",5500],["Água",700],["Energia elétrica",2000],["Gás de cozinha",1100],["Internet",180],["Contador",700],["Marketing e redes sociais",700],["Manutenção e limpeza",600],["Sistema de delivery/pedidos",400]],
+  },
+  "Estética / beleza": {
+    tipoAtividade: "servicos", pctComissao: 2.5, pctProprio: 70,
+    m2: [2500, 0, 20, 15],
+    m1: [["Maca de atendimento","Móveis",2,1800,10],["Cadeira hidráulica","Móveis",2,1500,10],["Espelho com iluminação","Móveis",2,900,10],["Lavatório com cadeira","Móveis",1,2800,10],["Carrinho auxiliar","Móveis",3,350,10],["Esterilizadora","Máquinas",1,900,5],["Equipamentos de estética (vapor, alta frequência)","Máquinas",1,9500,5],["Sofá e mobiliário de recepção","Móveis",1,2800,8],["Computador e sistema de agenda","Equipamentos de Informática",1,2800,5]],
+    m3: [["Curso de capacitação/atualização técnica",3000],["Licença de funcionamento e vigilância sanitária",1500],["Criação da identidade visual e fachada",2500],["Divulgação de inauguração",2000],["Reforma e adequação do espaço",6000]],
+    m5: [["Serviços de cabelo",220,85,14],["Serviços de unha",300,45,6],["Serviços estéticos",80,130,22],["Produtos para revenda",120,50,30]],
+    m6: [],
+    func: [["Cabeleireira",2,2200,180,250],["Manicure",1,1800,180,250],["Esteticista",1,2200,180,250],["Recepcionista",1,1700,180,250]],
+    pro: [["Sócias (administração)",2,2300]],
+    m11: [["Aluguel",4800],["Água",500],["Energia elétrica",1000],["Internet",150],["Contador",600],["Marketing e redes sociais",1200],["Higiene e limpeza",600],["Sistema de agendamento e manutenção de equipamentos",650]],
+  },
+  "Semijoias / acessórios": {
+    tipoAtividade: "comercio", pctComissao: 2.5, pctProprio: 70,
+    m2: [10000, 3, 40, 30],
+    m1: [["Vitrines e expositores de joias","Móveis",4,1800,10],["Balcão/caixa","Móveis",1,2800,10],["Araras e prateleiras","Móveis",3,900,10],["Espelhos e iluminação de vitrine","Móveis",1,2200,10],["Computador e sistema de vendas","Equipamentos de Informática",1,2800,5],["Maquininha, balança de precisão e acessórios","Equipamentos de Informática",1,900,5]],
+    m3: [["Criação da identidade visual e fachada",2500],["Divulgação de inauguração",2000],["Pequenos reparos e adequação do espaço",3500],["Licenças e alvarás para abertura",1500],["Embalagens personalizadas e etiquetas",1200]],
+    m5: [["Colares",220,65,27],["Brincos",380,38,15],["Pulseiras e anéis",260,45,19],["Bolsas e clutches",90,120,58]],
+    m6: [],
+    func: [["Vendedora",3,1800,180,250]],
+    pro: [["Sócias (administração)",2,2300]],
+    m11: [["Aluguel",5000],["Água",250],["Energia elétrica",700],["Internet",150],["Contador",600],["Marketing e redes sociais",1500],["Segurança e seguro",250],["Embalagens e material de limpeza",300]],
+  },
+};
+
+function montarExemploSegmento(segmento) {
+  const def = EXEMPLOS_SEGMENTO[segmento];
+  if (!def) return null;
+  const m5 = def.m5.map(([nome, qtd, precoUnit], i) => ({ id: `ex_m5_${i}`, nome, qtd, precoUnit }));
+  const l = {
+    m1: { itens: def.m1.map(([desc, categoria, qtd, valorUnit], i) => ({ id: `ex_m1_${i}`, desc, categoria, qtd, valorUnit })) },
+    m2: { estoqueInicial: def.m2[0], prazoVendasDias: def.m2[1], prazoEstoqueDias: def.m2[2], prazoComprasDias: def.m2[3] },
+    m3: { itens: def.m3.map(([desc, valor], i) => ({ id: `ex_m3_${i}`, desc, valor })) },
+    m4: { pctProprio: def.pctProprio },
+    m5: { itens: m5 },
+    m6: { itens: def.m6.map(([pi, material, qtd, custoUnit], i) => ({ id: `ex_m6_${i}`, produto: m5[pi].nome, material, qtd, custoUnit })) },
+    m7: { modoImposto: "simples", tipoAtividade: def.tipoAtividade, pctImpostos: 0, pctComissao: def.pctComissao },
+    m8: { custosUnit: Object.fromEntries(def.m5.map(([, , , c], i) => [`ex_m5_${i}`, c])) },
+    m9: { modoEncargos: "grupos", regimeEncargos: "simples",
+      itens: def.func.map(([funcao, qtd, salario, vt, vr], i) => ({ id: `ex_m9_${i}`, funcao, qtd, salario, vt, vr })),
+      prolabore: def.pro.map(([funcao, qtd, valor], i) => ({ id: `ex_m9p_${i}`, funcao, qtd, valor })) },
+    m10: { vidasUteis: Object.fromEntries(def.m1.map(([, , , , v], i) => [`ex_m1_${i}`, v])) },
+    m11: { itens: def.m11.map(([desc, valor], i) => ({ id: `ex_m11_${i}`, desc, valor })) },
+  };
+  // O M7 só sincroniza o imposto quando o formulário abre; aqui já gravamos o valor certo.
+  const fat = l.m5.itens.reduce((s, it) => s + it.qtd * it.precoUnit, 0);
+  const s = calcularSimples(def.tipoAtividade, fat * 12);
+  if (s) l.m7.pctImpostos = Number((s.aliquotaEfetiva * 100).toFixed(2));
+  return l;
+}
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 const codigoTurma = () => Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -292,6 +572,18 @@ const ESTADO_MODULO_PADRAO = {
   historico: [],       // [{ tipo: 'envio'|'devolucao'|'reenvio'|'aprovacao'|'reabertura', data, feedback? }] — nunca é apagado
 };
 
+// Só para a empresa de teste: módulos "pendente" (bloqueados) passam a
+// "liberado" e o prazo é ignorado, para o professor poder navegar por todos
+// os módulos ao explicar o sistema. Não altera módulos já enviados/corrigidos.
+function liberarModulosDaEmpresaTeste(fluxo) {
+  const resultado = {};
+  MODULOS.forEach((m) => {
+    const est = estadoModulo(fluxo, m.id);
+    resultado[m.id] = { ...est, status: est.status === "pendente" ? "liberado" : est.status, prazo: null };
+  });
+  return resultado;
+}
+
 function estadoModulo(fluxo, modId) {
   return (fluxo && fluxo[modId]) || ESTADO_MODULO_PADRAO;
 }
@@ -413,11 +705,15 @@ const CHART_TOOLTIP_STYLE = { background: "#0f1e30", border: "1px solid #22344a"
 const GESTAO_ITENS = [
   { id: "turmas", label: "Turmas", icon: School },
   { id: "correcoes", label: "Correções pendentes", icon: Inbox },
+  { id: "liberarAjustes", label: "Liberar análise e ajustes", icon: RotateCcw },
+  { id: "parecer", label: "Parecer do projeto", icon: ScrollText },
+  { id: "itensSegmento", label: "Itens esperados por segmento", icon: ClipboardList },
   { id: "cronograma", label: "Cronograma", icon: Calendar },
   { id: "integrantes", label: "Integrantes por Empresa", icon: Users2 },
   { id: "usuarios", label: "Usuários", icon: Users },
   { id: "acessos", label: "Acessos de usuários", icon: LogIn },
   { id: "relatorios", label: "Relatórios", icon: FileBarChart },
+  { id: "empresaTeste", label: "Empresa Teste", icon: FlaskConical },
   { id: "backup", label: "Backup", icon: Save },
   { id: "auditoria", label: "Auditoria", icon: History },
 ];
@@ -522,8 +818,11 @@ const MANUAL_ALUNO_PASSOS = [
   { titulo: "Leiam a teoria antes de lançar dados", texto: "Todo módulo tem uma caixa \"Teoria do módulo\" — abram-na antes de preencher. Ela traz o conceito e a fórmula que a plataforma está usando nos cálculos.", imagem: "aluno_theory" },
   { titulo: "Acompanhem a Análise do Negócio", texto: "A cada rodada de ajustes, confiram os gráficos, os alertas automáticos e o ranking \"Produtos Mais Lucrativos\" — essa aba reúne o que foi lançado em todos os módulos e mostra quais produtos/serviços mais contribuem para o resultado." },
   { titulo: "Explorem a Análise de Cenários e o Fluxo de Caixa", texto: "Na aba \"Análise de Cenários\", criem até 3 simulações de \"e se\" (ex.: preço 10% maior, custo de matéria-prima 5% mais caro) sem alterar nada do que já foi lançado. No Fluxo de Caixa Anual, vejam a projeção mês a mês do primeiro ano — e, se quiserem se aprofundar, o VPL e a TIR, indicadores opcionais que avaliam o investimento levando em conta o valor do dinheiro no tempo." },
+  { titulo: "Informem o segmento do negócio", texto: "Na aba \"Segmento do negócio\", escolham o segmento da empresa (ex.: padaria, restaurante, estética, semijoias). O botão \"Sugerir itens\" traz exemplos de itens típicos do segmento para orientar os lançamentos — são apenas sugestões, cada equipe lança os seus próprios dados." },
+  { titulo: "Lancem a folha de pagamento (Módulo 9)", texto: "No Módulo 9, cadastrem as funções, a quantidade, o salário, VT/VR e os encargos (grupos A/B/C/D). O pró-labore dos sócios entra no mesmo módulo. Usem \"ver composição\" para conferir como o custo total de cada função foi calculado." },
   { titulo: "Salvem versões ao longo do projeto", texto: "Sempre que fizerem um ajuste relevante (novo preço, novo custo, nova equipe de trabalho), cliquem em \"Salvar versão\" na Análise do Negócio. Isso registra a evolução do projeto para vocês e para o professor.", imagem: "aluno_versions" },
   { titulo: "Leiam o feedback do professor", texto: "Verifiquem regularmente a aba \"Feedback do Professor\": além dos comentários organizados por módulo, é lá que aparece a nota final ponderada (média dos módulos + Módulo 13 + Cenários/Fluxo de Caixa + Apresentação) assim que todos os componentes forem lançados." },
+  { titulo: "Baixem a Apresentação e o Plano Financeiro (Word)", texto: "No menu do aluno, \"Baixar Apresentação (dados da equipe)\" gera um PowerPoint já preenchido com Visão Geral, DRE, Indicadores e Fluxo de Caixa (a conclusão fica em branco para a equipe escrever). \"Baixar Plano Financeiro (Word)\" gera o documento com os 13 módulos, a Análise do Negócio, o Fluxo de Caixa e os Cenários, com 15 gráficos, para copiar no Plano de Negócio. Os arquivos são gerados na hora, exigem internet no clique e avisam quando faltar algum dado. O link \"Modelo em branco\" continua disponível." },
   { titulo: "Finalizem o projeto", texto: "O plano financeiro está concluído quando os 13 módulos estiverem preenchidos, enviados e corrigidos, o resultado operacional analisado e pelo menos duas versões salvas mostrando a evolução dos ajustes feitos pela equipe.", imagem: "aluno_finish" },
 ];
 
@@ -536,7 +835,8 @@ const MANUAL_PROFESSOR_PASSOS = [
   { titulo: "Liberem os módulos e definam prazos", texto: "Cada equipe começa só com o Módulo 1 liberado. Definam o Prazo de Entrega de cada módulo na revisão da equipe; quando a equipe enviar um módulo para correção, avaliem e cliquem em \"Confirmar correção\" para liberar o seguinte automaticamente. Se o prazo vencer sem envio, o módulo trava sozinho — só vocês conseguem reabrir, e é obrigatório definir um novo prazo; fica registrado que houve atraso, para aplicar o desconto de 2,0 pontos na nota." },
   { titulo: "Avaliem com o modelo ponderado", texto: "Além da nota de cada módulo, lancem também Cenários e Fluxo de Caixa e Apresentação da empresa na revisão da equipe. A nota final sai sozinha: 40% média dos módulos + 20% Módulo 13 + 20% Cenários/Fluxo de Caixa + 20% Apresentação — a equipe vê o resultado no Feedback do Professor assim que todos os componentes forem lançados." },
   { titulo: "Revisem os módulos e comentem", texto: "Abram o painel de revisão por módulo de cada equipe (modo somente leitura) e deixem comentários e ajustes solicitados. Os alunos veem esse feedback organizado por módulo na aba \"Feedback do Professor\" deles.", imagem: "prof_feedback" },
-  { titulo: "Consultem os relatórios", texto: "Em GESTÃO → Relatórios, acompanhem a visão consolidada da turma: um relatório de pendências e outros três relatórios complementares por empresa.", imagem: "prof_chart" },
+  { titulo: "Usem a Empresa Teste para demonstrar", texto: "Em GESTÃO → Empresa Teste, use \"Entrar como equipe de teste\" para mostrar o sistema aos alunos sem mexer em dados reais. Em \"Segmento do negócio\", o botão \"Preencher todos os módulos com o exemplo\" carrega um exemplo completo (padaria/confeitaria, restaurante/lanchonete, estética/beleza ou semijoias/acessórios); é possível editar durante a demonstração, \"Restaurar exemplo original\" ou \"Limpar módulos\". Use \"Corrigir como professor\" para demonstrar a correção e \"Zerar dados\"/\"Excluir\" ao final. A empresa de teste não entra em relatórios, backup nem contagens, e o F5 sai do modo teste." },
+  { titulo: "Consultem os relatórios", texto: "Em GESTÃO → Relatórios, acompanhem a visão consolidada da turma: pendências, notas por aluno e o novo Relatório Gerencial completo por empresa. A nova aba \"Orientação\" mostra, por equipe, quem precisa agir, o que fazer e onde, e imprime uma folha (A4 retrato) por equipe para entregar aos alunos. A chave \"Mostrar empresa de teste\" inclui a empresa de teste só quando desejado.", imagem: "prof_chart" },
   { titulo: "Exportem um backup", texto: "Em GESTÃO → Backup, gerem um backup dos dados da turma sempre que quiserem guardar um retrato do trabalho.", imagem: "prof_download" },
   { titulo: "Excluam a turma ao final do período", texto: "Quando o período letivo terminar e o backup já estiver salvo, excluam a turma pelo ícone de lixeira. Essa ação libera a plataforma para a próxima turma e não pode ser desfeita.", imagem: "prof_delete" },
 ];
@@ -580,6 +880,8 @@ const OPERACIONAL_SECOES = [
     "31/08: novo Relatório de Notas em GESTÃO → Relatórios: uma linha por aluno (não por empresa) — a nota de cada módulo, de Cenários/Fluxo de Caixa, de Apresentação e a nota final ponderada da equipe aparecem replicadas para cada integrante vinculado a ela, com botão para baixar em CSV.",
     "31/08: domínio próprio ppfn.com.br configurado (DNS no Registro.br, domínio personalizado no GitHub Pages com HTTPS, domínio autorizado no Firebase Authentication). Foi preciso também ajustar o vite.config.js (base: \"/\" em vez de \"/Plataforma-Plano-Financeiro-CEDUP-Hermann-Hering/\"), já que o site passou a ser servido pela raiz do domínio, não mais por uma subpasta — sem esse ajuste, a página carregava em branco. O link antigo (profjorgerg-gif.github.io/...) continua funcionando, redirecionado automaticamente pelo GitHub Pages para o domínio novo.",
     "01/09: novo item de menu para o aluno — Referências Bibliográficas, com 10 fontes agrupadas em 4 categorias (Plano de Negócios e Empreendedorismo, Administração Financeira, Legislação Tributária, Normalização ABNT), como ponto de partida para a bibliografia do próprio trabalho final. Os manuais (Aluno e Professor) também tiveram os Glossários ampliados: de 11 para 24 termos no do Aluno, e de 9 para 17 no do Professor.",
+    "09/10: Empresa Teste com exemplo por segmento (Padaria/confeitaria, Restaurante/lanchonete, Estética/beleza, Semijoias/acessórios) — preenchimento, restauração e limpeza dos módulos, editável na demonstração; a empresa de teste fica fora de relatórios, backup e contagens. Módulo 9 com folha de pagamento (encargos A/B/C/D e pró-labore). Relatório Gerencial completo por empresa. Novo campo Segmento do negócio com \"Sugerir itens\". Menu do aluno com \"Baixar Apresentação (dados da equipe)\" e \"Baixar Plano Financeiro (Word)\". Manuais, Guia Pedagógico e Novidades (versão 2.1) atualizados.",
+    "10/10: nova aba \"Orientação\" em GESTÃO → Relatórios (versão 2.2) — só leitura, calculada no navegador, reaproveitando o diagnóstico gerencial e as regras de prazo já existentes. Resumo da turma (Com a equipe / Com o professor), detalhe por equipe (situação por módulo, quem age, o que fazer e onde), texto copiável e impressão em A4 retrato com uma folha colorida por equipe. Inspirada no kit de relatório de orientação do projeto CTC.",
   ]},
   { titulo: "Segurança da plataforma", paragrafos: [
     "Login exclusivo via Google: o provedor \"E-mail/senha\" foi desativado no Console do Firebase; só \"Google\" está ativo. É preciso conferir, em Authentication → Domínios autorizados, se o domínio do GitHub Pages está na lista.",
@@ -841,11 +1143,7 @@ function calcular(lanc) {
     return s + (Number(it.qtd) || 0) * cu;
   }, 0);
 
-  const maoDeObra = l.m9.itens.reduce((s, it) => {
-    const sal = Number(it.salario) || 0;
-    const enc = (l.m9.modoEncargos || "grupos") === "grupos" ? totalEncargosGrupo(l.m9.regimeEncargos || "simples") : (Number(it.pctEncargos) || 0);
-    return s + (Number(it.qtd) || 0) * sal * (1 + enc / 100);
-  }, 0);
+  const maoDeObra = detalheMaoDeObra(l.m9).total;
 
   const depreciacaoLinhas = l.m1.itens.map((it) => {
     const valor = (Number(it.qtd) || 0) * (Number(it.valorUnit) || 0);
@@ -900,7 +1198,7 @@ function calcular(lanc) {
     l.m6.itens.length > 0,
     (Number(l.m7.pctImpostos) || 0) > 0 || (Number(l.m7.pctComissao) || 0) > 0,
     cmv > 0,
-    l.m9.itens.length > 0,
+    l.m9.itens.length > 0 || (l.m9.prolabore || []).length > 0,
     depreciacaoMensal > 0,
     l.m11.itens.length > 0,
     faturamento > 0,
@@ -1032,6 +1330,73 @@ function chamadoPassaFiltro(c, filtro) {
 // Lista do mais recente para o mais antigo — o primeiro item é a versão vigente.
 // ============================================================================
 const VERSOES = [
+  { versao: "3.4", data: "22/10/2026", itens: [
+    "Novo item de menu em Gestão: \"Parecer do projeto\". O professor escolhe a turma e a empresa, o sistema analisa o negócio inteiro e sugere o veredito (projeto finalizado, finalizado com ressalvas ou com inconsistências), mostra o que está bom e, onde houver inconsistência, ONDE corrigir e O QUE fazer.",
+    "O parecer é editável e pode ser salvo no histórico, enviado para a equipe pela plataforma (aba Feedback do aluno) e baixado em PDF. Não altera módulos, notas nem lançamentos.",
+  ]},
+  { versao: "3.3", data: "23/10/2026", itens: [
+    "Na revisão, só os módulos com ponto a ajustar vêm marcados para abrir (12 e 13 sempre abrem); os sem inconsistência permanecem concluídos, e o professor pode marcar qualquer um para abrir também.",
+    "\"Liberar análise e ajustes\" agora é um processo único: o professor marca as equipes e o prazo, o sistema gera o relatório de cada uma (diagnóstico + plano por módulo), o professor revisa e edita, e ao confirmar todos os módulos são liberados e cada um mostra à equipe a orientação específica daquele módulo. O relatório completo vai também para a aba Feedback.",
+    "Nada é gravado antes da confirmação. Notas e lançamentos continuam intactos, e \"Desfazer\" também remove o relatório enviado naquela liberação.",
+  ]},
+  { versao: "3.2", data: "23/10/2026", itens: [
+    "Em Relatórios → Orientação, o professor agora envia o diagnóstico e as orientações para a equipe DENTRO da plataforma: botão \"Enviar para a equipe (pela plataforma)\" em cada empresa e \"Enviar a todas pela plataforma\" na turma. O texto pode ser editado antes de confirmar.",
+    "A orientação vira um comentário \"Geral\" no painel da equipe (aba Feedback do aluno) e fica registrada no Registro do processo. Nada é alterado nos lançamentos. O acesso da Coordenação continua só de leitura (sem botão de envio).",
+  ]},
+  { versao: "3.1", data: "23/10/2026", itens: [
+    "A \"Orientação da equipe\" (tela e PDF) ganhou o Diagnóstico de viabilidade: DRE com o percentual de cada rubrica sobre a receita, ponto de equilíbrio e quanto a receita atual cobre dele, quanto tempo dura o capital de giro e o peso do capital de terceiros.",
+    "Para equipes que concluíram os lançamentos (Módulo 11), a orientação passa a trazer um plano de ação por módulo, com valores (ex.: mão de obra com 68,7% da receita no Módulo 9; custos usuais do segmento que faltam no Módulo 11).",
+    "Novo item no menu Gestão: \"Itens esperados por segmento\", onde o professor edita a lista de custos que cada segmento deve ter. Os limites usados são referências pedagógicas, não normas.",
+  ]},
+  { versao: "3.0", data: "22/10/2026", itens: [
+    "O novo item de menu \"Liberar análise e ajustes\" (em Gestão) abre a \"Fase de análise e ajustes\", que passa a começar quando a equipe conclui o Módulo 11 (fim dos lançamentos): o professor libera TODOS os módulos de uma vez, ficando os Módulos 12 e 13 (análise do negócio) liberados e os módulos já corrigidos reabertos para a equipe revisar os lançamentos com base na análise.",
+    "Notas, lançamentos e comentários continuam intactos; o professor reaprova módulo a módulo e pode desfazer a liberação enquanto não houver reenvio.",
+  ]},
+  { versao: "2.9", data: "22/10/2026", itens: [
+    "Pré-análise automática dos módulos 1 a 13: quando a equipe envia um módulo, o professor pode clicar em \"Analisar este módulo\" e o sistema confere o que foi lançado (campos vazios, valores zerados, itens repetidos, quantidades e custos fora do padrão, custo acima do preço, coerência entre módulos etc.).",
+    "Cada achado vira uma orientação já escrita para a equipe, que o professor pode editar ou desmarcar. O botão coloca o texto no campo de feedback; nada é enviado, devolvido ou aprovado sem o clique do professor.",
+    "A análise só lê os dados: não grava nada nos lançamentos da equipe.",
+  ]},
+  { versao: "2.8", data: "21/10/2026", itens: [
+    "Nova \"Fase de ajustes finais\" : o professor libera, de uma vez, todos os módulos corrigidos das equipes que chegaram ao final (Módulo 13 corrigido), com prazo único e mensagem para a equipe.",
+    "É a mesma \"reabertura pós-correção\" de um módulo, só que em lote: as notas, os lançamentos e os comentários são mantidos; a equipe reenvia cada módulo e o professor reaprova um a um.",
+    "Segurança: cada liberação guarda o estado anterior em registro próprio e pode ser desfeita (\"Desfazer\") enquanto os módulos não tiverem sido reenviados.",
+  ]},
+  { versao: "2.7", data: "20/10/2026", itens: [
+    "Novo perfil \"Coordenação\" (somente leitura) para acompanhar o processo das empresas: escolhe-se \"Coordenação\" no primeiro acesso, o Usuário Mestre aprova em Aprovações e marca quais turmas ela pode ver.",
+    "Coordenação vê: situação de hoje, caminho dos módulos, registro do processo, diretriz da semana, relatórios (Resumo, por Empresa, Notas e Pendências, com impressão/PDF/CSV) e abre cada empresa em modo somente leitura (lançamentos, devolutivas e notas).",
+    "Segurança dos dados: a Coordenação não corrige, não comenta, não lança e não altera nada — toda gravação é descartada na origem. Nenhum dado existente é alterado; só é gravado o cadastro do próprio usuário e a liberação de turmas feita pelo Mestre.",
+  ]},
+  { versao: "2.6", data: "16/10/2026", itens: [
+    "Módulo 6 (Custo Unit. Matéria-Prima): agora cada linha tem unidade de medida — a unidade da quantidade usada (g, kg, ml, L, un, dz) e a unidade em que o preço foi pago (R$ por kg, L, un…). A plataforma converte sozinha (150 g × R$ 20,00/kg = R$ 3,00) e avisa se as unidades forem incompatíveis.",
+    "Módulo 6: novo \"Resumo por produto\" com custo da receita, rendimento (quantas unidades a receita rende), custo por unidade e alerta visual quando o custo fica acima do preço de venda do Módulo 5. É um quadro informativo — não altera o Módulo 8 nem as notas.",
+    "Segurança dos dados: linhas já lançadas sem unidade continuam calculando exatamente como antes (quantidade × custo). Nenhum valor existente é alterado; os campos novos só são gravados quando a equipe os preenche. Word e PDF passam a mostrar as unidades.",
+  ]},
+  { versao: "2.5", data: "16/10/2026", itens: [
+    "Nova \"Mesa de janelas\" (opcional): botão \"Abrir Mesa de janelas\" no fim do menu lateral (professor e aluno, em telas largas). As mesmas telas passam a abrir em janelas flutuantes, com menus no topo — duas telas ficam lado a lado automaticamente, e dá para arrastar, redimensionar, encaixar à esquerda/direita, minimizar e voltar ao menu lateral com um clique. Nada foi retirado: o menu lateral continua sendo o padrão.",
+    "Professor — novas telas (só leitura): \"Hoje do professor\" (o que precisa de você agora), \"Registro do processo\" (linha do tempo de cada empresa), \"Caminho do aluno\" (mapa dos 13 módulos), \"Diretriz da semana\" (ligada ao cronograma) e \"Mensagens Classroom\" (textos prontos de lembrete, ajustes, liberação e parabéns).",
+    "Relatório de Notas: sugestão automática de nota (10 − 1,0 por devolução − 2,0 se entregue com atraso) mostrada ao lado da nota lançada, apenas informativa e fora da impressão/CSV — a nota continua sendo decisão do professor.",
+    "Aluno — novas telas: \"Guia da semana\" (módulo atual, prazo, devolutiva e passo a passo), \"Minha trajetória\" (linha do tempo da equipe) e o \"Caminho da equipe\" no Início (\"vocês estão aqui\").",
+    "Lixeira de segurança: itens excluídos de um módulo ficam guardados por 30 dias numa cópia separada (chave própria); a equipe pode restaurá-los em \"Lixeira de segurança\" e o professor acompanha pela mesma tela. Nenhum lançamento existente é alterado por esse recurso.",
+  ]},
+  { versao: "2.4", data: "15/10/2026", itens: [
+    "Nova aba \"Plano Semestral\" em GESTÃO → Relatórios: plano semestral de Administração Financeira no modelo do CEDUP Hermann Hering (cabeçalho com brasão e logo), editável e salvo por turma, com as datas previstas do Projeto vindas do cronograma. Impressão/PDF em A4 paisagem.",
+  ]},
+  { versao: "2.3", data: "15/10/2026", itens: [
+    "Nova aba \"Descrições p/ Escola\" em GESTÃO → Relatórios: textos prontos de cada atividade avaliativa (Módulos 1, 2, 3, 5, 6, 7, 9, 11, 13, Cenários/Fluxo de Caixa e Apresentação) com a data de entrega do cronograma da turma, para copiar e colar no formulário \"Nova Avaliação\" do sistema da escola. Só leitura.",
+  ]},
+  { versao: "2.2", data: "10/10/2026", itens: [
+    "Nova aba \"Orientação\" em GESTÃO → Relatórios: para cada equipe, mostra quem precisa agir agora (equipe ou professor), o que está pendente, o que fazer e onde corrigir. Só leitura — não altera nenhum dado.",
+    "Resumo da turma com \"Com a equipe\" e \"Com o professor\", texto da orientação para copiar (WhatsApp/Classroom) e impressão em A4 retrato, uma folha por equipe (ou todas de uma vez).",
+  ]},
+  { versao: "2.1", data: "09/10/2026", itens: [
+    "Empresa Teste com exemplo completo por segmento (padaria/confeitaria, restaurante/lanchonete, estética/beleza, semijoias/acessórios), editável para demonstrações em sala.",
+    "Módulo 9 com folha de pagamento: funções, encargos (grupos A/B/C/D) e pró-labore dos sócios.",
+    "Relatório Gerencial completo por empresa em GESTÃO → Relatórios.",
+    "Segmento do negócio com sugestão de itens.",
+    "Menu do aluno: \"Baixar Apresentação (dados da equipe)\" em PowerPoint e \"Baixar Plano Financeiro (Word)\" com 13 módulos, análises e 15 gráficos.",
+    "Manuais do Aluno e do Professor e Guia Pedagógico atualizados.",
+  ]},
   { versao: "2.0", data: "16/08/2026", itens: [
     "Login exclusivo via conta Google (fim do cadastro por e-mail/senha).",
     "Professor(a) entra direto, sem aprovação; código de Mestre agora só concede o nível extra de Usuário Mestre.",
@@ -1888,7 +2253,7 @@ function useSharedObject(key, fallback) {
 // Carrega, para uma turma, a lista de equipes + os dados (lançamentos, histórico,
 // comentários) e o cálculo já pronto de cada uma. Usado pelas telas de Gestão
 // (Relatórios, Backup e Auditoria) que precisam olhar todas as equipes de uma vez.
-function useEquipesComDados(turmaId, refreshKey) {
+function useEquipesComDados(turmaId, refreshKey, incluirTeste) {
   const [estado, setEstado] = useState(null);
   useEffect(() => {
     if (!turmaId) { setEstado([]); return; }
@@ -1897,7 +2262,10 @@ function useEquipesComDados(turmaId, refreshKey) {
       setEstado(null);
       try {
         const r = await window.storage.get(`equipes_${turmaId}`, true);
-        const equipes = r ? JSON.parse(r.value) : [];
+        const todasEquipes = r ? JSON.parse(r.value) : [];
+        // A empresa de teste (menu "Empresa Teste") fica fora de relatórios,
+        // backup, auditoria e contagens, salvo quando pedida explicitamente.
+        const equipes = incluirTeste ? todasEquipes : todasEquipes.filter((e) => !e.teste);
         const resultados = await Promise.all(equipes.map(async (eq) => {
           let dados = { lancamentos: defaultLancamentos(), historico: [], comentarios: [] };
           try {
@@ -1912,7 +2280,7 @@ function useEquipesComDados(turmaId, refreshKey) {
       }
     })();
     return () => { alive = false; };
-  }, [turmaId, refreshKey]);
+  }, [turmaId, refreshKey, incluirTeste]);
   return estado;
 }
 
@@ -2002,8 +2370,8 @@ function SectionTitle({ icon: Icon, children, sub }) {
   );
 }
 
-function TeoriaBox({ modId }) {
-  const [open, setOpen] = useState(false);
+function TeoriaBox({ modId, aberta }) {
+  const [open, setOpen] = useState(!!aberta);
   const t = TEORIA[modId];
   if (!t) return null;
   return (
@@ -2027,32 +2395,77 @@ function TeoriaBox({ modId }) {
 
 // Mesma ideia da TeoriaBox (clica pra abrir, clica de novo pra esconder),
 // mas focado no "como preencher na prática": o que lançar e um exemplo com
-// números — usa os mesmos dados do Guia dos 13 Módulos do Manual do Aluno.
-function ExemploLancamentoBox({ modId }) {
-  const [open, setOpen] = useState(false);
+// números. Quando a empresa já tem um Segmento definido (equipe.segmento) E
+// existe conteúdo pronto para esse módulo+segmento em ORIENTACAO_SEGMENTO,
+// mostra esse exemplo mais específico; caso contrário, cai no exemplo
+// genérico de sempre (GUIA_MODULOS_EXTRA) — nunca fica sem orientação.
+function ExemploLancamentoBox({ modId, aberta, segmento }) {
+  const [open, setOpen] = useState(!!aberta);
+  const tailored = segmento ? ORIENTACAO_SEGMENTO[modId]?.[segmento] : null;
   const extra = GUIA_MODULOS_EXTRA[modId];
-  if (!extra) return null;
+  if (!tailored && !extra) return null;
   return (
     <div className="mb-5 border border-sky-800/60 bg-sky-950/20 rounded-lg overflow-hidden">
       <button
         onClick={() => setOpen(!open)}
         className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold text-sky-400 hover:bg-sky-900/30 transition"
       >
-        <span className="flex items-center gap-2"><ListChecks size={16} /> Exemplo de lançamento</span>
+        <span className="flex items-center gap-2"><ListChecks size={16} /> Exemplo de lançamento{tailored ? ` — ${segmento}` : ""}</span>
         {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
       </button>
       {open && (
         <div className="px-4 pb-4 text-sm text-sky-100 space-y-3">
-          <div>
-            <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide mb-1">O que lançar</div>
-            <p className="text-slate-300">{extra.lancamento}</p>
-          </div>
-          <div>
-            <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide mb-1">Exemplo</div>
-            <p className="text-slate-300 italic">{extra.exemplo}</p>
-          </div>
+          {tailored ? (
+            <>
+              <div>
+                <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide mb-1">Gastos típicos deste segmento</div>
+                <ul className="list-disc pl-5 text-slate-300 space-y-0.5">
+                  {tailored.itens.map((it, i) => <li key={i}>{it}</li>)}
+                </ul>
+              </div>
+              <div>
+                <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide mb-1">Exemplo</div>
+                <p className="text-slate-300 italic">{tailored.exemplo}</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide mb-1">O que lançar</div>
+                <p className="text-slate-300">{extra.lancamento}</p>
+              </div>
+              <div>
+                <div className="text-[11px] font-bold text-sky-400 uppercase tracking-wide mb-1">Exemplo</div>
+                <p className="text-slate-300 italic">{extra.exemplo}</p>
+              </div>
+            </>
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Mostra as disciplinas do curso relacionadas a este módulo (ver
+// DISCIPLINAS_RELACIONADAS) — orientativo, para a equipe saber com qual
+// professor buscar apoio complementar. Módulos sem disciplina associada
+// (puramente internos ao cálculo) simplesmente não mostram nada.
+function DisciplinasRelacionadasBox({ modId }) {
+  const info = DISCIPLINAS_RELACIONADAS[modId];
+  if (!info) return null;
+  return (
+    <div className="mb-5 border border-teal-800/50 bg-teal-950/20 rounded-lg p-3.5">
+      <div className="flex items-center gap-2 text-xs font-bold text-teal-300 uppercase tracking-wide mb-2">
+        <Link2 size={14} /> Disciplinas relacionadas
+      </div>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {info.disciplinas.map((d) => (
+          <span key={d} className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-teal-900/40 border border-teal-700/50 text-teal-200">{d}</span>
+        ))}
+      </div>
+      <p className="text-xs text-teal-100/80 leading-relaxed">
+        {info.texto}
+      </p>
     </div>
   );
 }
@@ -2092,6 +2505,23 @@ function AddBtn({ onClick, children }) {
   );
 }
 
+// Botão "Sugerir itens para [segmento]" — só aparece quando a empresa tem um
+// Segmento definido e ainda há pelo menos uma sugestão que ela não tem na
+// lista (compara pela descrição, sem diferenciar maiúsculas/acentos de
+// espaço). Ao clicar, só ACRESCENTA as sugestões que faltam — nunca altera,
+// remove ou duplica o que a equipe já lançou.
+function SugerirItensBtn({ segmento, onSugerir }) {
+  if (!segmento) return null;
+  return (
+    <button
+      onClick={onSugerir}
+      className="flex items-center gap-1.5 text-sm font-semibold text-teal-300 bg-teal-950/20 border border-teal-800/50 rounded-md px-3 py-1.5 hover:bg-teal-950/40 transition mt-2 mr-2"
+    >
+      <Sparkles size={15} /> Sugerir itens para {segmento}
+    </button>
+  );
+}
+
 // ============================================================================
 // FORMULÁRIOS DE CADA MÓDULO
 // ============================================================================
@@ -2105,7 +2535,7 @@ const CATEGORIAS_BEM_PADRAO = [
   "Ferramentas", "Utensílios", "Instalações/Reformas", "Outros",
 ];
 
-function M1Form({ data, update }) {
+function M1Form({ data, update, segmento }) {
   const itens = data.itens;
   const setItens = (next) => update({ ...data, itens: next });
   const total = itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.valorUnit) || 0), 0);
@@ -2114,6 +2544,13 @@ function M1Form({ data, update }) {
   // tenham sido usadas nesta lista de bens, para elas aparecerem no seletor.
   const categoriasUsadas = itens.map((it) => it.categoria).filter(Boolean);
   const categorias = [...new Set([...CATEGORIAS_BEM_PADRAO, ...categoriasUsadas])];
+
+  const descsExistentes = new Set(itens.map((it) => (it.desc || "").trim().toLowerCase()));
+  const sugestoesFaltando = (segmento && ITENS_SUGERIDOS_M1[segmento] || []).filter((s) => !descsExistentes.has(s.toLowerCase()));
+  const sugerirItens = () => {
+    if (!sugestoesFaltando.length) return;
+    setItens([...itens, ...sugestoesFaltando.map((desc) => ({ id: uid(), desc, categoria: "Máquinas", qtd: null, valorUnit: null }))]);
+  };
 
   const alterarCategoria = (itemId, valor) => {
     if (valor === "__nova__") {
@@ -2158,7 +2595,10 @@ function M1Form({ data, update }) {
           </tbody>
         </table>
       </div>
-      <AddBtn onClick={() => setItens([...itens, { id: uid(), desc: "", categoria: "Máquinas", qtd: 1, valorUnit: 0 }])}>Adicionar bem</AddBtn>
+      <div className="flex flex-wrap items-center">
+        <AddBtn onClick={() => setItens([...itens, { id: uid(), desc: "", categoria: "Máquinas", qtd: 1, valorUnit: 0 }])}>Adicionar bem</AddBtn>
+        {sugestoesFaltando.length > 0 && <SugerirItensBtn segmento={segmento} onSugerir={sugerirItens} />}
+      </div>
       <div className="mt-4 text-right">
         <StatCard label="Total dos Investimentos Fixos" value={fmtBRL(total)} tone="blue" />
       </div>
@@ -2194,10 +2634,18 @@ function M2Form({ data, update, calc }) {
   );
 }
 
-function M3Form({ data, update }) {
+function M3Form({ data, update, segmento }) {
   const itens = data.itens;
   const setItens = (next) => update({ ...data, itens: next });
   const total = itens.reduce((s, it) => s + (Number(it.valor) || 0), 0);
+
+  const descsExistentes = new Set(itens.map((it) => (it.desc || "").trim().toLowerCase()));
+  const sugestoesFaltando = (segmento && ITENS_SUGERIDOS_M3[segmento] || []).filter((s) => !descsExistentes.has(s.toLowerCase()));
+  const sugerirItens = () => {
+    if (!sugestoesFaltando.length) return;
+    setItens([...itens, ...sugestoesFaltando.map((desc) => ({ id: uid(), desc, valor: null }))]);
+  };
+
   return (
     <div>
       {itens.map((it) => (
@@ -2207,7 +2655,10 @@ function M3Form({ data, update }) {
           <RemoveBtn onClick={() => setItens(itens.filter((r) => r.id !== it.id))} />
         </div>
       ))}
-      <AddBtn onClick={() => setItens([...itens, { id: uid(), desc: "", valor: 0 }])}>Adicionar despesa pré-operacional</AddBtn>
+      <div className="flex flex-wrap items-center">
+        <AddBtn onClick={() => setItens([...itens, { id: uid(), desc: "", valor: 0 }])}>Adicionar despesa pré-operacional</AddBtn>
+        {sugestoesFaltando.length > 0 && <SugerirItensBtn segmento={segmento} onSugerir={sugerirItens} />}
+      </div>
       <div className="mt-4 text-right"><StatCard label="Total de Investimentos Pré-Operacionais" value={fmtBRL(total)} tone="blue" /></div>
     </div>
   );
@@ -2287,10 +2738,16 @@ function M4Form({ data, update, calc }) {
   );
 }
 
-function M5Form({ data, update }) {
+function M5Form({ data, update, segmento }) {
   const itens = data.itens;
   const setItens = (next) => update({ ...data, itens: next });
   const total = itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.precoUnit) || 0), 0);
+  const nomesExistentes = new Set(itens.map((it) => (it.nome || "").trim().toLowerCase()));
+  const sugestoesFaltando = (segmento && CATEGORIAS_SUGERIDAS_M5[segmento] || []).filter((s) => !nomesExistentes.has(s.toLowerCase()));
+  const sugerirItens = () => {
+    if (!sugestoesFaltando.length) return;
+    setItens([...itens, ...sugestoesFaltando.map((nome) => ({ id: uid(), nome, qtd: null, precoUnit: null }))]);
+  };
   return (
     <div>
       <div className="overflow-x-auto">
@@ -2317,50 +2774,168 @@ function M5Form({ data, update }) {
           </tbody>
         </table>
       </div>
-      <AddBtn onClick={() => setItens([...itens, { id: uid(), nome: "", qtd: 1, precoUnit: 0 }])}>Adicionar produto/serviço</AddBtn>
+      <div className="flex flex-wrap items-center">
+        <AddBtn onClick={() => setItens([...itens, { id: uid(), nome: "", qtd: 1, precoUnit: 0 }])}>Adicionar produto/serviço</AddBtn>
+        {sugestoesFaltando.length > 0 && <SugerirItensBtn segmento={segmento} onSugerir={sugerirItens} />}
+      </div>
       <div className="mt-4 text-right"><StatCard label="Faturamento Total Mensal" value={fmtBRL(total)} tone="blue" /></div>
     </div>
+  );
+}
+
+// ── Módulo 6: unidades de medida padrão ─────────────────────────────────────
+// Cada linha pode (opcionalmente) ter `unPreco` (unidade em que o preço foi pago,
+// ex.: R$ 20,00 por kg) e `unQtd` (unidade em que a quantidade foi usada, ex.: 150 g).
+// A plataforma converte sozinha. Linhas antigas, sem unidades, continuam
+// calculando exatamente como antes (quantidade × custo unitário).
+const UNIDADES_M6 = {
+  kg: { grupo: "massa", f: 1000, nome: "kg (quilo)" },
+  g:  { grupo: "massa", f: 1,    nome: "g (grama)" },
+  L:  { grupo: "volume", f: 1000, nome: "L (litro)" },
+  ml: { grupo: "volume", f: 1,    nome: "ml" },
+  un: { grupo: "contagem", f: 1,  nome: "un (unidade)" },
+  dz: { grupo: "contagem", f: 12, nome: "dz (dúzia)" },
+};
+function fatorUnidadeM6(unQtd, unPreco) {
+  const a = UNIDADES_M6[unQtd]; const b = UNIDADES_M6[unPreco];
+  if (!a || !b || a.grupo !== b.grupo) return null;
+  return a.f / b.f;
+}
+function totalLinhaM6(it) {
+  const q = Number(it.qtd) || 0; const c = Number(it.custoUnit) || 0;
+  if (it.unQtd && it.unPreco) { const f = fatorUnidadeM6(it.unQtd, it.unPreco); return f == null ? 0 : q * f * c; }
+  return q * c;
+}
+function resumoProdutosM6(data, m5itens) {
+  const itens = (data && data.itens) || [];
+  const rend = (data && data.rendimentos) || {};
+  const ordem = []; const mapa = {};
+  itens.forEach((it) => {
+    const nome = String(it.produto || "").trim();
+    if (!nome) return;
+    if (!mapa[nome]) { mapa[nome] = { nome, total: 0, linhas: 0 }; ordem.push(nome); }
+    mapa[nome].total += totalLinhaM6(it); mapa[nome].linhas += 1;
+  });
+  return ordem.map((nome) => {
+    const r = mapa[nome];
+    const rendimento = Number(rend[nome]) > 0 ? Number(rend[nome]) : 0;
+    const porUnidade = r.total / (rendimento > 0 ? rendimento : 1);
+    const prod = (m5itens || []).find((p) => String(p.nome || "").trim().toLowerCase() === nome.toLowerCase());
+    const preco = prod ? Number(prod.precoUnit) || 0 : 0;
+    return { nome, linhas: r.linhas, total: r.total, rendimento, porUnidade, preco, acima: preco > 0 && porUnidade > preco };
+  });
+}
+
+function SelUnM6({ value, onChange, titulo }) {
+  return (
+    <select value={value || ""} onChange={(e) => onChange(e.target.value)} title={titulo} className="border border-slate-600 rounded-md px-1.5 py-2 text-sm w-[6.4rem] shrink-0">
+      <option value="">—</option>
+      {Object.keys(UNIDADES_M6).map((k) => <option key={k} value={k}>{UNIDADES_M6[k].nome}</option>)}
+    </select>
   );
 }
 
 function M6Form({ data, update, m5itens }) {
   const itens = data.itens;
   const setItens = (next) => update({ ...data, itens: next });
+  const mudar = (id, campos) => setItens(itens.map((r) => (r.id === id ? { ...r, ...campos } : r)));
+  const resumo = resumoProdutosM6(data, m5itens);
+  const temSemUnidade = itens.some((it) => !(it.unQtd && it.unPreco));
   return (
     <div>
       <p className="text-sm text-slate-400 mb-3">Detalhamento opcional — útil apenas para negócios industriais que fabricam o próprio produto. O resultado é apenas informativo; o cálculo oficial de custo (Módulo 8) usa o custo unitário que você definir lá.</p>
+      <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 mb-3 text-xs text-slate-300 leading-relaxed">
+        <b className="text-sky-300">Como preencher as unidades:</b> em <b>Custo unit.</b> informe o preço de compra e escolha a unidade desse preço (ex.: <b>R$ 20,00</b> por <b>kg</b>). Em <b>Qtde.</b> informe quanto a receita usa e a unidade usada (ex.: <b>150</b> <b>g</b>). A plataforma converte sozinha: 150 g × R$ 20,00/kg = <b>R$ 3,00</b>. Use o preço de <b>uma</b> unidade (1 kg, 1 litro, 1 ovo) e a mesma unidade para o mesmo ingrediente em todas as receitas.
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs uppercase text-slate-400 border-b border-slate-700">
               <th className="py-2 pr-2 w-36">Produto</th>
               <th className="py-2 pr-2">Material/Insumo</th>
-              <th className="py-2 pr-2 w-24">Qtde.</th>
-              <th className="py-2 pr-2 w-28">Custo Unit. (R$)</th>
+              <th className="py-2 pr-2 w-56">Qtde. usada</th>
+              <th className="py-2 pr-2 w-64">Custo unit. (R$) por</th>
               <th className="py-2 pr-2 w-28">Total (R$)</th>
               <th className="w-8"></th>
             </tr>
           </thead>
           <tbody>
-            {itens.map((it) => (
-              <tr key={it.id} className="border-b border-slate-800">
-                <td className="py-1.5 pr-2">
-                  <select value={it.produto || ""} onChange={(e) => setItens(itens.map((r) => (r.id === it.id ? { ...r, produto: e.target.value } : r)))} className="w-full border border-slate-600 rounded-md px-2 py-2 text-sm">
-                    <option value="">Selecione…</option>
-                    {m5itens.map((p) => <option key={p.id} value={p.nome}>{p.nome || "(sem nome)"}</option>)}
-                  </select>
-                </td>
-                <td className="py-1.5 pr-2"><TxtInput value={it.material} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, material: v } : r)))} placeholder="Ex.: Tecido" /></td>
-                <td className="py-1.5 pr-2"><NumInput value={it.qtd} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, qtd: v } : r)))} /></td>
-                <td className="py-1.5 pr-2"><NumInput value={it.custoUnit} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, custoUnit: v } : r)))} /></td>
-                <td className="py-1.5 pr-2 font-semibold text-slate-200">{fmtBRL((Number(it.qtd) || 0) * (Number(it.custoUnit) || 0))}</td>
-                <td><RemoveBtn onClick={() => setItens(itens.filter((r) => r.id !== it.id))} /></td>
-              </tr>
-            ))}
+            {itens.map((it) => {
+              const temUn = !!(it.unQtd && it.unPreco);
+              const incompat = temUn && fatorUnidadeM6(it.unQtd, it.unPreco) == null;
+              const faltaUma = (!!it.unQtd) !== (!!it.unPreco);
+              return (
+                <tr key={it.id} className="border-b border-slate-800 align-top">
+                  <td className="py-1.5 pr-2">
+                    <select value={it.produto || ""} onChange={(e) => mudar(it.id, { produto: e.target.value })} className="w-full border border-slate-600 rounded-md px-2 py-2 text-sm">
+                      <option value="">Selecione…</option>
+                      {m5itens.map((p) => <option key={p.id} value={p.nome}>{p.nome || "(sem nome)"}</option>)}
+                    </select>
+                  </td>
+                  <td className="py-1.5 pr-2"><TxtInput value={it.material} onChange={(v) => mudar(it.id, { material: v })} placeholder="Ex.: Farinha de trigo" /></td>
+                  <td className="py-1.5 pr-2">
+                    <div className="flex gap-1.5">
+                      <div className="min-w-0 flex-1"><NumInput value={it.qtd} onChange={(v) => mudar(it.id, { qtd: v })} /></div>
+                      <SelUnM6 value={it.unQtd} onChange={(v) => mudar(it.id, { unQtd: v })} titulo="Unidade da quantidade usada" />
+                    </div>
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    <div className="flex gap-1.5 items-center">
+                      <div className="min-w-0 flex-1"><NumInput value={it.custoUnit} onChange={(v) => mudar(it.id, { custoUnit: v })} /></div>
+                      <span className="text-xs text-slate-500">/</span>
+                      <SelUnM6 value={it.unPreco} onChange={(v) => mudar(it.id, { unPreco: v })} titulo="Unidade em que o preço foi pago" />
+                    </div>
+                    {incompat && <div className="text-[11px] text-red-400 mt-1">Unidades incompatíveis (peso × volume × unidade) — o total ficou zerado.</div>}
+                    {faltaUma && <div className="text-[11px] text-amber-400 mt-1">Escolha as duas unidades para a conversão.</div>}
+                  </td>
+                  <td className="py-1.5 pr-2 font-semibold text-slate-200">{fmtBRL(totalLinhaM6(it))}</td>
+                  <td><RemoveBtn onClick={() => setItens(itens.filter((r) => r.id !== it.id))} /></td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
-      <AddBtn onClick={() => setItens([...itens, { id: uid(), produto: "", material: "", qtd: 1, custoUnit: 0 }])}>Adicionar material</AddBtn>
+      <AddBtn onClick={() => setItens([...itens, { id: uid(), produto: "", material: "", qtd: 1, unQtd: "un", custoUnit: 0, unPreco: "un" }])}>Adicionar material</AddBtn>
+      {temSemUnidade && itens.length > 0 && <p className="text-[11px] text-slate-500 mt-2">Linhas com “—” nas unidades continuam sendo calculadas como antes (quantidade × custo). Escolha as unidades para a plataforma converter.</p>}
+
+      {resumo.length > 0 && (
+        <div className="mt-6">
+          <h4 className="text-sm font-semibold text-slate-200 mb-1">Resumo por produto — custo da receita e custo por unidade</h4>
+          <p className="text-xs text-slate-400 mb-2">Informe quantas unidades vendáveis (fatias, copos, unidades) a receita rende. Custo por unidade = custo dos ingredientes ÷ rendimento. Se não informar, a plataforma considera 1.</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase text-slate-400 border-b border-slate-700">
+                  <th className="py-2 pr-2">Produto</th>
+                  <th className="py-2 pr-2 w-28">Custo da receita</th>
+                  <th className="py-2 pr-2 w-28">Rende (un.)</th>
+                  <th className="py-2 pr-2 w-28">Custo/unidade</th>
+                  <th className="py-2 pr-2 w-28">Preço (M5)</th>
+                  <th className="py-2 pr-2 w-56">Situação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resumo.map((r) => (
+                  <tr key={r.nome} className="border-b border-slate-800">
+                    <td className="py-1.5 pr-2 text-slate-200">{r.nome}</td>
+                    <td className="py-1.5 pr-2">{fmtBRL(r.total)}</td>
+                    <td className="py-1.5 pr-2"><NumInput value={r.rendimento || ""} onChange={(v) => update({ ...data, rendimentos: { ...(data.rendimentos || {}), [r.nome]: v } })} placeholder="1" /></td>
+                    <td className="py-1.5 pr-2 font-semibold text-slate-200">{fmtBRL(r.porUnidade)}</td>
+                    <td className="py-1.5 pr-2 text-slate-300">{r.preco > 0 ? fmtBRL(r.preco) : "—"}</td>
+                    <td className="py-1.5 pr-2 text-xs">
+                      {r.acima ? <span className="text-red-400">⚠ Custo acima do preço de venda — confira unidades e rendimento.</span>
+                        : r.total === 0 ? <span className="text-amber-400">Sem custo lançado.</span>
+                        : <span className="text-emerald-400">Custo dentro do preço.</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-2">Quadro informativo: nada aqui altera o Módulo 8 nem as notas.</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -2588,15 +3163,63 @@ function totalEncargosGrupo(regime) {
   return soma(r.grupoA) + soma(r.grupoB) + soma(r.grupoC) + soma(r.grupoD);
 }
 
-function M9Form({ data, update }) {
+// Custo de mão de obra detalhado (Módulo 9): funcionários (salário + encargos +
+// benefícios opcionais de VT/VR) e pró-labore dos sócios. Campos novos
+// (vt, vr, prolabore) são opcionais: vazios = 0, e o total fica idêntico ao
+// de antes da folha detalhada (Nº × salário × (1 + encargos)). Mesma função
+// usada por calcular(), pela tela do Módulo 9 e pelos relatórios.
+function detalheMaoDeObra(m9) {
+  const base = m9 || {};
+  const modo = base.modoEncargos || "grupos";
+  const regime = base.regimeEncargos || "simples";
+  const pctGrupos = totalEncargosGrupo(regime);
+  const info = ENCARGOS_GRUPOS[regime] || ENCARGOS_GRUPOS.simples;
+  const inssPatronal = (info.grupoA.find((i) => i.nome.startsWith("Previdência Social")) || { pct: 0 }).pct;
+  const linhas = (base.itens || []).map((it) => {
+    const qtd = Number(it.qtd) || 0;
+    const salario = Number(it.salario) || 0;
+    const pct = modo === "grupos" ? pctGrupos : (Number(it.pctEncargos) || 0);
+    const vt = Number(it.vt) || 0;
+    const vr = Number(it.vr) || 0;
+    const salarioTotal = qtd * salario;
+    const encargos = salarioTotal * pct / 100;
+    const beneficios = qtd * (vt + vr);
+    const total = qtd * salario * (1 + pct / 100) + beneficios;
+    return { id: it.id, funcao: it.funcao, qtd, salario, pct, vt, vr, salarioTotal, encargos, beneficios, total };
+  });
+  const prolabore = (base.prolabore || []).map((it) => {
+    const qtd = Number(it.qtd) || 0;
+    const valor = Number(it.valor) || 0;
+    const total = qtd * valor * (1 + inssPatronal / 100);
+    return { id: it.id, funcao: it.funcao, qtd, valor, pct: inssPatronal, total };
+  });
+  const totalFuncionarios = linhas.reduce((s, r) => s + r.total, 0);
+  const totalProlabore = prolabore.reduce((s, r) => s + r.total, 0);
+  return { linhas, prolabore, totalFuncionarios, totalProlabore, total: totalFuncionarios + totalProlabore, pctGrupos, inssPatronal, modo, regime, info };
+}
+
+function M9Form({ data, update, abrirTudo }) {
   const itens = data.itens;
+  const prolabore = data.prolabore || [];
+  const [aberto, setAberto] = useState(null);
   const setItens = (next) => update({ ...data, itens: next });
+  const setProlabore = (next) => update({ ...data, prolabore: next });
   const modoEncargos = data.modoEncargos || "grupos";
   const regimeEncargos = data.regimeEncargos || "simples";
-  const pctGrupos = totalEncargosGrupo(regimeEncargos);
   const regimeInfo = ENCARGOS_GRUPOS[regimeEncargos] || ENCARGOS_GRUPOS.simples;
-  const pctEfetivo = (it) => (modoEncargos === "grupos" ? pctGrupos : (Number(it.pctEncargos) || 0));
-  const total = itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.salario) || 0) * (1 + pctEfetivo(it) / 100), 0);
+  const det = detalheMaoDeObra(data);
+  const linhaDe = (id) => det.linhas.find((r) => r.id === id);
+  const setCampo = (id, campo, v) => setItens(itens.map((r) => (r.id === id ? { ...r, [campo]: v } : r)));
+
+  // Composição, em reais, do custo de UMA pessoa naquela função.
+  const composicao = (r) => {
+    const partes = modoEncargos === "grupos"
+      ? [...regimeInfo.grupoA, ...regimeInfo.grupoB, ...regimeInfo.grupoC, ...regimeInfo.grupoD].filter((i) => i.pct > 0).map((i) => [i.nome, i.pct, (r.salario * i.pct) / 100])
+      : [["Encargos (percentual informado)", r.pct, (r.salario * r.pct) / 100]];
+    const encargosPessoa = partes.reduce((s, p) => s + p[2], 0);
+    const custoPessoa = r.salario + encargosPessoa + r.vt + r.vr;
+    return { partes, encargosPessoa, custoPessoa };
+  };
 
   return (
     <div>
@@ -2643,8 +3266,9 @@ function M9Form({ data, update }) {
             </div>
             <div className="flex justify-between items-center mt-3 pt-2 border-t border-slate-700">
               <span className="text-xs uppercase text-slate-500 font-semibold">Total dos encargos</span>
-              <span className="font-bold text-amber-400 text-lg">{fmtNum(pctGrupos, 2)}%</span>
+              <span className="font-bold text-amber-400 text-lg">{fmtNum(det.pctGrupos, 2)}%</span>
             </div>
+            <p className="text-[11px] text-slate-500 mt-2">Percentuais de referência para fins didáticos. Na prática, o enquadramento (por exemplo, Anexo IV do Simples, que recolhe o INSS patronal por fora) pode alterar os encargos.</p>
           </Card>
         </>
       )}
@@ -2656,31 +3280,110 @@ function M9Form({ data, update }) {
               <th className="py-2 pr-2">Função</th>
               <th className="py-2 pr-2 w-20">Nº</th>
               <th className="py-2 pr-2 w-28">Salário (R$)</th>
+              <th className="py-2 pr-2 w-28" title="Opcional — por pessoa, por mês">Vale-transp. (R$)</th>
+              <th className="py-2 pr-2 w-28" title="Opcional — por pessoa, por mês">Vale-refeição (R$)</th>
               <th className="py-2 pr-2 w-24">Encargos (%)</th>
               <th className="py-2 pr-2 w-32">Total (R$)</th>
               <th className="w-8"></th>
             </tr>
           </thead>
           <tbody>
-            {itens.map((it) => (
-              <tr key={it.id} className="border-b border-slate-800">
-                <td className="py-1.5 pr-2"><TxtInput value={it.funcao} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, funcao: v } : r)))} placeholder="Ex.: Vendedor" /></td>
-                <td className="py-1.5 pr-2"><NumInput value={it.qtd} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, qtd: v } : r)))} /></td>
-                <td className="py-1.5 pr-2"><NumInput value={it.salario} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, salario: v } : r)))} /></td>
-                <td className="py-1.5 pr-2">
-                  {modoEncargos === "grupos"
-                    ? <span className="text-slate-400">{fmtNum(pctGrupos, 2)}%</span>
-                    : <NumInput value={it.pctEncargos} onChange={(v) => setItens(itens.map((r) => (r.id === it.id ? { ...r, pctEncargos: v } : r)))} />}
-                </td>
-                <td className="py-1.5 pr-2 font-semibold text-slate-200">{fmtBRL((Number(it.qtd) || 0) * (Number(it.salario) || 0) * (1 + pctEfetivo(it) / 100))}</td>
-                <td><RemoveBtn onClick={() => setItens(itens.filter((r) => r.id !== it.id))} /></td>
-              </tr>
-            ))}
+            {itens.map((it) => {
+              const r = linhaDe(it.id);
+              const c = composicao(r);
+              const aberta = abrirTudo || aberto === it.id;
+              return (
+                <Fragment key={it.id}>
+                  <tr className="border-b border-slate-800">
+                    <td className="py-1.5 pr-2">
+                      <TxtInput value={it.funcao} onChange={(v) => setCampo(it.id, "funcao", v)} placeholder="Ex.: Vendedor" />
+                      <button type="button" onClick={() => setAberto(aberta ? null : it.id)} className="mt-1 flex items-center gap-1 text-[11px] text-amber-400 hover:text-amber-300">
+                        {aberta ? <ChevronDown size={12} /> : <ChevronRight size={12} />} ver composição do custo
+                      </button>
+                    </td>
+                    <td className="py-1.5 pr-2 align-top"><NumInput value={it.qtd} onChange={(v) => setCampo(it.id, "qtd", v)} /></td>
+                    <td className="py-1.5 pr-2 align-top"><NumInput value={it.salario} onChange={(v) => setCampo(it.id, "salario", v)} /></td>
+                    <td className="py-1.5 pr-2 align-top"><NumInput value={it.vt} onChange={(v) => setCampo(it.id, "vt", v)} /></td>
+                    <td className="py-1.5 pr-2 align-top"><NumInput value={it.vr} onChange={(v) => setCampo(it.id, "vr", v)} /></td>
+                    <td className="py-1.5 pr-2 align-top">
+                      {modoEncargos === "grupos"
+                        ? <span className="text-slate-400 block pt-2">{fmtNum(det.pctGrupos, 2)}%</span>
+                        : <NumInput value={it.pctEncargos} onChange={(v) => setCampo(it.id, "pctEncargos", v)} />}
+                    </td>
+                    <td className="py-1.5 pr-2 font-semibold text-slate-200 align-top"><span className="block pt-2">{fmtBRL(r.total)}</span></td>
+                    <td className="align-top pt-1.5"><RemoveBtn onClick={() => setItens(itens.filter((x) => x.id !== it.id))} /></td>
+                  </tr>
+                  {aberta && (
+                    <tr className="border-b border-slate-800">
+                      <td colSpan={8} className="pb-3">
+                        <div className="bg-slate-900 border border-slate-700 rounded-md p-3 text-xs">
+                          <div className="font-bold text-slate-200 mb-2">{it.funcao || "Função"} — custo de 1 pessoa para a empresa</div>
+                          <table className="w-full max-w-lg">
+                            <tbody>
+                              <tr><td className="py-0.5 text-slate-300 font-semibold">Salário bruto</td><td className="py-0.5 text-right text-slate-500"></td><td className="py-0.5 text-right text-slate-200 font-semibold">{fmtBRL(r.salario)}</td></tr>
+                              {c.partes.map(([nome, pct, valor]) => (
+                                <tr key={nome}><td className="py-0.5 text-slate-400 pr-3">{nome}</td><td className="py-0.5 text-right text-slate-500">{fmtNum(pct, 2)}%</td><td className="py-0.5 text-right text-slate-300">{fmtBRL(valor)}</td></tr>
+                              ))}
+                              <tr><td className="py-0.5 text-slate-300 font-semibold border-t border-slate-700">Subtotal de encargos</td><td className="py-0.5 text-right text-amber-400 border-t border-slate-700">{fmtNum(r.pct, 2)}%</td><td className="py-0.5 text-right text-slate-200 font-semibold border-t border-slate-700">{fmtBRL(c.encargosPessoa)}</td></tr>
+                              {r.vt > 0 && <tr><td className="py-0.5 text-slate-400">Vale-transporte</td><td></td><td className="py-0.5 text-right text-slate-300">{fmtBRL(r.vt)}</td></tr>}
+                              {r.vr > 0 && <tr><td className="py-0.5 text-slate-400">Vale-refeição</td><td></td><td className="py-0.5 text-right text-slate-300">{fmtBRL(r.vr)}</td></tr>}
+                              <tr><td className="py-1 text-slate-100 font-bold border-t border-slate-600">Custo mensal por pessoa</td><td className="border-t border-slate-600"></td><td className="py-1 text-right text-amber-400 font-bold border-t border-slate-600">{fmtBRL(c.custoPessoa)}</td></tr>
+                            </tbody>
+                          </table>
+                          {r.salario > 0 && <p className="mt-2 text-slate-400">Cada pessoa nessa função custa {fmtNum(((c.custoPessoa / r.salario) - 1) * 100, 0)}% a mais do que o salário. Multiplicado por {fmtNum(r.qtd, 0)} {r.qtd === 1 ? "pessoa" : "pessoas"}: <b className="text-slate-200">{fmtBRL(r.total)}</b>.</p>}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
       <AddBtn onClick={() => setItens([...itens, { id: uid(), funcao: "", qtd: 1, salario: 0, pctEncargos: 30 }])}>Adicionar função</AddBtn>
-      <div className="mt-4 text-right"><StatCard label="Total com Mão de Obra" value={fmtBRL(total)} tone="blue" /></div>
+      <p className="text-[11px] text-slate-500 mt-1">Vale-transporte e vale-refeição são opcionais (valor mensal por pessoa). Em branco, não entram no custo.</p>
+
+      <div className="mt-6">
+        <div className="text-sm font-bold text-slate-200 mb-1">Pró-labore dos sócios</div>
+        <p className="text-[11px] text-slate-500 mb-2">Remuneração dos sócios que trabalham no negócio. Sócio não gera FGTS, férias nem 13º.{" "}
+          {det.inssPatronal > 0 ? `No regime ${regimeInfo.nome}, incide INSS patronal de ${fmtNum(det.inssPatronal, 0)}% sobre o pró-labore.` : `No regime ${regimeInfo.nome}, não há INSS patronal (o sócio recolhe o próprio INSS).`}
+        </p>
+        {prolabore.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase text-slate-400 border-b border-slate-700">
+                  <th className="py-2 pr-2">Sócio(a) / função</th>
+                  <th className="py-2 pr-2 w-20">Nº</th>
+                  <th className="py-2 pr-2 w-32">Pró-labore (R$)</th>
+                  <th className="py-2 pr-2 w-28">INSS patronal</th>
+                  <th className="py-2 pr-2 w-32">Total (R$)</th>
+                  <th className="w-8"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {prolabore.map((it) => {
+                  const r = det.prolabore.find((x) => x.id === it.id);
+                  return (
+                    <tr key={it.id} className="border-b border-slate-800">
+                      <td className="py-1.5 pr-2"><TxtInput value={it.funcao} onChange={(v) => setProlabore(prolabore.map((x) => (x.id === it.id ? { ...x, funcao: v } : x)))} placeholder="Ex.: Sócia administradora" /></td>
+                      <td className="py-1.5 pr-2"><NumInput value={it.qtd} onChange={(v) => setProlabore(prolabore.map((x) => (x.id === it.id ? { ...x, qtd: v } : x)))} /></td>
+                      <td className="py-1.5 pr-2"><NumInput value={it.valor} onChange={(v) => setProlabore(prolabore.map((x) => (x.id === it.id ? { ...x, valor: v } : x)))} /></td>
+                      <td className="py-1.5 pr-2 text-slate-400">{fmtNum(det.inssPatronal, 2)}%</td>
+                      <td className="py-1.5 pr-2 font-semibold text-slate-200">{fmtBRL(r ? r.total : 0)}</td>
+                      <td><RemoveBtn onClick={() => setProlabore(prolabore.filter((x) => x.id !== it.id))} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <AddBtn onClick={() => setProlabore([...prolabore, { id: uid(), funcao: "", qtd: 1, valor: 0 }])}>Adicionar pró-labore</AddBtn>
+      </div>
+
+      <div className="mt-4 text-right"><StatCard label="Total com Mão de Obra" value={fmtBRL(det.total)} tone="blue" /></div>
     </div>
   );
 }
@@ -2722,11 +3425,17 @@ function M10Form({ data, update, m1itens, depreciacaoLinhas, depreciacaoMensal }
   );
 }
 
-function M11Form({ data, update, maoDeObra, depreciacaoMensal }) {
+function M11Form({ data, update, maoDeObra, depreciacaoMensal, segmento }) {
   const itens = data.itens;
   const setItens = (next) => update({ ...data, itens: next });
   const totalManual = itens.reduce((s, it) => s + (Number(it.valor) || 0), 0);
   const total = totalManual + maoDeObra + depreciacaoMensal;
+  const descsExistentes = new Set(itens.map((it) => (it.desc || "").trim().toLowerCase()));
+  const sugestoesFaltando = (segmento ? ITENS_SUGERIDOS_M11 : []).filter((s) => !descsExistentes.has(s.toLowerCase()));
+  const sugerirItens = () => {
+    if (!sugestoesFaltando.length) return;
+    setItens([...itens, ...sugestoesFaltando.map((desc) => ({ id: uid(), desc, valor: null }))]);
+  };
   return (
     <div>
       {itens.map((it) => (
@@ -2736,7 +3445,10 @@ function M11Form({ data, update, maoDeObra, depreciacaoMensal }) {
           <RemoveBtn onClick={() => setItens(itens.filter((r) => r.id !== it.id))} />
         </div>
       ))}
-      <AddBtn onClick={() => setItens([...itens, { id: uid(), desc: "", valor: 0 }])}>Adicionar custo fixo</AddBtn>
+      <div className="flex flex-wrap items-center">
+        <AddBtn onClick={() => setItens([...itens, { id: uid(), desc: "", valor: 0 }])}>Adicionar custo fixo</AddBtn>
+        {sugestoesFaltando.length > 0 && <SugerirItensBtn segmento={segmento} onSugerir={sugerirItens} />}
+      </div>
       <table className="w-full text-sm mt-4">
         <tbody>
           <tr className="border-t border-slate-700"><td className="py-2 text-slate-400">Mão de obra (Módulo 9) — automático</td><td className="py-2 text-right">{fmtBRL(maoDeObra)}</td></tr>
@@ -3341,7 +4053,7 @@ function ComentariosPanel({ comentarios, onAdd, autor, readOnlyInput, moduloFixo
               {!moduloFixo && <span className="font-semibold text-sky-400">{c.modulo}</span>}
               <span className={moduloFixo ? "ml-auto" : ""}>{new Date(c.timestamp).toLocaleString("pt-BR")}</span>
             </div>
-            <p className="text-slate-200">{c.texto}</p>
+            <p className="text-slate-200 whitespace-pre-line">{c.texto}</p>
             <p className="text-xs text-slate-500 mt-1">— {c.autor}</p>
           </div>
         ))}
@@ -3647,18 +4359,697 @@ function CronogramaAlunoView({ turmaId }) {
   );
 }
 
-function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades }) {
-  const [dados, setDados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
+// Tela da equipe para escolher/trocar o segmento do negócio (combinado com o
+// professor em 2026-10-01). A escolha fica pendente de aprovação até o
+// professor confirmar — mas as orientações, exemplos e sugestões de itens já
+// usam a escolha normalmente nesse meio tempo (ver segmentoAprovado()), para
+// a equipe não ficar travada esperando.
+// ============================================================================
+// APRESENTAÇÃO PREENCHIDA (PPTX) — gerada no navegador, no clique, com os
+// números atuais da equipe (somente leitura: nada é gravado). A biblioteca
+// de geração é carregada da internet apenas nesse momento.
+// ============================================================================
+
+const PPTXGENJS_URL = "https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js";
+
+function carregarScriptCDN(url, globalName) {
+  return new Promise((resolve, reject) => {
+    if (window[globalName]) return resolve(window[globalName]);
+    let s = document.querySelector(`script[data-cdn="${globalName}"]`);
+    const novo = !s;
+    if (!s) { s = document.createElement("script"); s.dataset.cdn = globalName; s.async = true; }
+    s.addEventListener("load", () => (window[globalName] ? resolve(window[globalName]) : reject(new Error("biblioteca indisponível"))));
+    s.addEventListener("error", () => { s.remove(); reject(new Error("não foi possível carregar a biblioteca")); });
+    if (novo) { s.src = url; document.head.appendChild(s); }
+  });
+}
+
+function nomeArquivoSeguro(txt) {
+  return String(txt || "empresa").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "empresa";
+}
+
+async function gerarApresentacaoEquipe({ equipe, calc, fluxo }) {
+  const PptxGenJS = await carregarScriptCDN(PPTXGENJS_URL, "PptxGenJS");
+  const pptx = new PptxGenJS();
+  pptx.layout = "LAYOUT_WIDE"; // 13,33 x 7,5 pol — mesmo formato do modelo
+  pptx.author = "CEDUP Hermann Hering";
+  pptx.title = `Plano Financeiro — ${equipe.nomeNegocio}`;
+
+  const NAVY = "0F172A", AMBER = "F59E0B", SLATE = "64748B", GREEN = "059669", RED = "DC2626", LIGHT = "F8FAFC", BORDER = "CBD5E1", BROWN = "78350F";
+  const money0 = (n) => (Number(n) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+  const pct = (n, d = 1) => `${(Number(n) || 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d })}%`;
+  const rodape = `CEDUP Hermann Hering · Plataforma do Plano Financeiro · ${equipe.nomeNegocio}`;
+  const X = 0.7, Y = 1.7, W = 7.0, H = 5.0;
+
+  const temDados = (calc.faturamento || 0) > 0;
+  const temInvest = (calc.investimentoTotal || 0) > 0;
+
+  const base = (titulo, subtitulo, n, destaques) => {
+    const s = pptx.addSlide(); s.background = { color: "FFFFFF" };
+    s.addText(titulo, { x: 0.7, y: 0.5, w: 11.9, h: 0.7, fontFace: "Cambria", fontSize: 30, bold: true, color: NAVY, margin: 0 });
+    s.addText(subtitulo, { x: 0.7, y: 1.15, w: 11.9, h: 0.4, fontFace: "Calibri", fontSize: 13.5, italic: true, color: SLATE, margin: 0 });
+    s.addText(rodape, { x: 0.5, y: 7.08, w: 9, h: 0.3, fontFace: "Calibri", fontSize: 9, color: SLATE, margin: 0 });
+    s.addText(String(n), { x: 12.3, y: 7.08, w: 0.5, h: 0.3, fontFace: "Calibri", fontSize: 9, color: SLATE, align: "right", margin: 0 });
+    if (destaques) {
+      s.addShape(pptx.ShapeType.roundRect, { x: 8.0, y: Y, w: 4.65, h: H, fill: { color: "FFFBEB" }, line: { color: AMBER, width: 1 }, rectRadius: 0.08 });
+      s.addText("O QUE DESTACAR", { x: 8.3, y: Y + 0.25, w: 4.1, h: 0.35, fontFace: "Calibri", fontSize: 11, bold: true, color: BROWN, charSpacing: 3, margin: 0 });
+      s.addText(destaques.map((t) => ({ text: t, options: { bullet: true, breakLine: true } })), { x: 8.3, y: Y + 0.8, w: 4.1, h: H - 1.1, fontFace: "Calibri", fontSize: 13, color: BROWN, valign: "top", paraSpaceAfter: 6, margin: 0 });
+    }
+    return s;
+  };
+  const kpi = (s, x, y, w, h, label, valor, sub, cor) => {
+    s.addShape(pptx.ShapeType.roundRect, { x, y, w, h, fill: { color: LIGHT }, line: { color: BORDER, width: 1 }, rectRadius: 0.06 });
+    s.addText(label.toUpperCase(), { x: x + 0.12, y: y + 0.08, w: w - 0.24, h: 0.3, fontFace: "Calibri", fontSize: 9, bold: true, color: SLATE, margin: 0 });
+    s.addText(valor, { x: x + 0.12, y: y + 0.38, w: w - 0.24, h: h * 0.42, fontFace: "Cambria", fontSize: String(valor).length > 14 ? 14 : 22, bold: true, color: cor || NAVY, valign: "middle", margin: 0 });
+    if (sub) s.addText(sub, { x: x + 0.12, y: y + h - 0.4, w: w - 0.24, h: 0.32, fontFace: "Calibri", fontSize: 9.5, color: SLATE, margin: 0 });
+  };
+  const aviso = (s, texto) => {
+    s.addShape(pptx.ShapeType.roundRect, { x: X, y: Y, w: W, h: H, fill: { color: LIGHT }, line: { color: BORDER, width: 1.25, dashType: "dash" }, rectRadius: 0.08 });
+    s.addText(texto, { x: X + 0.4, y: Y, w: W - 0.8, h: H, fontFace: "Calibri", fontSize: 15, italic: true, color: SLATE, align: "center", valign: "middle" });
+  };
+
+  // 1 · Capa
+  const c = pptx.addSlide(); c.background = { color: NAVY };
+  c.addText("CEDUP HERMANN HERING", { x: 0.7, y: 2.2, w: 8, h: 0.4, fontFace: "Calibri", fontSize: 13, bold: true, color: AMBER, charSpacing: 4, margin: 0 });
+  c.addText(equipe.nomeNegocio, { x: 0.7, y: 2.8, w: 11.5, h: 1.1, fontFace: "Cambria", fontSize: 40, bold: true, color: "FFFFFF", margin: 0 });
+  c.addText("Apresentação do Plano Financeiro", { x: 0.7, y: 4.0, w: 11.5, h: 0.5, fontFace: "Calibri", fontSize: 20, color: "E2E8F0", margin: 0 });
+  c.addText((equipe.integrantes || []).join(" · ") || "Integrantes da equipe", { x: 0.7, y: 4.7, w: 11.5, h: 0.9, fontFace: "Calibri", fontSize: 14, italic: true, color: "94A3B8", valign: "top", margin: 0 });
+  c.addText(rodape, { x: 0.5, y: 7.08, w: 9, h: 0.3, fontFace: "Calibri", fontSize: 9, color: "64748B", margin: 0 });
+
+  // 2 · Visão geral
+  const s2 = base("1 · Visão Geral", "Análise do Negócio — o panorama do negócio", 2, ["Quanto foi investido", "Quanto a empresa fatura por mês", "Qual o resultado operacional"]);
+  if (!temDados && !temInvest) aviso(s2, "Esta parte ainda não pode ser montada: preencham os módulos de investimento e de faturamento (Módulos 1 a 5) e baixem a apresentação de novo.");
+  else {
+    const w3 = (W - 0.3) / 3;
+    kpi(s2, X, Y, w3, 1.2, "Investimento total", money0(calc.investimentoTotal), "fixo + giro + pré-operacional");
+    kpi(s2, X + w3 + 0.15, Y, w3, 1.2, "Faturamento mensal", money0(calc.faturamento), `receita anual ${money0(calc.receitaAnual)}`);
+    kpi(s2, X + 2 * (w3 + 0.15), Y, w3, 1.2, "Resultado operacional/mês", money0(calc.resultadoOperacional), calc.resultadoOperacional >= 0 ? "lucro" : "prejuízo", calc.resultadoOperacional >= 0 ? GREEN : RED);
+    if (temDados) {
+      s2.addChart(pptx.charts.BAR, [{ name: "R$ por mês", labels: ["Faturamento", "Custos variáveis", "Custos fixos", "Resultado"], values: [calc.faturamento, calc.custoVariavelTotal, calc.custoFixoTotal, calc.resultadoOperacional] }], {
+        x: X, y: Y + 1.35, w: W, h: H - 1.35, barDir: "col", chartColors: [AMBER, "EF4444", "64748B", GREEN], varyColors: true,
+        showTitle: true, title: "Para onde vai o faturamento de cada mês", titleFontSize: 12, titleFontFace: "Calibri", titleColor: NAVY,
+        showValue: true, dataLabelFormatCode: "R$ #,##0", dataLabelFontSize: 10, dataLabelPosition: "outEnd", valAxisHidden: true, valGridLine: { style: "none" }, catAxisLabelFontSize: 10, showLegend: false,
+      });
+    }
+  }
+
+  // 3 · DRE
+  const s3 = base("2 · Como Chegamos Até Aqui", "Demonstrativo de Resultados — o detalhamento", 3, ["Receita", "Custos variáveis", "Custos fixos", "Como esses números formam o resultado apresentado no slide anterior"]);
+  if (!temDados) aviso(s3, "Esta parte ainda não pode ser montada: o faturamento (Módulo 5) ainda não foi preenchido.");
+  else {
+    const f = calc.faturamento;
+    const linhas = [
+      ["Receita total com vendas", f, 1], ["(–) Custos variáveis totais", -calc.custoVariavelTotal, 0], ["      CMV (custo das mercadorias vendidas)", -calc.cmv, 0], ["      Impostos e taxas sobre vendas", -calc.custoComercializacao, 0],
+      ["= Margem de contribuição", calc.margemContribuicao, 1], ["(–) Custos fixos totais", -calc.custoFixoTotal, 0], ["= Resultado operacional", calc.resultadoOperacional, 1],
+    ];
+    const hd = (t, al) => ({ text: t, options: { bold: true, color: "FFFFFF", fill: { color: NAVY }, align: al, fontSize: 11 } });
+    const rows = [[hd("Descrição", "left"), hd("R$ por mês", "right"), hd("% do faturamento", "right")]];
+    linhas.forEach(([d, v, b], i) => {
+      const fill = { color: b ? "FEF3C7" : i % 2 ? "FFFFFF" : LIGHT };
+      rows.push([
+        { text: d, options: { bold: !!b, color: NAVY, fill, fontSize: 12 } },
+        { text: v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }), options: { bold: !!b, color: v < 0 ? RED : NAVY, align: "right", fill, fontSize: 12 } },
+        { text: pct((Math.abs(v) / f) * 100), options: { bold: !!b, color: SLATE, align: "right", fill, fontSize: 12 } },
+      ]);
+    });
+    s3.addTable(rows, { x: X, y: Y, w: W, colW: [3.6, 1.7, 1.7], rowH: 0.42, fontFace: "Calibri", border: { type: "none" }, valign: "middle" });
+    const ok = calc.resultadoOperacional >= 0;
+    s3.addShape(pptx.ShapeType.roundRect, { x: X, y: Y + 3.95, w: W, h: 0.85, fill: { color: ok ? "ECFDF5" : "FEF2F2" }, line: { color: ok ? GREEN : RED, width: 1.25 }, rectRadius: 0.06 });
+    s3.addText(`Resultado projetado: ${ok ? "LUCRO" : "PREJUÍZO"} de ${Math.abs(calc.resultadoOperacional).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} por mês`, { x: X, y: Y + 3.95, w: W, h: 0.85, fontFace: "Cambria", fontSize: 18, bold: true, color: ok ? GREEN : RED, align: "center", valign: "middle" });
+  }
+
+  // 4 · Indicadores
+  const s4 = base("3 · O Negócio É Viável?", "Indicadores de Viabilidade — o veredito", 4, ["Ponto de Equilíbrio", "Lucratividade", "Rentabilidade", "Prazo de Retorno (Payback)"]);
+  if (!temDados || !temInvest) aviso(s4, "Esta parte ainda não pode ser montada: faltam investimento e faturamento (Módulos 1 a 5) para calcular os indicadores.");
+  else {
+    const cw = (W - 0.15) / 2, ch = 1.45;
+    const itens = [
+      ["Ponto de equilíbrio (anual)", calc.pontoEquilibrio != null ? money0(calc.pontoEquilibrio) : "—", `Receita anual projetada: ${money0(calc.receitaAnual)}`],
+      ["Lucratividade", pct(calc.lucratividade), "% do faturamento que vira lucro"],
+      ["Rentabilidade (ao ano)", pct(calc.rentabilidade), "retorno anual sobre o investimento"],
+      ["Prazo de retorno (payback)", calc.prazoRetorno != null ? `${calc.prazoRetorno.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} anos` : "—", calc.prazoRetorno != null ? `≈ ${Math.round(calc.prazoRetorno * 12)} meses para recuperar o investimento` : "o lucro não recupera o investimento"],
+    ];
+    itens.forEach(([a, b, sub], i) => kpi(s4, X + (i % 2) * (cw + 0.15), Y + Math.floor(i / 2) * (ch + 0.15), cw, ch, a, b, sub));
+    let leitura = "";
+    if (calc.pontoEquilibrio != null && calc.receitaAnual > 0) {
+      const m = (1 - calc.pontoEquilibrio / calc.receitaAnual) * 100;
+      leitura = `Leitura: a receita projetada está ${pct(Math.abs(m), 0)} ${m >= 0 ? "acima" : "abaixo"} do ponto de equilíbrio` + (calc.prazoRetorno != null ? `; o investimento se paga em cerca de ${calc.prazoRetorno.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} anos.` : "; com o resultado atual, o investimento não se paga.");
+    }
+    const yb = Y + 2 * (ch + 0.15);
+    s4.addShape(pptx.ShapeType.roundRect, { x: X, y: yb, w: W, h: Y + H - yb, fill: { color: "FFFBEB" }, line: { color: AMBER, width: 1 }, rectRadius: 0.06 });
+    s4.addText(leitura, { x: X + 0.2, y: yb, w: W - 0.4, h: Y + H - yb, fontFace: "Calibri", fontSize: 14, bold: true, color: BROWN, align: "center", valign: "middle" });
+  }
+
+  // 5 · Fluxo de caixa
+  const s5 = base("4 · Qual a Trajetória", "Fluxo de Caixa Anual — a evolução no tempo", 5, ["Em qual mês o caixa fica positivo", "Como o investimento se recupera ao longo do primeiro ano"]);
+  if (!temDados || !temInvest) aviso(s5, "Esta parte ainda não pode ser montada: faltam investimento e faturamento (Módulos 1 a 5) para projetar o caixa.");
+  else {
+    const pos = fluxo.find((m) => m.mes > 0 && m.saldo >= 0);
+    const neg = fluxo.filter((m) => m.mes > 0 && m.resultado < 0).length;
+    const w3 = (W - 0.3) / 3;
+    kpi(s5, X, Y, w3, 1.05, "Saldo ao final do mês 12", money0(fluxo[12].saldo), "", fluxo[12].saldo >= 0 ? GREEN : SLATE);
+    kpi(s5, X + w3 + 0.15, Y, w3, 1.05, "Caixa fica positivo em", pos ? pos.label : "Não ocorre em 12 meses", "");
+    kpi(s5, X + 2 * (w3 + 0.15), Y, w3, 1.05, "Meses com resultado negativo", `${neg} de 12`, "");
+    s5.addChart(pptx.charts.LINE, [{ name: "Saldo de caixa acumulado", labels: fluxo.map((m) => (m.mes > 0 ? m.label : "Início")), values: fluxo.map((m) => Math.round(m.saldo * 100) / 100) }], {
+      x: X, y: Y + 1.2, w: W, h: H - 1.2, chartColors: [AMBER], lineSize: 3, lineDataSymbolSize: 7, showLegend: false,
+      showTitle: true, title: "Evolução do saldo de caixa (investimento no mês 0)", titleFontSize: 12, titleFontFace: "Calibri", titleColor: NAVY,
+      valAxisLabelFormatCode: "R$ #,##0", valAxisLabelFontSize: 9, catAxisLabelFontSize: 9, catAxisLabelPos: "low", valGridLine: { color: "E2E8F0", size: 0.75 },
+    });
+  }
+
+  // 6 · Conclusão (sempre em branco: é a equipe quem escreve)
+  const s6 = base("5 · Conclusão da Equipe", "O que vocês concluem sobre a viabilidade do negócio", 6, null);
+  aviso(s6, "[ Escrevam aqui, com as próprias palavras, a conclusão da equipe: o negócio é viável? Por quê? O que vocês fariam diferente? ]");
+
+  await pptx.writeFile({ fileName: `Apresentacao-Plano-Financeiro-${nomeArquivoSeguro(equipe.nomeNegocio)}.pptx` });
+}
+
+// ============================================================================
+// PLANO FINANCEIRO EM WORD (.docx) — todas as informações do plano, em tabelas
+// e textos prontos para copiar/anexar ao Plano de Negócio. Gerado no navegador,
+// no clique, somente leitura (nada é gravado). A biblioteca é carregada da
+// internet apenas nesse momento.
+// ============================================================================
+
+const DOCXJS_URL = "https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.iife.js";
+
+
+// ---------------------------------------------------------------------------
+// Gráficos para o Word: desenhados em um <canvas> (mesmas cores e séries das
+// telas do sistema, com fundo branco para imprimir bem) e inseridos como PNG.
+// ---------------------------------------------------------------------------
+function graficoPng(cfg) {
+  const S = 2, W = 620 * S, H = (cfg.alt || 300) * S;
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+  const g = cv.getContext("2d");
+  g.fillStyle = "#FFFFFF"; g.fillRect(0, 0, W, H);
+  const F = (px, bold) => `${bold ? "bold " : ""}${px * S}px Arial, sans-serif`;
+  const moneyCurto = (v) => { const a = Math.abs(v); const s = a >= 1000 ? `${Math.round(a / 1000).toLocaleString("pt-BR")} mil` : Math.round(a).toLocaleString("pt-BR"); return `${v < 0 ? "-" : ""}R$ ${s}`; };
+  const moneyCheio = (v) => `${v < 0 ? "-" : ""}R$ ${Math.round(Math.abs(v)).toLocaleString("pt-BR")}`;
+  g.fillStyle = "#0F172A"; g.font = F(13, true); g.textAlign = "center"; g.textBaseline = "top";
+  g.fillText(cfg.titulo, W / 2, 8 * S);
+  const topo = 34 * S;
+
+  if (cfg.tipo === "pizza") {
+    const total = cfg.fatias.reduce((s, f) => s + f.valor, 0);
+    const cx = 165 * S, cy = topo + (H - topo) / 2, r = Math.min(105 * S, (H - topo) / 2 - 8 * S);
+    let ang = -Math.PI / 2;
+    cfg.fatias.forEach((f) => {
+      const a = (f.valor / total) * Math.PI * 2;
+      g.beginPath(); g.moveTo(cx, cy); g.arc(cx, cy, r, ang, ang + a); g.closePath(); g.fillStyle = f.cor; g.fill();
+      g.strokeStyle = "#FFFFFF"; g.lineWidth = 2 * S; g.stroke();
+      const m = ang + a / 2; g.fillStyle = "#FFFFFF"; g.font = F(12, true); g.textAlign = "center"; g.textBaseline = "middle";
+      if (f.valor / total > 0.05) g.fillText(`${Math.round((f.valor / total) * 100)}%`, cx + Math.cos(m) * r * 0.62, cy + Math.sin(m) * r * 0.62);
+      ang += a;
+    });
+    let ly = cy - cfg.fatias.length * 20 * S / 2;
+    cfg.fatias.forEach((f) => {
+      g.fillStyle = f.cor; g.fillRect(340 * S, ly, 12 * S, 12 * S);
+      g.fillStyle = "#1E293B"; g.font = F(11); g.textAlign = "left"; g.textBaseline = "middle";
+      g.fillText(`${f.nome} — ${moneyCheio(f.valor)}`, 358 * S, ly + 6 * S); ly += 22 * S;
+    });
+  } else {
+    // eixos (barras e linhas)
+    const series = cfg.tipo === "barras" ? [{ valores: cfg.valores }] : cfg.series;
+    const todos = series.flatMap((s) => s.valores);
+    let vmin = Math.min(0, ...todos), vmax = Math.max(0, ...todos);
+    if (vmin === vmax) vmax = vmin + 1;
+    const bruto = (vmax - vmin) / 5, pot = Math.pow(10, Math.floor(Math.log10(bruto))), n = bruto / pot;
+    const passo = (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * pot;
+    vmin = Math.floor(vmin / passo) * passo; vmax = Math.ceil(vmax / passo) * passo;
+    const legendaH = cfg.tipo === "linhas" && series.length > 1 ? 22 * S : 0;
+    const L = 74 * S, R = 14 * S, T = topo + legendaH + 10 * S, B = H - (cfg.tipo === "barras" ? 46 : 34) * S;
+    const y = (v) => B - ((v - vmin) / (vmax - vmin)) * (B - T);
+    g.font = F(10); g.textAlign = "right"; g.textBaseline = "middle";
+    for (let v = vmin; v <= vmax + passo / 2; v += passo) {
+      g.strokeStyle = v === 0 ? "#64748B" : "#E2E8F0"; g.lineWidth = (v === 0 ? 1.5 : 1) * S;
+      g.beginPath(); g.moveTo(L, y(v)); g.lineTo(W - R, y(v)); g.stroke();
+      g.fillStyle = "#475569"; g.fillText(moneyCurto(v), L - 6 * S, y(v));
+    }
+    const cats = cfg.categorias, k = cats.length, larg = (W - L - R) / k;
+    g.textAlign = "center"; g.textBaseline = "top"; g.fillStyle = "#334155"; g.font = F(cats.length > 8 ? 9 : 10.5);
+    const quebra = (t, max) => { const pal = String(t).split(" "), ls = []; let cur = ""; pal.forEach((w) => { if ((cur + " " + w).trim().length > max && cur) { ls.push(cur); cur = w; } else cur = (cur + " " + w).trim(); }); if (cur) ls.push(cur); return ls.slice(0, 2).map((x, i, a) => (i === a.length - 1 && x.length > max + 2 ? x.slice(0, max) + "…" : x)); };
+    cats.forEach((c, i) => { if (cfg.tipo === "linhas" && k > 8 && i % 2 && i !== k - 1) return; quebra(c, k > 4 ? 13 : 20).forEach((ln, li) => g.fillText(ln, L + larg * (i + 0.5), B + 8 * S + li * 13 * S)); });
+    if (cfg.tipo === "barras") {
+      cfg.valores.forEach((v, i) => {
+        const bw = Math.min(larg * 0.55, 90 * S), x = L + larg * (i + 0.5) - bw / 2;
+        g.fillStyle = cfg.cores[i % cfg.cores.length];
+        const y0 = y(0), y1 = y(v); g.fillRect(x, Math.min(y0, y1), bw, Math.max(1, Math.abs(y1 - y0)));
+        g.fillStyle = "#0F172A"; g.font = F(10.5, true); g.textAlign = "center"; g.textBaseline = v >= 0 ? "bottom" : "top";
+        g.fillText(moneyCheio(v), x + bw / 2, v >= 0 ? Math.min(y0, y1) - 3 * S : Math.max(y0, y1) + 3 * S);
+      });
+    } else {
+      series.forEach((s, si) => {
+        g.strokeStyle = s.cor; g.lineWidth = 2.6 * S; g.setLineDash(s.tracejado ? [6 * S, 4 * S] : []);
+        g.beginPath(); s.valores.forEach((v, i) => { const x = L + larg * (i + 0.5); i ? g.lineTo(x, y(v)) : g.moveTo(x, y(v)); }); g.stroke(); g.setLineDash([]);
+        g.fillStyle = s.cor; s.valores.forEach((v, i) => { g.beginPath(); g.arc(L + larg * (i + 0.5), y(v), 3.2 * S, 0, Math.PI * 2); g.fill(); });
+      });
+      if (legendaH) {
+        let lx = L; g.font = F(10.5); g.textAlign = "left"; g.textBaseline = "middle";
+        series.forEach((s) => { g.fillStyle = s.cor; g.fillRect(lx, topo + 4 * S, 14 * S, 3 * S); g.fillStyle = "#334155"; g.fillText(s.nome, lx + 20 * S, topo + 6 * S); lx += 20 * S + g.measureText(s.nome).width + 24 * S; });
+      }
+    }
+  }
+  const b64 = cv.toDataURL("image/png").split(",")[1], bin = atob(b64), u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return { data: u8, w: 620, h: cfg.alt || 300 };
+}
+
+const PALETA_GRAFICOS = ["#c9972e", "#4f83c9", "#5c7186", "#2dd4a8", "#f87171", "#a78bfa", "#38bdf8", "#f59e0b"];
+
+async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, taxaCrescimento, tmaAnual, historico }) {
+  const D = await carregarScriptCDN(DOCXJS_URL, "docx");
+  const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, ShadingType, BorderStyle, Footer, Header, PageNumber, HeadingLevel, ImageRun } = D;
+  const brl = (n) => (Number(n) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const num = (n, d = 0) => (Number(n) || 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+  const pc = (n, d = 1) => `${num(n, d)}%`;
+  const FONT = "Arial", NAVY = "0F172A", GRAY = "64748B", HEAD = "1E293B", ZEBRA = "F1F5F9", TOTAL = "FEF3C7";
+  const CW = 9638; // largura útil (A4, margens de 2 cm), em twips
+  const borda = { style: BorderStyle.SINGLE, size: 4, color: "CBD5E1" };
+  const bordas = { top: borda, bottom: borda, left: borda, right: borda };
+
+  const run = (text, o = {}) => new TextRun({ text, font: FONT, size: o.size || 21, bold: o.bold, italics: o.italics, color: o.color });
+  const para = (text, o = {}) => new Paragraph({ spacing: { after: o.after ?? 120, before: o.before ?? 0, line: 300 }, alignment: o.align, children: [run(text, o)] });
+  const h1 = (t) => new Paragraph({ heading: HeadingLevel.HEADING_1, spacing: { before: 360, after: 140 }, keepNext: true, children: [new TextRun({ text: t, font: FONT, size: 28, bold: true, color: NAVY })] });
+  const h2 = (t) => new Paragraph({ heading: HeadingLevel.HEADING_2, spacing: { before: 220, after: 100 }, keepNext: true, children: [new TextRun({ text: t, font: FONT, size: 23, bold: true, color: HEAD })] });
+  const vazio = (t) => para(t, { italics: true, color: GRAY });
+
+  // tabela: cabeçalhos, linhas (arrays de texto), larguras relativas, colunas à direita, última linha em destaque
+  const tabela = (cabecalhos, linhas, pesos, direita = [], destacarUltima = false, tam = 19) => {
+    const soma = pesos.reduce((a, b) => a + b, 0);
+    const larg = pesos.map((p) => Math.round((CW * p) / soma));
+    larg[larg.length - 1] += CW - larg.reduce((a, b) => a + b, 0);
+    const cel = (t, i, o) => new TableCell({
+      width: { size: larg[i], type: WidthType.DXA }, borders: bordas,
+      shading: { type: ShadingType.CLEAR, fill: o.fill || "FFFFFF", color: "auto" },
+      margins: { top: 60, bottom: 60, left: 90, right: 90 },
+      children: [new Paragraph({ alignment: direita.includes(i) ? AlignmentType.RIGHT : AlignmentType.LEFT, children: [run(String(t), { size: tam, bold: o.bold, color: o.color })] })],
+    });
+    const rows = [new TableRow({ tableHeader: true, cantSplit: true, children: cabecalhos.map((t, i) => cel(t, i, { fill: NAVY, bold: true, color: "FFFFFF" })) })];
+    linhas.forEach((l, r) => {
+      const ult = destacarUltima && r === linhas.length - 1;
+      rows.push(new TableRow({ cantSplit: true, children: l.map((t, i) => cel(t, i, { fill: ult ? TOTAL : r % 2 ? ZEBRA : "FFFFFF", bold: ult })) }));
+    });
+    return new Table({ width: { size: CW, type: WidthType.DXA }, columnWidths: larg, rows });
+  };
+  const imagem = (cfg) => { const im = graficoPng(cfg); return new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 120, after: 160 }, keepLines: true, children: [new ImageRun({ data: im.data, type: "png", transformation: { width: im.w, height: im.h } })] }); };
+  const pizza = (titulo, itens, alt = 250) => { const v = itens.filter((x) => x.valor > 0).sort((a, b) => b.valor - a.valor); let use = v; if (v.length > 7) { use = [...v.slice(0, 6), { nome: "Outros", valor: v.slice(6).reduce((s, x) => s + x.valor, 0) }]; } if (use.length < 2) return null; return imagem({ tipo: "pizza", titulo, fatias: use.map((x, i) => ({ nome: x.nome.length > 30 ? x.nome.slice(0, 29) + "…" : x.nome, valor: x.valor, cor: PALETA_GRAFICOS[i % PALETA_GRAFICOS.length] })), alt }); };
+  const add = (...xs) => xs.forEach((x) => x && filhos.push(x));
+  const esp = () => new Paragraph({ spacing: { after: 120 }, children: [] });
+
+  const f = calc.faturamento || 0;
+  const temDados = f > 0;
+  const temInvest = (calc.investimentoTotal || 0) > 0;
+  const filhos = [];
+  const mod = (n, nome) => h2(`Módulo ${n} — ${nome}`);
+  const pPro = Number(lanc.m4.pctProprio) || 0;
+  const fontes = (lanc.m4.fontesTerceiros || []).filter((x) => x.fonte);
+  const mo = detalheMaoDeObra(lanc.m9);
+  const cens = (cenarios || []).filter((c) => c);
+  const hist = (historico || []).filter((h) => h && h.indicadores);
+
+  // ---------- Capa / orientação / conteúdo ----------
+  filhos.push(new Paragraph({ spacing: { after: 60 }, children: [run("CEDUP HERMANN HERING", { size: 18, bold: true, color: "B45309" })] }));
+  filhos.push(new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: "Plano Financeiro", font: FONT, size: 44, bold: true, color: NAVY })] }));
+  filhos.push(new Paragraph({ spacing: { after: 60 }, children: [run(equipe.nomeNegocio, { size: 28, bold: true })] }));
+  if ((equipe.integrantes || []).length) filhos.push(para(`Equipe: ${equipe.integrantes.join(", ")}`, { color: GRAY }));
+  filhos.push(para(`Gerado pela Plataforma do Plano Financeiro em ${new Date().toLocaleDateString("pt-BR")}`, { color: GRAY, size: 18 }));
+  filhos.push(esp());
+  filhos.push(tabela(["Conteúdo", "Módulos / análises"], [
+    ["1. Investimento inicial", "Módulo 1 (Investimentos Fixos) · 2 (Capital de Giro) · 3 (Pré-Operacionais) · 4 (Investimento Total e Fontes)"],
+    ["2. Receitas e custos variáveis", "Módulo 5 (Faturamento) · 6 (Matéria-prima) · 7 (Comercialização) · 8 (Custo Unitário e CMV)"],
+    ["3. Estrutura de custos fixos", "Módulo 9 (Mão de Obra) · 10 (Depreciação) · 11 (Custos Fixos)"],
+    ["4. Resultados e viabilidade", "Módulo 12 (Demonstrativo de Resultados) · 13 (Indicadores de Viabilidade)"],
+    ["5. Análise do Negócio", "Panorama, pontos de atenção, gráficos, produtos mais lucrativos e evolução dos ajustes"],
+    ["6. Fluxo de Caixa Anual", "Projeção mês a mês do primeiro ano, VPL e TIR"],
+    ["7. Análise de Cenários", "Simulações \"e se\" da equipe"],
+  ], [2.4, 5.6]));
+  filhos.push(esp());
+  filhos.push(tabela(["Como usar este documento"], [["Cada módulo traz uma tabela e um texto descritivo prontos para copiar e colar na parte \"Plano Financeiro\" do Plano de Negócio. Os números vêm do que a equipe lançou nos módulos da plataforma; se algo mudar lá, baixem o documento de novo. Os textos descrevem os números — a análise e as conclusões devem ser escritas pela equipe, com as próprias palavras."]], [1]));
+
+  // ================= 1. Investimento inicial =================
+  filhos.push(h1("1. Investimento inicial"));
+  filhos.push(mod(1, "Investimentos Fixos"));
+  if (!lanc.m1.itens.length) filhos.push(vazio("Módulo 1 ainda não preenchido."));
+  else {
+    filhos.push(para(`Para iniciar as atividades, a empresa precisa adquirir máquinas, móveis e equipamentos no valor total de ${brl(calc.investFixo)}.`));
+    filhos.push(tabela(["Bem", "Categoria", "Qtde.", "Valor unitário", "Total"],
+      [...lanc.m1.itens.map((i) => [i.desc || "—", i.categoria || "—", num(i.qtd), brl(i.valorUnit), brl((Number(i.qtd) || 0) * (Number(i.valorUnit) || 0))]), ["Total dos investimentos fixos", "", "", "", brl(calc.investFixo)]],
+      [4, 2.4, 1, 1.9, 1.9], [2, 3, 4], true));
+  }
+  filhos.push(mod(2, "Capital de Giro"));
+  filhos.push(para(`O capital de giro é o dinheiro necessário para manter a empresa funcionando enquanto as vendas ainda não viram caixa. Considerando o estoque inicial de ${brl(calc.estoqueInicial)} e um prazo médio de ${num(lanc.m2.prazoVendasDias)} dia(s) para receber das vendas, ${num(lanc.m2.prazoEstoqueDias)} dia(s) de estoque e ${num(lanc.m2.prazoComprasDias)} dia(s) para pagar os fornecedores, a necessidade líquida de giro é de ${num(calc.necessidadeLiquidaDias)} dia(s)${calc.necessidadeLiquidaDias < 0 ? " (negativa: os fornecedores financiam o giro, então não é preciso reservar caixa mínimo)" : ""} e o capital de giro total é de ${brl(calc.capitalGiroTotal)}.`));
+  filhos.push(tabela(["Item", "Valor"], [
+    ["Estoque inicial", brl(calc.estoqueInicial)], ["Prazo médio de vendas", `${num(lanc.m2.prazoVendasDias)} dias`], ["Prazo médio de estoque", `${num(lanc.m2.prazoEstoqueDias)} dias`], ["Prazo médio de compras", `${num(lanc.m2.prazoComprasDias)} dias`],
+    ["Necessidade líquida de giro", `${num(calc.necessidadeLiquidaDias)} dias`], ["Caixa mínimo", brl(calc.caixaMinimo)], ["Capital de giro total", brl(calc.capitalGiroTotal)],
+  ], [3, 2], [1], true));
+  filhos.push(mod(3, "Investimentos Pré-Operacionais"));
+  if (!lanc.m3.itens.length) filhos.push(vazio("Módulo 3 ainda não preenchido."));
+  else {
+    filhos.push(para(`Antes de abrir as portas, a empresa terá gastos de implantação (reformas, licenças, divulgação etc.) no total de ${brl(calc.investPreOp)}.`));
+    filhos.push(tabela(["Despesa pré-operacional", "Valor"], [...lanc.m3.itens.map((i) => [i.desc || "—", brl(i.valor)]), ["Total pré-operacional", brl(calc.investPreOp)]], [4, 1.4], [1], true));
+  }
+  filhos.push(mod(4, "Investimento Total e Fontes de Recursos"));
+  if (!temInvest) filhos.push(vazio("Disponível quando os Módulos 1 a 3 forem preenchidos."));
+  else {
+    filhos.push(para(`O investimento total necessário é de ${brl(calc.investimentoTotal)}. Desse valor, ${pc(pPro, 0)} (${brl((calc.investimentoTotal * pPro) / 100)}) virá de recursos próprios dos sócios e ${pc(100 - pPro, 0)} (${brl((calc.investimentoTotal * (100 - pPro)) / 100)}) de recursos de terceiros${fontes.length ? ` (${fontes.map((x) => x.fonte).join(", ")})` : ""}.`));
+    filhos.push(tabela(["Componente", "Valor"], [["Investimentos fixos", brl(calc.investFixo)], ["Capital de giro", brl(calc.capitalGiroTotal)], ["Investimentos pré-operacionais", brl(calc.investPreOp)], ["Investimento total", brl(calc.investimentoTotal)]], [3, 2], [1], true));
+    filhos.push(esp());
+    filhos.push(tabela(["Fonte dos recursos", "%", "Valor"], [["Recursos próprios", pc(pPro, 0), brl((calc.investimentoTotal * pPro) / 100)], ["Recursos de terceiros", pc(100 - pPro, 0), brl((calc.investimentoTotal * (100 - pPro)) / 100)]], [3, 1, 2], [1, 2]));
+    add(pizza("Origem dos recursos do investimento", [{ nome: "Recursos próprios", valor: (calc.investimentoTotal * pPro) / 100 }, { nome: "Recursos de terceiros", valor: (calc.investimentoTotal * (100 - pPro)) / 100 }], 220));
+    if (fontes.length) filhos.push(tabela(["Fonte de terceiros", "Observação"], fontes.map((x) => [x.fonte, x.obs || "—"]), [3, 4]));
+  }
+
+  // ================= 2. Receitas e custos variáveis =================
+  filhos.push(h1("2. Receitas e custos variáveis"));
+  filhos.push(mod(5, "Faturamento Mensal"));
+  if (!lanc.m5.itens.length) filhos.push(vazio("Módulo 5 ainda não preenchido."));
+  else {
+    filhos.push(para(`A empresa estima vender os produtos e serviços abaixo todos os meses, o que resulta em um faturamento mensal de ${brl(f)} e anual de ${brl(calc.receitaAnual)}.`));
+    filhos.push(tabela(["Produto/serviço", "Qtde./mês", "Preço unitário", "Faturamento mensal"],
+      [...lanc.m5.itens.map((i) => [i.nome || "—", num(i.qtd), brl(i.precoUnit), brl((Number(i.qtd) || 0) * (Number(i.precoUnit) || 0))]), ["Faturamento mensal total", "", "", brl(f)]], [4, 1.4, 1.9, 2.2], [1, 2, 3], true));
+    add(pizza("Participação de cada produto/serviço no faturamento", lanc.m5.itens.map((i) => ({ nome: i.nome || "—", valor: (Number(i.qtd) || 0) * (Number(i.precoUnit) || 0) }))));
+  }
+  filhos.push(mod(6, "Matéria-prima e Insumos"));
+  if (!lanc.m6.itens.length) filhos.push(vazio("Módulo 6 (opcional, para negócios que fabricam o próprio produto) não preenchido."));
+  else {
+    filhos.push(para("Detalhamento dos materiais usados na produção de cada item. É um quadro informativo: o custo oficial de cada produto é o informado no Módulo 8."));
+    filhos.push(tabela(["Produto", "Material/insumo", "Qtde.", "Custo unitário", "Total"], lanc.m6.itens.map((i) => [i.produto || "—", i.material || "—", `${num(i.qtd, 2)}${i.unQtd ? " " + i.unQtd : ""}`, `${brl(i.custoUnit)}${i.unPreco ? " /" + i.unPreco : ""}`, brl(totalLinhaM6(i))]), [2.4, 3.2, 1.2, 1.8, 1.5], [2, 3, 4]));
+  }
+  filhos.push(mod(7, "Custos de Comercialização"));
+  const regime = lanc.m7.modoImposto === "simples" && lanc.m7.tipoAtividade && TABELA_SIMPLES[lanc.m7.tipoAtividade] ? `Simples Nacional — ${TABELA_SIMPLES[lanc.m7.tipoAtividade].nome} (${TABELA_SIMPLES[lanc.m7.tipoAtividade].anexo})` : "informado manualmente";
+  if (!temDados && !calc.pctImpostos && !calc.pctComissao) filhos.push(vazio("Módulo 7 ainda não preenchido."));
+  else {
+    filhos.push(para(`Sobre cada venda incidem impostos e outras despesas variáveis. Enquadramento: ${regime}, com alíquota de ${pc(calc.pctImpostos, 2)} sobre o faturamento, mais ${pc(calc.pctComissao, 2)} de comissões/taxas, o que representa ${brl(calc.custoComercializacao)} por mês.`));
+    filhos.push(tabela(["Item", "Percentual", "Valor mensal"], [["Impostos sobre vendas", pc(calc.pctImpostos, 2), brl((f * calc.pctImpostos) / 100)], ["Comissões e taxas (ex.: cartão)", pc(calc.pctComissao, 2), brl((f * calc.pctComissao) / 100)], ["Total de custos de comercialização", pc(calc.pctImpostos + calc.pctComissao, 2), brl(calc.custoComercializacao)]], [3.5, 1.5, 2], [1, 2], true));
+  }
+  filhos.push(mod(8, "Custo Unitário e CMV"));
+  if (!calc.produtosAnalise.length || calc.cmv <= 0) filhos.push(vazio("Módulo 8 ainda não preenchido."));
+  else {
+    filhos.push(para(`O custo das mercadorias vendidas (CMV) é de ${brl(calc.cmv)} por mês, equivalente a ${pc((calc.cmv / (f || 1)) * 100, 0)} do faturamento. A tabela ordena os produtos do que mais contribui para o resultado ao que menos contribui, mostrando quanto sobra de cada um depois do custo, dos impostos e das taxas.`));
+    filhos.push(tabela(["#", "Produto/serviço", "Preço", "Custo unit.", "Margem unit.", "Margem %", "Margem total", "% da margem"], calc.produtosRanking.map((p, k) => [String(k + 1), p.nome, brl(p.preco), brl(p.custoUnit), brl(p.margemUnit), pc(p.margemPct, 1), brl(p.margemTotal), pc(p.pctDaMargem, 1)]), [0.5, 2.6, 1.4, 1.4, 1.5, 1.2, 1.7, 1.3], [2, 3, 4, 5, 6, 7], false, 16));
+    filhos.push(para("Margem total negativa indica que o item está dando prejuízo.", { size: 17, italics: true, color: GRAY }));
+    filhos.push(imagem({ tipo: "barras", titulo: "Margem de contribuição total por produto (mensal)", categorias: calc.produtosRanking.map((x) => x.nome), valores: calc.produtosRanking.map((x) => x.margemTotal), cores: PALETA_GRAFICOS, alt: 290 }));
+    filhos.push(imagem({ tipo: "barras", titulo: "Preço de venda x custo unitário por produto", categorias: calc.produtosRanking.flatMap((x) => [`${x.nome} (preço)`, `${x.nome} (custo)`]), valores: calc.produtosRanking.flatMap((x) => [x.preco, x.custoUnit]), cores: ["#4f83c9", "#c9972e"], alt: 300 }));
+  }
+
+  // ================= 3. Estrutura de custos fixos =================
+  filhos.push(h1("3. Estrutura de custos fixos"));
+  filhos.push(mod(9, "Mão de Obra"));
+  if (!mo.linhas.length && !mo.prolabore.length) filhos.push(vazio("Módulo 9 ainda não preenchido."));
+  else {
+    filhos.push(para(`O custo mensal com pessoal, incluindo encargos sociais${mo.modo === "grupos" ? ` (${pc(mo.pctGrupos, 2)} sobre o salário, regime ${mo.regime === "simples" ? "Simples Nacional" : "Lucro Real/Presumido"})` : ""}, benefícios e pró-labore dos sócios, é de ${brl(mo.total)}.`));
+    const linhasMO = [...mo.linhas.map((r) => [r.funcao || "—", num(r.qtd), brl(r.salario), brl(r.encargos), brl(r.beneficios), brl(r.total)]), ...mo.prolabore.map((r) => [`${r.funcao || "Pró-labore"} (pró-labore)`, num(r.qtd), brl(r.valor), brl(r.valor * r.qtd * r.pct / 100), "—", brl(r.total)]), ["Total mensal", "", "", "", "", brl(mo.total)]];
+    filhos.push(tabela(["Função", "Qtde.", "Salário", "Encargos", "VT + VR", "Custo total"], linhasMO, [3.2, 0.9, 1.5, 1.5, 1.4, 1.6], [1, 2, 3, 4, 5], true, 18));
+    add(pizza("Composição do custo mensal de mão de obra", [{ nome: "Salários", valor: mo.linhas.reduce((s, r) => s + r.salarioTotal, 0) }, { nome: "Encargos sociais", valor: mo.linhas.reduce((s, r) => s + r.encargos, 0) }, { nome: "Benefícios (VT + VR)", valor: mo.linhas.reduce((s, r) => s + r.beneficios, 0) }, { nome: "Pró-labore dos sócios", valor: mo.totalProlabore }], 230));
+  }
+  filhos.push(mod(10, "Depreciação"));
+  if (!calc.depreciacaoLinhas.length) filhos.push(vazio("Sem bens lançados no Módulo 1."));
+  else {
+    filhos.push(para(`Os bens perdem valor com o uso. Distribuindo o valor de cada um pela sua vida útil, a depreciação da empresa é de ${brl(calc.depreciacaoMensal)} por mês (${brl(calc.depreciacaoMensal * 12)} por ano).`));
+    filhos.push(tabela(["Bem", "Valor", "Vida útil", "Deprec. anual", "Deprec. mensal"], [...calc.depreciacaoLinhas.map((r) => [r.desc || "—", brl(r.valor), `${num(r.vidaUtil)} anos`, brl(r.anual), brl(r.mensal)]), ["Total", brl(calc.investFixo), "", brl(calc.depreciacaoMensal * 12), brl(calc.depreciacaoMensal)]], [3.6, 1.6, 1.2, 1.6, 1.6], [1, 2, 3, 4], true));
+    filhos.push(imagem({ tipo: "barras", titulo: "Depreciação mensal por bem", categorias: calc.depreciacaoLinhas.map((r) => r.desc || "—"), valores: calc.depreciacaoLinhas.map((r) => r.mensal), cores: PALETA_GRAFICOS, alt: 290 }));
+  }
+  filhos.push(mod(11, "Custos Fixos"));
+  if (!lanc.m11.itens.length && !calc.maoDeObra) filhos.push(vazio("Módulo 11 ainda não preenchido."));
+  else {
+    filhos.push(para(`Os custos fixos são os gastos que a empresa tem todo mês, independentemente das vendas. Somando as despesas fixas lançadas, a mão de obra e a depreciação, chegam a ${brl(calc.custoFixoTotal)} por mês.`));
+    filhos.push(tabela(["Custo fixo", "Valor mensal"], [...lanc.m11.itens.map((i) => [i.desc || "—", brl(i.valor)]), ["Mão de obra (Módulo 9)", brl(calc.maoDeObra)], ["Depreciação (Módulo 10)", brl(calc.depreciacaoMensal)], ["Total de custos fixos", brl(calc.custoFixoTotal)]], [4, 1.8], [1], true));
+    add(pizza("Composição dos custos fixos mensais", [...lanc.m11.itens.map((i) => ({ nome: i.desc || "—", valor: Number(i.valor) || 0 })), { nome: "Mão de obra", valor: calc.maoDeObra }, { nome: "Depreciação", valor: calc.depreciacaoMensal }], 260));
+  }
+
+  // ================= 4. Resultados e viabilidade =================
+  filhos.push(h1("4. Resultados e viabilidade"));
+  filhos.push(mod(12, "Demonstrativo de Resultados"));
+  if (!temDados) filhos.push(vazio("Disponível quando o faturamento (Módulo 5) for preenchido."));
+  else {
+    const ok = calc.resultadoOperacional >= 0;
+    filhos.push(para(`Com um faturamento mensal de ${brl(f)}, a empresa projeta ${ok ? "um lucro" : "um prejuízo"} operacional de ${brl(Math.abs(calc.resultadoOperacional))} por mês (${pc((calc.resultadoOperacional / f) * 100)} do faturamento).`));
+    const p = (v) => pc((Math.abs(v) / f) * 100);
+    filhos.push(tabela(["Descrição", "R$ por mês", "% do faturamento"], [
+      ["1. Receita total com vendas", brl(f), "100,0%"], ["2. Custos variáveis totais", brl(-calc.custoVariavelTotal), p(calc.custoVariavelTotal)], ["     (–) CMV", brl(-calc.cmv), p(calc.cmv)], ["     (–) Custos de comercialização", brl(-calc.custoComercializacao), p(calc.custoComercializacao)],
+      ["3. Margem de contribuição (1 – 2)", brl(calc.margemContribuicao), p(calc.margemContribuicao)], ["4. Custos fixos totais", brl(-calc.custoFixoTotal), p(calc.custoFixoTotal)], ["5. Resultado operacional (3 – 4)", brl(calc.resultadoOperacional), p(calc.resultadoOperacional)],
+    ], [4, 2, 2], [1, 2], true));
+    add(pizza("Para onde vai o faturamento", [{ nome: "CMV (custo das mercadorias)", valor: calc.cmv }, { nome: "Impostos e taxas sobre vendas", valor: calc.custoComercializacao }, { nome: "Custos fixos", valor: calc.custoFixoTotal }, { nome: ok ? "Lucro operacional" : "(prejuízo)", valor: ok ? calc.resultadoOperacional : 0 }], 240));
+  }
+  filhos.push(mod(13, "Indicadores de Viabilidade"));
+  if (!temDados || !temInvest) filhos.push(vazio("Disponíveis quando investimento e faturamento forem preenchidos."));
+  else {
+    filhos.push(para(`O ponto de equilíbrio é de ${calc.pontoEquilibrio != null ? brl(calc.pontoEquilibrio) : "—"} por ano, frente a uma receita anual projetada de ${brl(calc.receitaAnual)}. A lucratividade é de ${pc(calc.lucratividade)} e a rentabilidade de ${pc(calc.rentabilidade)} ao ano${calc.prazoRetorno != null ? `, com prazo de retorno do investimento de ${num(calc.prazoRetorno, 1)} anos (cerca de ${Math.round(calc.prazoRetorno * 12)} meses)` : ", sem recuperação do investimento com o resultado atual"}.`));
+    filhos.push(tabela(["Indicador", "Resultado", "O que mostra"], [
+      ["Ponto de equilíbrio (anual)", calc.pontoEquilibrio != null ? brl(calc.pontoEquilibrio) : "—", "Faturamento anual necessário para cobrir todos os custos"],
+      ["Lucratividade", pc(calc.lucratividade), "Parte do faturamento que vira lucro"],
+      ["Rentabilidade (ao ano)", pc(calc.rentabilidade), "Retorno anual sobre o investimento total"],
+      ["Prazo de retorno (payback)", calc.prazoRetorno != null ? `${num(calc.prazoRetorno, 1)} anos` : "—", "Tempo para recuperar o investimento pelo lucro"],
+    ], [2.6, 1.7, 4]));
+    filhos.push(imagem({ tipo: "barras", titulo: "Receita anual x ponto de equilíbrio", categorias: ["Receita anual projetada", "Ponto de equilíbrio (anual)", "Lucro anual", "Investimento total"], valores: [calc.receitaAnual, calc.pontoEquilibrio || 0, calc.lucroAnual, calc.investimentoTotal], cores: ["#4f83c9", "#c9972e", calc.lucroAnual >= 0 ? "#2dd4a8" : "#f87171", "#5c7186"], alt: 290 }));
+    filhos.push(imagem({ tipo: "linhas", titulo: "Recuperação do investimento ao longo de 5 anos (lucro anual constante)", categorias: ["Início", "Ano 1", "Ano 2", "Ano 3", "Ano 4", "Ano 5"], series: [{ nome: "Saldo acumulado", valores: [0, 1, 2, 3, 4, 5].map((a) => -calc.investimentoTotal + calc.lucroAnual * a), cor: "#2dd4a8" }], alt: 280 }));
+  }
+
+  // ================= 5. Análise do Negócio =================
+  filhos.push(h1("5. Análise do Negócio"));
+  if (!temDados && !temInvest) filhos.push(vazio("Disponível quando investimento e faturamento forem preenchidos."));
+  else {
+    filhos.push(para("Panorama do negócio com os principais números e gráficos do plano."));
+    filhos.push(tabela(["Indicador", "Valor"], [["Investimento total", brl(calc.investimentoTotal)], ["Faturamento mensal", brl(f)], ["Resultado operacional por mês", brl(calc.resultadoOperacional)], ["Progresso de preenchimento dos módulos", `${num(calc.progresso)}%`]], [3, 2], [1]));
+    filhos.push(h2("Pontos de atenção"));
+    alertasNegocio(calc).forEach((a) => filhos.push(new Paragraph({ numbering: { reference: "marcadores", level: 0 }, spacing: { after: 60, line: 300 }, children: [run(a.texto)] })));
+    const fatias = [{ nome: "Investimentos fixos", valor: calc.investFixo, cor: "#c9972e" }, { nome: "Capital de giro", valor: calc.capitalGiroTotal, cor: "#4f83c9" }, { nome: "Pré-operacionais", valor: calc.investPreOp, cor: "#5c7186" }].filter((x) => x.valor > 0);
+    if (fatias.length) filhos.push(imagem({ tipo: "pizza", titulo: "Composição do investimento total", fatias, alt: 250 }));
+    if (temDados) filhos.push(imagem({ tipo: "barras", titulo: "Receita x custos x resultado (mensal)", categorias: ["Receita", "Custos variáveis", "Custos fixos", "Resultado"], valores: [calc.faturamento, calc.custoVariavelTotal, calc.custoFixoTotal, calc.resultadoOperacional], cores: ["#4f83c9", "#c9972e", "#5c7186", calc.resultadoOperacional >= 0 ? "#2dd4a8" : "#f87171"], alt: 280 }));
+    if (calc.produtosRanking.length && calc.cmv > 0) {
+      filhos.push(h2("Produtos mais lucrativos"));
+      filhos.push(para("Ranking por margem de contribuição total (o mesmo apresentado no Módulo 8)."));
+      filhos.push(tabela(["#", "Produto/serviço", "Margem unit.", "Margem %", "Margem total", "% da margem"], calc.produtosRanking.map((p, k) => [String(k + 1), p.nome, brl(p.margemUnit), pc(p.margemPct, 1), brl(p.margemTotal), pc(p.pctDaMargem, 1)]), [0.5, 3, 1.6, 1.3, 1.7, 1.4], [2, 3, 4, 5]));
+    }
+    if (hist.length) {
+      filhos.push(h2("Evolução dos ajustes"));
+      filhos.push(para("Cada versão salva pela equipe registra um retrato dos indicadores, para acompanhar como o plano evoluiu ao longo do projeto."));
+      filhos.push(imagem({ tipo: "linhas", titulo: "Lucro anual x ponto de equilíbrio por versão", categorias: hist.map((h, i) => `V${i + 1}`), series: [{ nome: "Lucro anual", valores: hist.map((h) => h.indicadores.lucroAnual || 0), cor: "#2dd4a8" }, { nome: "Ponto de equilíbrio", valores: hist.map((h) => h.indicadores.pontoEquilibrio || 0), cor: "#c9972e", tracejado: true }], alt: 280 }));
+      filhos.push(tabela(["Versão", "Data", "Lucro anual", "Ponto de equilíbrio", "Observação"], hist.map((h, i) => [`V${i + 1}`, new Date(h.timestamp).toLocaleDateString("pt-BR"), brl(h.indicadores.lucroAnual), h.indicadores.pontoEquilibrio ? brl(h.indicadores.pontoEquilibrio) : "—", h.nota || "—"]), [0.8, 1.4, 1.8, 2, 3.2], [2, 3]));
+    }
+  }
+
+  // ================= 6. Fluxo de Caixa Anual =================
+  filhos.push(h1("6. Fluxo de Caixa Anual"));
+  if (!temDados || !temInvest) filhos.push(vazio("Disponível quando investimento e faturamento forem preenchidos."));
+  else {
+    const pos = fluxo.find((m) => m.mes > 0 && m.saldo >= 0);
+    const neg = fluxo.filter((m) => m.mes > 0 && m.resultado < 0).length;
+    filhos.push(para(`A projeção parte do investimento total no mês 0 (${brl(-calc.investimentoTotal)})${Number(taxaCrescimento) ? ` e considera crescimento mensal do faturamento de ${num(taxaCrescimento, 1)}%` : " e repete o mesmo faturamento todos os meses"}. ${pos ? `O caixa acumulado fica positivo no ${pos.label.toLowerCase()}.` : `Ao final do mês 12 o saldo acumulado é de ${brl(fluxo[12].saldo)}, ou seja, o investimento ainda não é totalmente recuperado dentro do primeiro ano.`}`));
+    filhos.push(tabela(["Resumo", "Resultado"], [["Saldo ao final do mês 12", brl(fluxo[12].saldo)], ["Mês em que o caixa fica positivo", pos ? pos.label : "Não ocorre em 12 meses"], ["Meses com resultado negativo", `${neg} de 12`]], [3, 2], [1]));
+    filhos.push(imagem({ tipo: "linhas", titulo: "Evolução do saldo de caixa", categorias: fluxo.map((m) => (m.mes === 0 ? "Início" : `M${m.mes}`)), series: [{ nome: "Saldo de caixa acumulado", valores: fluxo.map((m) => m.saldo), cor: "#c9972e" }], alt: 280 }));
+    filhos.push(tabela(["Mês", "Receita", "Custo variável", "Custo fixo", "Resultado", "Saldo acumulado"], fluxo.map((m) => [m.mes === 0 ? "Investimento" : m.label, m.mes === 0 ? "—" : brl(m.receita), m.mes === 0 ? "—" : brl(m.custoVariavel), m.mes === 0 ? "—" : brl(m.custoFixo), brl(m.resultado), brl(m.saldo)]), [1.5, 1.6, 1.7, 1.6, 1.6, 1.9], [1, 2, 3, 4, 5], false, 17));
+    const tma = Number(tmaAnual); 
+    if (Number.isFinite(tma)) {
+      const tmaM = Math.pow(1 + tma / 100, 1 / 12) - 1;
+      const vpl = calcularVPL(fluxo, tmaM); const tirM = calcularTIRMensal(fluxo); const tirA = tirM !== null ? (Math.pow(1 + tirM, 12) - 1) * 100 : null;
+      filhos.push(h2("VPL e TIR (indicadores opcionais)"));
+      filhos.push(para(`Considerando a Taxa Mínima de Atratividade (TMA) de ${num(tma, 1)}% ao ano, o VPL do fluxo de 12 meses é de ${brl(vpl)}${vpl >= 0 ? ", ou seja, o negócio gera valor além do retorno mínimo exigido pelos sócios" : ", ou seja, nos 12 meses projetados o negócio não gera valor suficiente para cobrir a TMA"}. ${tirA !== null ? `A TIR é de ${num(tirA, 1)}% ao ano.` : "Não há TIR calculável: o investimento não é recuperado dentro dos 12 meses."}`));
+      filhos.push(tabela(["Indicador", "Resultado"], [["TMA (taxa mínima de atratividade, ao ano)", pc(tma, 1)], ["VPL (valor presente líquido)", brl(vpl)], ["TIR (taxa interna de retorno, ao ano)", tirA !== null ? pc(tirA, 1) : "Não recupera em 12 meses"]], [3, 2], [1]));
+    }
+  }
+
+  // ================= 7. Análise de Cenários =================
+  filhos.push(h1("7. Análise de Cenários"));
+  if (!temDados) filhos.push(vazio("Disponível quando o faturamento (Módulo 5) for preenchido."));
+  else if (!cens.length) filhos.push(vazio("A equipe ainda não criou cenários na plataforma."));
+  else {
+    filhos.push(para("Simulações de \"e se\" feitas pela equipe sobre o plano atual (cenário base), sem alterar os números oficiais. Cada cenário aplica variações percentuais ao faturamento, aos custos variáveis e aos custos fixos."));
+    const linhasC = [["Base (atual)", "—", "—", "—", brl(calc.faturamento), brl(calc.resultadoOperacional), calc.pontoEquilibrio != null ? brl(calc.pontoEquilibrio) : "—", pc(calc.lucratividade)], ...cens.map((c, i) => { const r = calcularCenario(calc, c); return [c.nome || `Cenário ${i + 1}`, `${num(c.variacaoFaturamento, 0)}%`, `${num(c.variacaoCustoVariavel, 0)}%`, `${num(c.variacaoCustoFixo, 0)}%`, brl(r.faturamento), brl(r.resultadoOperacional), r.pontoEquilibrio != null ? brl(r.pontoEquilibrio) : "—", pc(r.lucratividade)]; })];
+    filhos.push(tabela(["Cenário", "Δ Fat.", "Δ C. var.", "Δ C. fixo", "Faturamento/mês", "Resultado/mês", "Ponto de equilíbrio", "Lucrat."], linhasC, [1.8, 0.8, 0.9, 0.9, 1.5, 1.4, 1.6, 0.9], [1, 2, 3, 4, 5, 6, 7], false, 15));
+    filhos.push(imagem({ tipo: "barras", titulo: "Comparativo de cenários — resultado operacional mensal", categorias: ["Base (atual)", ...cens.map((c, i) => c.nome || `Cenário ${i + 1}`)], valores: [calc.resultadoOperacional, ...cens.map((c) => calcularCenario(calc, c).resultadoOperacional)], cores: ["#64748b", ...cens.map((c, i) => CENARIO_CORES[i % CENARIO_CORES.length])], alt: 260 }));
+  }
+
+  const doc = new Document({
+    creator: "CEDUP Hermann Hering", title: `Plano Financeiro — ${equipe.nomeNegocio}`,
+    styles: { default: { document: { run: { font: FONT, size: 21 } } } },
+    numbering: { config: [{ reference: "marcadores", levels: [{ level: 0, format: D.LevelFormat.BULLET, text: "•", alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: 540, hanging: 270 } } } }] }] },
+    sections: [{
+      properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } },
+      headers: { default: new Header({ children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [run(`${equipe.nomeNegocio} · Plano Financeiro`, { size: 16, color: GRAY })] })] }) },
+      footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [run("CEDUP Hermann Hering · Plataforma do Plano Financeiro · página ", { size: 16, color: GRAY }), new TextRun({ children: [PageNumber.CURRENT], font: FONT, size: 16, color: GRAY })] })] }) },
+      children: filhos,
+    }],
+  });
+  const blob = await Packer.toBlob(doc);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `Plano-Financeiro-${nomeArquivoSeguro(equipe.nomeNegocio)}.docx`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+function SegmentoNegocioView({ equipe, onAtualizarEquipe, souVisualizador, exemplo }) {
+  const status = equipe.segmentoStatus;
+  const precisaEscolher = !equipe.segmento || status === "reconsiderar";
+  const [selecionado, setSelecionado] = useState(equipe.segmento || "");
+  const [editando, setEditando] = useState(precisaEscolher);
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    setSelecionado(equipe.segmento || "");
+    setEditando(!equipe.segmento || equipe.segmentoStatus === "reconsiderar");
+  }, [equipe.id, equipe.segmento, equipe.segmentoStatus]);
+
+  const confirmarEscolha = async () => {
+    if (!selecionado || !onAtualizarEquipe || souVisualizador) return;
+    setSalvando(true);
+    try {
+      // Empresa de teste: ninguém avalia a escolha, então já fica aprovada.
+      await onAtualizarEquipe({
+        segmento: selecionado,
+        segmentoStatus: equipe.teste === true ? "aprovado" : "pendente",
+        segmentoObservacao: null,
+        segmentoAprovadoEm: equipe.teste === true ? Date.now() : null,
+      });
+      setEditando(false);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  if (editando) {
+    return (
+      <div>
+        <SectionTitle icon={Tag} sub="Escolha a opção que melhor descreve o negócio da sua equipe. Isso ajuda a plataforma a sugerir itens, exemplos e orientações mais próximos da realidade de vocês. Depois de escolher, o(a) professor(a) vai revisar e aprovar.">
+          Qual é o segmento do seu negócio?
+        </SectionTitle>
+        {status === "reconsiderar" && equipe.segmentoObservacao && (
+          <div className="mb-4 bg-amber-950/30 border border-amber-800/50 rounded-lg p-3 text-sm text-amber-200 flex items-start gap-2">
+            <RotateCcw size={16} className="mt-0.5 shrink-0 text-amber-400" />
+            <div><b>O(a) professor(a) pediu para reconsiderar a escolha anterior:</b><div className="mt-1">{equipe.segmentoObservacao}</div></div>
+          </div>
+        )}
+        <div className="grid sm:grid-cols-2 gap-3">
+          {SEGMENTOS_NEGOCIO.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setSelecionado(s)}
+              className={`text-left border rounded-lg p-3 transition ${selecionado === s ? "border-amber-500 bg-amber-950/20 ring-1 ring-amber-500/40" : "border-slate-700 bg-slate-900 hover:border-slate-600"}`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 ${selecionado === s ? "border-amber-500 bg-amber-500" : "border-slate-600"}`} />
+                <span className="text-sm font-bold text-slate-100">{s}</span>
+              </div>
+              <div className="text-xs text-slate-400 ml-6">{SEGMENTO_CARACTERISTICAS[s]}</div>
+            </button>
+          ))}
+        </div>
+        <div className="flex justify-end mt-5">
+          <button
+            onClick={confirmarEscolha}
+            disabled={!selecionado || salvando || souVisualizador}
+            className="bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white text-sm font-bold rounded-lg px-5 py-2.5"
+          >
+            {salvando ? "Salvando…" : "Confirmar escolha"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const aprovadoLegado = !!equipe.segmento && status === undefined;
+  const aprovado = status === "aprovado" || aprovadoLegado;
+
+  return (
+    <div>
+      <SectionTitle icon={Tag} sub="O segmento escolhido ajuda a plataforma a sugerir itens, exemplos e orientações mais próximos da realidade do negócio de vocês.">
+        Segmento do negócio
+      </SectionTitle>
+      {status === "pendente" && (
+        <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-amber-400 bg-amber-950/30 border border-amber-800/50 rounded-lg px-3 py-2 w-fit">
+          <Clock size={15} /> Aguardando aprovação do(a) professor(a)
+        </div>
+      )}
+      {aprovado && (
+        <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-emerald-400 bg-emerald-950/30 border border-emerald-800/50 rounded-lg px-3 py-2 w-fit">
+          <CheckCircle2 size={15} /> Segmento aprovado{equipe.segmentoAprovadoEm ? ` em ${fmtData(equipe.segmentoAprovadoEm)}` : ""}
+        </div>
+      )}
+      <Card className="p-4 flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <div className="text-sm font-bold text-slate-100">{equipe.segmento}</div>
+          <div className="text-xs text-slate-400 mt-0.5">{SEGMENTO_CARACTERISTICAS[equipe.segmento]}</div>
+        </div>
+        {!souVisualizador && (
+          <button onClick={() => setEditando(true)} className="text-xs font-semibold text-amber-400 border border-amber-800/60 rounded-md px-3 py-1.5 hover:bg-amber-950/30">
+            {status === "pendente" ? "Alterar escolha" : "Solicitar alteração"}
+          </button>
+        )}
+      </Card>
+      {equipe.teste === true && exemplo && <PainelExemploSegmento segmento={equipe.segmento} exemplo={exemplo} />}
+      {status === "pendente" && (
+        <p className="text-xs text-slate-500 mt-3">Enquanto estiver pendente, vocês ainda podem trocar a escolha livremente. As sugestões de itens e orientações por segmento já usam essa escolha normalmente — a aprovação é só a confirmação do(a) professor(a).</p>
+      )}
+    </div>
+  );
+}
+
+// Painel exclusivo da Empresa de teste: preenche os módulos com o exemplo do
+// segmento. Só é renderizado quando equipe.teste === true (ver chamada acima)
+// e o handler de gravação confere isso de novo.
+function PainelExemploSegmento({ segmento, exemplo }) {
+  const tem = !!EXEMPLOS_SEGMENTO[segmento];
+  const [ocupado, setOcupado] = useState(false);
+  const aplicado = exemplo.aplicado === segmento;
+  const rodar = async (fn) => { setOcupado(true); try { await fn(); } finally { setOcupado(false); } };
+  return (
+    <div className="mt-4 border-2 border-dashed border-violet-500/60 bg-violet-950/20 rounded-lg p-4">
+      <div className="flex items-center gap-2 flex-wrap mb-1">
+        <span className="text-sm font-bold text-slate-100">📋 Exemplo para demonstração</span>
+        <span className="text-[10px] font-bold text-violet-300 bg-violet-900/30 border border-violet-700/50 rounded-full px-2 py-0.5">SÓ NA EMPRESA DE TESTE</span>
+        {aplicado && <span className="text-[10px] font-bold text-emerald-300 bg-emerald-900/30 border border-emerald-700/50 rounded-full px-2 py-0.5">Dados fictícios de exemplo</span>}
+      </div>
+      {tem ? (
+        <>
+          <p className="text-xs text-slate-400 mb-3">Preenche os Módulos 1 a 11 com um exemplo completo de <b className="text-slate-200">{segmento}</b> (valores fictícios). Os Módulos 12 e 13 são calculados na hora. Os módulos <b className="text-slate-200">não são enviados</b> para correção — ficam liberados para você mostrar e editar à vontade. O que já estiver lançado na Empresa de teste será substituído (pede confirmação). Empresas reais e alunos não são afetados.</p>
+          <div className="flex gap-2 flex-wrap">
+            <button disabled={ocupado} onClick={() => rodar(() => exemplo.preencher(segmento))} className="bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-bold rounded-md px-4 py-2">
+              {aplicado ? `Restaurar exemplo original de ${segmento}` : `Preencher todos os módulos com o exemplo de ${segmento}`}
+            </button>
+            <button disabled={ocupado} onClick={() => rodar(() => exemplo.limpar())} className="border border-slate-600 text-slate-300 hover:border-slate-400 disabled:opacity-50 text-xs font-bold rounded-md px-4 py-2">Limpar módulos (zerar lançamentos)</button>
+          </div>
+        </>
+      ) : (
+        <p className="text-xs text-slate-400">Ainda não há exemplo pronto para este segmento. Exemplos disponíveis: {Object.keys(EXEMPLOS_SEGMENTO).join(", ")}.</p>
+      )}
+    </div>
+  );
+}
+
+function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades, onAtualizarEquipe, somenteLeitura }) {
+  const [dados, setDadosReal] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
+  // Modo Coordenação (somente leitura): TODA gravação em dados da equipe é descartada aqui, na origem.
+  const setDados = somenteLeitura ? () => {} : setDadosReal;
   const [aba, setAba] = useState("inicio");
   const [menuAberto, setMenuAberto] = useState(false);
+  const [gerandoPpt, setGerandoPpt] = useState(false);
+  const [gerandoDoc, setGerandoDoc] = useState(false);
+  const [erroPpt, setErroPpt] = useState("");
   const [confirmSairAberto, setConfirmSairAberto] = useState(false);
-  const [decisaoGestorTomada, setDecisaoGestorTomada] = useState(false);
+  const [decisaoGestorTomada, setDecisaoGestorTomada] = useState(!!somenteLeitura);
   const [pdfAberto, setPdfAberto] = useState(null);
-  const irPara = (id) => { setAba(id); setMenuAberto(false); };
+  const [modoMesa, setModoMesa] = useModoMesa("ppf_modo_mesa_aluno");
+  const larga = useTelaLarga();
+  const mesa = useMesa();
+  const mesaAtiva = modoMesa && larga;
+  useEffect(() => {
+    if (!mesaAtiva) return undefined;
+    const t = setTimeout(() => { if (Object.keys(mesa.wins).length === 0) mesa.abrir("inicio"); }, 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mesaAtiva]);
+  const irPara = (id) => { if (mesaAtiva) { mesa.abrir(id); return; } setAba(id); setMenuAberto(false); };
 
   const lanc = mergeLancamentos(dados?.lancamentos);
   const calc = useMemo(() => calcular(lanc), [JSON.stringify(lanc)]);
-  const fluxo = dados?.fluxoModulos || fluxoModulosPadrao();
+  // Empresa de teste (menu "Empresa Teste"): o professor usa para demonstrar
+  // o sistema, então todos os módulos ficam liberados e sem prazo — só
+  // exibição, nada é gravado a mais. Empresas reais seguem o fluxo normal.
+  const fluxoGravado = dados?.fluxoModulos || fluxoModulosPadrao();
+  const fluxo = equipe?.teste === true ? liberarModulosDaEmpresaTeste(fluxoGravado) : fluxoGravado;
   const progressoAprovado = calcularProgressoAprovado(fluxo);
   const enviarModulo = (modId) => {
     const estadoAtual = estadoModulo(fluxo, modId);
@@ -3730,7 +5121,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   const gestor = dados.gestor || null;
   const gestorAtivo = !!(gestor && Date.now() - (gestor.ultimoPing || 0) < GESTOR_TIMEOUT_MS);
   const souGestor = gestorAtivo && gestor.uid === user.uid;
-  const souVisualizador = gestorAtivo && !souGestor;
+  const souVisualizador = !!somenteLeitura || (gestorAtivo && !souGestor);
   const gestaoLivre = !gestorAtivo;
 
   const assumirGestao = () => {
@@ -3742,8 +5133,35 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
 
   const updateModulo = (modId, val) => {
     if (souVisualizador) return; // trava extra — a tela já fica sem interação para quem visualiza
+    // Lixeira de segurança: guarda uma CÓPIA do que foi excluído (chave própria); nunca altera os lançamentos.
+    if (equipe?.teste !== true) { const removidos = itensRemovidos(lanc[modId], val); if (removidos.length) registrarNaLixeira(equipe.id, user.nome, modId, removidos); }
     const novo = { ...dados, lancamentos: { ...lanc, [modId]: val } };
     setDados(novo);
+  };
+
+  // Restaura da Lixeira: reinclui o item no mesmo módulo (mesmo caminho de gravação de um item novo).
+  const restaurarDaLixeira = (e) => {
+    if (souVisualizador || equipe?.teste === true) return false;
+    const mod = lanc[e.modId];
+    if (!mod || !Array.isArray(mod[e.campo])) return false;
+    if (mod[e.campo].some((x) => x && x.id === e.item.id)) return true;
+    setDados({ ...dados, lancamentos: { ...lanc, [e.modId]: { ...mod, [e.campo]: [...mod[e.campo], e.item] } } });
+    return true;
+  };
+
+  // Exemplo por segmento — EXCLUSIVO da Empresa de teste. Escreve apenas nos
+  // dados desta própria equipe (equipeKey) e só se equipe.teste === true.
+  const preencherExemploTeste = async (segmento) => {
+    if (equipe?.teste !== true || souVisualizador) return;
+    const lancEx = montarExemploSegmento(segmento);
+    if (!lancEx) return;
+    if (!window.confirm(`Preencher a Empresa de teste com o exemplo de ${segmento}?\n\nO que estiver lançado nos módulos 1 a 11 da Empresa de teste será substituído. Só afeta a empresa de teste — nenhum aluno real é tocado.`)) return;
+    setDados({ ...dados, lancamentos: lancEx, exemploAplicado: segmento });
+  };
+  const limparExemploTeste = async () => {
+    if (equipe?.teste !== true || souVisualizador) return;
+    if (!window.confirm("Limpar todos os lançamentos da Empresa de teste (módulos 1 a 11)? Só afeta a empresa de teste.")) return;
+    setDados({ ...dados, lancamentos: defaultLancamentos(), exemploAplicado: null });
   };
 
   const salvarVersao = () => {
@@ -3759,6 +5177,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   const menuItems = [
     { id: "manual", label: "Manual do Aluno", icon: BookOpen, num: "00" },
     { id: "inicio", label: "Início", icon: LayoutDashboard, num: null },
+    { id: "segmento", label: "Segmento do negócio", icon: Tag, num: null },
     { id: "cronograma", label: "Cronograma do projeto", icon: Calendar, num: null },
     ...MODULOS.map((m) => ({ id: m.id, label: m.nome, icon: m.icon, num: String(m.n).padStart(2, "0"), moduloStatus: estadoModulo(fluxo, m.id).status })),
     { id: "analise", label: "Análise do Negócio", icon: TrendingUp, num: null },
@@ -3767,6 +5186,9 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
     { id: "modeloApresentacao", label: "Baixar Modelo de Apresentação", icon: FileDown, num: null },
     { id: "feedback", label: "Feedback do Professor", icon: MessageSquare, num: null },
     { id: "notas", label: "Minhas Notas", icon: Target, num: null },
+    { id: "guia", label: "Guia da semana", icon: ListChecks, num: null },
+    { id: "trajetoria", label: "Minha trajetória", icon: History, num: null },
+    { id: "lixeira", label: "Lixeira de segurança", icon: Trash2, num: null },
     { id: "referencias", label: "Referências Bibliográficas", icon: Library, num: null },
     { id: "suporte", label: "Suporte", icon: LifeBuoy, num: null },
     { id: "novidades", label: "Novidades", icon: Megaphone, num: null },
@@ -3779,98 +5201,30 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
     baixarArquivo(`backup_${equipe.nomeNegocio.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo(agora)}.json`, JSON.stringify(pacote, null, 2));
   };
 
-  return (
-    <div className="min-h-screen flex bg-slate-950 relative">
-      <header className="app-mobile-header md:hidden fixed top-0 inset-x-0 z-20 bg-slate-900 border-b border-white/10 flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-2 text-sm text-white/80 font-semibold truncate"><Building2 size={16} className="shrink-0" /> <span className="truncate">{equipe.nomeNegocio}</span></div>
-        <button onClick={() => setMenuAberto(true)} className="relative text-white/80 p-1 shrink-0">
-          <Menu size={22} />
-          {naoLidos > 0 && <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-slate-900" />}
-        </button>
-      </header>
-
-      {menuAberto && <div onClick={() => setMenuAberto(false)} className="md:hidden fixed inset-0 bg-black/60 z-30" />}
-
-      <aside className={`app-sidebar w-72 bg-slate-900 text-white flex flex-col shrink-0 fixed inset-y-0 left-0 z-40 transition-transform duration-200 md:static md:translate-x-0 ${menuAberto ? "translate-x-0" : "-translate-x-full"}`}>
-        <div className="p-5 border-b border-white/10 flex items-start justify-between gap-2">
-          <div>
-            <div className="flex items-center gap-2 text-sm text-white/70"><Building2 size={16} /> {equipe.nomeNegocio}</div>
-            <div className="text-xs text-white/50 mt-1">Equipe · {equipe.integrantes.join(", ")}</div>
+  const avisosAluno = (
+    <>
+        {equipe?.teste === true && dados?.exemploAplicado && (
+          <div className="mb-4 bg-violet-950/30 border border-violet-700/50 rounded-md px-4 py-2 text-xs text-violet-200 flex items-center gap-2">
+            <span>📋</span><span><b>Dados fictícios de exemplo</b> — {dados.exemploAplicado}. Você pode editar qualquer valor para demonstrar; para voltar ao original, use "Restaurar exemplo" em Segmento do negócio.</span>
           </div>
-          <button onClick={() => setMenuAberto(false)} className="md:hidden text-white/60 hover:text-white shrink-0"><X size={18} /></button>
-        </div>
-        <nav className="flex-1 overflow-y-auto py-3">
-          {menuItems.map((it) => {
-            const Icon = it.icon;
-            const active = aba === it.id;
-            if (it.id === "modeloApresentacao") {
-              return (
-                <a
-                  key={it.id}
-                  href={MODELO_APRESENTACAO_URL}
-                  download
-                  onClick={() => setMenuAberto(false)}
-                  className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent"
-                >
-                  <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
-                </a>
-              );
-            }
-            const pdfUrl = MANUAIS_PDF[it.id];
-            if (pdfUrl) {
-              if (user.mestre) {
-                return (
-                  <a
-                    key={it.id}
-                    href={pdfUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => setMenuAberto(false)}
-                    className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent"
-                  >
-                    {it.num && <span className="text-[10px] font-mono w-5 shrink-0 text-white/30">{it.num}</span>}
-                    <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
-                    <Printer size={13} className="shrink-0 text-slate-500" />
-                  </a>
-                );
-              }
-              return (
-                <button
-                  key={it.id}
-                  onClick={() => { setPdfAberto({ url: pdfUrl, titulo: it.label }); setMenuAberto(false); }}
-                  className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent"
-                >
-                  {it.num && <span className="text-[10px] font-mono w-5 shrink-0 text-white/30">{it.num}</span>}
-                  <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
-                </button>
-              );
-            }
-            return (
-              <button
-                key={it.id}
-                onClick={() => irPara(it.id)}
-                className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${active ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}
-              >
-                {it.num && <span className={`text-[10px] font-mono w-5 shrink-0 ${active ? "text-amber-500" : "text-white/30"}`}>{it.num}</span>}
-                <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
-                {it.moduloStatus && <BadgeStatusModuloMenu status={it.moduloStatus} />}
-                {it.id === "feedback" && naoLidos > 0 && (
-                  <span className="text-[10px] font-bold bg-amber-500 text-slate-900 rounded-full px-1.5 py-0.5 shrink-0">{naoLidos}</span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
-        <div className="p-4 border-t border-white/10">
-          <div className="text-xs text-white/50 mb-2">Progresso geral (módulos aprovados)</div>
-          <div className="w-full bg-white/10 rounded-full h-2 mb-3"><div className="bg-amber-500 h-2 rounded-full transition-all" style={{ width: `${progressoAprovado}%` }} /></div>
-          {onTrocarEmpresa && (
-            <button onClick={onTrocarEmpresa} className="flex items-center gap-2 text-sm text-white/70 hover:text-white mb-2"><Building2 size={15} /> Trocar de empresa</button>
-          )}
-          <button onClick={() => setConfirmSairAberto(true)} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><LogOut size={15} /> Sair</button>
-        </div>
-      </aside>
+        )}
+        {souVisualizador && (
+          <div className="mb-4 bg-slate-900 border border-sky-800/60 rounded-md px-4 py-2.5 flex items-center gap-2.5 text-sm text-sky-300">
+            <Eye size={16} className="shrink-0" />
+            <span>{somenteLeitura ? <><b>Modo Coordenação — somente leitura.</b> Você acompanha exatamente o que a equipe lançou; nada aqui pode ser alterado.</> : <><b>{gestor.nome}</b> está gerindo os lançamentos agora. Você está no modo visualização.</>}</span>
+          </div>
+        )}
+        {souGestor && (
+          <div className="mb-4 bg-slate-900 border border-amber-800/60 rounded-md px-4 py-2.5 flex items-center justify-between gap-2.5 text-sm text-amber-300">
+            <span className="flex items-center gap-2.5"><UserCog size={16} className="shrink-0" /> Você é quem está gerindo os lançamentos agora.</span>
+            <button onClick={liberarGestao} className="text-xs font-semibold text-slate-400 hover:text-slate-100 underline shrink-0">Liberar gestão</button>
+          </div>
+        )}
 
+    </>
+  );
+  const modalSair = (
+    <>
       {confirmSairAberto && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-5">
           <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-sm w-full p-6 text-center">
@@ -3882,9 +5236,10 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
           </div>
         </div>
       )}
-
-      {onVerNovidades && <NovidadesOverlay perfil={{ ultimaVersaoVista }} onFechar={onVerNovidades} onIrParaHistorico={() => { onVerNovidades(); irPara("novidades"); }} />}
-
+    </>
+  );
+  const modalGestor = (
+    <>
       {gestaoLivre && !decisaoGestorTomada && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-5">
           <div className="bg-slate-900 border border-amber-500/50 rounded-xl max-w-sm w-full p-6 text-center">
@@ -3896,24 +5251,15 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
           </div>
         </div>
       )}
-
-      <main className="flex-1 overflow-y-auto p-4 pt-20 md:p-8 md:pt-8 max-w-5xl mx-auto w-full">
-        {souVisualizador && (
-          <div className="mb-4 bg-slate-900 border border-sky-800/60 rounded-md px-4 py-2.5 flex items-center gap-2.5 text-sm text-sky-300">
-            <Eye size={16} className="shrink-0" />
-            <span><b>{gestor.nome}</b> está gerindo os lançamentos agora. Você está no modo visualização.</span>
-          </div>
-        )}
-        {souGestor && (
-          <div className="mb-4 bg-slate-900 border border-amber-800/60 rounded-md px-4 py-2.5 flex items-center justify-between gap-2.5 text-sm text-amber-300">
-            <span className="flex items-center gap-2.5"><UserCog size={16} className="shrink-0" /> Você é quem está gerindo os lançamentos agora.</span>
-            <button onClick={liberarGestao} className="text-xs font-semibold text-slate-400 hover:text-slate-100 underline shrink-0">Liberar gestão</button>
-          </div>
-        )}
-
+    </>
+  );
+  const renderAba = (aba, setAba) => (
+    <>
         {aba === "manual" && <ManualAlunoView equipe={equipe} onIrPara={setAba} />}
 
         {aba === "cronograma" && <CronogramaAlunoView turmaId={turmaId} />}
+
+        {aba === "segmento" && <SegmentoNegocioView equipe={equipe} onAtualizarEquipe={onAtualizarEquipe} souVisualizador={souVisualizador} exemplo={equipe?.teste === true ? { aplicado: dados?.exemploAplicado || null, preencher: preencherExemploTeste, limpar: limparExemploTeste } : null} />}
 
         {aba === "inicio" && (
           <div>
@@ -3934,6 +5280,11 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
               <StatCard label="Resultado/mês" value={fmtBRL(calc.resultadoOperacional)} tone={calc.resultadoOperacional >= 0 ? "emerald" : "rose"} small />
               <StatCard label="Progresso (aprovados)" value={`${progressoAprovado}%`} tone="gold" small />
             </div>
+
+            <Card className="p-4 mb-6">
+              <SectionTitle icon={Target} sub="Cada círculo é um módulo; o amarelo mostra onde vocês estão agora.">Caminho da equipe</SectionTitle>
+              <CaminhoSvg fluxo={fluxo} rotuloAqui="▼ vocês estão aqui" />
+            </Card>
 
             <Card className="p-4">
               <SectionTitle icon={ClipboardList} sub="Os módulos são liberados um a um: conclua e envie o atual para o professor(a) liberar o próximo.">Índice de módulos</SectionTitle>
@@ -3974,8 +5325,19 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
           <div key={m.id}>
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
             <SectionTitle icon={m.icon} sub={`Módulo ${m.n} de 13`}>{m.nome}</SectionTitle>
-            <TeoriaBox modId={m.id} />
-            <ExemploLancamentoBox modId={m.id} />
+            {estado.status === "liberado" && (TEORIA[m.id] || GUIA_MODULOS_EXTRA[m.id]) && (
+              <div className="mb-4 rounded-lg border border-emerald-700/60 bg-emerald-950/30 p-4">
+                <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm mb-1">
+                  <Sparkles size={15} /> Módulo liberado — orientação para começar
+                </div>
+                <p className="text-xs text-emerald-200/80">
+                  Antes de lançar os dados, dê uma olhada na Teoria do módulo e no Exemplo de lançamento logo abaixo — já deixamos os dois abertos para vocês.
+                </p>
+              </div>
+            )}
+            <TeoriaBox modId={m.id} aberta={estado.status === "liberado"} />
+            <ExemploLancamentoBox modId={m.id} aberta={estado.status === "liberado"} segmento={equipe?.segmento} />
+            <DisciplinasRelacionadasBox modId={m.id} />
             {souVisualizador && (
               <div className="mb-3 text-xs text-sky-400 flex items-center gap-1.5"><Eye size={13} /> Modo visualização — os campos abaixo estão travados enquanto {gestor.nome} estiver gerindo.</div>
             )}
@@ -4000,7 +5362,16 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
                 <RotateCcw size={16} className="mt-0.5 shrink-0" />
                 <div>
                   <b>O(a) professor(a) devolveu este módulo para ajustes.</b> Corrijam o que for indicado abaixo e enviem novamente.
-                  {estado.feedback && <div className="mt-2 bg-slate-900/60 border border-amber-800/40 rounded-md p-2.5 text-amber-100">{estado.feedback}</div>}
+                  {estado.feedback && <div className="mt-2 bg-slate-900/60 border border-amber-800/40 rounded-md p-2.5 text-amber-100 whitespace-pre-line">{estado.feedback}</div>}
+                </div>
+              </div>
+            )}
+            {estado.status === "liberado" && estado.loteAjustes && estado.feedback && (
+              <div className="mb-3 text-sm text-amber-300 flex items-start gap-2 bg-amber-950/30 border border-amber-800/50 rounded-lg p-3">
+                <RotateCcw size={16} className="mt-0.5 shrink-0" />
+                <div>
+                  <b>Orientação do(a) professor(a) para este módulo.</b>
+                  <div className="mt-2 bg-slate-900/60 border border-amber-800/40 rounded-md p-2.5 text-amber-100 whitespace-pre-line">{estado.feedback}</div>
                 </div>
               </div>
             )}
@@ -4016,17 +5387,17 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
             )}
 
             <Card className={`p-5 ${(souVisualizador || !podeEditar) ? "opacity-70 pointer-events-none select-none" : ""}`}>
-              {m.id === "m1" && <M1Form data={lanc.m1} update={(v) => updateModulo("m1", v)} />}
+              {m.id === "m1" && <M1Form data={lanc.m1} update={(v) => updateModulo("m1", v)} segmento={equipe?.segmento} />}
               {m.id === "m2" && <M2Form data={lanc.m2} update={(v) => updateModulo("m2", v)} calc={calc} />}
-              {m.id === "m3" && <M3Form data={lanc.m3} update={(v) => updateModulo("m3", v)} />}
+              {m.id === "m3" && <M3Form data={lanc.m3} update={(v) => updateModulo("m3", v)} segmento={equipe?.segmento} />}
               {m.id === "m4" && <M4Form data={lanc.m4} update={(v) => updateModulo("m4", v)} calc={calc} />}
-              {m.id === "m5" && <M5Form data={lanc.m5} update={(v) => updateModulo("m5", v)} />}
+              {m.id === "m5" && <M5Form data={lanc.m5} update={(v) => updateModulo("m5", v)} segmento={equipe?.segmento} />}
               {m.id === "m6" && <M6Form data={lanc.m6} update={(v) => updateModulo("m6", v)} m5itens={lanc.m5.itens} />}
               {m.id === "m7" && <M7Form data={lanc.m7} update={(v) => updateModulo("m7", v)} faturamento={calc.faturamento} />}
               {m.id === "m8" && <M8Form data={lanc.m8} update={(v) => updateModulo("m8", v)} m5itens={lanc.m5.itens} />}
-              {m.id === "m9" && <M9Form data={lanc.m9} update={(v) => updateModulo("m9", v)} />}
+              {m.id === "m9" && <M9Form data={lanc.m9} update={(v) => updateModulo("m9", v)} abrirTudo={souVisualizador || !podeEditar} />}
               {m.id === "m10" && <M10Form data={lanc.m10} update={(v) => updateModulo("m10", v)} m1itens={lanc.m1.itens} depreciacaoLinhas={calc.depreciacaoLinhas} depreciacaoMensal={calc.depreciacaoMensal} />}
-              {m.id === "m11" && <M11Form data={lanc.m11} update={(v) => updateModulo("m11", v)} maoDeObra={calc.maoDeObra} depreciacaoMensal={calc.depreciacaoMensal} />}
+              {m.id === "m11" && <M11Form data={lanc.m11} update={(v) => updateModulo("m11", v)} maoDeObra={calc.maoDeObra} depreciacaoMensal={calc.depreciacaoMensal} segmento={equipe?.segmento} />}
               {m.id === "m12" && <M12View calc={calc} />}
               {m.id === "m13" && <M13View calc={calc} />}
             </Card>
@@ -4157,13 +5528,212 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
           </div>
         )}
 
-        {aba === "suporte" && (
-          <SuporteView ctx={{ uid: user.uid, nome: user.nome, papel: "aluno", mestre: false, professorUid, professorNome, turmaNome }} />
+        {aba === "suporte" && (somenteLeitura
+          ? <Card className="p-6 text-sm text-slate-400">O Suporte (chamados da equipe) não está disponível no modo Coordenação.</Card>
+          : <SuporteView ctx={{ uid: user.uid, nome: user.nome, papel: "aluno", mestre: false, professorUid, professorNome, turmaNome }} />
         )}
 
         {aba === "referencias" && <ReferenciasBibliograficasView />}
         {aba === "novidades" && <NovidadesView />}
         {aba === "tutoriais" && <TutoriaisView categoria="aluno" />}
+        {aba === "guia" && <GuiaSemanaAlunoView fluxo={fluxo} equipeKey={equipeKey} onIrPara={setAba} />}
+        {aba === "trajetoria" && <TrajetoriaAlunoView dados={dados} />}
+        {aba === "lixeira" && <LixeiraAlunoView equipe={equipe} fluxo={fluxo} onRestaurar={restaurarDaLixeira} podeEditar={!souVisualizador && equipe?.teste !== true} />}
+    </>
+  );
+
+  const acaoBaixarPpt = async () => {
+    setErroPpt(""); setGerandoPpt(true);
+    try { await gerarApresentacaoEquipe({ equipe, calc, fluxo: projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0) }); }
+    catch { setErroPpt("Não foi possível gerar agora — confira a conexão com a internet e tente de novo."); }
+    finally { setGerandoPpt(false); }
+  };
+  const acaoBaixarDoc = async () => {
+    setErroPpt(""); setGerandoDoc(true);
+    try { await gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo: projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0), cenarios: dados?.cenarios || [], taxaCrescimento: dados?.taxaCrescimentoFluxo ?? 0, tmaAnual: dados?.tmaAnualFluxo ?? 12, historico: dados?.historico || [] }); }
+    catch { setErroPpt("Não foi possível gerar agora — confira a conexão com a internet e tente de novo."); }
+    finally { setGerandoDoc(false); }
+  };
+  const abrirManualAluno = () => { const url = MANUAIS_PDF.manualAlunoRef; if (user.mestre) window.open(url, "_blank", "noopener"); else setPdfAberto({ url, titulo: "Manual do Aluno" }); };
+  const menuMesaAluno = [
+    { direct: true, key: "inicio", label: "Início" },
+    { label: "Projeto", itens: [
+      { key: "manual", label: "Manual do Aluno", acao: abrirManualAluno },
+      { key: "segmento", label: "Segmento do negócio" }, { key: "cronograma", label: "Cronograma do projeto" },
+      { key: "guia", label: "Guia da semana", novo: true },
+    ] },
+    { label: "Módulos", itens: MODULOS.map((m) => ({ key: m.id, label: `${String(m.n).padStart(2, "0")} · ${m.nome}`, status: estadoModulo(fluxo, m.id).status })) },
+    { label: "Análises", itens: [{ key: "analise", label: "Análise do Negócio" }, { key: "cenarios", label: "Análise de Cenários" }, { key: "fluxocaixa", label: "Fluxo de Caixa Anual" }] },
+    { label: "Entregas", itens: [
+      { key: "ppt", label: gerandoPpt ? "Gerando apresentação…" : "Baixar Apresentação (dados da equipe)", acao: acaoBaixarPpt },
+      { key: "doc", label: gerandoDoc ? "Gerando documento…" : "Baixar Plano Financeiro (Word)", acao: acaoBaixarDoc },
+      { key: "modelo", label: "Modelo de apresentação em branco", acao: () => window.open(MODELO_APRESENTACAO_URL, "_blank", "noopener") },
+    ] },
+    { label: "Acompanhamento", badge: naoLidos || 0, itens: [
+      { key: "feedback", label: "Feedback do Professor", badge: naoLidos || 0 },
+      { key: "notas", label: "Minhas Notas" },
+      { key: "trajetoria", label: "Minha trajetória", novo: true },
+      { key: "lixeira", label: "Lixeira de segurança", novo: true },
+    ] },
+    { label: "Ajuda", itens: [{ key: "referencias", label: "Referências Bibliográficas" }, { key: "suporte", label: "Suporte" }, { key: "novidades", label: "Novidades" }, { key: "tutoriais", label: "Tutoriais" }] },
+  ];
+  const tituloMesaAluno = (k) => {
+    const m = MODULOS.find((x) => x.id === k);
+    if (m) return `${String(m.n).padStart(2, "0")} · ${m.nome}`;
+    for (const mm of menuMesaAluno) { if (mm.key === k) return mm.label; for (const it of (mm.itens || [])) if (it.key === k) return it.label; }
+    return k;
+  };
+
+  if (mesaAtiva) {
+    return (
+      <>
+        <MesaJanelas
+          menu={menuMesaAluno} mesa={mesa} renderTela={(k) => renderAba(k, (id) => mesa.abrir(id))} tituloDe={tituloMesaAluno}
+          brand="PPF · Aluno" homeChave="inicio" onVoltar={() => setModoMesa(false)}
+          avisos={<>{avisosAluno}{erroPpt && <div className="px-4 py-1 text-xs text-rose-300 bg-slate-900">{erroPpt}</div>}</>}
+          info={<>
+            <span className="truncate max-w-[200px]" title={equipe.nomeNegocio}>{equipe.nomeNegocio}</span>
+            <span className="flex items-center gap-1.5" title="Progresso geral (módulos aprovados)"><span className="inline-block w-20 h-1.5 bg-slate-700 rounded-full"><span className="block h-1.5 bg-amber-500 rounded-full" style={{ width: `${progressoAprovado}%` }} /></span>{progressoAprovado}%</span>
+            {onTrocarEmpresa && <button onClick={onTrocarEmpresa} className="border border-slate-600 rounded px-2.5 py-1 text-slate-100 hover:bg-slate-800">Trocar de empresa</button>}
+            <button onClick={() => setConfirmSairAberto(true)} className="border border-slate-600 rounded px-2.5 py-1 text-slate-100 hover:bg-slate-800">Sair</button>
+          </>}
+        />
+        {modalSair}
+        {modalGestor}
+        {onVerNovidades && <NovidadesOverlay perfil={{ ultimaVersaoVista }} onFechar={onVerNovidades} onIrParaHistorico={() => { onVerNovidades(); irPara("novidades"); }} />}
+        {pdfAberto && <VisualizadorManualPDF url={pdfAberto.url} titulo={pdfAberto.titulo} onFechar={() => setPdfAberto(null)} />}
+      </>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex bg-slate-950 relative">
+      <header className="app-mobile-header md:hidden fixed top-0 inset-x-0 z-20 bg-slate-900 border-b border-white/10 flex items-center justify-between px-4 py-3">
+        <div className="flex items-center gap-2 text-sm text-white/80 font-semibold truncate"><Building2 size={16} className="shrink-0" /> <span className="truncate">{equipe.nomeNegocio}</span></div>
+        <button onClick={() => setMenuAberto(true)} className="relative text-white/80 p-1 shrink-0">
+          <Menu size={22} />
+          {naoLidos > 0 && <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-slate-900" />}
+        </button>
+      </header>
+
+      {menuAberto && <div onClick={() => setMenuAberto(false)} className="md:hidden fixed inset-0 bg-black/60 z-30" />}
+
+      <aside className={`app-sidebar w-72 bg-slate-900 text-white flex flex-col shrink-0 fixed inset-y-0 left-0 z-40 transition-transform duration-200 md:static md:translate-x-0 ${menuAberto ? "translate-x-0" : "-translate-x-full"}`}>
+        <div className="p-5 border-b border-white/10 flex items-start justify-between gap-2">
+          <div>
+            <div className="flex items-center gap-2 text-sm text-white/70"><Building2 size={16} /> {equipe.nomeNegocio}</div>
+            <div className="text-xs text-white/50 mt-1">Equipe · {equipe.integrantes.join(", ")}</div>
+          </div>
+          <button onClick={() => setMenuAberto(false)} className="md:hidden text-white/60 hover:text-white shrink-0"><X size={18} /></button>
+        </div>
+        <nav className="flex-1 overflow-y-auto py-3">
+          {menuItems.map((it) => {
+            const Icon = it.icon;
+            const active = aba === it.id;
+            if (it.id === "modeloApresentacao") {
+              return (
+                <div key={it.id}>
+                  <button
+                    type="button"
+                    disabled={gerandoPpt}
+                    onClick={async () => {
+                      setErroPpt(""); setGerandoPpt(true);
+                      try { await gerarApresentacaoEquipe({ equipe, calc, fluxo: projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0) }); setMenuAberto(false); }
+                      catch { setErroPpt("Não foi possível gerar agora — confira a conexão com a internet e tente de novo."); }
+                      finally { setGerandoPpt(false); }
+                    }}
+                    className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent disabled:opacity-60"
+                  >
+                    <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{gerandoPpt ? "Gerando apresentação…" : "Baixar Apresentação (dados da equipe)"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={gerandoDoc}
+                    onClick={async () => {
+                      setErroPpt(""); setGerandoDoc(true);
+                      try { await gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo: projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0), cenarios: dados?.cenarios || [], taxaCrescimento: dados?.taxaCrescimentoFluxo ?? 0, tmaAnual: dados?.tmaAnualFluxo ?? 12, historico: dados?.historico || [] }); setMenuAberto(false); }
+                      catch { setErroPpt("Não foi possível gerar agora — confira a conexão com a internet e tente de novo."); }
+                      finally { setGerandoDoc(false); }
+                    }}
+                    className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent disabled:opacity-60"
+                  >
+                    <FileDown size={16} className="shrink-0" /> <span className="truncate flex-1">{gerandoDoc ? "Gerando documento…" : "Baixar Plano Financeiro (Word)"}</span>
+                  </button>
+                  <a href={MODELO_APRESENTACAO_URL} download onClick={() => setMenuAberto(false)} className="block pl-12 pr-5 pb-1.5 text-[11px] text-white/40 hover:text-white/70 underline">
+                    Modelo em branco
+                  </a>
+                  {erroPpt && <div className="px-5 pb-2 text-[11px] text-rose-300">{erroPpt}</div>}
+                </div>
+              );
+            }
+            const pdfUrl = MANUAIS_PDF[it.id];
+            if (pdfUrl) {
+              if (user.mestre) {
+                return (
+                  <a
+                    key={it.id}
+                    href={pdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setMenuAberto(false)}
+                    className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent"
+                  >
+                    {it.num && <span className="text-[10px] font-mono w-5 shrink-0 text-white/30">{it.num}</span>}
+                    <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
+                    <Printer size={13} className="shrink-0 text-slate-500" />
+                  </a>
+                );
+              }
+              return (
+                <button
+                  key={it.id}
+                  onClick={() => { setPdfAberto({ url: pdfUrl, titulo: it.label }); setMenuAberto(false); }}
+                  className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent"
+                >
+                  {it.num && <span className="text-[10px] font-mono w-5 shrink-0 text-white/30">{it.num}</span>}
+                  <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
+                </button>
+              );
+            }
+            return (
+              <button
+                key={it.id}
+                onClick={() => irPara(it.id)}
+                className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${active ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}
+              >
+                {it.num && <span className={`text-[10px] font-mono w-5 shrink-0 ${active ? "text-amber-500" : "text-white/30"}`}>{it.num}</span>}
+                <Icon size={16} className="shrink-0" /> <span className="truncate flex-1">{it.label}</span>
+                {it.moduloStatus && <BadgeStatusModuloMenu status={it.moduloStatus} />}
+                {it.id === "feedback" && naoLidos > 0 && (
+                  <span className="text-[10px] font-bold bg-amber-500 text-slate-900 rounded-full px-1.5 py-0.5 shrink-0">{naoLidos}</span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+        <div className="p-4 border-t border-white/10">
+          {larga && <button onClick={() => setModoMesa(true)} className="flex items-center gap-2 text-sm text-amber-400 hover:text-amber-300 mb-3" title="Mostra as mesmas telas em janelas flutuantes, lado a lado">▦ Abrir Mesa de janelas</button>}
+          <div className="text-xs text-white/50 mb-2">Progresso geral (módulos aprovados)</div>
+          <div className="w-full bg-white/10 rounded-full h-2 mb-3"><div className="bg-amber-500 h-2 rounded-full transition-all" style={{ width: `${progressoAprovado}%` }} /></div>
+          {onTrocarEmpresa && (
+            <button onClick={onTrocarEmpresa} className="flex items-center gap-2 text-sm text-white/70 hover:text-white mb-2"><Building2 size={15} /> Trocar de empresa</button>
+          )}
+          <button onClick={() => setConfirmSairAberto(true)} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><LogOut size={15} /> Sair</button>
+        </div>
+      </aside>
+
+
+      {onVerNovidades && <NovidadesOverlay perfil={{ ultimaVersaoVista }} onFechar={onVerNovidades} onIrParaHistorico={() => { onVerNovidades(); irPara("novidades"); }} />}
+
+
+      {modalSair}
+
+      {modalGestor}
+
+      <main className="flex-1 overflow-y-auto p-4 pt-20 md:p-8 md:pt-8 max-w-5xl mx-auto w-full">
+        {avisosAluno}
+
+        {renderAba(aba, setAba)}
       </main>
       {pdfAberto && <VisualizadorManualPDF url={pdfAberto.url} titulo={pdfAberto.titulo} onFechar={() => setPdfAberto(null)} />}
     </div>
@@ -4194,7 +5764,7 @@ function ModuloLeitura({ mId, lanc, calc }) {
         {mId === "m6" && <M6Form data={lanc.m6} update={noop} m5itens={lanc.m5.itens} />}
         {mId === "m7" && <M7Form data={lanc.m7} update={noop} faturamento={calc.faturamento} />}
         {mId === "m8" && <M8Form data={lanc.m8} update={noop} m5itens={lanc.m5.itens} />}
-        {mId === "m9" && <M9Form data={lanc.m9} update={noop} />}
+        {mId === "m9" && <M9Form data={lanc.m9} update={noop} abrirTudo />}
         {mId === "m10" && <M10Form data={lanc.m10} update={noop} m1itens={lanc.m1.itens} depreciacaoLinhas={calc.depreciacaoLinhas} depreciacaoMensal={calc.depreciacaoMensal} />}
         {mId === "m11" && <M11Form data={lanc.m11} update={noop} maoDeObra={calc.maoDeObra} depreciacaoMensal={calc.depreciacaoMensal} />}
         {mId === "m12" && <M12View calc={calc} />}
@@ -4335,7 +5905,300 @@ function NotaModulo({ nota, onSetNota, ehFinal, readOnly }) {
   );
 }
 
-function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes, onReabrirPosCorrecao, nota }) {
+// Compara o prazo original do cronograma com a data em que a equipe
+// realmente enviou o módulo — só para leitura rápida do professor na hora de
+// avaliar/dar feedback. Não grava nada e não interfere no desconto de
+// pontualidade (que já é calculado, à parte, em moduloAtrasadoSemEnvio/estado.atraso).
+function LinhaPrazoCronogramaEntrega({ prazoCronograma, enviadoEm }) {
+  if (!prazoCronograma || !enviadoEm) return null;
+  const dataEntrega = new Date(enviadoEm);
+  const [ano, mes, dia] = prazoCronograma.split("-").map(Number);
+  const limite = new Date(ano, mes - 1, dia, 23, 59, 59, 999);
+  const atraso = dataEntrega.getTime() > limite.getTime();
+  return (
+    <div className="flex items-center gap-2 text-xs bg-slate-950/60 border border-slate-700 rounded-md px-3 py-2 flex-wrap">
+      <Calendar size={13} className="text-slate-500 shrink-0" />
+      <span className="text-slate-400">Prazo do cronograma:</span>
+      <span className="font-semibold text-slate-200">{fmtDataCurta(prazoCronograma)}</span>
+      <span className="text-slate-600">→</span>
+      <UserCheck size={13} className="text-slate-500 shrink-0" />
+      <span className="text-slate-400">Entregue em:</span>
+      <span className={`font-semibold ${atraso ? "text-rose-400" : "text-emerald-400"}`}>{dataEntrega.toLocaleDateString("pt-BR")}</span>
+      <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 border ${atraso ? "text-rose-400 bg-rose-500/10 border-rose-500/30" : "text-emerald-400 bg-emerald-500/10 border-emerald-500/30"}`}>
+        {atraso ? "com atraso" : "no prazo"}
+      </span>
+    </div>
+  );
+}
+
+// ============================================================================
+// PRÉ-ANÁLISE AUTOMÁTICA DOS MÓDULOS (v2.9)
+// Regras fixas (sem IA e sem rede) que conferem o que a equipe enviou e
+// montam um RASCUNHO de orientações. Só LÊ os dados: nada é gravado,
+// devolvido ou aprovado sozinho. O professor revisa/edita o texto e, se
+// quiser, usa o botão "Devolver para ajustes" que já existe.
+// ============================================================================
+const SALARIO_MINIMO_REF = 1621; // referência para conferir salários (ajuste aqui quando mudar)
+const normTxt = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+const fmtN = (n) => (Number(n) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+const medianaN = (arr) => { const a = [...arr].sort((x, y) => x - y); const m = Math.floor(a.length / 2); return a.length ? (a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2) : 0; };
+
+function achado(sev, titulo, onde, linhas, orientacao) { return { sev, titulo, onde, linhas: linhas || [], orientacao }; }
+
+function duplicados(itens, campo) {
+  const vistos = {}; const dup = [];
+  itens.forEach((it) => { const k = normTxt(it[campo]); if (!k) return; vistos[k] = (vistos[k] || 0) + 1; });
+  Object.keys(vistos).forEach((k) => { if (vistos[k] > 1) { const nome = (itens.find((it) => normTxt(it[campo]) === k) || {})[campo]; dup.push(String(nome).trim()); } });
+  return dup;
+}
+
+function analisarModulo(modId, lancBruto, calc) {
+  const l = mergeLancamentos(lancBruto);
+  const a = [];
+  const nomesProd = (l.m5.itens || []).map((p) => String(p.nome || "").trim()).filter(Boolean);
+
+  if (modId === "m1") {
+    const it = l.m1.itens;
+    if (it.length === 0) a.push(achado("crit", "Nenhum investimento fixo lançado", "Módulo 1", [], "O Módulo 1 está vazio. Listem máquinas, equipamentos, móveis e utensílios necessários para operar, com quantidade e valor de cada um."));
+    const semDesc = it.filter((x) => !String(x.desc || "").trim());
+    if (semDesc.length) a.push(achado("att", `${semDesc.length} item(ns) sem descrição`, "Módulo 1", [], "Há itens sem descrição. Descrevam cada item (ex.: “Forno industrial 3 esteiras”) para ser possível conferir o valor."));
+    const zerados = it.filter((x) => !(Number(x.qtd) > 0) || !(Number(x.valorUnit) > 0));
+    if (zerados.length) a.push(achado("crit", `${zerados.length} item(ns) com quantidade ou valor zerado`, "Módulo 1", zerados.slice(0, 6).map((x) => [String(x.desc || "(sem descrição)").trim(), `qtd ${fmtN(x.qtd)} · R$ ${fmtN(x.valorUnit)}`]), "Revisem os itens com quantidade ou valor zerado: informem o valor pesquisado ou retirem o item, porque ele não entra no investimento."));
+    const dup = duplicados(it, "desc");
+    if (dup.length) a.push(achado("att", "Itens repetidos", "Módulo 1", dup.slice(0, 6).map((d) => [d, "aparece mais de uma vez"]), "Alguns itens aparecem repetidos. Se forem equipamentos diferentes, diferenciem o nome; se for o mesmo, somem as quantidades em uma só linha."));
+    const semCat = it.filter((x) => !String(x.categoria || "").trim());
+    if (semCat.length) a.push(achado("sug", `${semCat.length} item(ns) sem categoria`, "Módulo 1", [], "Classifiquem cada item na categoria correta (máquinas, móveis, veículos etc.)."));
+  }
+
+  if (modId === "m2") {
+    const g = l.m2;
+    if (!(Number(g.estoqueInicial) > 0)) a.push(achado("att", "Estoque inicial zerado", "Módulo 2", [], "O estoque inicial está zerado. Se o negócio compra mercadoria ou insumos antes de vender, informem quanto será preciso ter em estoque no primeiro dia."));
+    const pv = Number(g.prazoVendasDias) || 0, pc = Number(g.prazoComprasDias) || 0, pe = Number(g.prazoEstoqueDias) || 0;
+    if (pv + pe === 0 && pc === 0) a.push(achado("att", "Todos os prazos estão zerados", "Módulo 2", [], "Os prazos de vendas, compras e estoque estão zerados. Pesquisem os prazos reais do negócio, porque eles definem o caixa mínimo."));
+    [["vendas", pv], ["compras", pc], ["estoque", pe]].forEach(([n, v]) => { if (v < 0 || v > 180) a.push(achado("crit", `Prazo de ${n} fora do razoável (${fmtN(v)} dias)`, "Módulo 2", [], `O prazo médio de ${n} está em ${fmtN(v)} dias. Confiram o valor: normalmente fica entre 0 e 90 dias.`)); });
+    if (calc && calc.cmv > 0 && Number(g.estoqueInicial) > calc.cmv * 3) a.push(achado("att", "Estoque inicial muito maior que o custo mensal", "Módulo 2", [["Estoque inicial", `R$ ${fmtN(g.estoqueInicial)}`], ["CMV mensal", `R$ ${fmtN(calc.cmv)}`]], "O estoque inicial é mais de 3 vezes o custo de mercadorias de um mês. Expliquem a necessidade ou revisem o valor."));
+  }
+
+  if (modId === "m3") {
+    const it = l.m3.itens;
+    if (it.length === 0) a.push(achado("crit", "Nenhum investimento pré-operacional lançado", "Módulo 3", [], "O Módulo 3 está vazio. Listem os gastos antes de abrir (reforma, documentação, marketing de lançamento, treinamento etc.)."));
+    const z = it.filter((x) => !(Number(x.valor) > 0));
+    if (z.length) a.push(achado("crit", `${z.length} item(ns) com valor zerado`, "Módulo 3", z.slice(0, 6).map((x) => [String(x.desc || "(sem descrição)").trim(), "R$ 0"]), "Há itens com valor zerado. Informem o valor pesquisado ou retirem o item."));
+    const sd = it.filter((x) => !String(x.desc || "").trim());
+    if (sd.length) a.push(achado("att", `${sd.length} item(ns) sem descrição`, "Módulo 3", [], "Descrevam cada gasto pré-operacional para podermos conferir."));
+    const dup = duplicados(it, "desc");
+    if (dup.length) a.push(achado("att", "Itens repetidos", "Módulo 3", dup.slice(0, 6).map((d) => [d, "aparece mais de uma vez"]), "Verifiquem os itens repetidos: se for o mesmo gasto, ele está sendo contado duas vezes."));
+    if (!it.some((x) => /document|alvara|registro|licen|cnpj|abertura|contab/.test(normTxt(x.desc)))) a.push(achado("sug", "Nenhum gasto de documentação/abertura", "Módulo 3", [], "Não encontrei gastos de documentação (registro, alvará, licenças, abertura de CNPJ). Verifiquem se se aplicam ao negócio."));
+  }
+
+  if (modId === "m4") {
+    const p = Number(l.m4.pctProprio);
+    const fontes = (l.m4.fontesTerceiros || []);
+    if (!(p >= 0 && p <= 100)) a.push(achado("crit", "Percentual de capital próprio inválido", "Módulo 4", [["Capital próprio", `${fmtN(p)}%`]], "O percentual de capital próprio deve ficar entre 0% e 100%. Corrijam o valor."));
+    if (p < 100 && fontes.length === 0) a.push(achado("crit", "Há capital de terceiros, mas nenhuma fonte informada", "Módulo 4", [["Capital próprio", `${fmtN(p)}%`]], "O capital próprio é menor que 100%, mas não há fonte de terceiros. Informem de onde virá o restante (empréstimo, sócio, financiamento…)."));
+    if (p >= 100 && fontes.length > 0) a.push(achado("att", "Fonte de terceiros informada com 100% de capital próprio", "Módulo 4", [], "Vocês informaram fonte de terceiros, mas o capital próprio está em 100%. Ajustem o percentual ou retirem a fonte."));
+    if (fontes.some((f) => !String(f.fonte || "").trim())) a.push(achado("att", "Fonte de terceiros sem nome", "Módulo 4", [], "Há uma fonte de terceiros sem identificação. Preencham o nome da fonte."));
+    if (calc && !(calc.investimentoTotal > 0)) a.push(achado("crit", "Investimento total zerado", "Módulo 4", [], "O investimento total está zerado: o resultado depende dos Módulos 1, 2 e 3. Revisem esses módulos."));
+  }
+
+  if (modId === "m5") {
+    const it = l.m5.itens;
+    if (it.length === 0) a.push(achado("crit", "Nenhum produto/serviço lançado", "Módulo 5", [], "O Módulo 5 está vazio. Lancem os produtos ou serviços com quantidade mensal prevista e preço de venda."));
+    const z = it.filter((x) => !(Number(x.qtd) > 0) || !(Number(x.precoUnit) > 0));
+    if (z.length) a.push(achado("crit", `${z.length} produto(s) com quantidade ou preço zerado`, "Módulo 5", z.slice(0, 8).map((x) => [String(x.nome || "(sem nome)").trim(), `qtd ${fmtN(x.qtd)} · R$ ${fmtN(x.precoUnit)}`]), "Há produtos com quantidade ou preço zerado. Completem os dados ou retirem o item da lista."));
+    const sn = it.filter((x) => !String(x.nome || "").trim());
+    if (sn.length) a.push(achado("att", `${sn.length} item(ns) sem nome`, "Módulo 5", [], "Deem nome a todos os produtos/serviços."));
+    const dup = duplicados(it, "nome");
+    if (dup.length) a.push(achado("att", "Produtos repetidos", "Módulo 5", dup.slice(0, 6).map((d) => [d, "repetido"]), "Há produtos com o mesmo nome. Se forem iguais, o faturamento está duplicado; se forem diferentes, diferenciem o nome."));
+    if (it.length >= 4) {
+      const pr = it.map((x) => Number(x.precoUnit) || 0).filter((v) => v > 0); const med = medianaN(pr);
+      const out = it.filter((x) => med > 0 && ((Number(x.precoUnit) || 0) > med * 8 || (Number(x.precoUnit) > 0 && Number(x.precoUnit) < med / 8)));
+      if (out.length) a.push(achado("att", "Preço muito diferente dos demais produtos", "Módulo 5", out.slice(0, 6).map((x) => [String(x.nome).trim(), `R$ ${fmtN(x.precoUnit)} (mediana R$ ${fmtN(med)})`]), "Confiram os preços destacados, porque estão muito distantes do padrão dos demais produtos (erro de vírgula ou de unidade?)."));
+    }
+  }
+
+  if (modId === "m6") {
+    const it = l.m6.itens;
+    if (it.length === 0) { a.push(achado("sug", "Módulo 6 sem lançamentos", "Módulo 6", [], "O Módulo 6 é opcional, mas ajuda a justificar o custo unitário do Módulo 8. Se o negócio fabrica o produto, detalhem os insumos de cada receita.")); }
+    const g = {}; it.forEach((x) => { const k = normTxt(x.material); if (k) (g[k] = g[k] || []).push(x); });
+    const qtdFora = []; const custoFora = [];
+    Object.keys(g).forEach((k) => {
+      const linhas = g[k]; if (linhas.length < 3) return;
+      const qs = linhas.map((x) => Number(x.qtd) || 0).filter((v) => v > 0); const md = medianaN(qs);
+      const cs = linhas.map((x) => Number(x.custoUnit) || 0).filter((v) => v > 0); const mc = medianaN(cs);
+      linhas.forEach((x) => {
+        const q = Number(x.qtd) || 0; const c = Number(x.custoUnit) || 0;
+        const mesmaUn = (x.unQtd || "") === (linhas[0].unQtd || "");
+        if (md > 0 && q > 0 && mesmaUn && (q / md >= 20 || q / md <= 1 / 20)) qtdFora.push({ prod: String(x.produto).trim(), mat: String(x.material).trim(), q, md });
+        if (mc > 0 && c > 0 && (c / mc >= 4 || c / mc <= 1 / 4)) custoFora.push({ prod: String(x.produto).trim(), mat: String(x.material).trim(), c, mc });
+      });
+    });
+    if (qtdFora.length) {
+      const muitas = qtdFora.length > 15;
+      a.push(achado(muitas ? "att" : "crit", `${qtdFora.length} quantidade(s) muito fora do padrão do mesmo insumo`, "Módulo 6",
+        qtdFora.sort((x, y) => Math.abs(Math.log(y.q / y.md)) - Math.abs(Math.log(x.q / x.md))).slice(0, 8).map((x) => [`${x.prod} · ${x.mat}`, `${fmtN(x.q)} (mediana nos outros produtos: ${fmtN(x.md)})`]),
+        muitas
+          ? `Em ${qtdFora.length} linhas a quantidade de um mesmo insumo varia mais de 20 vezes entre produtos (ex.: 0,7 em um e 25 em outro), o que indica mistura de unidades (kg e g, por exemplo). Usem os campos de unidade do Módulo 6 em cada linha para a planilha converter sozinha, e confiram principalmente os casos mais extremos.`
+          : "Nas linhas listadas a quantidade do insumo está 20 vezes maior (ou menor) que nos demais produtos. Confiram a vírgula e a unidade (g, kg, un) e usem a mesma unidade para o mesmo insumo."));
+    }
+    if (custoFora.length) a.push(achado("att", `${custoFora.length} custo(s) unitário(s) muito diferente(s) para o mesmo insumo`, "Módulo 6", custoFora.slice(0, 8).map((x) => [`${x.prod} · ${x.mat}`, `R$ ${fmtN(x.c)} (mediana: R$ ${fmtN(x.mc)})`]), "O mesmo insumo aparece com preços muito diferentes. Se for o mesmo produto, usem o mesmo custo; se não for, diferenciem o nome do insumo."));
+    const semUn = it.filter((x) => !(x.unQtd && x.unPreco));
+    if (it.length && semUn.length) a.push(achado("sug", `${semUn.length} de ${it.length} linhas sem unidade de medida`, "Módulo 6", [], "Informem a unidade de medida (kg, g, L, ml, un ou dz) em cada insumo, no preço e na quantidade. A planilha converte sozinha e evita erros de grandeza."));
+    const resumo = resumoProdutosM6(l.m6, l.m5.itens);
+    const acima = resumo.filter((r) => r.acima && r.rendimento > 0);
+    if (acima.length) a.push(achado("crit", `${acima.length} produto(s) com custo acima do preço de venda`, "Módulo 6", acima.slice(0, 8).map((r) => [r.nome, `custo R$ ${fmtN(r.porUnidade)} · preço R$ ${fmtN(r.preco)}`]), "O custo calculado de alguns produtos é maior que o preço de venda. Conferam o rendimento da receita e as quantidades, ou revisem o preço no Módulo 5."));
+    const semRend = resumo.filter((r) => !(r.rendimento > 0));
+    if (resumo.length && semRend.length) a.push(achado("att", `${semRend.length} produto(s) sem rendimento informado`, "Módulo 6", semRend.slice(0, 8).map((r) => [r.nome, "rendimento não informado"]), "Informem quantas unidades cada receita rende, para obter o custo por unidade vendida."));
+    const nomesM6 = new Set(resumo.map((r) => normTxt(r.nome)));
+    const sem = nomesProd.filter((n) => !nomesM6.has(normTxt(n)));
+    if (it.length && sem.length) a.push(achado("att", `${sem.length} produto(s) do Módulo 5 sem receita no Módulo 6`, "Módulo 6", sem.slice(0, 8).map((n) => [n, "sem insumos"]), "Alguns produtos do Módulo 5 não têm receita no Módulo 6. Detalhem os insumos ou expliquem por que não se aplica."));
+  }
+
+  if (modId === "m7") {
+    const pi = Number(l.m7.pctImpostos) || 0, pc = Number(l.m7.pctComissao) || 0;
+    if (pi === 0) a.push(achado("att", "Impostos zerados", "Módulo 7", [], "O percentual de impostos está zerado. Todo negócio formalizado paga algum imposto sobre a venda (Simples, MEI…). Confiram o enquadramento e a alíquota."));
+    if (!String(l.m7.tipoAtividade || "").trim() && l.m7.modoImposto === "simples") a.push(achado("att", "Tipo de atividade não informado", "Módulo 7", [], "Informem o tipo de atividade (comércio, indústria, serviços) para a alíquota do Simples."));
+    if (pi > 35) a.push(achado("crit", `Impostos muito altos (${fmtN(pi)}%)`, "Módulo 7", [], "O percentual de impostos está acima do que o Simples costuma cobrar. Revisem a alíquota e a base de cálculo."));
+    if (pc > 30) a.push(achado("att", `Comissão/taxas altas (${fmtN(pc)}%)`, "Módulo 7", [], "Confiram a taxa de comissão, cartão ou aplicativo: está acima de 30% da venda."));
+    if (pc === 0) a.push(achado("sug", "Comissões e taxas zeradas", "Módulo 7", [], "Se o negócio aceita cartão, PIX com taxa ou usa aplicativo de entrega, incluam essa taxa. Se não há, expliquem no relatório."));
+  }
+
+  if (modId === "m8") {
+    const cu = l.m8.custosUnit || {};
+    const sem = l.m5.itens.filter((x) => !(Number(cu[x.id]) > 0));
+    if (l.m5.itens.length === 0) a.push(achado("crit", "Sem produtos no Módulo 5", "Módulo 8", [], "O Módulo 8 depende dos produtos do Módulo 5, que está vazio."));
+    if (sem.length) a.push(achado("crit", `${sem.length} produto(s) sem custo unitário`, "Módulo 8", sem.slice(0, 10).map((x) => [String(x.nome || "(sem nome)").trim(), "custo não informado"]), "Informem o custo unitário (CMV/CMD) de todos os produtos. Sem custo, o lucro fica superestimado."));
+    const acima = l.m5.itens.filter((x) => Number(cu[x.id]) > 0 && Number(x.precoUnit) > 0 && Number(cu[x.id]) >= Number(x.precoUnit));
+    if (acima.length) a.push(achado("crit", `${acima.length} produto(s) com custo igual ou maior que o preço`, "Módulo 8", acima.slice(0, 8).map((x) => [String(x.nome).trim(), `custo R$ ${fmtN(cu[x.id])} · preço R$ ${fmtN(x.precoUnit)}`]), "Nestes produtos o custo é igual ou maior que o preço de venda: cada venda gera prejuízo. Revisem o custo ou o preço."));
+    const baixa = l.m5.itens.filter((x) => Number(cu[x.id]) > 0 && Number(x.precoUnit) > Number(cu[x.id]) && (1 - Number(cu[x.id]) / Number(x.precoUnit)) < 0.15);
+    if (baixa.length) a.push(achado("att", `${baixa.length} produto(s) com margem bruta abaixo de 15%`, "Módulo 8", baixa.slice(0, 8).map((x) => [String(x.nome).trim(), `margem ${fmtN((1 - cu[x.id] / x.precoUnit) * 100)}%`]), "A margem bruta é muito baixa. Verifiquem se o custo está completo e se o preço cobre os demais custos."));
+    const alta = l.m5.itens.filter((x) => Number(cu[x.id]) > 0 && Number(x.precoUnit) > 0 && (1 - Number(cu[x.id]) / Number(x.precoUnit)) > 0.9);
+    if (alta.length) a.push(achado("att", `${alta.length} produto(s) com margem bruta acima de 90%`, "Módulo 8", alta.slice(0, 8).map((x) => [String(x.nome).trim(), `margem ${fmtN((1 - cu[x.id] / x.precoUnit) * 100)}%`]), "Margens acima de 90% costumam indicar custo incompleto (faltaram insumos, embalagem ou perdas). Confiram."));
+    // coerência com o M6, quando existir
+    const r6 = resumoProdutosM6(l.m6, l.m5.itens).filter((r) => r.rendimento > 0 && r.porUnidade > 0);
+    const dif = [];
+    r6.forEach((r) => { const p = l.m5.itens.find((x) => normTxt(x.nome) === normTxt(r.nome)); const c = p ? Number(cu[p.id]) : 0; if (c > 0 && (c / r.porUnidade >= 2 || c / r.porUnidade <= 0.5)) dif.push([r.nome, `M8: R$ ${fmtN(c)} · M6: R$ ${fmtN(r.porUnidade)}`]); });
+    if (dif.length) a.push(achado("att", "Custo do Módulo 8 diferente do calculado no Módulo 6", "Módulo 8", dif.slice(0, 8), "Para os produtos listados, o custo do Módulo 8 difere muito do custo da receita (Módulo 6). Expliquem a diferença ou alinhem os valores."));
+  }
+
+  if (modId === "m9") {
+    const md = detalheMaoDeObra(l.m9);
+    if (md.linhas.length === 0 && md.prolabore.length === 0) a.push(achado("crit", "Nenhum funcionário nem pró-labore lançado", "Módulo 9", [], "O Módulo 9 está vazio. Incluam funcionários e/ou o pró-labore dos sócios. Se não houver funcionários, o pró-labore é obrigatório para remunerar o trabalho dos sócios."));
+    else if (md.prolabore.length === 0) a.push(achado("att", "Sem pró-labore dos sócios", "Módulo 9", [], "Não há pró-labore. Incluam a retirada dos sócios, que é um custo do negócio, ou justifiquem."));
+    const baixo = md.linhas.filter((r) => r.salario > 0 && r.salario < SALARIO_MINIMO_REF);
+    if (baixo.length) a.push(achado("crit", `${baixo.length} função(ões) com salário abaixo do mínimo`, "Módulo 9", baixo.slice(0, 6).map((r) => [String(r.funcao || "(sem função)"), `R$ ${fmtN(r.salario)} (mínimo de referência R$ ${fmtN(SALARIO_MINIMO_REF)})`]), "Há salários abaixo do salário mínimo. Corrijam ou, se for jornada parcial, expliquem."));
+    const zer = md.linhas.filter((r) => !(r.qtd > 0) || !(r.salario > 0));
+    if (zer.length) a.push(achado("crit", `${zer.length} função(ões) com quantidade ou salário zerado`, "Módulo 9", zer.slice(0, 6).map((r) => [String(r.funcao || "(sem função)"), `qtd ${fmtN(r.qtd)} · R$ ${fmtN(r.salario)}`]), "Completem quantidade e salário das funções listadas ou retirem a linha."));
+    if (md.linhas.some((r) => !String(r.funcao || "").trim())) a.push(achado("att", "Função sem nome", "Módulo 9", [], "Identifiquem a função de cada linha."));
+    if (calc && calc.faturamento > 0 && md.total > calc.faturamento * 0.6) a.push(achado("att", "Mão de obra pesa mais de 60% do faturamento", "Módulo 9", [["Mão de obra mensal", `R$ ${fmtN(md.total)}`], ["Faturamento mensal", `R$ ${fmtN(calc.faturamento)}`]], "A mão de obra consome mais de 60% do faturamento previsto. Revisem a equipe, os salários ou o faturamento do Módulo 5."));
+  }
+
+  if (modId === "m10") {
+    const it = l.m1.itens;
+    if (it.length === 0) a.push(achado("att", "Sem itens do Módulo 1 para depreciar", "Módulo 10", [], "A depreciação depende dos itens do Módulo 1, que está vazio."));
+    const v = l.m10.vidasUteis || {};
+    const padrao = it.filter((x) => v[x.id] === undefined || v[x.id] === null || v[x.id] === "");
+    if (it.length && padrao.length === it.length) a.push(achado("att", "Nenhuma vida útil definida", "Módulo 10", [], "Todos os itens estão com a vida útil padrão (5 anos). Definam a vida útil de cada bem (equipamentos, móveis, veículos, informática) com base em tabela de referência."));
+    const ruins = it.filter((x) => v[x.id] !== undefined && v[x.id] !== "" && (Number(v[x.id]) <= 0 || Number(v[x.id]) > 50));
+    if (ruins.length) a.push(achado("crit", `${ruins.length} vida(s) útil(eis) fora do razoável`, "Módulo 10", ruins.slice(0, 6).map((x) => [String(x.desc || "").trim(), `${fmtN(v[x.id])} anos`]), "Vida útil deve ser maior que zero e plausível (em geral até 25 anos; imóvel, até 50). Corrijam as linhas listadas."));
+    const pc = it.filter((x) => /computador|notebook|celular|impressora|tablet/.test(normTxt(x.desc)) && Number(v[x.id]) > 10);
+    if (pc.length) a.push(achado("att", "Vida útil longa para equipamento de informática", "Módulo 10", pc.slice(0, 5).map((x) => [String(x.desc).trim(), `${fmtN(v[x.id])} anos`]), "Equipamentos de informática costumam ter vida útil de 3 a 5 anos. Revisem."));
+  }
+
+  if (modId === "m11") {
+    const it = l.m11.itens;
+    if (it.length === 0) a.push(achado("crit", "Nenhum custo fixo lançado", "Módulo 11", [], "O Módulo 11 está vazio. Incluam aluguel, energia, água, internet, contador, marketing, manutenção e demais custos que existem mesmo sem vender."));
+    const z = it.filter((x) => !(Number(x.valor) > 0));
+    if (z.length) a.push(achado("crit", `${z.length} custo(s) fixo(s) com valor zerado`, "Módulo 11", z.slice(0, 6).map((x) => [String(x.desc || x.nome || "(sem descrição)").trim(), "R$ 0"]), "Há custos com valor zerado. Informem o valor ou retirem."));
+    const textos = it.map((x) => normTxt(x.desc || x.nome)).join(" | ");
+    const faltam = [["aluguel", /alugu/], ["energia", /energia|luz/], ["água", /agua/], ["internet/telefone", /internet|telefone/], ["contabilidade", /contab|contador/]].filter(([, rx]) => !rx.test(textos)).map(([n]) => n);
+    if (it.length && faltam.length) a.push(achado("sug", "Custos usuais não encontrados", "Módulo 11", faltam.map((n) => [n, "não encontrado"]), `Não encontrei: ${faltam.join(", ")}. Se existirem no negócio, incluam; se não existirem, justifiquem no relatório.`));
+    const dup = duplicados(it, "desc");
+    if (dup.length) a.push(achado("att", "Custos repetidos", "Módulo 11", dup.slice(0, 6).map((d) => [d, "repetido"]), "Há custos repetidos. Confiram se não estão sendo contados duas vezes."));
+    if (calc && calc.faturamento > 0 && calc.custoFixoManual > calc.faturamento * 0.5) a.push(achado("att", "Custos fixos acima de 50% do faturamento", "Módulo 11", [["Custos fixos lançados", `R$ ${fmtN(calc.custoFixoManual)}`], ["Faturamento mensal", `R$ ${fmtN(calc.faturamento)}`]], "Os custos fixos lançados superam metade do faturamento. Revisem os valores ou o faturamento."));
+  }
+
+  if (modId === "m12" && calc) {
+    if (!(calc.faturamento > 0)) a.push(achado("crit", "Faturamento zerado", "Módulo 12", [], "O Demonstrativo não tem receita: revisem o Módulo 5."));
+    if (!(calc.cmv > 0) && calc.faturamento > 0) a.push(achado("crit", "Custo de mercadorias zerado", "Módulo 12", [], "O CMV está zerado, o que superestima o lucro. Revisem o Módulo 8."));
+    if (calc.margemContribuicao <= 0 && calc.faturamento > 0) a.push(achado("crit", "Margem de contribuição negativa ou zero", "Módulo 12", [["Margem de contribuição", `R$ ${fmtN(calc.margemContribuicao)}`]], "Os custos variáveis consomem toda a receita. Revisem preços (Módulo 5), custos (Módulo 8) e taxas (Módulo 7)."));
+    if (calc.resultadoOperacional < 0 && calc.margemContribuicao > 0) a.push(achado("att", "Resultado operacional negativo", "Módulo 12", [["Resultado mensal", `R$ ${fmtN(calc.resultadoOperacional)}`]], "O negócio dá prejuízo no mês. Expliquem no relatório o que farão para equilibrar (preços, volume, redução de custos fixos) e confiram se algum custo está superestimado."));
+    if (calc.lucratividade > 40) a.push(achado("att", `Lucratividade muito alta (${fmtN(calc.lucratividade)}%)`, "Módulo 12", [], "Lucratividade acima de 40% é rara. Confiram se não faltam custos (mão de obra, custos fixos, perdas, impostos)."));
+    if (calc.maoDeObra === 0) a.push(achado("att", "Mão de obra zerada no demonstrativo", "Módulo 12", [], "Não há custo de mão de obra. Revisem o Módulo 9 (pró-labore)."));
+  }
+
+  if (modId === "m13" && calc) {
+    if (calc.lucroAnual <= 0) a.push(achado("crit", "Lucro anual zero ou negativo", "Módulo 13", [["Lucro anual", `R$ ${fmtN(calc.lucroAnual)}`]], "Os indicadores mostram que o negócio, como planejado, não se paga. Reavaliem o plano nos Módulos 5, 8 e 11 e expliquem a decisão."));
+    else if (calc.prazoRetorno && calc.prazoRetorno > 8) a.push(achado("att", `Retorno do investimento em ${fmtN(calc.prazoRetorno)} anos`, "Módulo 13", [], "O prazo de retorno é muito longo. Discutam se o investimento se justifica e o que pode melhorar."));
+    if (calc.pontoEquilibrio && calc.pontoEquilibrio > calc.receitaAnual) a.push(achado("crit", "Ponto de equilíbrio acima da receita anual", "Módulo 13", [["Ponto de equilíbrio", `R$ ${fmtN(calc.pontoEquilibrio)}`], ["Receita anual", `R$ ${fmtN(calc.receitaAnual)}`]], "O faturamento previsto não alcança o ponto de equilíbrio. Revisem preços, volume e custos fixos."));
+    if (calc.rentabilidade > 100) a.push(achado("att", `Rentabilidade muito alta (${fmtN(calc.rentabilidade)}% ao ano)`, "Módulo 13", [], "Rentabilidade acima de 100% ao ano é pouco realista. Revisem investimentos e receitas."));
+    if (calc.rentabilidade > 0 && calc.rentabilidade < 12) a.push(achado("sug", `Rentabilidade abaixo de 12% ao ano (${fmtN(calc.rentabilidade)}%)`, "Módulo 13", [], "Compare com alternativas de investimento (renda fixa). Expliquem por que vale empreender com essa rentabilidade."));
+  }
+
+  const ord = { crit: 0, att: 1, sug: 2 };
+  return a.sort((x, y) => ord[x.sev] - ord[y.sev]);
+}
+
+function textoOrientacoes(nomeModulo, achados) {
+  const n = achados.length;
+  if (n === 0) return "";
+  const lista = achados.map((x, i) => `${i + 1}. ${x.orientacao}`).join("\n\n");
+  return `Olá, equipe! Analisamos o ${nomeModulo} e há ${n === 1 ? "1 ponto" : n + " pontos"} para ajustar antes da aprovação:\n\n${lista}\n\nDepois de corrigir, reenviem o módulo.`;
+}
+
+function PreAnaliseModulo({ modId, nome, lanc, calc, onUsar }) {
+  const [achados, setAchados] = useState(null);
+  const [marcados, setMarcados] = useState({});
+  const [textos, setTextos] = useState({});
+  const gerar = () => {
+    let r = [];
+    try { r = analisarModulo(modId, lanc, calc); } catch { r = []; }
+    setAchados(r);
+    setMarcados(Object.fromEntries(r.map((_, i) => [i, true])));
+    setTextos(Object.fromEntries(r.map((x, i) => [i, x.orientacao])));
+  };
+  const cont = (s) => (achados || []).filter((x) => x.sev === s).length;
+  const rotulo = { crit: "Crítico", att: "Atenção", sug: "Sugestão" };
+  const cor = { crit: "text-rose-300 bg-rose-950/40 border-rose-500/40", att: "text-amber-300 bg-amber-950/40 border-amber-500/40", sug: "text-emerald-300 bg-emerald-950/40 border-emerald-500/40" };
+  const sel = (achados || []).map((x, i) => ({ ...x, orientacao: textos[i] })).filter((_, i) => marcados[i]);
+  return (
+    <div className="border border-sky-500/30 bg-sky-500/5 rounded-md p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[11px] font-bold tracking-wider text-sky-300">PRÉ-ANÁLISE AUTOMÁTICA <span className="font-normal text-slate-400">· só leitura: nada é enviado sem o seu clique</span></span>
+        <button onClick={gerar} className="text-xs font-bold border border-sky-500/50 text-sky-300 rounded-md px-3 py-1.5 hover:bg-sky-500/10">{achados === null ? "Analisar este módulo" : "Analisar de novo"}</button>
+      </div>
+      {achados !== null && achados.length === 0 && <div className="mt-2 text-xs text-emerald-300">Nenhuma pendência encontrada pelas regras automáticas. A decisão continua sendo sua.</div>}
+      {achados !== null && achados.length > 0 && (
+        <div className="mt-3 space-y-2">
+          <div className="flex flex-wrap gap-2 text-[11px] font-bold">
+            {cont("crit") > 0 && <span className={`border rounded-full px-2 py-0.5 ${cor.crit}`}>{cont("crit")} crítico(s)</span>}
+            {cont("att") > 0 && <span className={`border rounded-full px-2 py-0.5 ${cor.att}`}>{cont("att")} atenção</span>}
+            {cont("sug") > 0 && <span className={`border rounded-full px-2 py-0.5 ${cor.sug}`}>{cont("sug")} sugestão(ões)</span>}
+          </div>
+          {achados.map((x, i) => (
+            <div key={i} className={`rounded-md border border-slate-700 p-2.5 ${marcados[i] ? "" : "opacity-50"}`}>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input type="checkbox" checked={!!marcados[i]} onChange={() => setMarcados((m) => ({ ...m, [i]: !m[i] }))} className="mt-0.5" />
+                <span className="flex-1 text-xs font-semibold text-slate-100">{x.titulo}</span>
+                <span className={`text-[10px] font-bold border rounded-full px-2 py-0.5 shrink-0 ${cor[x.sev]}`}>{rotulo[x.sev]}</span>
+              </label>
+              {x.linhas.length > 0 && (
+                <div className="overflow-x-auto mt-1.5"><table className="text-[11px] text-slate-300"><tbody>
+                  {x.linhas.map((r, j) => (<tr key={j}><td className="pr-4 py-0.5 border-b border-slate-800">{r[0]}</td><td className="py-0.5 border-b border-slate-800 text-slate-400">{r[1]}</td></tr>))}
+                </tbody></table></div>
+              )}
+              <textarea value={textos[i] || ""} onChange={(e) => setTextos((t) => ({ ...t, [i]: e.target.value }))} rows={2} className="mt-1.5 w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-100" />
+            </div>
+          ))}
+          <button onClick={() => onUsar(textoOrientacoes(nome, sel))} disabled={sel.length === 0} className="text-xs font-bold bg-sky-600 text-white rounded-md px-3 py-1.5 hover:bg-sky-500 disabled:opacity-40">Colocar no campo de feedback ({sel.length})</button>
+          <span className="ml-2 text-[11px] text-slate-500">O texto vai para o campo abaixo para você revisar; só é enviado quando clicar em “Devolver para ajustes”.</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PainelFluxoModulo({ modId, nomeModulo, lanc, calc, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes, onReabrirPosCorrecao, nota, prazoCronograma }) {
   const [prazoInput, setPrazoInput] = useState(estado.prazo || "");
   useEffect(() => { setPrazoInput(estado.prazo || ""); }, [estado.prazo]);
   const [novoPrazoReabrir, setNovoPrazoReabrir] = useState("");
@@ -4374,8 +6237,11 @@ function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrec
         </div>
       </div>
 
+      <LinhaPrazoCronogramaEntrega prazoCronograma={prazoCronograma} enviadoEm={estado.enviadoEm} />
+
       {estado.status === "enviado" && (
         <div className="space-y-2.5">
+          {modId && <PreAnaliseModulo modId={modId} nome={nomeModulo} lanc={lanc} calc={calc} onUsar={(t) => setFeedbackInput(t)} />}
           <div>
             <label className="flex items-center gap-1.5 text-[11px] text-slate-400 mb-1"><Pencil size={12} /> Feedback orientativo (obrigatório para devolver)</label>
             <textarea
@@ -4404,7 +6270,7 @@ function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrec
       {estado.status === "ajustes" && estado.feedback && (
         <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/30 rounded-md p-2.5">
           <MessageSquare size={13} className="text-amber-400 shrink-0 mt-0.5" />
-          <div className="text-xs text-amber-100"><b>Feedback enviado à equipe:</b> {estado.feedback}</div>
+          <div className="text-xs text-amber-100"><b>Feedback enviado à equipe:</b> <span className="whitespace-pre-line">{estado.feedback}</span></div>
         </div>
       )}
 
@@ -4461,7 +6327,35 @@ function PainelFluxoModulo({ estado, ultimoModulo, onSetPrazo, onConfirmarCorrec
   );
 }
 
-function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes, onReabrirPosCorrecao }) {
+// Mostra ao professor, dentro de "Navegar pelos módulos", exatamente a mesma
+// orientação (Teoria do módulo + Exemplo de lançamento, já com o exemplo por
+// segmento quando a empresa tiver um definido) que a equipe vê do lado dela —
+// reaproveitando os mesmos componentes usados no workspace do aluno. É só
+// leitura: fechado por padrão, não grava nem altera nada.
+function OrientacaoAlunoParaProfessor({ modId, segmento }) {
+  const [open, setOpen] = useState(false);
+  if (!TEORIA[modId] && !GUIA_MODULOS_EXTRA[modId]) return null;
+  return (
+    <div className="mt-4 border border-violet-800/50 rounded-lg overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold text-violet-300 bg-violet-950/20 hover:bg-violet-950/30 transition"
+      >
+        <span className="flex items-center gap-2"><BookOpen size={15} /> Orientação que a equipe vê neste módulo</span>
+        {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+      </button>
+      {open && (
+        <div className="p-3 bg-slate-900/40">
+          <TeoriaBox modId={modId} aberta />
+          <ExemploLancamentoBox modId={modId} aberta segmento={segmento} />
+          <DisciplinasRelacionadasBox modId={modId} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes, onReabrirPosCorrecao, prazoCronograma, segmento }) {
   const Icon = m.icon;
   const comentariosModulo = (comentarios || []).filter((c) => c.modulo === `Módulo ${m.n}`);
   const avaliavel = NOTA_MODULOS_AVALIAVEIS.includes(m.id);
@@ -4488,7 +6382,8 @@ function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentario
       </button>
       {aberto && (
         <div className="px-4 pb-4 border-t border-slate-800">
-          <PainelFluxoModulo estado={estado} ultimoModulo={ultimoModulo} onSetPrazo={onSetPrazo} onConfirmarCorrecao={onConfirmarCorrecao} onReabrir={onReabrir} onRestaurarPrazoAutomatico={onRestaurarPrazoAutomatico} onDevolverAjustes={onDevolverAjustes} onReabrirPosCorrecao={onReabrirPosCorrecao} nota={nota} />
+          <PainelFluxoModulo modId={m.id} nomeModulo={`Módulo ${m.n} (${m.nome})`} lanc={lanc} calc={calc} estado={estado} ultimoModulo={ultimoModulo} onSetPrazo={onSetPrazo} onConfirmarCorrecao={onConfirmarCorrecao} onReabrir={onReabrir} onRestaurarPrazoAutomatico={onRestaurarPrazoAutomatico} onDevolverAjustes={onDevolverAjustes} onReabrirPosCorrecao={onReabrirPosCorrecao} nota={nota} prazoCronograma={prazoCronograma} />
+          <OrientacaoAlunoParaProfessor modId={m.id} segmento={segmento} />
           <div className="pt-4"><ModuloLeitura mId={m.id} lanc={lanc} calc={calc} /></div>
           {(avaliavel || ehFinal) && <NotaModulo nota={nota} onSetNota={onSetNota} ehFinal={ehFinal} />}
           <ComentariosPanel
@@ -4509,6 +6404,17 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
   const [dados, setDados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
   const [modulosAbertos, setModulosAbertos] = useState(new Set());
   const [menuAlunoAberto, setMenuAlunoAberto] = useState(false);
+  const [cronogramaTurma] = useSharedObject(`cronograma_${turma.id}`, null);
+
+  // Prazo ORIGINAL do cronograma da turma para o bloco daquele módulo — usado
+  // só para exibir ao lado da data de entrega real no painel do professor
+  // (não é o mesmo que estado.prazo, que pode ter sido ajustado manualmente
+  // para uma equipe específica).
+  const prazoCronogramaDoModulo = (modId) => {
+    const ordem = CRONOGRAMA_ORDEM_POR_MODULO[modId];
+    const linha = cronogramaTurma?.linhas?.find((l) => l.ordem === ordem);
+    return linha?.dataEntrega || null;
+  };
 
   // veio direto de "Correções pendentes" — expande e rola até o módulo assim
   // que os dados da equipe terminarem de carregar.
@@ -4730,6 +6636,8 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
               onRestaurarPrazoAutomatico={() => restaurarPrazoAutomatico(m.id)}
               onDevolverAjustes={(feedback) => devolverParaAjustes(m.id, feedback)}
               onReabrirPosCorrecao={(motivo) => reabrirParaAjustesPosCorrecao(m.id, motivo)}
+              prazoCronograma={prazoCronogramaDoModulo(m.id)}
+              segmento={equipe?.segmento}
             />
           ))}
         </div>
@@ -5301,7 +7209,7 @@ function baixarCanvasComoJpg(canvas, nomeArquivo) {
   }, "image/jpeg", 0.92);
 }
 
-function gerarImagemCronograma(cronograma, turmaNome) {
+function gerarImagemCronograma(cronograma, turmaNome, professor) {
   const linhas = cronograma.linhas;
   const larguras = [95, 340, 110, 80, 165, 140];
   const margem = 40;
@@ -5332,7 +7240,7 @@ function gerarImagemCronograma(cronograma, turmaNome) {
 
   ctx.fillStyle = "#94a3b8";
   ctx.font = "12px Arial, sans-serif";
-  ctx.fillText(`Atualizado em ${new Date().toLocaleString("pt-BR")}`, margem, 80);
+  ctx.fillText(`${professor ? `Professor(a): ${professor} · ` : ""}Atualizado em ${new Date().toLocaleString("pt-BR")}`, margem, 80);
 
   let y = alturaTopo;
   const x0 = margem;
@@ -5408,7 +7316,7 @@ function gerarImagemCronograma(cronograma, turmaNome) {
   return canvas;
 }
 
-function CronogramaTurmaCard({ turmaId, turmaNome }) {
+function CronogramaTurmaCard({ turmaId, turmaNome, professor }) {
   const [cronograma, setCronograma] = useSharedObject(`cronograma_${turmaId}`, null);
   const [dataInicioS1, setDataInicioS1] = useState("");
   const [horaInicioS1, setHoraInicioS1] = useState(HORARIO_CRONOGRAMA_PADRAO);
@@ -5580,7 +7488,7 @@ function CronogramaTurmaCard({ turmaId, turmaNome }) {
             </div>
             <button
               onClick={() => {
-                const canvas = gerarImagemCronograma(cronograma, turmaNome);
+                const canvas = gerarImagemCronograma(cronograma, turmaNome, professor);
                 canvas.toBlob((blob) => {
                   if (!blob) return;
                   const url = URL.createObjectURL(blob);
@@ -5670,6 +7578,7 @@ function usePendentesCorrecao(turmas) {
                 turmaNome: turma.nome,
                 equipeId: equipe.id,
                 equipeNome: equipe.nomeNegocio,
+                teste: !!equipe.teste,
                 moduloId: m.id,
                 moduloNome: m.nome,
                 moduloN: m.n,
@@ -5722,7 +7631,7 @@ function CorrecoesPendentesView({ pendentes, onAbrir }) {
                 {String(p.moduloN).padStart(2, "0")}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-slate-100 truncate">{p.equipeNome} <span className="text-slate-500 font-normal">· {p.turmaNome}</span></div>
+                <div className="text-sm font-semibold text-slate-100 truncate">{p.teste && <span className="text-[10px] font-bold text-violet-300 bg-violet-950/40 border border-violet-500/40 rounded-full px-1.5 py-0.5 mr-1.5 align-middle">🧪 TESTE</span>}{p.equipeNome} <span className="text-slate-500 font-normal">· {p.turmaNome}</span></div>
                 <div className="text-xs text-slate-400 truncate">Módulo {p.moduloN} — {p.moduloNome}</div>
               </div>
               <div className="text-right shrink-0">
@@ -5810,7 +7719,7 @@ function useEquipesPorTurmas(turmas, refreshKey) {
       await Promise.all(turmas.map(async (t) => {
         try {
           const r = await window.storage.get(`equipes_${t.id}`, true);
-          resultado[t.id] = r ? JSON.parse(r.value) : [];
+          resultado[t.id] = (r ? JSON.parse(r.value) : []).filter((e) => !e.teste);
         } catch {
           resultado[t.id] = [];
         }
@@ -5940,6 +7849,47 @@ function GestaoIntegrantesView({ turmas, user }) {
   );
 }
 
+// Tela de MENU: Gestão → Itens esperados por segmento. O professor ajusta a lista
+// de custos que a Orientação cobra de cada segmento (só afeta a análise; nada
+// é gravado nos dados das equipes). Fica na chave "itens_segmento_{uid}".
+function GestaoItensSegmentoView({ user }) {
+  const [cfg, setCfg] = useSharedObject(`itens_segmento_${user.uid}`, null);
+  const [seg, setSeg] = useState(SEGMENTOS_NEGOCIO[5]);
+  if (cfg === undefined) return <LoadingScreen />;
+  const salvos = cfg || {};
+  const personalizado = Array.isArray(salvos[seg]);
+  const itens = personalizado ? salvos[seg] : (ITENS_ESPERADOS_PADRAO[seg] || []);
+  const gravar = (novos) => setCfg({ ...salvos, [seg]: novos });
+  const mudar = (i, campo, v) => gravar(itens.map((it, k) => (k === i ? { ...it, [campo]: v } : it)));
+  const inp = "w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-100";
+  return (
+    <div>
+      <SectionTitle icon={ClipboardList} sub="Custos que a Orientação da equipe espera encontrar no Módulo 11 (ou 3) de cada segmento. Se faltar, o sistema avisa a equipe. Os itens comuns a todos (aluguel, energia, água, internet, contabilidade, marketing) sempre são conferidos.">Itens esperados por segmento</SectionTitle>
+      <Card className="p-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="text-xs text-slate-400">Segmento</label>
+          <select value={seg} onChange={(e) => setSeg(e.target.value)} className="bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-100">
+            {SEGMENTOS_NEGOCIO.map((s) => <option key={s} value={s}>{s}{Array.isArray(salvos[s]) ? " (editado)" : ""}</option>)}
+          </select>
+          {personalizado && <button onClick={() => { const n = { ...salvos }; delete n[seg]; setCfg(n); }} className="text-xs border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 hover:bg-slate-800">Restaurar o padrão deste segmento</button>}
+        </div>
+        {itens.length === 0 && <div className="text-xs text-slate-500">Este segmento não tem itens específicos (só os comuns). Adicione se quiser.</div>}
+        <div className="space-y-2">
+          {itens.map((it, i) => (
+            <div key={i} className="grid md:grid-cols-[1fr_1.4fr_auto] gap-2 items-center">
+              <input value={it.nome} onChange={(e) => mudar(i, "nome", e.target.value)} placeholder="Nome do custo (o que aparece para a equipe)" className={inp} />
+              <input value={it.palavras} onChange={(e) => mudar(i, "palavras", e.target.value)} placeholder="Palavras que indicam que a equipe lançou (separe por vírgula)" className={inp} />
+              <button onClick={() => gravar(itens.filter((_, k) => k !== i))} className="text-xs text-rose-400 hover:text-rose-300 px-2 py-1.5" title="Remover este item"><Trash2 size={15} /></button>
+            </div>
+          ))}
+        </div>
+        <button onClick={() => gravar([...itens, { nome: "", palavras: "" }])} className="text-xs font-semibold border border-amber-500/50 text-amber-300 rounded-md px-3 py-1.5 hover:bg-amber-500/10">+ Adicionar item</button>
+        <p className="text-[11px] text-slate-500">A conferência procura as palavras na descrição dos itens do Módulo 11 e do Módulo 3 (sem diferenciar acentos nem maiúsculas). Ex.: “refriger, freezer” reconhece “Manutenção dos freezers”.</p>
+      </Card>
+    </div>
+  );
+}
+
 function GestaoCronogramaView({ turmas }) {
   const [turmaSelId, setTurmaSelId] = useState(turmas.length === 1 ? turmas[0].id : null);
   const turmaSel = turmas.find((t) => t.id === turmaSelId) || null;
@@ -5951,7 +7901,7 @@ function GestaoCronogramaView({ turmas }) {
           <button onClick={() => setTurmaSelId(null)} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Escolher outra turma</button>
         )}
         <SectionTitle icon={Calendar} sub={`Gerenciando o cronograma de ${turmaSel.nome}.`}>Cronograma</SectionTitle>
-        <CronogramaTurmaCard turmaId={turmaSel.id} turmaNome={turmaSel.nome} />
+        <CronogramaTurmaCard turmaId={turmaSel.id} turmaNome={turmaSel.nome} professor={turmaSel.professor} />
       </div>
     );
   }
@@ -5972,6 +7922,602 @@ function GestaoCronogramaView({ turmas }) {
         </div>
       )}
     </div>
+  );
+}
+
+// ============================================================================
+// FASE DE AJUSTES FINAIS (v2.8) — libera, de uma vez, todos os módulos já
+// corrigidos das equipes que chegaram ao final (Módulo 13 corrigido) para a
+// equipe fazer ajustes. Usa exatamente o mesmo mecanismo da "reabertura pós-
+// correção" de um módulo (status "ajustes", nota mantida, histórico
+// "reaberto_pos_correcao"), só que em lote. NADA é apagado: só muda o campo
+// `fluxoModulos` de cada equipe; lançamentos, notas e comentários não são
+// tocados. Cada lote guarda o estado anterior (chave própria) e pode ser
+// DESFEITO enquanto os módulos não tiverem sido reenviados.
+// ============================================================================
+const MODULO_GATILHO_AJUSTES = "m11"; // a fase começa quando a equipe conclui os lançamentos (M1–M11)
+const MSG_AJUSTES_PADRAO = "Fase de análise e ajustes — vocês concluíram os lançamentos (Módulos 1 a 11). Agora estão liberados os Módulos 12 e 13 para analisar o negócio e os módulos em que o relatório indicou ajustes: com base nessa análise, revisem os lançamentos e façam os ajustes necessários no plano financeiro. Reenviem cada módulo liberado até {prazo}; os demais continuam concluídos. As notas já atribuídas foram mantidas.";
+const chaveLotesAjustes = (turmaId) => `lotes_ajustes_${turmaId}`;
+
+async function lerDadosEquipeFresco(equipeId) {
+  try { const r = await window.storage.get(`dados_equipe_${equipeId}`, true); return r ? JSON.parse(r.value) : null; } catch { return null; }
+}
+async function lerLotesAjustes(turmaId) {
+  try { const r = await window.storage.get(chaveLotesAjustes(turmaId), true); return r ? JSON.parse(r.value) : []; } catch { return []; }
+}
+function equipeChegouAoFinal(fluxo) {
+  return estadoModulo(fluxo, MODULO_GATILHO_AJUSTES).status === "corrigido";
+}
+function fmtDataBR(iso) { const [a, m, d] = String(iso || "").split("-"); return d ? `${d}/${m}/${a}` : iso; }
+
+// ===== Parecer do projeto (menu Gestão → Parecer do projeto) =====
+// O professor escolhe a turma e a empresa; o sistema analisa o negócio inteiro
+// (reaproveitando a Orientação e o Diagnóstico de viabilidade), sugere o veredito
+// e redige o parecer: o que está bom e, nas inconsistências, ONDE e O QUE FAZER.
+// Só leitura até o professor salvar/enviar. Grava apenas `pareceres_{turmaId}`
+// (histórico) e, se ele escolher enviar, acrescenta UM comentário em `comentarios`.
+const PARECER_NIVEIS = {
+  finalizado: { rotulo: "Projeto finalizado", curto: "FINALIZADO", cls: "bg-emerald-700 text-emerald-50", cor: "#047857", bg: "#f0fdf4" },
+  ressalvas: { rotulo: "Finalizado com ressalvas", curto: "FINALIZADO COM RESSALVAS", cls: "bg-amber-500 text-slate-900", cor: "#b45309", bg: "#fffbeb" },
+  inconsistencias: { rotulo: "Com inconsistências a corrigir", curto: "COM INCONSISTÊNCIAS A CORRIGIR", cls: "bg-rose-600 text-white", cor: "#b91c1c", bg: "#fef2f2" },
+};
+const chavePareceres = (turmaId) => `pareceres_${turmaId}`;
+async function lerPareceres(turmaId) {
+  try { const r = await window.storage.get(chavePareceres(turmaId), true); return r ? JSON.parse(r.value) : []; } catch { return []; }
+}
+
+// Sugere o veredito pelas regras já usadas na plataforma (nada novo é inventado)
+function analisarParecer(o, calc) {
+  const criticos = []; const fortes = [];
+  if (o.corrigidos < o.total) criticos.push(`${o.total - o.corrigidos} módulo(s) ainda não concluído(s) (corrigidos: ${o.corrigidos} de ${o.total})`);
+  else fortes.push(`Todos os ${o.total} módulos foram lançados e corrigidos.`);
+  if (o.achados.some((a) => a.grav === "erro")) criticos.push("há módulo devolvido ou com prazo vencido");
+  if (!(calc.faturamento > 0)) criticos.push("não há faturamento lançado (Módulo 5)");
+  else {
+    const dg = o.diagnostico;
+    if (calc.resultadoOperacional < 0) criticos.push(`resultado operacional mensal negativo (${fmtBRL(calc.resultadoOperacional)})`);
+    else fortes.push(`Resultado operacional positivo: ${fmtBRL(calc.resultadoOperacional)} por mês.`);
+    if (dg && dg.cobertura != null) {
+      if (dg.cobertura < 100) criticos.push(`o faturamento cobre só ${fmtNum(dg.cobertura, 1)}% do ponto de equilíbrio`);
+      else fortes.push(`O faturamento cobre o ponto de equilíbrio (${fmtNum(dg.cobertura, 1)}%).`);
+    }
+    if (calc.prazoRetorno == null) criticos.push("o investimento não se paga com o resultado atual (sem prazo de retorno)");
+    else if (calc.prazoRetorno <= 5) fortes.push(`Prazo de retorno do investimento de ${fmtNum(calc.prazoRetorno, 1)} ano(s).`);
+    if (dg && dg.mesesCaixa == null) fortes.push("Capital de giro sem consumo de caixa pelo resultado.");
+  }
+  const nivel = criticos.length ? "inconsistencias" : o.achados.length ? "ressalvas" : "finalizado";
+  return { nivel, criticos, fortes };
+}
+
+function parecerEmTexto({ o, turma, calc, nivel, criticos, fortes, obs }) {
+  const L = [];
+  L.push(`PARECER DO PROJETO — ${o.nome}${turma?.nome ? ` (turma ${turma.nome})` : ""}`);
+  if (turma?.professor) L.push(`Professor(a): ${turma.professor}`);
+  L.push(`Segmento: ${o.segmento}`);
+  L.push("", `RESULTADO: ${PARECER_NIVEIS[nivel].curto}`);
+  if (nivel === "finalizado") L.push("O projeto está completo e consistente: não foram encontradas pendências nos lançamentos nem nos indicadores de viabilidade.");
+  else if (nivel === "ressalvas") L.push("O projeto está concluído e viável, mas há pontos de melhoria indicados abaixo.");
+  else L.push(`O projeto ainda apresenta inconsistências que precisam ser corrigidas: ${criticos.join("; ")}.`);
+  if (calc.faturamento > 0) {
+    L.push("", "Principais números (mensais):");
+    L.push(`- Investimento total: ${fmtBRL(calc.investimentoTotal)}`);
+    L.push(`- Faturamento: ${fmtBRL(calc.faturamento)}`);
+    L.push(`- Resultado operacional: ${fmtBRL(calc.resultadoOperacional)}`);
+    if (o.diagnostico?.peMensal) L.push(`- Ponto de equilíbrio: ${fmtBRL(o.diagnostico.peMensal)} por mês (a receita cobre ${fmtNum(o.diagnostico.cobertura, 1)}%)`);
+    L.push(`- Prazo de retorno: ${calc.prazoRetorno != null ? `${fmtNum(calc.prazoRetorno, 1)} ano(s)` : "não se paga com o resultado atual"}`);
+  }
+  if (fortes.length) { L.push("", "O que está bom:"); fortes.forEach((f) => L.push(`✓ ${f}`)); }
+  if (o.achados.length) {
+    L.push("", "O que precisa de ajuste (onde e o que fazer):");
+    o.achados.forEach((a, i) => {
+      L.push(`${i + 1}. [${a.modulo}] ${a.titulo}`);
+      L.push(`   O que fazer: ${a.orientacao}`);
+      if (a.onde) L.push(`   Onde: ${a.onde}`);
+    });
+  }
+  if (obs && obs.trim()) L.push("", "Observações do professor:", obs.trim());
+  L.push("", "Qualquer dúvida, procure o professor em aula.");
+  return L.join("\n");
+}
+
+async function enviarParecerComentario(equipeId, texto, autor, parecerId) {
+  const r = await window.storage.get(`dados_equipe_${equipeId}`, true);
+  if (!r) throw new Error("equipe não encontrada");
+  const d = JSON.parse(r.value);
+  const novo = { modulo: "Geral", texto, autor, timestamp: Date.now(), tipo: "parecer", parecer: parecerId };
+  await window.storage.set(`dados_equipe_${equipeId}`, JSON.stringify({ ...d, comentarios: [...(d.comentarios || []), novo] }), true);
+  return novo.timestamp;
+}
+
+function FolhaParecerImpressao({ nome, turma, nivel, texto, calc, emitidoEm }) {
+  const N = PARECER_NIVEIS[nivel];
+  const css = `
+    .pp-pg{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:12px;line-height:1.45;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .pp-hd{display:flex;justify-content:space-between;border-bottom:3px solid #f59e0b;padding-bottom:8px}
+    .pp-hd small{font-size:9.5px;letter-spacing:1.5px;color:#b45309;font-weight:700}
+    .pp-pg h1{font-size:19px;margin:2px 0 0;color:#0f172a}
+    .pp-ver{margin:12px 0;padding:10px 14px;border-radius:6px;font-weight:700;font-size:15px}
+    .pp-txt{white-space:pre-wrap;border:1.5px solid #cbd5e1;border-radius:6px;padding:12px 14px;background:#fff}
+    .pp-ass{margin-top:36px;display:flex;gap:40px}.pp-ass div{flex:1;border-top:1px solid #111;padding-top:4px;font-size:10px;text-align:center}
+    .pp-ft{margin-top:14px;font-size:9px;color:#666;border-top:2px solid #fde68a;padding-top:5px;display:flex;justify-content:space-between}
+  `;
+  return (
+    <div id="parecer-print-root">
+      <style>{css}</style>
+      <section className="pp-pg">
+        <div className="pp-hd">
+          <div><small>CEDUP HERMANN HERING · PLATAFORMA DO PLANO FINANCEIRO</small><h1>Parecer do projeto — {nome}</h1></div>
+          <div style={{ textAlign: "right", fontSize: 10, color: "#444" }}>Emitido em {emitidoEm}</div>
+        </div>
+        <div className="pp-ver" style={{ background: N.bg, color: N.cor, border: `2px solid ${N.cor}` }}>{N.rotulo}</div>
+        <div className="pp-txt">{texto}</div>
+        <div className="pp-ass"><div>Professor(a) {turma?.professor || ""}</div><div>Equipe (ciente)</div></div>
+        <div className="pp-ft"><span>Plataforma do Plano Financeiro (PPFCHH) · ppfn.com.br</span><span>{nome} · Parecer</span></div>
+      </section>
+    </div>
+  );
+}
+
+function ParecerEmpresa({ turma, equipe, professorNome, onVoltar }) {
+  const [estado, setEstado] = useState({ carregando: true });
+  const [nivel, setNivel] = useState("finalizado");
+  const [obs, setObs] = useState("");
+  const [texto, setTexto] = useState("");
+  const [editado, setEditado] = useState(false);
+  const [hist, setHist] = useState([]);
+  const [aberto, setAberto] = useState(null);
+  const [aviso, setAviso] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const [folha, setFolha] = useState(null);
+
+  const analisar = async () => {
+    setEstado({ carregando: true });
+    const d = await lerDadosEquipeFresco(equipe.id);
+    if (!d) { setEstado({ erro: true }); return; }
+    let cfg = null;
+    try { const r = await window.storage.get(`itens_segmento_${turma.professorUid}`, true); cfg = r ? JSON.parse(r.value) : null; } catch { cfg = null; }
+    const calc = calcular(d.lancamentos);
+    const o = gerarOrientacaoEquipe({ equipe, dados: d, calc }, cfg);
+    const a = analisarParecer(o, calc);
+    setEstado({ o, calc, a }); setNivel(a.nivel); setEditado(false);
+    setHist((await lerPareceres(turma.id)).filter((p) => p.equipeId === equipe.id).sort((x, y) => y.em - x.em));
+  };
+  useEffect(() => { analisar(); /* eslint-disable-next-line */ }, [equipe.id]);
+
+  const textoAuto = useMemo(() => (estado.o ? parecerEmTexto({ o: estado.o, turma, calc: estado.calc, nivel, criticos: estado.a.criticos, fortes: estado.a.fortes, obs }) : ""), [estado, nivel, obs, turma]);
+  useEffect(() => { if (!editado) setTexto(textoAuto); }, [textoAuto, editado]);
+
+  useEffect(() => {
+    if (!folha) return undefined;
+    const estilo = document.createElement("style");
+    estilo.textContent = "@media screen { #parecer-print-root-wrap { display: none !important; } } @media print { @page { size: A4 portrait; margin: 12mm; } body > *:not(#parecer-print-root-wrap) { display: none !important; } #parecer-print-root-wrap { display: block !important; } }";
+    document.head.appendChild(estilo);
+    const original = document.title;
+    const t = setTimeout(() => {
+      document.title = `Parecer - ${equipe.nomeNegocio} - ${sufixoDataHoraArquivo()}`;
+      window.print(); document.title = original;
+      if (estilo.parentNode) estilo.parentNode.removeChild(estilo);
+      setFolha(null);
+    }, 150);
+    return () => { clearTimeout(t); if (estilo.parentNode) estilo.parentNode.removeChild(estilo); };
+  }, [folha, equipe]);
+
+  const guardar = async (enviar) => {
+    if (!texto.trim()) { setAviso("O parecer está vazio."); return; }
+    if (enviar && !window.confirm(`Enviar o parecer "${PARECER_NIVEIS[nivel].rotulo}" para a equipe ${equipe.nomeNegocio}? Ele aparece na aba Feedback dos alunos. Nenhum módulo, nota ou lançamento é alterado.`)) return;
+    setOcupado(true); setAviso("");
+    try {
+      const reg = { id: uid(), equipeId: equipe.id, nome: equipe.nomeNegocio, em: Date.now(), por: professorNome || "Professor", nivel, texto, enviado: false };
+      const lista = await lerPareceres(turma.id);
+      await window.storage.set(chavePareceres(turma.id), JSON.stringify([...lista, reg]), true);   // 1º: histórico
+      if (enviar) {
+        try { await enviarParecerComentario(equipe.id, texto, professorNome || "Professor", reg.id); reg.enviado = true; reg.enviadoEm = Date.now();
+          const l2 = await lerPareceres(turma.id);
+          await window.storage.set(chavePareceres(turma.id), JSON.stringify(l2.map((p) => (p.id === reg.id ? reg : p))), true);
+        } catch { setAviso("Parecer salvo no histórico, mas não foi possível enviar para a equipe. Tente enviar pelo histórico."); setOcupado(false); setHist((await lerPareceres(turma.id)).filter((p) => p.equipeId === equipe.id).sort((x, y) => y.em - x.em)); return; }
+      }
+      setHist((await lerPareceres(turma.id)).filter((p) => p.equipeId === equipe.id).sort((x, y) => y.em - x.em));
+      setAviso(enviar ? "Parecer salvo e enviado para a equipe (aba Feedback e Registro do processo)." : "Parecer salvo no histórico (ainda não enviado à equipe).");
+    } catch { setAviso("Não foi possível salvar. Verifique a conexão e tente de novo."); }
+    setOcupado(false);
+  };
+  const enviarDoHistorico = async (p) => {
+    if (!window.confirm(`Enviar este parecer de ${fmtData(p.em)} para a equipe?`)) return;
+    setOcupado(true); setAviso("");
+    try {
+      await enviarParecerComentario(equipe.id, p.texto, professorNome || "Professor", p.id);
+      const l2 = await lerPareceres(turma.id);
+      await window.storage.set(chavePareceres(turma.id), JSON.stringify(l2.map((x) => (x.id === p.id ? { ...x, enviado: true, enviadoEm: Date.now() } : x))), true);
+      setHist((await lerPareceres(turma.id)).filter((x) => x.equipeId === equipe.id).sort((a, b) => b.em - a.em));
+      setAviso("Parecer enviado para a equipe.");
+    } catch { setAviso("Não foi possível enviar."); }
+    setOcupado(false);
+  };
+
+  const emitidoEm = new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }).replace(",", " às");
+  const portal = folha ? createPortal(<div id="parecer-print-root-wrap"><FolhaParecerImpressao nome={equipe.nomeNegocio} turma={turma} nivel={nivel} texto={texto} calc={estado.calc} emitidoEm={emitidoEm} /></div>, document.body) : null;
+
+  return (
+    <div className="space-y-4">
+      {portal}
+      <button onClick={onVoltar} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Escolher outra empresa</button>
+      <SectionTitle icon={ScrollText} sub={`Turma: ${turma.nome} · Segmento: ${equipe.segmento || "não informado"}`}>Parecer — {equipe.nomeNegocio}</SectionTitle>
+      {estado.carregando ? <div className="text-sm text-slate-500">Analisando o negócio…</div>
+        : estado.erro ? <Card className="p-6 text-sm text-rose-300">Não foi possível ler os dados desta empresa.</Card>
+        : (
+          <>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <StatCard label="Módulos corrigidos" value={`${estado.o.corrigidos} de ${estado.o.total}`} tone="emerald" small />
+              <StatCard label="Pontos a ajustar" value={String(estado.o.achados.length)} tone={estado.o.achados.length ? "rose" : "slate"} small />
+              <StatCard label="Resultado/mês" value={estado.calc.faturamento > 0 ? fmtBRL(estado.calc.resultadoOperacional) : "—"} tone={estado.calc.resultadoOperacional < 0 ? "rose" : "emerald"} small />
+              <StatCard label="Retorno" value={estado.calc.prazoRetorno != null ? `${fmtNum(estado.calc.prazoRetorno, 1)} ano(s)` : "—"} tone="gold" small />
+            </div>
+            <Card className="p-4">
+              <div className="text-xs text-slate-400 mb-2">Veredito sugerido pelo sistema (você pode trocar):</div>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {Object.entries(PARECER_NIVEIS).map(([k, v]) => (
+                  <button key={k} onClick={() => { setNivel(k); setEditado(false); }} className={`text-sm font-bold px-3 py-1.5 rounded-full border ${nivel === k ? v.cls + " border-transparent" : "border-slate-600 text-slate-300 hover:bg-slate-800"}`}>{v.rotulo}{k === estado.a.nivel ? " ★" : ""}</button>
+                ))}
+              </div>
+              {estado.a.criticos.length > 0 && <div className="text-xs text-rose-300 mb-1">Motivos das inconsistências: {estado.a.criticos.join("; ")}.</div>}
+              <div className="text-[11px] text-slate-500">★ = sugestão automática. Regras: com inconsistências se há módulo pendente/devolvido, resultado negativo, abaixo do ponto de equilíbrio ou sem retorno; com ressalvas se só há pontos de melhoria; finalizado se não há pendências. Os limites são referências pedagógicas.</div>
+            </Card>
+            <Card className="p-4">
+              <label className="block text-[11px] text-slate-400 mb-1">Suas observações (entram no parecer)</label>
+              <textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={3} className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm mb-3" placeholder="Opcional: elogios, orientações adicionais, data de reapresentação…" />
+              <label className="flex items-center justify-between text-[11px] text-slate-400 mb-1"><span>Parecer (editável)</span>{editado && <button onClick={() => setEditado(false)} className="underline hover:text-slate-100">refazer texto automático</button>}</label>
+              <textarea value={texto} onChange={(e) => { setTexto(e.target.value); setEditado(true); }} rows={18} className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-xs font-mono" />
+              <div className="flex flex-wrap gap-2 mt-3">
+                <button onClick={() => guardar(true)} disabled={ocupado} className="flex items-center gap-1.5 bg-amber-500 text-slate-900 font-bold text-sm px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40"><Send size={14} /> {ocupado ? "Processando…" : "Salvar e enviar para a equipe"}</button>
+                <button onClick={() => guardar(false)} disabled={ocupado} className="border border-slate-600 text-slate-200 text-sm px-4 py-2 rounded-md hover:bg-slate-800 disabled:opacity-40">Salvar sem enviar</button>
+                <button onClick={() => setFolha(true)} className="flex items-center gap-1.5 border border-slate-600 text-slate-200 text-sm px-4 py-2 rounded-md hover:bg-slate-800"><Printer size={14} /> Baixar PDF</button>
+                <button onClick={analisar} disabled={ocupado} className="text-xs text-slate-400 hover:text-slate-100 underline px-2">Reanalisar com os dados atuais</button>
+              </div>
+              {aviso && <div className="mt-3 text-xs text-emerald-300 bg-emerald-950/30 border border-emerald-700/50 rounded-md px-3 py-2">{aviso}</div>}
+            </Card>
+            {hist.length > 0 && (
+              <Card className="p-4">
+                <div className="text-xs font-bold text-slate-300 mb-2">Pareceres desta empresa</div>
+                <div className="space-y-1.5">
+                  {hist.map((p) => (
+                    <div key={p.id} className="bg-slate-900/60 border border-slate-800 rounded-md px-3 py-2 text-xs">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${PARECER_NIVEIS[p.nivel]?.cls || ""}`}>{PARECER_NIVEIS[p.nivel]?.rotulo || p.nivel}</span>
+                        <span className="text-slate-300">{fmtData(p.em)} · {p.por}</span>
+                        <span className={p.enviado ? "text-emerald-300" : "text-slate-500"}>{p.enviado ? `enviado à equipe em ${fmtData(p.enviadoEm)}` : "não enviado à equipe"}</span>
+                        <span className="flex-1" />
+                        <button onClick={() => setAberto(aberto === p.id ? null : p.id)} className="underline text-slate-400 hover:text-slate-100">{aberto === p.id ? "ocultar" : "ver texto"}</button>
+                        {!p.enviado && <button onClick={() => enviarDoHistorico(p)} disabled={ocupado} className="border border-sky-500/60 text-sky-300 px-2 py-0.5 rounded-md hover:bg-sky-500/10">Enviar à equipe</button>}
+                      </div>
+                      {aberto === p.id && <pre className="mt-2 whitespace-pre-wrap text-slate-300 font-sans">{p.texto}</pre>}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+          </>
+        )}
+    </div>
+  );
+}
+
+function GestaoParecerView({ turmas, professorNome }) {
+  const [turmaSelId, setTurmaSelId] = useState(turmas.length === 1 ? turmas[0].id : null);
+  const [equipeId, setEquipeId] = useState(null);
+  const turmaSel = turmas.find((t) => t.id === turmaSelId) || null;
+  const [equipes] = useSharedList(turmaSel ? "equipes_" + turmaSel.id : "equipes_sem_turma");
+  const reais = (equipes || []).filter((e) => !e.teste);
+  const [pareceres, setPareceres] = useState([]);
+  useEffect(() => { if (turmaSel && !equipeId) lerPareceres(turmaSel.id).then(setPareceres); }, [turmaSel, equipeId]);
+  const equipeSel = reais.find((e) => e.id === equipeId) || null;
+  if (turmaSel && equipeSel) return <ParecerEmpresa key={equipeSel.id} turma={turmaSel} equipe={equipeSel} professorNome={professorNome} onVoltar={() => setEquipeId(null)} />;
+  if (turmaSel) {
+    return (
+      <div className="space-y-4">
+        {turmas.length > 1 && <button onClick={() => { setTurmaSelId(null); setEquipeId(null); }} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Escolher outra turma</button>}
+        <SectionTitle icon={ScrollText} sub={`Turma: ${turmaSel.nome} · escolha a empresa para analisar o negócio e emitir o parecer.`}>Parecer do projeto</SectionTitle>
+        {equipes === null ? <div className="text-sm text-slate-500">Carregando empresas…</div>
+          : reais.length === 0 ? <Card className="p-8 text-center text-slate-500">Esta turma ainda não tem empresas.</Card>
+          : (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {reais.map((e) => {
+                const meus = pareceres.filter((p) => p.equipeId === e.id).sort((a, b) => b.em - a.em);
+                const ult = meus[0];
+                return (
+                  <button key={e.id} onClick={() => setEquipeId(e.id)} className="text-left bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-amber-500 transition">
+                    <div className="font-bold text-slate-100 truncate">{e.nomeNegocio}</div>
+                    <div className="text-xs text-slate-400 mb-2 truncate">{(e.integrantes || []).join(", ") || "sem integrantes"}</div>
+                    {ult ? <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${PARECER_NIVEIS[ult.nivel]?.cls || ""}`}>último: {PARECER_NIVEIS[ult.nivel]?.rotulo} · {fmtData(ult.em)}</span> : <span className="text-[11px] text-slate-500">nenhum parecer emitido</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+      </div>
+    );
+  }
+  return (
+    <div>
+      <SectionTitle icon={ScrollText} sub="Análise geral do negócio de uma empresa, com parecer: projeto finalizado ou inconsistências (onde e o que fazer). Escolha a turma.">Parecer do projeto</SectionTitle>
+      {turmas.length === 0 ? <Card className="p-10 text-center text-slate-500">Você ainda não criou nenhuma turma.</Card> : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {turmas.map((t) => (
+            <button key={t.id} onClick={() => setTurmaSelId(t.id)} className="text-left bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-amber-500 transition">
+              <div className="flex items-center gap-2"><School size={16} className="text-sky-400 shrink-0" /><span className="font-bold text-slate-100 truncate">{t.nome}</span></div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Tela de MENU: Gestão → Liberar análise e ajustes (escolhe a turma e libera).
+function GestaoLiberarAjustesView({ turmas, professorNome }) {
+  const [turmaSelId, setTurmaSelId] = useState(turmas.length === 1 ? turmas[0].id : null);
+  const turmaSel = turmas.find((t) => t.id === turmaSelId) || null;
+  const [equipes] = useSharedList(turmaSel ? "equipes_" + turmaSel.id : "equipes_sem_turma");
+  const reais = (equipes || []).filter((e) => !e.teste);
+  if (turmaSel) {
+    return (
+      <div className="space-y-4">
+        {turmas.length > 1 && <button onClick={() => setTurmaSelId(null)} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Escolher outra turma</button>}
+        <SectionTitle icon={RotateCcw} sub={`Turma: ${turmaSel.nome}`}>Liberar análise e ajustes</SectionTitle>
+        {equipes === null ? <div className="text-sm text-slate-500">Carregando empresas…</div>
+          : reais.length === 0 ? <Card className="p-8 text-center text-slate-500">Esta turma ainda não tem empresas.</Card>
+          : <AjustesFinaisTurma key={turmaSel.id} turma={turmaSel} equipes={reais} professorNome={professorNome} fixo />}
+      </div>
+    );
+  }
+  return (
+    <div>
+      <SectionTitle icon={RotateCcw} sub="Quando a equipe conclui o Módulo 11, libere a análise (M12 e M13) e os ajustes dos módulos indicados no relatório. Escolha a turma.">Liberar análise e ajustes</SectionTitle>
+      {turmas.length === 0 ? (
+        <Card className="p-10 text-center text-slate-500">Você ainda não criou nenhuma turma.</Card>
+      ) : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {turmas.map((t) => (
+            <button key={t.id} onClick={() => setTurmaSelId(t.id)} className="text-left bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-amber-500 transition">
+              <div className="flex items-center gap-2 mb-2"><School size={16} className="text-sky-400 shrink-0" /><span className="font-bold text-slate-100 truncate">{t.nome}</span></div>
+              <div className="flex items-center gap-2 text-xs text-slate-400"><KeyRound size={13} /> Código: <span className="font-mono font-bold text-amber-400">{t.codigo}</span></div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
+  const [aberto, setAberto] = useState(!!fixo);
+  const [info, setInfo] = useState(null);   // { [equipeId]: { fluxo, corrigidos, final } }
+  const [sel, setSel] = useState(new Set());
+  const [prazo, setPrazo] = useState("");
+  const [msg, setMsg] = useState(MSG_AJUSTES_PADRAO);
+  const [lotes, setLotes] = useState([]);
+  const [ocupado, setOcupado] = useState(false);
+  const [aviso, setAviso] = useState("");
+  const [previa, setPrevia] = useState(null);   // [{ id, nome, o, geral, mods }]
+
+  const carregar = async () => {
+    const mapa = {};
+    await Promise.all((equipes || []).map(async (e) => {
+      const d = await lerDadosEquipeFresco(e.id);
+      const fluxo = (d && d.fluxoModulos) || fluxoModulosPadrao();
+      mapa[e.id] = { fluxo, corrigidos: MODULOS.filter((m) => estadoModulo(fluxo, m.id).status === "corrigido").length, final: equipeChegouAoFinal(fluxo) };
+    }));
+    setInfo(mapa);
+    setLotes(await lerLotesAjustes(turma.id));
+  };
+  useEffect(() => { if (aberto) carregar(); /* eslint-disable-next-line */ }, [aberto]);
+
+  const aptas = (equipes || []).filter((e) => info && info[e.id] && info[e.id].final);
+  const alternar = (id) => setSel((a) => { const n = new Set(a); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const hoje = new Date().toISOString().slice(0, 10);
+
+  const IGNORA_ACHADO = /^(Devolvido pelo professor|Prazo vencido|Módulo liberado e ainda sem lançamentos)/;
+  const textoDoModulo = (base, n, achadosEq) => {
+    const meus = achadosEq.filter((x) => x.mod === n && !IGNORA_ACHADO.test(x.titulo));
+    if (!meus.length) return base;
+    return `${base}\n\nO que ajustar neste módulo:\n${meus.map((x) => `• ${x.titulo}\n  O que fazer: ${x.orientacao}`).join("\n")}`;
+  };
+
+  // PASSO 1 — gera o relatório (só leitura) e mostra a prévia editável
+  const gerarPrevia = async () => {
+    setAviso("");
+    const escolhidas = aptas.filter((e) => sel.has(e.id));
+    if (escolhidas.length === 0) { setAviso("Marque ao menos uma equipe apta."); return; }
+    if (!prazo || prazo < hoje) { setAviso("Informe uma data limite que não esteja no passado."); return; }
+    setOcupado(true);
+    try {
+      let cfg = null;
+      try { const r = await window.storage.get(`itens_segmento_${turma.professorUid}`, true); cfg = r ? JSON.parse(r.value) : null; } catch { cfg = null; }
+      const base = (msg || MSG_AJUSTES_PADRAO).replace(/\{prazo\}/g, fmtDataBR(prazo));
+      const lista = [];
+      for (const e of escolhidas) {
+        const d = await lerDadosEquipeFresco(e.id);
+        if (!d) continue;
+        const o = gerarOrientacaoEquipe({ equipe: e, dados: d, calc: calcular(d.lancamentos) }, cfg);
+        const mods = {}; MODULOS.forEach((m) => { mods[m.id] = textoDoModulo(base, m.n, o.achados); });
+        const abrir = {}; MODULOS.forEach((m) => { abrir[m.id] = m.n > 11 || o.achados.some((x) => x.mod === m.n && !IGNORA_ACHADO.test(x.titulo)); });
+        lista.push({ id: e.id, nome: e.nomeNegocio, o, geral: orientacaoEmTexto(o, turma), mods, abrir });
+      }
+      setPrevia(lista);
+    } catch { setAviso("Não foi possível gerar o relatório. Tente de novo."); }
+    setOcupado(false);
+  };
+
+  // PASSO 2 — confirma: libera os módulos e coloca a orientação em cada um
+  const liberar = async () => {
+    if (!previa || previa.length === 0) return;
+    setAviso("");
+    if (!window.confirm(`Liberar os módulos marcados (${previa.reduce((t, x) => t + Object.values(x.abrir).filter(Boolean).length, 0)} no total) em ${previa.length} equipe(s) e enviar as orientações pela plataforma?\n\n${previa.map((x) => x.nome).join(", ")}\n\nPrazo: ${fmtDataBR(prazo)}.\nMódulos marcados e concluídos voltam para ajustes (com a orientação de cada um) e os ainda bloqueados (12 e 13) são liberados; os não marcados permanecem concluídos. Notas e lançamentos são mantidos. Você poderá desfazer enquanto não houver reenvio.`)) return;
+    setOcupado(true);
+    try {
+      const agora = Date.now();
+      const loteId = uid();
+      const plano = [];
+      for (const pv of previa) {
+        const d = await lerDadosEquipeFresco(pv.id);          // leitura fresca, logo antes de gravar
+        if (!d) continue;
+        const fluxo = d.fluxoModulos || fluxoModulosPadrao();
+        if (!equipeChegouAoFinal(fluxo)) continue;             // reconfere elegibilidade
+        const novo = { ...fluxo }; const antes = {};
+        MODULOS.forEach((m) => {
+          const atual = estadoModulo(fluxo, m.id);
+          const texto = pv.mods[m.id];
+          if (!pv.abrir[m.id]) return;                         // sem achado e não marcado: permanece como está
+          if (atual.status === "corrigido") {                  // concluído -> reaberto para ajustes
+            antes[m.id] = atual;
+            novo[m.id] = {
+              ...atual, status: "ajustes", feedback: texto, ciclo: (atual.ciclo || 1) + 1, prazo, prazoManual: true,
+              historico: [...(atual.historico || []), { tipo: "reaberto_pos_correcao", data: agora, feedback: texto, lote: loteId }],
+            };
+          } else if (atual.status === "pendente") {            // ainda bloqueado (ex.: M12 e M13) -> liberado
+            antes[m.id] = atual;
+            novo[m.id] = { ...atual, status: "liberado", prazo, prazoManual: true, loteAjustes: loteId, feedback: texto };
+          }                                                    // liberado/enviado/ajustes: não mexe
+        });
+        if (Object.keys(antes).length) plano.push({ id: pv.id, nome: pv.nome, d, novo, antes, geral: pv.geral });
+      }
+      if (plano.length === 0) { setAviso("Nenhuma equipe apta no momento (releitura do banco)."); setOcupado(false); return; }
+      // 1) grava primeiro o registro do lote (estado anterior) — se falhar, nada é alterado
+      const registro = { id: loteId, em: agora, por: professorNome, prazo, mensagem: msg, equipes: plano.map((p) => ({ id: p.id, nome: p.nome, antes: p.antes })) };
+      const lista = await lerLotesAjustes(turma.id);
+      await window.storage.set(chaveLotesAjustes(turma.id), JSON.stringify([...lista, registro]), true);
+      // 2) altera SOMENTE fluxoModulos e acrescenta o comentário "Geral" com o relatório
+      for (const p of plano) {
+        const coment = { modulo: "Geral", texto: p.geral, autor: professorNome || "Professor", timestamp: agora, tipo: "orientacao", lote: loteId };
+        await window.storage.set(`dados_equipe_${p.id}`, JSON.stringify({ ...p.d, fluxoModulos: p.novo, comentarios: [...(p.d.comentarios || []), coment] }), true);
+      }
+      setAviso(`Pronto: ${plano.length} equipe(s) com ${plano.reduce((s, p) => s + Object.keys(p.antes).length, 0)} módulos liberados até ${fmtDataBR(prazo)}. Cada módulo mostra a orientação para a equipe e o relatório completo está em "Feedback".`);
+      setSel(new Set()); setPrevia(null);
+      await carregar();
+    } catch (e) { setAviso("Não foi possível concluir. Verifique a conexão e tente de novo."); }
+    setOcupado(false);
+  };
+
+  const desfazer = async (lote) => {
+    if (!window.confirm("Desfazer este lote?\n\nSó voltam ao estado anterior (corrigido) os módulos que a equipe ainda NÃO reenviou. Os que já foram reenviados ficam como estão.")) return;
+    setOcupado(true); setAviso("");
+    try {
+      let revertidos = 0; let mantidos = 0;
+      for (const eq of lote.equipes) {
+        const d = await lerDadosEquipeFresco(eq.id);
+        if (!d || !d.fluxoModulos) continue;
+        const fluxo = { ...d.fluxoModulos }; let mudou = false;
+        Object.keys(eq.antes).forEach((modId) => {
+          const prev = eq.antes[modId]; const atual = fluxo[modId];
+          const intacto = atual && ((prev.status === "pendente" ? (atual.status === "liberado" && atual.loteAjustes === lote.id) : (atual.status === "ajustes" && (atual.ciclo || 1) === (prev.ciclo || 1) + 1)));
+          if (intacto) { fluxo[modId] = prev; revertidos++; mudou = true; } else mantidos++;
+        });
+        if (mudou) await window.storage.set(`dados_equipe_${eq.id}`, JSON.stringify({ ...d, fluxoModulos: fluxo, comentarios: (d.comentarios || []).filter((c) => c.lote !== lote.id) }), true);
+      }
+      const lista = await lerLotesAjustes(turma.id);
+      await window.storage.set(chaveLotesAjustes(turma.id), JSON.stringify(lista.map((l) => (l.id === lote.id ? { ...l, desfeitoEm: Date.now() } : l))), true);
+      setAviso(`Lote desfeito: ${revertidos} módulo(s) voltaram a "corrigido"; ${mantidos} já tinham sido reenviados e foram mantidos.`);
+      await carregar();
+    } catch { setAviso("Não foi possível desfazer. Tente de novo."); }
+    setOcupado(false);
+  };
+
+  return (
+    <Card className="p-4">
+      {!fixo && (<button onClick={() => setAberto((v) => !v)} className="w-full flex items-center justify-between text-left">
+        <span className="flex items-center gap-2 font-bold text-slate-100"><RotateCcw size={16} className="text-amber-500" /> Fase de análise e ajustes <span className="text-xs font-normal text-slate-500">— liberar todos os módulos de equipes que concluíram os lançamentos (M1–M11)</span></span>
+        {aberto ? <ChevronDown size={18} className="text-slate-500" /> : <ChevronRight size={18} className="text-slate-500" />}
+      </button>)}
+      {aberto && (
+        <div className="mt-4">
+          <p className="text-xs text-slate-400 mb-3">Quando a equipe conclui o <b>Módulo 11</b> (fim dos lançamentos), você libera <b>todos os módulos</b> de uma vez: os Módulos 12 e 13 (análise do negócio) são liberados e os módulos já corrigidos voltam para ajustes, para a equipe revisar os lançamentos com base na análise. As notas, os lançamentos e os comentários não são alterados; a equipe reenvia cada módulo e você reaprova um a um, como sempre.</p>
+          {previa ? (
+            <div>
+              <div className="text-sm text-slate-200 mb-1 font-bold">Relatório gerado — revise antes de liberar</div>
+              <p className="text-xs text-slate-400 mb-3">Nada foi gravado ainda. Só os módulos com ponto a ajustar vêm marcados (12 e 13 abrem sempre); os demais permanecem concluídos, com nota e lançamentos intactos — marque se quiser abrir algum. Edite o que quiser: o texto de cada módulo aparece para a equipe naquele módulo; o relatório "Geral" vai para a aba Feedback. Prazo: {fmtDataBR(prazo)}.</p>
+              <div className="space-y-2 mb-4">
+                {previa.map((pv, ix) => (
+                  <details key={pv.id} className="rounded-md border border-slate-700 bg-slate-900/60" open={previa.length === 1}>
+                    <summary className="cursor-pointer px-3 py-2 text-sm text-slate-200 font-bold">{pv.nome} <span className="text-xs font-normal text-slate-400">— {pv.o.achados.length} ponto(s) de atenção</span></summary>
+                    <div className="px-3 pb-3 space-y-3">
+                      <div>
+                        <label className="block text-[11px] text-slate-400 mb-1">Relatório geral (aba Feedback)</label>
+                        <textarea value={pv.geral} rows={8} onChange={(e) => setPrevia(previa.map((x, k) => k === ix ? { ...x, geral: e.target.value } : x))} className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-xs" />
+                      </div>
+                      {MODULOS.map((m) => (
+                        <div key={m.id} className={pv.abrir[m.id] ? "" : "opacity-60"}>
+                          <label className="flex items-center gap-2 text-[11px] text-slate-300 mb-1">
+                            <input type="checkbox" checked={!!pv.abrir[m.id]} disabled={ocupado} onChange={(e) => setPrevia(previa.map((x, k) => k === ix ? { ...x, abrir: { ...x.abrir, [m.id]: e.target.checked } } : x))} />
+                            <span>Módulo {m.n} — {m.nome}</span>
+                            <span className="text-slate-500">{pv.abrir[m.id] ? (m.n > 11 ? "(análise: sempre aberto)" : "(abrir para ajuste)") : "(sem achado — permanece concluído)"}</span>
+                          </label>
+                          {pv.abrir[m.id] && <textarea value={pv.mods[m.id]} rows={pv.mods[m.id].includes("O que ajustar") ? 6 : 3} onChange={(e) => setPrevia(previa.map((x, k) => k === ix ? { ...x, mods: { ...x.mods, [m.id]: e.target.value } } : x))} className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-xs" />}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <button onClick={liberar} disabled={ocupado} className="bg-amber-500 text-slate-900 font-bold text-sm px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40">{ocupado ? "Processando…" : "Confirmar e liberar os módulos marcados"}</button>
+                <button onClick={() => { setPrevia(null); setAviso(""); }} disabled={ocupado} className="text-xs text-slate-400 hover:text-slate-100 underline">← Voltar</button>
+              </div>
+            </div>
+          ) : info === null ? <div className="text-xs text-slate-500">Lendo situação das equipes…</div> : (
+            <>
+              <div className="space-y-1.5 mb-4">
+                {(equipes || []).length === 0 && <div className="text-xs text-slate-500">Nenhuma empresa nesta turma.</div>}
+                {(equipes || []).map((e) => {
+                  const i = info[e.id]; const apta = !!(i && i.final);
+                  return (
+                    <label key={e.id} className={`flex items-center gap-3 text-sm rounded-md border px-3 py-2 ${apta ? "border-slate-700 bg-slate-900/60 cursor-pointer" : "border-slate-800 bg-slate-900/20 text-slate-500"}`}>
+                      <input type="checkbox" disabled={!apta || ocupado} checked={sel.has(e.id)} onChange={() => alternar(e.id)} />
+                      <span className="flex-1 truncate text-slate-200">{e.nomeNegocio}</span>
+                      <span className="text-xs">{i ? `${i.corrigidos}/${MODULOS.length} módulos corrigidos` : "—"}</span>
+                      <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 border ${apta ? "text-emerald-300 border-emerald-700" : "text-slate-500 border-slate-700"}`}>{apta ? "Concluiu o M11" : "Ainda em andamento"}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              {aptas.length > 0 && (
+                <div className="grid md:grid-cols-[200px_1fr] gap-3 mb-3">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Prazo da fase de análise e ajustes (obrigatório)</label>
+                    <input type="date" value={prazo} min={hoje} onChange={(e) => setPrazo(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Mensagem que a equipe verá em cada módulo ({"{prazo}"} vira a data)</label>
+                    <textarea value={msg} onChange={(e) => setMsg(e.target.value)} rows={3} className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm" />
+                  </div>
+                </div>
+              )}
+              {aptas.length > 0 && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <button onClick={gerarPrevia} disabled={ocupado || sel.size === 0 || !prazo} className="bg-amber-500 text-slate-900 font-bold text-sm px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40">{ocupado ? "Gerando…" : `Gerar relatório e revisar (${sel.size} equipe${sel.size === 1 ? "" : "s"})`}</button>
+                  <button onClick={() => setSel(new Set(aptas.map((e) => e.id)))} className="text-xs text-slate-400 hover:text-slate-100 underline">Marcar todas as aptas</button>
+                </div>
+              )}
+              {aptas.length === 0 && <div className="text-xs text-slate-500">Nenhuma equipe concluiu o Módulo 11 ainda.</div>}
+            </>
+          )}
+          {aviso && <div className="mt-3 text-xs text-amber-300 bg-amber-950/30 border border-amber-800/50 rounded-md px-3 py-2">{aviso}</div>}
+          {lotes.length > 0 && (
+            <div className="mt-5 pt-4 border-t border-slate-800">
+              <div className="text-xs font-bold text-slate-300 mb-2">Liberações anteriores</div>
+              <div className="space-y-1.5">
+                {[...lotes].reverse().map((l) => (
+                  <div key={l.id} className="flex flex-wrap items-center gap-2 text-xs bg-slate-900/60 border border-slate-800 rounded-md px-3 py-2">
+                    <span className="text-slate-300">{fmtData(l.em)}</span>
+                    <span className="text-slate-500">· {l.equipes.length} equipe(s) · prazo {fmtDataBR(l.prazo)} · por {l.por}</span>
+                    <span className="text-slate-500 truncate flex-1">{l.equipes.map((e) => e.nome).join(", ")}</span>
+                    {l.desfeitoEm ? <span className="text-slate-500">desfeito em {fmtData(l.desfeitoEm)}</span> : <button onClick={() => desfazer(l)} disabled={ocupado} className="border border-slate-600 text-slate-200 font-semibold rounded-md px-2.5 py-1 hover:bg-slate-800 disabled:opacity-40">Desfazer</button>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -6008,6 +8554,32 @@ function TurmaDetail({ turma, onVoltar, professorNome, alvoCorrecao }) {
     await setEquipes(equipes.map((e) => (e.id === equipe.id ? { ...e, nomeNegocio: novoNome } : e)));
   };
 
+  // Professor edita/corrige o segmento direto no card: conta como aprovação
+  // automática (combinado em 2026-10-01) — evita um vai-e-vem desnecessário
+  // quando o próprio professor já está corrigindo a escolha da equipe.
+  const definirSegmentoEmpresa = async (equipe, segmento) => {
+    await setEquipes(equipes.map((e) => (e.id === equipe.id
+      ? { ...e, segmento, segmentoStatus: segmento ? "aprovado" : null, segmentoAprovadoEm: segmento ? Date.now() : null, segmentoObservacao: null }
+      : e)));
+  };
+
+  const aprovarSegmento = async (equipe) => {
+    await setEquipes(equipes.map((e) => (e.id === equipe.id
+      ? { ...e, segmentoStatus: "aprovado", segmentoAprovadoEm: Date.now(), segmentoObservacao: null }
+      : e)));
+  };
+
+  const pedirReconsiderarSegmento = async (equipe) => {
+    const observacao = (prompt(`Por que "${equipe.segmento}" não parece o segmento certo para a "${equipe.nomeNegocio}"? Essa explicação vai ajudar a equipe a escolher melhor:`) || "").trim();
+    if (!observacao) return;
+    await setEquipes(equipes.map((e) => (e.id === equipe.id
+      ? { ...e, segmentoStatus: "reconsiderar", segmentoObservacao: observacao, segmentoAprovadoEm: null }
+      : e)));
+  };
+
+  const equipesAguardandoSegmento = (equipes || []).filter((e) => e.segmentoStatus === "pendente" && !e.teste);
+  const equipesReais = (equipes || []).filter((e) => !e.teste);
+
   const excluirEmpresa = async (equipe) => {
     const ok = window.confirm(
       `Excluir a empresa "${equipe.nomeNegocio}"?\n\nOs lançamentos dela serão apagados permanentemente, e os alunos vinculados a ela poderão escolher outra empresa da turma no próximo acesso.`
@@ -6029,9 +8601,31 @@ function TurmaDetail({ turma, onVoltar, professorNome, alvoCorrecao }) {
         </div>
       </div>
 
-      <CronogramaTurmaCard turmaId={turma.id} turmaNome={turma.nome} />
-
       <PainelRoster turmaId={turma.id} turmaNome={turma.nome} professorUid={turma.professorUid} professorNome={turma.professor} />
+
+
+      {equipesAguardandoSegmento.length > 0 && (
+        <Card className="p-4 border-amber-800/50">
+          <div className="flex items-center gap-2 text-sm font-bold text-amber-400 mb-3">
+            <Clock size={16} /> {equipesAguardandoSegmento.length} equipe(s) escolheram o segmento do negócio e aguardam sua aprovação
+          </div>
+          <div className="space-y-2">
+            {equipesAguardandoSegmento.map((eq) => (
+              <div key={eq.id} className="flex items-center justify-between gap-3 flex-wrap bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5">
+                <div>
+                  <div className="text-sm font-bold text-slate-100">{eq.nomeNegocio}</div>
+                  <div className="text-xs text-slate-500">{(eq.integrantes || []).join(", ") || "sem integrantes"}</div>
+                  <div className="text-xs font-semibold text-amber-400 mt-1">🏷️ Escolheu: {eq.segmento}</div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => aprovarSegmento(eq)} className="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-md px-3 py-1.5">✓ Aprovar</button>
+                  <button onClick={() => pedirReconsiderarSegmento(eq)} className="text-xs font-bold text-rose-300 border border-rose-900/60 hover:bg-rose-950/30 rounded-md px-3 py-1.5">Pedir para reconsiderar</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <Card className="p-4">
         <SectionTitle icon={Building2} sub="Cadastre aqui os nomes das empresas/negócios da turma — os alunos escolherão entre elas ao entrar (em vez de digitar um nome livre).">
@@ -6041,18 +8635,19 @@ function TurmaDetail({ turma, onVoltar, professorNome, alvoCorrecao }) {
       </Card>
 
       {equipes === null && <LoadingScreen />}
-      {equipes && equipes.length === 0 && (
+      {equipes && equipesReais.length === 0 && (
         <Card className="p-8 text-center text-slate-500">Nenhuma empresa cadastrada ainda. Use o formulário acima para adicionar.</Card>
       )}
-      {equipes && equipes.length > 0 && (
+      {equipes && equipesReais.length > 0 && (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {equipes.map((eq) => (
+          {equipesReais.map((eq) => (
             <EquipeCard
               key={eq.id}
               equipe={eq}
               onClick={() => setEquipeSel(eq.id)}
               onRenomear={() => renomearEmpresa(eq)}
               onExcluir={() => excluirEmpresa(eq)}
+              onSetSegmento={(segmento) => definirSegmentoEmpresa(eq, segmento)}
             />
           ))}
         </div>
@@ -6072,7 +8667,7 @@ async function desvincularAlunosDaEquipe(turmaId, equipeId) {
   } catch {}
 }
 
-function EquipeCard({ equipe, onClick, onRenomear, onExcluir }) {
+function EquipeCard({ equipe, onClick, onRenomear, onExcluir, onSetSegmento }) {
   const equipeKey = `dados_equipe_${equipe.id}`;
   const [dados] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [] });
   const calc = dados ? calcular(dados.lancamentos) : null;
@@ -6120,6 +8715,31 @@ function EquipeCard({ equipe, onClick, onRenomear, onExcluir }) {
         </>
       ) : <span className="text-xs text-slate-300">Carregando…</span>}
       </button>
+      {onSetSegmento && (
+        <div className="px-4 pb-4 -mt-1" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">Segmento do negócio</label>
+            {equipe.segmentoStatus === "pendente" && (
+              <span className="text-[9.5px] font-bold text-amber-400 bg-amber-950/40 border border-amber-800/50 rounded-full px-2 py-0.5">⏳ Aguardando aprovação</span>
+            )}
+            {equipe.segmentoStatus === "reconsiderar" && (
+              <span className="text-[9.5px] font-bold text-rose-300 bg-rose-950/40 border border-rose-800/50 rounded-full px-2 py-0.5">Pediu para reconsiderar</span>
+            )}
+            {(equipe.segmentoStatus === "aprovado" || (equipe.segmento && equipe.segmentoStatus === undefined)) && (
+              <span className="text-[9.5px] font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-800/50 rounded-full px-2 py-0.5">✓ Aprovado</span>
+            )}
+          </div>
+          <select
+            value={equipe.segmento || ""}
+            onChange={(e) => onSetSegmento(e.target.value)}
+            className="w-full bg-slate-900 border border-slate-700 rounded-md px-2 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
+          >
+            <option value="">— não definido —</option>
+            {SEGMENTOS_NEGOCIO.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <div className="text-[10px] text-slate-500 mt-1">Editar aqui corrige a escolha da equipe e já aprova automaticamente.</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -6237,7 +8857,7 @@ function EditarAlunoPanel({ aluno, turmas, onFechar, onSalvo }) {
     (async () => {
       try {
         const r = await window.storage.get(`equipes_${turmaId}`, true);
-        const lista = r ? JSON.parse(r.value) : [];
+        const lista = (r ? JSON.parse(r.value) : []).filter((e) => !e.teste);
         if (alive) setEmpresas(lista);
       } catch { if (alive) setEmpresas([]); }
     })();
@@ -6434,7 +9054,7 @@ function ResumoComparativo({ turma, dadosEquipes }) {
         String(progressoAprovado),
       ]);
     });
-    const csv = linhas.map((l) => l.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";")).join("\n");
+    const csv = [["Turma", turma.nome], ...(turma.professor ? [["Professor(a)", turma.professor]] : []), [], ...linhas].map((l) => l.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";")).join("\n");
     baixarArquivo(`relatorio_${turma.nome.replace(/\s+/g, "_")}.csv`, csv, "text/csv;charset=utf-8");
   };
 
@@ -6472,14 +9092,578 @@ function ResumoComparativo({ turma, dadosEquipes }) {
   );
 }
 
+// ============================================================================
+// RELATÓRIO GERENCIAL COMPLETO POR EMPRESA (somente leitura)
+// Reúne, numa única emissão, o status e a nota de cada módulo, todos os
+// lançamentos etapa por etapa, o histórico de correção, os gráficos e um
+// diagnóstico automático por regras objetivas. Nada aqui grava dados: só lê
+// o que já foi carregado por useEquipesComDados (adicionado em 2026-10-08).
+// ============================================================================
+
+const STATUS_MODULO_ROTULO = {
+  pendente: "Bloqueado", liberado: "Liberado (em preenchimento)", enviado: "Enviado — aguardando correção",
+  ajustes: "Devolvido para ajustes", corrigido: "Corrigido / aprovado",
+};
+const STATUS_MODULO_COR = {
+  pendente: "text-slate-400", liberado: "text-emerald-400", enviado: "text-sky-400", ajustes: "text-amber-400", corrigido: "text-emerald-400",
+};
+const SEVERIDADE_ROTULO = { alta: "Atenção alta", media: "Atenção média", info: "Informativo" };
+
+// Monta, para cada módulo, os dados já formatados em texto — a mesma estrutura
+// alimenta a tela/impressão e o arquivo .md para IA, para nunca divergirem.
+function dadosTabelaModulo(modId, l, calc) {
+  const q = (v) => fmtNum(Number(v) || 0, 2);
+  const nome = (s, alt) => (s && String(s).trim()) || alt;
+  switch (modId) {
+    case "m1":
+      return {
+        colunas: ["Descrição", "Categoria", "Qtde.", "Valor unit.", "Total"],
+        linhas: l.m1.itens.map((it) => [nome(it.desc, "(sem descrição)"), it.categoria || "—", q(it.qtd), fmtBRL(Number(it.valorUnit) || 0), fmtBRL((Number(it.qtd) || 0) * (Number(it.valorUnit) || 0))]),
+        rodape: [["Total de Investimentos Fixos", fmtBRL(calc.investFixo)]],
+      };
+    case "m2":
+      return {
+        extras: [
+          ["Estoque inicial", fmtBRL(calc.estoqueInicial)],
+          ["Prazo médio de vendas", `${fmtNum(Number(l.m2.prazoVendasDias) || 0, 0)} dias`],
+          ["Prazo médio de estoque", `${fmtNum(Number(l.m2.prazoEstoqueDias) || 0, 0)} dias`],
+          ["Prazo médio de compras", `${fmtNum(Number(l.m2.prazoComprasDias) || 0, 0)} dias`],
+          ["Necessidade líquida de capital de giro", `${fmtNum(calc.necessidadeLiquidaDias, 0)} dias`],
+          ["Caixa mínimo", fmtBRL(calc.caixaMinimo)],
+          ["Capital de giro total", fmtBRL(calc.capitalGiroTotal)],
+        ],
+      };
+    case "m3":
+      return {
+        colunas: ["Descrição", "Valor"],
+        linhas: l.m3.itens.map((it) => [nome(it.desc, "(sem descrição)"), fmtBRL(Number(it.valor) || 0)]),
+        rodape: [["Total de Investimentos Pré-Operacionais", fmtBRL(calc.investPreOp)]],
+      };
+    case "m4": {
+      const prop = Number(l.m4.pctProprio);
+      const pctProp = Number.isFinite(prop) ? prop : 100;
+      return {
+        extras: [
+          ["Investimentos fixos", fmtBRL(calc.investFixo)],
+          ["Capital de giro", fmtBRL(calc.capitalGiroTotal)],
+          ["Pré-operacionais", fmtBRL(calc.investPreOp)],
+          ["Investimento total", fmtBRL(calc.investimentoTotal)],
+          ["Recursos próprios / de terceiros", `${fmtNum(pctProp, 1)}% / ${fmtNum(100 - pctProp, 1)}%`],
+        ],
+      };
+    }
+    case "m5":
+      return {
+        colunas: ["Produto/serviço", "Qtde. mensal", "Preço unit.", "Faturamento"],
+        linhas: l.m5.itens.map((it) => [nome(it.nome, "(sem nome)"), q(it.qtd), fmtBRL(Number(it.precoUnit) || 0), fmtBRL((Number(it.qtd) || 0) * (Number(it.precoUnit) || 0))]),
+        rodape: [["Faturamento mensal", fmtBRL(calc.faturamento)]],
+      };
+    case "m6":
+      return {
+        colunas: ["Produto", "Material", "Qtde.", "Custo unit.", "Total"],
+        linhas: l.m6.itens.map((it) => [nome(it.produto, "—"), nome(it.material, "—"), `${q(it.qtd)}${it.unQtd ? " " + it.unQtd : ""}`, `${fmtBRL(Number(it.custoUnit) || 0)}${it.unPreco ? " /" + it.unPreco : ""}`, fmtBRL(totalLinhaM6(it))]),
+        rodape: [["Total de materiais", fmtBRL(l.m6.itens.reduce((s, it) => s + totalLinhaM6(it), 0))]],
+      };
+    case "m7":
+      return {
+        extras: [
+          ["Forma de cálculo do imposto", l.m7.modoImposto === "simples" ? "Tabela do Simples Nacional" : "Percentual informado"],
+          ["Tipo de atividade", l.m7.tipoAtividade || "—"],
+          ["Impostos sobre vendas", `${fmtNum(calc.pctImpostos, 2)}%`],
+          ["Comissões", `${fmtNum(calc.pctComissao, 2)}%`],
+          ["Custo de comercialização (mensal)", fmtBRL(calc.custoComercializacao)],
+        ],
+      };
+    case "m8":
+      return {
+        colunas: ["Produto/serviço", "Qtde. vendida", "Custo unit.", "CMD/CMV"],
+        linhas: l.m5.itens.map((it) => {
+          const cu = Number(l.m8.custosUnit?.[it.id]) || 0;
+          return [nome(it.nome, "(sem nome)"), q(it.qtd), fmtBRL(cu), fmtBRL((Number(it.qtd) || 0) * cu)];
+        }),
+        rodape: [["CMD/CMV total (mensal)", fmtBRL(calc.cmv)]],
+      };
+    case "m9": {
+      const det = detalheMaoDeObra(l.m9);
+      return {
+        colunas: ["Função", "Qtde.", "Salário", "% Encargos", "VT + VR (por pessoa)", "Custo mensal"],
+        linhas: [
+          ...det.linhas.map((r) => [nome(r.funcao, "(sem função)"), q(r.qtd), fmtBRL(r.salario), `${fmtNum(r.pct, 1)}%`, fmtBRL(r.vt + r.vr), fmtBRL(r.total)]),
+          ...det.prolabore.map((r) => [`Pró-labore — ${nome(r.funcao, "sócio(a)")}`, q(r.qtd), fmtBRL(r.valor), `${fmtNum(r.pct, 1)}% (INSS patronal)`, "—", fmtBRL(r.total)]),
+        ],
+        rodape: [["Funcionários", fmtBRL(det.totalFuncionarios)], ["Pró-labore", fmtBRL(det.totalProlabore)], ["Custo total com mão de obra (mensal)", fmtBRL(calc.maoDeObra)]],
+      };
+    }
+    case "m10":
+      return {
+        colunas: ["Bem", "Valor", "Vida útil (anos)", "Depreciação mensal"],
+        linhas: calc.depreciacaoLinhas.map((r) => [nome(r.desc, "(sem descrição)"), fmtBRL(r.valor), fmtNum(r.vidaUtil, 1), fmtBRL(r.mensal)]),
+        rodape: [["Depreciação mensal total", fmtBRL(calc.depreciacaoMensal)]],
+      };
+    case "m11":
+      return {
+        colunas: ["Descrição", "Valor mensal"],
+        linhas: [
+          ...l.m11.itens.map((it) => [nome(it.desc, "(sem descrição)"), fmtBRL(Number(it.valor) || 0)]),
+          ["Mão de obra (Módulo 9) — automático", fmtBRL(calc.maoDeObra)],
+          ["Depreciação (Módulo 10) — automático", fmtBRL(calc.depreciacaoMensal)],
+        ],
+        rodape: [["Custos fixos mensais totais", fmtBRL(calc.custoFixoTotal)]],
+      };
+    case "m12": {
+      const pct = (v) => (calc.faturamento ? fmtPct((v / calc.faturamento) * 100) : "—");
+      return {
+        colunas: ["Descrição", "R$ (mensal)", "% da receita"],
+        linhas: [
+          ["Receita total com vendas", fmtBRL(calc.faturamento), calc.faturamento ? "100,0%" : "—"],
+          ["(–) CMD/CMV", fmtBRL(-calc.cmv), pct(calc.cmv)],
+          ["(–) Custos de comercialização", fmtBRL(-calc.custoComercializacao), pct(calc.custoComercializacao)],
+          ["= Margem de contribuição", fmtBRL(calc.margemContribuicao), pct(calc.margemContribuicao)],
+          ["(–) Custos fixos totais", fmtBRL(-calc.custoFixoTotal), pct(calc.custoFixoTotal)],
+          ["= Resultado operacional", fmtBRL(calc.resultadoOperacional), pct(calc.resultadoOperacional)],
+        ],
+        rodape: [[calc.resultadoOperacional >= 0 ? "Resultado projetado: LUCRO mensal" : "Resultado projetado: PREJUÍZO mensal", fmtBRL(Math.abs(calc.resultadoOperacional))]],
+      };
+    }
+    case "m13":
+      return {
+        extras: [
+          ["Ponto de equilíbrio (anual)", calc.pontoEquilibrio != null ? fmtBRL(calc.pontoEquilibrio) : "—"],
+          ["Lucratividade", fmtPct(calc.lucratividade)],
+          ["Rentabilidade (ao ano)", fmtPct(calc.rentabilidade)],
+          ["Prazo de retorno (payback)", calc.prazoRetorno != null ? `${fmtNum(calc.prazoRetorno, 1)} anos` : "—"],
+        ],
+      };
+    default:
+      return {};
+  }
+}
+
+// Diagnóstico automático: só regras objetivas sobre os números e o fluxo de
+// correção. Não substitui o julgamento pedagógico do professor — aponta onde
+// olhar primeiro e a que etapa a equipe deve voltar.
+function diagnosticoGerencial(l, calc, fluxoMod, dados) {
+  const d = [];
+  // Módulo ainda bloqueado: a equipe nem chegou lá, então não é falha dela e
+  // nada é apontado. Módulo liberado (em preenchimento): vira só informativo.
+  // Regras do fluxo de correção passam fluxo=true e não sofrem esse filtro.
+  const add = (sev, mod, texto, acao, fluxo) => {
+    if (mod && !fluxo) {
+      const st = estadoModulo(fluxoMod, `m${mod}`).status;
+      if (st === "pendente") return;
+      if (st === "liberado" && sev !== "info") { d.push({ sev: "info", mod, texto: `(em preenchimento) ${texto}`, acao }); return; }
+    }
+    d.push({ sev, mod, texto, acao });
+  };
+  const lista = (arr) => arr.map((x) => `"${x}"`).join(", ");
+
+  // Módulo 1
+  if (l.m1.itens.length === 0) add("alta", 1, "Nenhum bem foi lançado em Investimentos Fixos.", "Lançar máquinas, móveis, utensílios e demais bens necessários.");
+  else {
+    const sem = l.m1.itens.filter((it) => !(Number(it.qtd) > 0) || !(Number(it.valorUnit) > 0)).map((it) => it.desc || "(sem descrição)");
+    if (sem.length) add("media", 1, `${sem.length} bem(ns) sem quantidade ou valor: ${lista(sem)}.`, "Pesquisar o preço e informar a quantidade de cada bem.");
+  }
+  // Módulo 2
+  const m2zerado = !(calc.estoqueInicial > 0) && !(Number(l.m2.prazoVendasDias) > 0) && !(Number(l.m2.prazoEstoqueDias) > 0) && !(Number(l.m2.prazoComprasDias) > 0);
+  if (m2zerado) add("alta", 2, "Capital de Giro não preenchido (estoque inicial e prazos zerados).", "Informar o estoque inicial e os prazos médios de vendas, estoque e compras.");
+  else if (calc.necessidadeLiquidaDias <= 0) add("info", 2, "A necessidade líquida de giro está em zero ou negativa, então o caixa mínimo ficou zerado.", "Conferir se os prazos de vendas, estoque e compras refletem a realidade do negócio.");
+  // Módulo 3
+  if (l.m3.itens.length === 0) add("media", 3, "Nenhum gasto pré-operacional lançado (legalização, reformas, divulgação de lançamento, treinamentos).", "Confirmar se realmente não haverá gastos antes de abrir; se houver, lançá-los.");
+  else {
+    const sem = l.m3.itens.filter((it) => !(Number(it.valor) > 0)).map((it) => it.desc || "(sem descrição)");
+    if (sem.length) add("media", 3, `${sem.length} gasto(s) pré-operacional(is) sem valor: ${lista(sem)}.`, "Informar o valor de cada gasto.");
+  }
+  // Módulo 5
+  if (l.m5.itens.length === 0) add("alta", 5, "Nenhum produto/serviço lançado no Faturamento Mensal — sem receita, DRE e indicadores perdem sentido.", "Lançar produtos/serviços com quantidade mensal e preço de venda.");
+  else {
+    const sem = l.m5.itens.filter((it) => !(Number(it.qtd) > 0) || !(Number(it.precoUnit) > 0)).map((it) => it.nome || "(sem nome)");
+    if (sem.length) add("media", 5, `${sem.length} produto(s)/serviço(s) sem quantidade ou preço: ${lista(sem)}.`, "Completar quantidade mensal e preço de venda.");
+  }
+  // Módulo 7
+  if (calc.faturamento > 0 && !(calc.pctImpostos > 0) && !(calc.pctComissao > 0)) add("media", 7, "Há faturamento, mas impostos e comissões estão em 0%.", "Informar o regime/atividade (Simples Nacional) e eventuais comissões.");
+  // Módulo 8
+  if (l.m5.itens.length > 0) {
+    const semCusto = l.m5.itens.filter((it) => !(Number(l.m8.custosUnit?.[it.id]) > 0)).map((it) => it.nome || "(sem nome)");
+    if (semCusto.length) add(calc.faturamento > 0 ? "alta" : "media", 8, `${semCusto.length} produto(s)/serviço(s) sem custo unitário em CMD/CMV: ${lista(semCusto)}. Sem isso a margem aparece maior do que a real.`, "Informar o custo unitário de cada item (Módulo 8, apoiado pelo Módulo 6 quando houver matéria-prima).");
+  }
+  // Preço abaixo do custo
+  const negativos = calc.produtosAnalise.filter((p) => p.custoUnit > 0 && p.margemUnit < 0).map((p) => p.nome);
+  if (negativos.length) add("alta", 5, `Preço de venda não cobre custo + tributos em: ${lista(negativos)} (margem unitária negativa).`, "Rever o preço de venda (Módulo 5) ou o custo unitário (Módulos 6 e 8).");
+  // Módulo 9 / 11
+  if (l.m9.itens.length === 0 && (l.m9.prolabore || []).length === 0) add("media", 9, "Nenhuma mão de obra nem pró-labore lançados.", "Lançar funcionários e/ou pró-labore dos sócios, ou justificar por que o negócio opera sem mão de obra.");
+  if (l.m11.itens.length === 0) add("alta", 11, "Nenhum custo fixo lançado (aluguel, energia, internet, etc.).", "Lançar os custos fixos mensais do negócio.");
+
+  // Resultado e indicadores (só quando há receita)
+  if (calc.faturamento > 0) {
+    if (calc.resultadoOperacional < 0) add("alta", 5, `Resultado operacional mensal negativo (${fmtBRL(calc.resultadoOperacional)}).`, "Rever preços (Módulo 5) e custos (Módulos 7 a 11).");
+    if (calc.pontoEquilibrio != null && calc.receitaAnual < calc.pontoEquilibrio) add("media", 13, "O faturamento anual projetado está abaixo do ponto de equilíbrio.", "Aumentar receita ou reduzir custos fixos/variáveis.");
+    if (calc.prazoRetorno != null && calc.prazoRetorno > 5) add("media", 13, `Prazo de retorno de ${fmtNum(calc.prazoRetorno, 1)} anos (acima de 5).`, "Reduzir o investimento inicial ou aumentar a margem de contribuição.");
+    if (calc.investimentoTotal > 0 && calc.investFixo / calc.investimentoTotal > 0.8) add("info", 1, "Mais de 80% do investimento está em bens fixos.", "Avaliar alugar, terceirizar ou comprar usado parte dos equipamentos.");
+    const fluxo = projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0);
+    if (!fluxo.some((m) => m.mes > 0 && m.saldo >= 0)) add("media", 13, "O negócio não recupera o investimento nos 12 meses projetados no fluxo de caixa.", "Rever receita, custos e investimento; analisar cenários alternativos.");
+  }
+
+  // Fluxo de correção
+  MODULOS.forEach((m) => {
+    const est = estadoModulo(fluxoMod, m.id);
+    if (est.status === "ajustes") add("info", m.n, `Módulo devolvido para ajustes${est.feedback ? ` — orientação do professor: "${est.feedback}"` : ""}.`, "Aplicar o feedback e reenviar para correção.", true);
+    if (est.status === "enviado") add("info", m.n, "Enviado e aguardando correção do professor.", "Corrigir/avaliar o módulo.", true);
+    if (moduloAtrasadoSemEnvio(est)) add("media", m.n, `Prazo vencido sem envio (prazo: ${est.prazo}).`, "Enviar o módulo ou solicitar reabertura.", true);
+    if ((est.ciclo || 1) >= 3) add("info", m.n, `Módulo com ${est.ciclo} ciclos de envio/devolução.`, "Acompanhar de perto: pode haver dificuldade de entendimento.", true);
+  });
+
+  const ordem = { alta: 0, media: 1, info: 2 };
+  return d.sort((a, b) => ordem[a.sev] - ordem[b.sev] || (a.mod || 0) - (b.mod || 0));
+}
+
+function modulosParaRevisar(diag) {
+  return [...new Set(diag.filter((x) => x.sev !== "info" && x.mod).map((x) => x.mod))].sort((a, b) => a - b);
+}
+
+function resumoNotaEmpresa(notas) {
+  const dadas = NOTA_MODULOS_AVALIAVEIS.map((id) => notas[id]).filter((n) => !vazio(n));
+  const media = dadas.length ? dadas.reduce((a, b) => a + Number(b), 0) / dadas.length : null;
+  const ponderada = calcularNotaPonderada({ media, notaFinal: notas[NOTA_MODULO_FINAL], notaCenariosFluxo: notas.cenariosFluxo, notaApresentacao: notas.apresentacao, totalModulos: NOTA_MODULOS_AVALIAVEIS.length, notasDadasLength: dadas.length });
+  return { media, ponderada };
+}
+
+function gerarMarkdownGerencial(item, turma, diag) {
+  const { equipe, dados, calc, progressoAprovado } = item;
+  const l = mergeLancamentos(dados.lancamentos);
+  const fluxoMod = dados.fluxoModulos || {};
+  const notas = dados.notas || {};
+  const esc = (s) => String(s ?? "").replace(/\|/g, "/").replace(/\n/g, " ");
+  const tabela = (colunas, linhas) => [`| ${colunas.map(esc).join(" | ")} |`, `| ${colunas.map(() => "---").join(" | ")} |`, ...linhas.map((r) => `| ${r.map(esc).join(" | ")} |`)].join("\n");
+  const { media, ponderada } = resumoNotaEmpresa(notas);
+  const out = [];
+
+  out.push("# Relatório Gerencial Completo — Plano Financeiro");
+  out.push("");
+  out.push("## Instruções para a IA");
+  out.push("Você é um(a) professor(a) experiente de Administração/Contabilidade. Analise o relatório abaixo, que descreve o plano financeiro de um negócio criado por uma equipe de alunos de curso técnico. Faça: (1) um parecer geral curto; (2) a análise crítica de cada etapa (coerência dos valores, itens esquecidos, valores zerados, preços/custos irreais para o segmento); (3) a lista, em ordem de prioridade, das etapas em que a equipe deve voltar para corrigir, com orientações claras e didáticas do que refazer; (4) pontos fortes da equipe. Considere apenas os dados deste relatório e sinalize o que não puder ser avaliado por falta de informação. Os valores estão em reais (R$) e os custos/receitas são mensais, salvo quando indicado.");
+  out.push("");
+  out.push(`## Identificação`);
+  out.push(`- Empresa: ${equipe.nomeNegocio}`);
+  out.push(`- Turma: ${turma?.nome || "—"}`);
+  if (turma?.professor) out.push(`- Professor(a): ${turma.professor}`);
+  out.push(`- Integrantes: ${(equipe.integrantes || []).join(", ") || "sem integrantes"}`);
+  out.push(`- Segmento do negócio: ${equipe.segmento || "não informado"}${equipe.segmento ? ` (${equipe.segmentoStatus === "aprovado" || !equipe.segmentoStatus ? "aprovado" : "aguardando aprovação"})` : ""}`);
+  out.push(`- Emitido em: ${new Date().toLocaleString("pt-BR")}`);
+  out.push(`- Progresso (módulos aprovados): ${progressoAprovado}%`);
+  out.push(`- Nota média dos módulos avaliados: ${media !== null ? fmtNum(media, 1) : "—"} · Nota final ponderada: ${ponderada !== null ? fmtNum(ponderada, 1) : "ainda não calculada"}`);
+  out.push("");
+  out.push("## Resumo executivo");
+  out.push(tabela(["Indicador", "Valor"], [
+    ["Investimento total", fmtBRL(calc.investimentoTotal)],
+    ["Faturamento mensal", fmtBRL(calc.faturamento)],
+    ["Custos variáveis (mensal)", fmtBRL(calc.custoVariavelTotal)],
+    ["Custos fixos (mensal)", fmtBRL(calc.custoFixoTotal)],
+    ["Resultado operacional (mensal)", fmtBRL(calc.resultadoOperacional)],
+    ["Ponto de equilíbrio (anual)", calc.pontoEquilibrio != null ? fmtBRL(calc.pontoEquilibrio) : "—"],
+    ["Lucratividade", fmtPct(calc.lucratividade)],
+    ["Rentabilidade (ao ano)", fmtPct(calc.rentabilidade)],
+    ["Payback", calc.prazoRetorno != null ? `${fmtNum(calc.prazoRetorno, 1)} anos` : "—"],
+  ]));
+  out.push("");
+  out.push("## Situação dos módulos");
+  out.push(tabela(["Módulo", "Situação", "Envios", "Devoluções", "Prazo", "Nota"], MODULOS.map((m) => {
+    const est = estadoModulo(fluxoMod, m.id);
+    const h = est.historico || [];
+    return [`${m.n}. ${m.nome}`, STATUS_MODULO_ROTULO[est.status] || est.status, h.filter((e) => e.tipo === "envio" || e.tipo === "reenvio").length, h.filter((e) => e.tipo === "devolucao").length, est.prazo || "—", !vazio(notas[m.id]) ? notas[m.id] : "—"];
+  })));
+  out.push("");
+  out.push("## Etapa por etapa");
+  MODULOS.forEach((m) => {
+    const est = estadoModulo(fluxoMod, m.id);
+    const t = dadosTabelaModulo(m.id, l, calc);
+    out.push("");
+    out.push(`### Módulo ${m.n} — ${m.nome}`);
+    out.push(`Situação: ${STATUS_MODULO_ROTULO[est.status] || est.status}${!vazio(notas[m.id]) ? ` · Nota: ${notas[m.id]}` : ""}`);
+    if (t.colunas) out.push(t.linhas.length ? tabela(t.colunas, t.linhas) : "_Nenhum lançamento._");
+    if (t.extras) t.extras.forEach(([k, v]) => out.push(`- ${k}: ${v}`));
+    if (t.rodape) t.rodape.forEach(([k, v]) => out.push(`**${k}: ${v}**`));
+    const h = est.historico || [];
+    if (h.length) {
+      out.push("Histórico de correção:");
+      h.forEach((ev) => out.push(`- ${fmtData(ev.data)} — ${(HISTORICO_EVENTO_INFO[ev.tipo] || HISTORICO_EVENTO_INFO.envio).label}${ev.feedback ? `. Feedback do professor: "${esc(ev.feedback)}"` : ""}`));
+    }
+  });
+
+  const fluxo = projetarFluxoCaixa(calc, dados.taxaCrescimentoFluxo ?? 0);
+  const tmaAnual = Number(dados.tmaAnualFluxo ?? 12) || 0;
+  const tmaMensal = Math.pow(1 + tmaAnual / 100, 1 / 12) - 1;
+  const tirM = calcularTIRMensal(fluxo);
+  const mesPay = fluxo.find((m) => m.mes > 0 && m.saldo >= 0);
+  out.push("");
+  out.push("## Fluxo de caixa (12 meses) e cenários");
+  out.push(`- Crescimento mensal do faturamento considerado: ${fmtNum(Number(dados.taxaCrescimentoFluxo ?? 0) || 0, 1)}%`);
+  out.push(`- Saldo ao final do mês 12: ${fmtBRL(fluxo[12].saldo)}`);
+  out.push(`- Mês em que o caixa acumulado fica positivo: ${mesPay ? mesPay.label : "não ocorre em 12 meses"}`);
+  out.push(`- VPL (TMA ${fmtNum(tmaAnual, 1)}% a.a.): ${fmtBRL(calcularVPL(fluxo, tmaMensal))} · TIR: ${tirM !== null ? `${fmtNum((Math.pow(1 + tirM, 12) - 1) * 100, 1)}% a.a.` : "não recupera em 12 meses"}`);
+  const cens = dados.cenarios || [];
+  if (cens.length) {
+    out.push(tabela(["Cenário", "Δ Faturamento", "Δ Custo variável", "Δ Custo fixo", "Resultado mensal"], [
+      ["Base (atual)", "—", "—", "—", fmtBRL(calc.resultadoOperacional)],
+      ...cens.map((c, i) => [c.nome || `Cenário ${i + 1}`, `${fmtNum(Number(c.variacaoFaturamento) || 0, 1)}%`, `${fmtNum(Number(c.variacaoCustoVariavel) || 0, 1)}%`, `${fmtNum(Number(c.variacaoCustoFixo) || 0, 1)}%`, fmtBRL(calcularCenario(calc, c).resultadoOperacional)]),
+    ]));
+  } else out.push("_A equipe ainda não montou cenários._");
+
+  out.push("");
+  out.push("## Diagnóstico automático (regras objetivas)");
+  if (!diag.length) out.push("Nenhuma inconsistência objetiva encontrada.");
+  diag.forEach((x) => out.push(`- [${SEVERIDADE_ROTULO[x.sev]}]${x.mod ? ` Módulo ${x.mod}:` : ""} ${x.texto} → ${x.acao}`));
+  const rev = modulosParaRevisar(diag);
+  out.push("");
+  out.push(rev.length ? `Etapas sugeridas para a equipe revisar: ${rev.map((n) => `Módulo ${n}`).join(", ")}.` : "Nenhuma etapa com atenção alta/média apontada pelas regras automáticas.");
+
+  const comentarios = (dados.comentarios || []).slice(-10);
+  if (comentarios.length) {
+    out.push("");
+    out.push("## Últimos comentários registrados");
+    comentarios.forEach((c) => out.push(`- ${c.data || c.timestamp ? fmtData(c.data || c.timestamp) + " — " : ""}${esc(c.texto || c.mensagem || "")}`));
+  }
+  return out.join("\n");
+}
+
+// Aviso exibido nos relatórios por empresa quando ainda há módulos que o
+// professor não aprovou: os números mostrados são parciais, não finais.
+function AvisoRelatorioParcial({ fluxoModulos }) {
+  const pendentes = MODULOS.filter((m) => estadoModulo(fluxoModulos, m.id).status !== "corrigido");
+  if (pendentes.length === 0) return null;
+  return (
+    <div className="mb-4 flex items-start gap-2 text-xs rounded-lg p-3 border bg-amber-950/30 border-amber-800/60 text-amber-400">
+      <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+      <span><b>Relatório parcial:</b> {pendentes.length} de {MODULOS.length} módulos ainda não foram aprovados ({pendentes.map((m) => `M${m.n}`).join(", ")}). Os números abaixo refletem o que a equipe lançou até agora, inclusive em módulos ainda em preenchimento ou em correção.</span>
+    </div>
+  );
+}
+
+const TOM_SEVERIDADE = {
+  alta: "bg-rose-950/40 border-rose-800/60 text-rose-400",
+  media: "bg-amber-950/30 border-amber-800/60 text-amber-400",
+  info: "bg-sky-950/30 border-sky-800/60 text-sky-400",
+};
+
+function RelatorioGerencialCompleto({ item, turma }) {
+  const { equipe, dados, calc, progressoAprovado } = item;
+  const l = mergeLancamentos(dados.lancamentos);
+  const fluxoMod = dados.fluxoModulos || {};
+  const notas = dados.notas || {};
+  const diag = diagnosticoGerencial(l, calc, fluxoMod, dados);
+  const rev = modulosParaRevisar(diag);
+  const { media, ponderada } = resumoNotaEmpresa(notas);
+  const fluxo = projetarFluxoCaixa(calc, dados.taxaCrescimentoFluxo ?? 0);
+  const tmaAnual = Number(dados.tmaAnualFluxo ?? 12) || 0;
+  const vpl = calcularVPL(fluxo, Math.pow(1 + tmaAnual / 100, 1 / 12) - 1);
+  const cens = dados.cenarios || [];
+  const nomeArq = equipe.nomeNegocio.replace(/[^\p{L}\p{N}]+/gu, "_");
+
+  const pieData = [
+    { name: "Investimentos Fixos", value: calc.investFixo },
+    { name: "Capital de Giro", value: calc.capitalGiroTotal },
+    { name: "Pré-Operacionais", value: calc.investPreOp },
+  ].filter((x) => x.value > 0);
+  const barData = [
+    { name: "Receita", valor: calc.faturamento },
+    { name: "Custos Variáveis", valor: calc.custoVariavelTotal },
+    { name: "Custos Fixos", valor: calc.custoFixoTotal },
+    { name: "Resultado", valor: calc.resultadoOperacional },
+  ];
+
+  const th = "py-1.5 px-2 text-left text-[11px] uppercase text-slate-400 border-b border-slate-700";
+  const td = "py-1.5 px-2 text-xs text-slate-200 border-b border-slate-800";
+
+  return (
+    <div>
+      <div className="no-print flex flex-wrap gap-2 mb-5">
+        <button onClick={() => imprimirComTitulo(`Relatorio Gerencial - ${equipe.nomeNegocio} - ${sufixoDataHoraArquivo()}`)} className="flex items-center gap-2 text-sm font-semibold px-3 py-2 rounded-md bg-amber-500 text-slate-900 hover:bg-amber-400">
+          <Printer size={15} /> Imprimir / Salvar PDF
+        </button>
+        <button onClick={() => baixarArquivo(`relatorio_gerencial_${nomeArq}_${sufixoDataHoraArquivo()}.md`, gerarMarkdownGerencial(item, turma, diag), "text/markdown;charset=utf-8")} className="flex items-center gap-2 text-sm font-semibold px-3 py-2 rounded-md border border-slate-600 text-slate-100 hover:bg-slate-800">
+          <Sparkles size={15} /> Exportar para análise por IA (.md)
+        </button>
+      </div>
+
+      <div className="mb-5">
+        <div className="text-xs font-bold tracking-widest text-amber-500 uppercase">Relatório Gerencial Completo</div>
+        <h2 className="text-xl font-bold text-slate-100">{equipe.nomeNegocio}</h2>
+        <div className="text-xs text-slate-400">{turma?.nome ? `${turma.nome} · ` : ""}{turma?.professor ? `Professor(a): ${turma.professor} · ` : ""}{(equipe.integrantes || []).join(", ") || "sem integrantes"}</div>
+        <div className="text-xs text-slate-500">Segmento: {equipe.segmento || "não informado"} · Emitido em {new Date().toLocaleString("pt-BR")}</div>
+      </div>
+
+      <AvisoRelatorioParcial fluxoModulos={fluxoMod} />
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        <StatCard label="Investimento Total" value={fmtBRL(calc.investimentoTotal)} tone="blue" small />
+        <StatCard label="Faturamento Mensal" value={fmtBRL(calc.faturamento)} tone="slate" small />
+        <StatCard label="Resultado Operacional/mês" value={fmtBRL(calc.resultadoOperacional)} tone={calc.resultadoOperacional >= 0 ? "emerald" : "rose"} small />
+        <StatCard label="Progresso (aprovados)" value={`${progressoAprovado}%`} tone="gold" small />
+      </div>
+      <p className="text-xs text-slate-400 mb-6">
+        Nota média dos módulos avaliados: <b>{media !== null ? fmtNum(media, 1) : "—"}</b> · Nota final ponderada: <b>{ponderada !== null ? fmtNum(ponderada, 1) : "ainda não calculada"}</b>
+      </p>
+
+      <h3 className="text-sm font-bold text-slate-200 mb-2">1. Situação dos módulos</h3>
+      <Card className="p-0 overflow-hidden mb-8">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead><tr><th className={th}>Módulo</th><th className={th}>Situação</th><th className={th}>Envios</th><th className={th}>Devoluções</th><th className={th}>Prazo</th><th className={th}>Nota</th></tr></thead>
+            <tbody>
+              {MODULOS.map((m) => {
+                const est = estadoModulo(fluxoMod, m.id);
+                const h = est.historico || [];
+                return (
+                  <tr key={m.id}>
+                    <td className={td}>{m.n}. {m.nome}</td>
+                    <td className={`${td} font-semibold ${STATUS_MODULO_COR[est.status] || ""}`}>{STATUS_MODULO_ROTULO[est.status] || est.status}</td>
+                    <td className={td}>{h.filter((e) => e.tipo === "envio" || e.tipo === "reenvio").length}</td>
+                    <td className={td}>{h.filter((e) => e.tipo === "devolucao").length}</td>
+                    <td className={td}>{est.prazo || "—"}</td>
+                    <td className={td}>{!vazio(notas[m.id]) ? notas[m.id] : "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <h3 className="text-sm font-bold text-slate-200 mb-2">2. Etapa por etapa</h3>
+      <div className="space-y-5 mb-8">
+        {MODULOS.map((m) => {
+          const est = estadoModulo(fluxoMod, m.id);
+          const t = dadosTabelaModulo(m.id, l, calc);
+          const h = est.historico || [];
+          return (
+            <Card key={m.id} className="p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <div className="text-sm font-bold text-slate-100">Módulo {m.n} — {m.nome}</div>
+                <div className="text-[11px]">
+                  <span className={`font-semibold ${STATUS_MODULO_COR[est.status] || ""}`}>{STATUS_MODULO_ROTULO[est.status] || est.status}</span>
+                  {!vazio(notas[m.id]) && <span className="text-slate-300"> · Nota {notas[m.id]}</span>}
+                </div>
+              </div>
+              {t.colunas && (t.linhas.length === 0
+                ? <p className="text-xs text-amber-400 mb-2">Nenhum lançamento neste módulo.</p>
+                : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full mb-2">
+                      <thead><tr>{t.colunas.map((c, i) => <th key={i} className={th}>{c}</th>)}</tr></thead>
+                      <tbody>{t.linhas.map((r, i) => <tr key={i}>{r.map((v, j) => <td key={j} className={td}>{v}</td>)}</tr>)}</tbody>
+                    </table>
+                  </div>
+                ))}
+              {t.extras && (
+                <table className="w-full mb-2"><tbody>
+                  {t.extras.map(([k, v], i) => <tr key={i}><td className={td}>{k}</td><td className={`${td} text-right font-semibold`}>{v}</td></tr>)}
+                </tbody></table>
+              )}
+              {t.rodape && t.rodape.map(([k, v], i) => (
+                <div key={i} className="flex justify-between text-xs font-bold text-slate-100 pt-1"><span>{k}</span><span>{v}</span></div>
+              ))}
+              {h.length > 0 && (
+                <div className="mt-3 pt-2 border-t border-slate-800">
+                  <div className="text-[11px] font-bold text-slate-300 mb-1">Histórico de correção ({h.length})</div>
+                  <ul className="space-y-1">
+                    {h.map((ev, i) => (
+                      <li key={i} className="text-[11px] text-slate-300">
+                        <span className={(HISTORICO_EVENTO_INFO[ev.tipo] || HISTORICO_EVENTO_INFO.envio).cor}>{(HISTORICO_EVENTO_INFO[ev.tipo] || HISTORICO_EVENTO_INFO.envio).label}</span>
+                        <span className="text-slate-500"> — {fmtData(ev.data)}</span>
+                        {ev.feedback && <div className="mt-0.5 ml-2 text-slate-300">Feedback: {ev.feedback}</div>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </Card>
+          );
+        })}
+      </div>
+
+      <h3 className="text-sm font-bold text-slate-200 mb-2">3. Gráficos</h3>
+      <div className="grid lg:grid-cols-2 gap-4 mb-4">
+        <Card className="p-4">
+          <div className="text-xs font-bold text-slate-300 mb-2">Composição do Investimento Total</div>
+          {pieData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={240}>
+              <PieChart>
+                <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} isAnimationActive={false} label={(e) => `${fmtNum((e.percent || 0) * 100, 0)}%`}>
+                  {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                </Pie>
+                <Tooltip formatter={(v) => fmtBRL(v)} contentStyle={CHART_TOOLTIP_STYLE} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : <p className="text-xs text-slate-500 py-10 text-center">Sem investimentos lançados para o gráfico.</p>}
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs font-bold text-slate-300 mb-2">Receita x Custos x Resultado (mensal)</div>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={barData}>
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+              <XAxis dataKey="name" tick={CHART_TICK} />
+              <YAxis tick={CHART_TICK} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+              <Tooltip formatter={(v) => fmtBRL(v)} contentStyle={CHART_TOOLTIP_STYLE} />
+              <Bar dataKey="valor" isAnimationActive={false}>
+                {barData.map((d, i) => <Cell key={i} fill={d.name === "Resultado" ? (d.valor >= 0 ? COLORS.emerald : COLORS.rose) : PIE_COLORS[i % PIE_COLORS.length]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+      </div>
+      <Card className="p-4 mb-8">
+        <div className="text-xs font-bold text-slate-300 mb-2">Fluxo de caixa acumulado — 12 meses (VPL {fmtBRL(vpl)} com TMA de {fmtNum(tmaAnual, 1)}% a.a.)</div>
+        <ResponsiveContainer width="100%" height={240}>
+          <LineChart data={fluxo}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+            <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} />
+            <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(v) => fmtBRL(v)} />
+            <Tooltip formatter={(v) => fmtBRL(v)} contentStyle={CHART_TOOLTIP_STYLE} />
+            <ReferenceLine y={0} stroke="#64748b" strokeDasharray="4 4" />
+            <Line type="monotone" dataKey="saldo" stroke={COLORS.gold} strokeWidth={2} dot={false} isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+        {cens.length > 0 && (
+          <table className="w-full mt-3">
+            <thead><tr><th className={th}>Cenário</th><th className={th}>Δ Faturamento</th><th className={th}>Δ Custo variável</th><th className={th}>Δ Custo fixo</th><th className={th}>Resultado mensal</th></tr></thead>
+            <tbody>
+              <tr><td className={td}>Base (atual)</td><td className={td}>—</td><td className={td}>—</td><td className={td}>—</td><td className={td}>{fmtBRL(calc.resultadoOperacional)}</td></tr>
+              {cens.map((c, i) => (
+                <tr key={c.id || i}><td className={td}>{c.nome || `Cenário ${i + 1}`}</td><td className={td}>{fmtNum(Number(c.variacaoFaturamento) || 0, 1)}%</td><td className={td}>{fmtNum(Number(c.variacaoCustoVariavel) || 0, 1)}%</td><td className={td}>{fmtNum(Number(c.variacaoCustoFixo) || 0, 1)}%</td><td className={td}>{fmtBRL(calcularCenario(calc, c).resultadoOperacional)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+
+      <h3 className="text-sm font-bold text-slate-200 mb-2">4. Diagnóstico automático e orientações de retorno</h3>
+      <div className="space-y-2 mb-3">
+        {diag.length === 0 && <div className="text-sm rounded-lg p-3 border bg-emerald-950/40 border-emerald-800/60 text-emerald-400">Nenhuma inconsistência objetiva encontrada pelas regras automáticas.</div>}
+        {diag.map((x, i) => (
+          <div key={i} className={`text-xs rounded-lg p-3 border ${TOM_SEVERIDADE[x.sev]}`}>
+            <div className="font-bold">{SEVERIDADE_ROTULO[x.sev]}{x.mod ? ` · Módulo ${x.mod}` : ""}</div>
+            <div className="mt-0.5">{x.texto}</div>
+            <div className="mt-0.5 opacity-90">→ {x.acao}</div>
+          </div>
+        ))}
+      </div>
+      <p className="text-sm font-semibold text-slate-200">
+        {rev.length ? `Etapas sugeridas para a equipe revisar: ${rev.map((n) => `Módulo ${n}`).join(", ")}.` : "Nenhuma etapa com atenção alta/média apontada pelas regras automáticas."}
+      </p>
+      <p className="text-[11px] text-slate-500 mt-2">O diagnóstico usa apenas regras objetivas (campos vazios ou zerados, margens negativas, prazos e fluxo de correção). Ele não substitui a avaliação pedagógica do professor; para uma análise mais profunda, use "Exportar para análise por IA".</p>
+    </div>
+  );
+}
+
 const TIPOS_RELATORIO = [
   { id: "dre", label: "Demonstrativo de Resultado", icon: FileBarChart },
   { id: "indicadores", label: "Indicadores de Viabilidade", icon: Target },
   { id: "analise", label: "Análise do Negócio", icon: TrendingUp },
   { id: "gerencial", label: "Relatório Gerencial (completo)", icon: FileSpreadsheet },
+  { id: "completo", label: "Relatório Gerencial Completo (etapa por etapa)", icon: ClipboardCheck },
 ];
 
-function RelatorioPorEmpresa({ dadosEquipes }) {
+function RelatorioPorEmpresa({ dadosEquipes, turma }) {
   const [equipeId, setEquipeId] = useState("");
   const [tipo, setTipo] = useState("gerencial");
 
@@ -6490,10 +9674,10 @@ function RelatorioPorEmpresa({ dadosEquipes }) {
 
   return (
     <div>
-      <div className="flex flex-wrap gap-3 mb-4">
+      <div className="no-print flex flex-wrap gap-3 mb-4">
         <select value={equipeId} onChange={(e) => setEquipeId(e.target.value)} className="border border-slate-600 bg-slate-900 text-slate-100 rounded-md px-3 py-2 text-sm">
           <option value="">Selecione a empresa…</option>
-          {dadosEquipes.map(({ equipe }) => <option key={equipe.id} value={equipe.id}>{equipe.nomeNegocio}</option>)}
+          {dadosEquipes.map(({ equipe }) => <option key={equipe.id} value={equipe.id}>{equipe.teste ? "🧪 " : ""}{equipe.nomeNegocio}</option>)}
         </select>
       </div>
 
@@ -6501,7 +9685,7 @@ function RelatorioPorEmpresa({ dadosEquipes }) {
 
       {selecionada && (
         <div>
-          <div className="flex flex-wrap gap-2 mb-5">
+          <div className="no-print flex flex-wrap gap-2 mb-5">
             {TIPOS_RELATORIO.map((t) => {
               const Icon = t.icon;
               const ativo = tipo === t.id;
@@ -6514,10 +9698,15 @@ function RelatorioPorEmpresa({ dadosEquipes }) {
             })}
           </div>
 
+          {tipo === "completo" ? (
+            <RelatorioGerencialCompleto item={selecionada} turma={turma} />
+          ) : (
+          <div>
           <div className="mb-4">
             <div className="text-xs font-bold tracking-widest text-amber-500 uppercase">{selecionada.equipe.nomeNegocio}</div>
             <div className="text-xs text-slate-500">{selecionada.equipe.integrantes.join(", ") || "sem integrantes"}</div>
           </div>
+          <AvisoRelatorioParcial fluxoModulos={selecionada.dados.fluxoModulos} />
 
           {(tipo === "dre" || tipo === "gerencial") && (
             <div className="mb-8">
@@ -6537,6 +9726,8 @@ function RelatorioPorEmpresa({ dadosEquipes }) {
               <AnaliseNegocio calc={selecionada.calc} historico={selecionada.dados.historico} readOnly progressoAprovado={selecionada.progressoAprovado} />
             </div>
           )}
+          </div>
+          )}
         </div>
       )}
     </div>
@@ -6552,7 +9743,16 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
 
   const alunosDaTurma = usuarios.filter((u) => u.papel === "aluno" && u.turmaId === turma.id);
   const nomesRegistrados = new Set(alunosDaTurma.map((u) => normalizarNome(u.nome)));
-  const faltando = roster.filter((a) => !nomesRegistrados.has(normalizarNome(a.nome)));
+  // Também conta como já cadastrado quem já está listado como integrante de
+  // alguma empresa da turma — cobre o caso de quem entrou pelo código da
+  // turma (sem confirmar a matrícula) e por isso ficou com o nome gravado
+  // vindo da conta Google, que pode não bater, letra por letra, com o nome
+  // da lista oficial (corrigido em 2026-10-01).
+  const nomesEmEquipes = new Set((dadosEquipes || []).flatMap(({ equipe }) => (equipe.integrantes || []).map(normalizarNome)));
+  const faltando = roster.filter((a) => {
+    const nome = normalizarNome(a.nome);
+    return !nomesRegistrados.has(nome) && !nomesEmEquipes.has(nome);
+  });
 
   const buscaLimpa = buscaEmpresa.trim().toLowerCase();
   const dadosFiltrados = buscaLimpa ? dadosEquipes.filter(({ equipe }) => equipe.nomeNegocio.toLowerCase().includes(buscaLimpa)) : dadosEquipes;
@@ -6578,7 +9778,7 @@ function RelatorioPendencias({ turma, dadosEquipes }) {
     });
     const canvas = gerarImagemTabela({
       titulo: `Progresso das empresas — ${turma.nome}`,
-      subtitulo: buscaLimpa ? `Filtrado por: "${buscaEmpresa.trim()}" · Gerado em ${new Date().toLocaleString("pt-BR")}` : `Gerado em ${new Date().toLocaleString("pt-BR")}`,
+      subtitulo: `${turma.professor ? `Professor(a): ${turma.professor} · ` : ""}${buscaLimpa ? `Filtrado por: "${buscaEmpresa.trim()}" · ` : ""}Gerado em ${new Date().toLocaleString("pt-BR")}`,
       colunas, larguras, linhas,
     });
     baixarCanvasComoJpg(canvas, `progresso_${turma.nome.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo()}.jpg`);
@@ -6716,7 +9916,7 @@ function RelatorioNotas({ turma, dadosEquipes }) {
     const notaPonderada = calcularNotaPonderada({ media, notaFinal, notaCenariosFluxo, notaApresentacao, totalModulos: NOTA_MODULOS_AVALIAVEIS.length, notasDadasLength: notasDadas.length });
     const integrantes = (equipe.integrantes && equipe.integrantes.length > 0) ? equipe.integrantes : ["(sem integrantes ainda)"];
     integrantes.forEach((nomeAluno) => {
-      linhas.push({ nomeAluno, empresa: equipe.nomeNegocio, notas, notaCenariosFluxo, notaApresentacao, notaPonderada });
+      linhas.push({ nomeAluno, empresa: equipe.nomeNegocio, notas, notaCenariosFluxo, notaApresentacao, notaPonderada, fluxo: dados.fluxoModulos });
     });
   });
   linhas.sort((a, b) => a.nomeAluno.localeCompare(b.nomeAluno, "pt-BR"));
@@ -6773,7 +9973,7 @@ function RelatorioNotas({ turma, dadosEquipes }) {
                   <td className="py-2 px-3 text-slate-100 font-medium">{l.nomeAluno}</td>
                   <td className="py-2 px-3 text-slate-400">{l.empresa}</td>
                   {modulosColuna.map((m) => (
-                    <td key={m.id} className="py-2 px-2 text-center text-slate-300">{!vazio(l.notas[m.id]) ? l.notas[m.id] : "—"}</td>
+                    <td key={m.id} className="py-2 px-2 text-center text-slate-300">{!vazio(l.notas[m.id]) ? l.notas[m.id] : "—"}{(() => { const sg = sugerirNotaModulo(estadoModulo(l.fluxo, m.id)); return sg !== null && String(sg) !== String(l.notas[m.id]) ? <span className="no-print block text-[10px] text-violet-300" title="Sugestão automática (10 − 1 por devolução − 2 se entregue com atraso). Só informativa: a nota é sua.">sug. {sg}</span> : null; })()}</td>
                   ))}
                   <td className="py-2 px-2 text-center text-slate-300">{!vazio(l.notaCenariosFluxo) ? l.notaCenariosFluxo : "—"}</td>
                   <td className="py-2 px-2 text-center text-slate-300">{!vazio(l.notaApresentacao) ? l.notaApresentacao : "—"}</td>
@@ -6784,6 +9984,940 @@ function RelatorioNotas({ turma, dadosEquipes }) {
           </table>
         </div>
       </Card>
+      <p className="no-print text-[11px] text-slate-500 mt-2"><span className="text-violet-300 font-semibold">sug.</span> = sugestão automática (10 − 1,0 por devolução − 2,0 se entregue com atraso), exibida só quando difere da nota lançada. Não grava nada: a nota continua sendo decisão do professor.</p>
+    </div>
+  );
+}
+
+// ============================================================================
+// ORIENTAÇÃO POR EQUIPE (GESTÃO → RELATÓRIOS → "Orientação")
+// Só leitura: nada daqui grava nos dados das equipes. Mostra, para cada
+// equipe, quem precisa agir agora (equipe ou professor), o que está errado,
+// o que fazer e onde. Reaproveita o diagnóstico gerencial e as regras de
+// prazo já existentes — nenhuma regra de cálculo nova.
+// ============================================================================
+function diasDesdePrazo(prazoIso) {
+  if (!prazoIso) return null;
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const p = new Date(`${prazoIso}T00:00:00`);
+  return Math.round((hoje.getTime() - p.getTime()) / 86400000); // >0 = vencido há N dias
+}
+
+// ============================================================================
+// DIAGNÓSTICO DE VIABILIDADE (v3.1) — usado no PDF/tela de "Orientação da
+// equipe". Só LÊ os dados e calcula na hora (nada é gravado). Transforma os
+// números do plano em: DRE com % da receita, ponto de equilíbrio, folga de
+// caixa, peso do capital de terceiros e um plano de ação por módulo. Os
+// limites abaixo são REFERÊNCIAS PEDAGÓGICAS (regra prática), não normas
+// contábeis: servem para abrir a conversa com a equipe.
+// ============================================================================
+const LIMITES_DIAG = { comercializacao: 15, cmvOk: 40, cmvAlto: 55, maoObraOk: 30, maoObraAlto: 40, outrasFixasOk: 25, terceirosAlto: 70, mcBoa: 40, caixaMesesMin: 12 };
+
+const ITENS_ESPERADOS_COMUNS = [
+  { nome: "Aluguel", palavras: "alugu" },
+  { nome: "Energia elétrica", palavras: "energia, luz" },
+  { nome: "Água", palavras: "agua" },
+  { nome: "Internet/telefone", palavras: "internet, telefone" },
+  { nome: "Contabilidade", palavras: "contab, contador" },
+  { nome: "Marketing/divulgação", palavras: "marketing, divulg, publicidade, propaganda, redes sociais" },
+];
+const ITENS_PDV = { nome: "Software PDV com emissão fiscal", palavras: "software, pdv, sistema, nota fiscal, fiscal" };
+const ITENS_ALVARA = { nome: "Alvarás, licenças e taxas", palavras: "alvara, licenc, vigilancia, bombeiro, taxa" };
+const ITENS_PRAGAS = { nome: "Controle de pragas", palavras: "praga, dedetiz" };
+const ITENS_ESPERADOS_PADRAO = {
+  "Sorveteria": [
+    { nome: "Manutenção de refrigeração e freezers", palavras: "refriger, freezer, manuten, ar condicionado" }, ITENS_PRAGAS, ITENS_PDV,
+    { nome: "Seguro empresarial (perda de estoque congelado)", palavras: "seguro" }, ITENS_ALVARA,
+    { nome: "Direitos autorais de música (ECAD)", palavras: "ecad, musica, direito autoral" },
+  ],
+  "Restaurante / lanchonete": [ITENS_PRAGAS, ITENS_PDV, ITENS_ALVARA, { nome: "Gás", palavras: "gas" }, { nome: "Limpeza de coifa/exaustão", palavras: "coifa, exaust" }, { nome: "Descartáveis e embalagens", palavras: "descart, embalag" }, { nome: "Direitos autorais de música (ECAD)", palavras: "ecad, musica, direito autoral" }],
+  "Padaria / confeitaria": [ITENS_PRAGAS, ITENS_PDV, ITENS_ALVARA, { nome: "Gás", palavras: "gas" }, { nome: "Manutenção de fornos e refrigeração", palavras: "manuten, forno, refriger" }, { nome: "Embalagens", palavras: "embalag" }],
+  "Estética / beleza": [ITENS_PDV, ITENS_ALVARA, { nome: "Esterilização e higienização", palavras: "esteriliz, higien, limpeza" }, { nome: "Descarte de resíduos (perfurocortantes)", palavras: "resid, descarte, lixo" }, { nome: "Software de agendamento", palavras: "agenda, software, sistema" }, { nome: "Seguro", palavras: "seguro" }],
+  "Moda / brechó": [ITENS_PDV, ITENS_ALVARA, { nome: "Embalagens e etiquetas", palavras: "embalag, etiqueta, sacola" }, { nome: "Higienização das peças", palavras: "lavand, higieniz, limpeza" }, { nome: "Seguro", palavras: "seguro" }],
+  "Semijoias / acessórios": [ITENS_PDV, ITENS_ALVARA, { nome: "Embalagens", palavras: "embalag" }, { nome: "Seguro", palavras: "seguro" }],
+};
+function itensEsperadosDoSegmento(segmento, cfg) {
+  const custom = cfg && cfg[segmento];
+  const base = Array.isArray(custom) ? custom : (ITENS_ESPERADOS_PADRAO[segmento] || []);
+  return [...ITENS_ESPERADOS_COMUNS, ...base];
+}
+
+function diagnosticoViabilidade(l, calc, segmento, cfg) {
+  if (!(calc.faturamento > 0)) return null;
+  const F = calc.faturamento; const pct = (v) => (F > 0 ? (v / F) * 100 : 0);
+  const LIM = LIMITES_DIAG;
+  const outras = (calc.custoFixoManual || 0) + (calc.depreciacaoMensal || 0);
+  const mc = calc.margemContribuicao; const res = calc.resultadoOperacional;
+  const faixa = (p, ok, alto, a, b, c) => (p <= ok ? a : p <= alto ? b : c);
+  const dre = [
+    { rubrica: "Faturamento bruto (receita)", valor: F, pct: 100, status: "" },
+    { rubrica: "(-) Custos de comercialização (impostos/comissões)", valor: calc.custoComercializacao, pct: pct(calc.custoComercializacao), status: faixa(pct(calc.custoComercializacao), LIM.comercializacao, 25, "Adequado", "Atenção", "Alto") },
+    { rubrica: "(-) CMV / CMD (insumos e matéria-prima)", valor: calc.cmv, pct: pct(calc.cmv), status: faixa(pct(calc.cmv), LIM.cmvOk, LIM.cmvAlto, "Dentro da média", "Atenção", "Crítico") },
+    { rubrica: "(=) Margem de contribuição total", valor: mc, pct: pct(mc), status: pct(mc) >= LIM.mcBoa ? "Margem boa" : mc > 0 ? "Margem baixa" : "Margem negativa" },
+    { rubrica: "(-) Mão de obra, encargos e pró-labore (Módulo 9)", valor: calc.maoDeObra, pct: pct(calc.maoDeObra), status: faixa(pct(calc.maoDeObra), LIM.maoObraOk, LIM.maoObraAlto, "Adequado", "Atenção", "Crítico / excessivo") },
+    { rubrica: "(-) Outras despesas fixas e depreciação (Módulos 10 e 11)", valor: outras, pct: pct(outras), status: pct(outras) <= LIM.outrasFixasOk ? "Adequado" : "Necessita ajustes" },
+    { rubrica: "(=) Resultado operacional mensal", valor: res, pct: pct(res), status: res >= 0 ? "Lucro" : pct(res) < -20 ? "Prejuízo grave" : "Prejuízo" },
+  ];
+  const peMensal = calc.indiceMargemContribuicao > 0 ? calc.custoFixoTotal / calc.indiceMargemContribuicao : null;
+  const cobertura = peMensal ? (F / peMensal) * 100 : null;
+  const mesesCaixa = res < 0 && calc.capitalGiroTotal > 0 ? calc.capitalGiroTotal / -res : null;
+  const prop = Number(l.m4.pctProprio); const pctTerc = Number.isFinite(prop) ? Math.min(100, Math.max(0, 100 - prop)) : 0;
+  const valorTerc = (calc.investimentoTotal || 0) * pctTerc / 100;
+
+  // plano de ação por módulo (cada item vira uma linha na Orientação)
+  const plano = [];
+  const mdoP = pct(calc.maoDeObra);
+  if (mdoP > LIM.maoObraOk) plano.push({ mod: 9, titulo: `A mão de obra custa ${fmtBRL(calc.maoDeObra)} por mês, ${fmtNum(mdoP, 1)}% da receita (referência usual: até ${LIM.maoObraOk}%).`, orientacao: "Revisem o número de funcionários em tempo integral, usem escalas parciais nos dias de pico e adequem o pró-labore dos sócios à fase de abertura do negócio." });
+  const textoM11 = [...l.m11.itens, ...l.m3.itens].map((x) => normTxt(x.desc || x.nome)).join(" | ");
+  const faltam = itensEsperadosDoSegmento(segmento, cfg).filter((it) => !String(it.palavras || "").split(",").map((p) => normTxt(p)).filter(Boolean).some((p) => textoM11.includes(p))).map((it) => it.nome);
+  if (l.m11.itens.length > 0 && faltam.length) plano.push({ mod: 11, titulo: `Custos usuais do segmento (${segmento || "não informado"}) que não encontrei no Módulo 11 nem no 3: ${faltam.join("; ")}.`, orientacao: "Incluam os que se aplicam ao negócio (ou expliquem por que não se aplicam). Para compensar o aumento, avaliem cortar despesas fixas secundárias." });
+  if (cobertura !== null && cobertura < 100) plano.push({ mod: 5, titulo: `O faturamento de ${fmtBRL(F)} cobre apenas ${fmtNum(cobertura, 1)}% do ponto de equilíbrio (${fmtBRL(peMensal)} por mês).`, orientacao: "Revisem as quantidades vendidas e os preços praticados no mercado local (Módulo 5) e confiram os custos unitários de insumos e embalagens (Módulos 6 e 8) para que o faturamento e os custos sejam coerentes." });
+  if (pctTerc > LIM.terceirosAlto) plano.push({ mod: 4, titulo: `${fmtNum(pctTerc, 0)}% do investimento (${fmtBRL(valorTerc)}) vem de capital de terceiros.`, orientacao: "O fluxo de caixa precisa pagar o financiamento. Revisem a proporção entre capital próprio e de terceiros ou justifiquem a capacidade de pagamento." });
+  if (mesesCaixa !== null && mesesCaixa < LIM.caixaMesesMin) plano.push({ mod: 2, titulo: `Com o resultado atual (${fmtBRL(res)} por mês), o capital de giro de ${fmtBRL(calc.capitalGiroTotal)} dura cerca de ${fmtNum(mesesCaixa, 1)} meses.`, orientacao: "Reavaliem o capital de giro depois de ajustar receita e custos, e a necessidade de caixa mínimo." });
+  if (res < 0) plano.push({ mod: 12, titulo: `Resultado operacional negativo: ${fmtBRL(res)} por mês (${fmtNum(pct(res), 1)}% da receita).`, orientacao: "Depois de ajustar os módulos acima, o Demonstrativo deve mostrar resultado positivo antes de ser reenviado." });
+  if (calc.prazoRetorno == null) plano.push({ mod: 13, titulo: "Com o resultado atual o investimento não se paga (não há prazo de retorno).", orientacao: "Elaborem os cenários otimista e pessimista, calculando payback e TIR, e concluam sobre a viabilidade do negócio." });
+  return { dre, peMensal, peAnual: peMensal ? peMensal * 12 : null, cobertura, mesesCaixa, pctTerc, valorTerc, giro: calc.capitalGiroTotal, plano, faltam };
+}
+
+function TabelaDRE({ d }) {
+  const cor = (s) => (/^(Crítico|Prejuízo|Margem negativa|Alto)/.test(s) ? "text-rose-400" : /^(Atenção|Necessita|Margem baixa)/.test(s) ? "text-amber-400" : "text-emerald-400");
+  return (
+    <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-sm">
+      <thead><tr className="text-left text-[11px] uppercase text-slate-500 border-b border-slate-700"><th className="py-1.5 px-3">Rubrica</th><th className="py-1.5 px-3 text-right">Valor mensal</th><th className="py-1.5 px-3 text-right">% da receita</th><th className="py-1.5 px-3">Leitura</th></tr></thead>
+      <tbody>{d.dre.map((r, i) => (
+        <tr key={i} className="border-b border-slate-800"><td className="py-1.5 px-3 text-slate-200">{r.rubrica}</td><td className="py-1.5 px-3 text-right text-slate-200">{fmtBRL(r.valor)}</td><td className="py-1.5 px-3 text-right text-slate-400">{fmtNum(r.pct, 1)}%</td><td className={`py-1.5 px-3 font-semibold ${cor(r.status)}`}>{r.status}</td></tr>
+      ))}</tbody>
+    </table></div>
+  );
+}
+
+function BlocoDiagnosticoTela({ d }) {
+  if (!d) return <Card className="p-4 text-sm text-slate-500">O diagnóstico de viabilidade aparece quando houver faturamento lançado (Módulo 5).</Card>;
+  return (
+    <div className="space-y-3">
+      <Card className="p-0 overflow-hidden"><TabelaDRE d={d} /></Card>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard label="Ponto de equilíbrio (mês)" value={d.peMensal ? fmtBRL(d.peMensal) : "—"} tone="gold" small />
+        <StatCard label="Receita cobre do equilíbrio" value={d.cobertura != null ? `${fmtNum(d.cobertura, 1)}%` : "—"} tone={d.cobertura != null && d.cobertura < 100 ? "rose" : "emerald"} small />
+        <StatCard label="Capital de giro dura" value={d.mesesCaixa != null ? `${fmtNum(d.mesesCaixa, 1)} meses` : "sem consumo"} tone={d.mesesCaixa != null && d.mesesCaixa < LIMITES_DIAG.caixaMesesMin ? "rose" : "emerald"} small />
+        <StatCard label="Capital de terceiros" value={`${fmtNum(d.pctTerc, 0)}%`} tone={d.pctTerc > LIMITES_DIAG.terceirosAlto ? "rose" : "slate"} small />
+      </div>
+      <p className="text-[11px] text-slate-500">As leituras (“adequado”, “crítico”…) usam limites de referência pedagógica (ex.: mão de obra até {LIMITES_DIAG.maoObraOk}% da receita, CMV até {LIMITES_DIAG.cmvOk}%) — servem para conversar com a equipe, não são normas.</p>
+    </div>
+  );
+}
+
+function gerarOrientacaoEquipe(item, cfg) {
+  const { equipe, dados, calc } = item;
+  const fluxoMod = dados.fluxoModulos || {};
+  const l = mergeLancamentos(dados.lancamentos);
+  const diag = diagnosticoGerencial(l, calc, fluxoMod, dados);
+  const achados = [];
+  const linhas = [];
+  const FLUXO_RE = /^(Módulo devolvido|Enviado e aguardando|Prazo vencido|Módulo com \d+ ciclos)/;
+  const RESULTADO_MOD = new Set([13]);
+  let maxVencido = 0; let proximo = null;
+
+  MODULOS.forEach((m, i) => {
+    const est = estadoModulo(fluxoMod, m.id);
+    const onde = `Menu → ${m.n} ${m.nome}`;
+    const preenchido = !!calc.preenchidos?.[i];
+    const d = diasDesdePrazo(est.prazo);
+    const vencido = (est.status === "liberado" || est.status === "ajustes") && d !== null && d > 0;
+    if (vencido) maxVencido = Math.max(maxVencido, d);
+    if ((est.status === "liberado" || est.status === "ajustes") && d !== null && d <= 0) proximo = proximo === null ? -d : Math.min(proximo, -d);
+    let prazoTxt = "—"; let prazoRuim = false;
+    if (est.status === "corrigido" || est.status === "enviado") prazoTxt = est.atraso ? "entregue com atraso" : (est.prazo ? "no prazo" : "—");
+    else if (est.status === "liberado" || est.status === "ajustes") {
+      if (d === null) prazoTxt = "sem prazo";
+      else if (d > 0) { prazoTxt = `vencido (${d} d)`; prazoRuim = true; }
+      else if (d === 0) prazoTxt = "vence hoje";
+      else prazoTxt = `em ${-d} dia(s)`;
+    }
+    let tipo; let rotulo; let quem = [];
+    if (est.status === "corrigido") { tipo = "ok"; rotulo = "✓ corrigido"; }
+    else if (est.status === "enviado") { tipo = "aw"; rotulo = "⏳ aguardando correção do professor"; quem = ["professor"]; }
+    else if (est.status === "ajustes") {
+      tipo = "bad"; rotulo = "✗ devolvido — equipe ajusta"; quem = ["equipe"];
+      achados.push({ grav: "erro", mod: m.n, modulo: `${m.n} · ${m.nome}`, titulo: `Devolvido pelo professor${est.feedback ? `: “${est.feedback}”` : ""}${vencido ? ` (prazo vencido há ${d} dia(s))` : ""}`, orientacao: "Leia o comentário do professor, ajuste o módulo e reenvie para correção.", onde, quem: "equipe" });
+    } else if (est.status === "liberado") {
+      if (vencido) {
+        tipo = "bad"; rotulo = "✗ prazo vencido sem envio"; quem = ["equipe", "professor"];
+        achados.push({ grav: "erro", mod: m.n, modulo: `${m.n} · ${m.nome}`, titulo: `Prazo vencido sem envio (prazo: ${fmtDataCurta(est.prazo)}, há ${d} dia(s))`, orientacao: "A equipe fala com o professor; só o professor reabre o módulo, com novo prazo (a entrega fica registrada com atraso).", onde, quem: "ambos" });
+      } else {
+        tipo = "lib"; rotulo = preenchido ? "● liberado — em preenchimento" : "● liberado — sem lançamentos"; quem = ["equipe"];
+        if (!preenchido) achados.push({ grav: "conferir", mod: m.n, modulo: `${m.n} · ${m.nome}`, titulo: "Módulo liberado e ainda sem lançamentos", orientacao: "Preencher o módulo e clicar em “Enviar para correção”.", onde, quem: "equipe" });
+      }
+    } else { tipo = "blq"; rotulo = "– aguardando liberação"; }
+    linhas.push({ mod: m.n, nome: m.nome, tipo, rotulo, prazoTxt, prazoRuim, quem, status: est.status });
+  });
+
+  // Problemas apontados pelo diagnóstico gerencial (regras já existentes)
+  const stDe = (n) => estadoModulo(fluxoMod, `m${n}`).status;
+  diag.forEach((x) => {
+    if (x.sev === "info" || !x.mod || FLUXO_RE.test(x.texto)) return;
+    if (RESULTADO_MOD.has(x.mod) || /^Resultado operacional mensal negativo|^O negócio não recupera/.test(x.texto)) return; // tratados abaixo
+    const st = stDe(x.mod);
+    const mm = MODULOS[x.mod - 1];
+    let grav = x.sev === "alta" ? "erro" : "conferir";
+    if (st === "corrigido") grav = "conferir";
+    achados.push({ grav, mod: x.mod, modulo: `${mm.n} · ${mm.nome}`, titulo: x.texto, orientacao: x.acao, onde: `Menu → ${mm.n} ${mm.nome}`, quem: st === "enviado" ? "professor" : "equipe" });
+  });
+
+  // Resultado do negócio (só quando há receita)
+  if (calc.faturamento > 0) {
+    const fim = (titulo, orientacao) => achados.push({ grav: "conferir", mod: 0, modulo: "Resultado do negócio", titulo, orientacao, onde: "Menu → Análise do Negócio", quem: "equipe" });
+    if (calc.resultadoOperacional < 0) fim(`Resultado operacional negativo (${fmtBRL(calc.resultadoOperacional)} por mês).`, "Revisem preços, custos e quantidades vendidas — ponto para conversar em aula.");
+    if (calc.pontoEquilibrio != null && calc.receitaAnual < calc.pontoEquilibrio) fim("O faturamento anual projetado está abaixo do ponto de equilíbrio.", "Aumentar a receita ou reduzir custos fixos/variáveis.");
+    if (calc.prazoRetorno != null && calc.prazoRetorno > 5) fim(`Prazo de retorno de ${fmtNum(calc.prazoRetorno, 1)} anos (acima de 5).`, "Reduzir o investimento inicial ou aumentar a margem de contribuição.");
+    const fluxo = projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0);
+    if (!fluxo.some((mm) => mm.mes > 0 && mm.saldo >= 0)) fim("O negócio não recupera o investimento nos 12 meses do fluxo de caixa.", "Rever receita, custos e investimento; analisar cenários alternativos.");
+  }
+  // Diagnóstico de viabilidade + plano por módulo (só quando a equipe já concluiu os lançamentos: M11 corrigido)
+  const diagnostico = diagnosticoViabilidade(l, calc, equipe.segmento, cfg);
+  if (diagnostico && estadoModulo(fluxoMod, "m11").status === "corrigido") {
+    if (diagnostico.plano.length) {
+      for (let k = achados.length - 1; k >= 0; k--) if (achados[k].mod === 0 && /^(Resultado operacional negativo|O faturamento anual projetado)/.test(achados[k].titulo)) achados.splice(k, 1);
+    }
+    diagnostico.plano.forEach((pl) => {
+      const mm = MODULOS[pl.mod - 1];
+      achados.push({ grav: "conferir", mod: pl.mod, modulo: `${mm.n} · ${mm.nome}`, titulo: pl.titulo, orientacao: pl.orientacao, onde: `Menu → ${mm.n} ${mm.nome}`, quem: "equipe" });
+    });
+  }
+
+  const ordemG = { erro: 0, conferir: 1 };
+  achados.sort((a, b) => ordemG[a.grav] - ordemG[b.grav] || a.mod - b.mod);
+  const corrigidos = linhas.filter((x) => x.tipo === "ok").length;
+  const comEquipe = linhas.filter((x) => x.quem.includes("equipe")).length;
+  const comProfessor = linhas.filter((x) => x.quem.includes("professor")).length;
+  const ordemL = { bad: 0, lib: 1, aw: 2, blq: 3, ok: 4 };
+  const linhasOrd = [...linhas].sort((a, b) => ordemL[a.tipo] - ordemL[b.tipo] || a.mod - b.mod);
+  const enviosOrient = (dados.comentarios || []).filter((c) => c.tipo === "orientacao");
+  const ultimoEnvio = enviosOrient.length ? enviosOrient[enviosOrient.length - 1].timestamp : null;
+  const situacao = achados.some((a) => a.grav === "erro") ? "problema" : achados.length > 0 ? "conferir" : comProfessor > 0 ? "aguardando" : comEquipe > 0 ? "andamento" : "emdia";
+  return {
+    id: equipe.id, nome: equipe.nomeNegocio, teste: !!equipe.teste, segmento: equipe.segmento || "não informado",
+    integrantes: equipe.integrantes || [], gestor: dados.gestor?.nome || null,
+    total: MODULOS.length, corrigidos, comEquipe, comProfessor, achados, linhas: linhasOrd,
+    maxVencido, proximo, situacao, diagnostico, ultimoEnvio,
+  };
+}
+
+function orientacaoEmTexto(o, turma) {
+  const L = [];
+  L.push(`Orientação — ${o.nome}${turma?.nome ? ` (turma ${turma.nome})` : ""}`);
+  if (turma?.professor) L.push(`Professor(a): ${turma.professor}`);
+  L.push(`Módulos corrigidos: ${o.corrigidos} de ${o.total}. Com a equipe: ${o.comEquipe}. Com o professor: ${o.comProfessor}.`);
+  if (o.achados.length === 0) L.push("", "Nenhuma pendência encontrada. Parabéns, continue assim!");
+  else {
+    L.push("", "O que precisa de ajuste:");
+    o.achados.forEach((a, i) => {
+      const quem = a.quem === "ambos" ? "Equipe e Professor" : a.quem === "professor" ? "Professor" : "Equipe";
+      L.push(`${i + 1}. [${a.modulo}] ${a.titulo}  (quem age: ${quem})`);
+      L.push(`   O que fazer: ${a.orientacao}`);
+      if (a.onde) L.push(`   Onde: ${a.onde}`);
+    });
+  }
+  if (o.diagnostico) {
+    L.push("", "Diagnóstico de viabilidade (valores mensais):");
+    o.diagnostico.dre.forEach((r) => L.push(`- ${r.rubrica}: ${fmtBRL(r.valor)} (${fmtNum(r.pct, 1)}% da receita)${r.status ? ` — ${r.status}` : ""}`));
+    if (o.diagnostico.peMensal) L.push(`- Ponto de equilíbrio: ${fmtBRL(o.diagnostico.peMensal)} por mês (a receita atual cobre ${fmtNum(o.diagnostico.cobertura, 1)}%).`);
+  }
+  const aguard = o.linhas.filter((x) => x.tipo === "aw").map((x) => x.mod).sort((a, b) => a - b);
+  if (aguard.length) L.push("", `Aguardando o professor: ${aguard.length > 1 ? "Módulos" : "Módulo"} ${aguard.join(", ")}.`);
+  L.push("", "Qualquer dúvida, procure o professor em aula.");
+  return L.join("\n");
+}
+
+const ORIENT_SITUACAO = {
+  problema: { rotulo: "● problema", cls: "bg-rose-600 text-white" },
+  conferir: { rotulo: "○ conferir", cls: "border border-amber-500 text-amber-400" },
+  aguardando: { rotulo: "⏳ aguardando professor", cls: "border border-sky-500 text-sky-400" },
+  andamento: { rotulo: "em andamento", cls: "border border-slate-500 text-slate-300" },
+  emdia: { rotulo: "em dia", cls: "bg-emerald-700 text-emerald-50" },
+};
+
+function QuemAgePill({ quem }) {
+  if (!quem || quem.length === 0) return <span className="text-slate-600">—</span>;
+  return (
+    <span className="flex gap-1 flex-wrap">
+      {quem.includes("equipe") && <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-700 text-emerald-50">👥 Equipe</span>}
+      {quem.includes("professor") && <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-sky-500 text-sky-400">🧑‍🏫 Professor</span>}
+    </span>
+  );
+}
+
+// Folha impressa (A4 retrato), uma equipe por página. Estilos próprios com
+// cores fixas e fundo branco, só para a impressão (não depende do tema escuro).
+function FolhasOrientacaoImpressao({ lista, turma, emitidoEm }) {
+  const C = {
+    err: { bg: "#fef2f2", fg: "#b91c1c" }, ok: { bg: "#f0fdf4", fg: "#047857" }, aw: { bg: "#f0f9ff", fg: "#0369a1" },
+    lib: { bg: "#fffbeb", fg: "#b45309" }, blq: { bg: "#fff", fg: "#777" },
+  };
+  const cssFolha = `
+    .op-pg{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:11px;line-height:1.35;padding:0;page-break-after:always;break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .op-pg:last-child{page-break-after:auto;break-after:auto}
+    .op-pg *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .op-hd{display:flex;justify-content:space-between;border-bottom:3px solid #f59e0b;padding-bottom:8px}
+    .op-hd small{font-size:9.5px;letter-spacing:1.5px;color:#b45309;font-weight:700}
+    .op-pg h1{font-size:18px;margin:2px 0 0;color:#0f172a}
+    .op-meta{margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:3px 20px;font-size:11px}
+    .op-res{margin-top:9px;border:1.5px solid #cbd5e1;border-left:5px solid #f59e0b;background:#f8fafc;border-radius:6px;padding:8px 12px;display:flex;gap:26px}
+    .op-res div{font-size:10px;color:#444}.op-res b{display:block;font-size:17px}
+    .op-pg h2{font-size:12px;margin:12px 0 5px;text-transform:uppercase;letter-spacing:.6px;border-bottom:2px solid #fde68a;padding-bottom:3px;color:#0f172a}
+    .op-pg h2:before{content:"";display:inline-block;width:8px;height:14px;background:#f59e0b;border-radius:2px;margin-right:8px;vertical-align:-2px}
+    .op-pg table{width:100%;border-collapse:collapse}
+    .op-pg th{font-size:9.5px;letter-spacing:.6px;text-align:left;padding:5px 6px;background:#0f172a;color:#fbbf24}
+    .op-pg td{padding:3px 6px;border-bottom:1px solid #ddd;font-size:10.3px;vertical-align:top}
+    .op-pg tr,.op-obs-bloco{break-inside:avoid;page-break-inside:avoid}
+    .op-pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:10px;font-weight:700;white-space:nowrap}
+    .op-leg{font-size:9.5px;color:#555;margin-top:6px}
+    .op-obs{margin-top:8px;border:1.5px solid #cbd5e1;background:#fffdf5;border-radius:6px;height:66px;position:relative}
+    .op-obs i{position:absolute;left:10px;right:10px;border-bottom:1px solid #bbb}
+    .op-ft{margin-top:8px;font-size:9px;color:#666;display:flex;justify-content:space-between;border-top:2px solid #fde68a;padding-top:5px}
+  `;
+  return (
+    <div id="orient-print-root">
+      <style>{cssFolha}</style>
+      {lista.map((o) => {
+        const venc = o.maxVencido > 0;
+        const prazoRes = venc ? `vencido há ${o.maxVencido} dia(s)` : o.proximo !== null ? `próximo em ${o.proximo} dia(s)` : "—";
+        return (
+          <section className="op-pg" key={o.id}>
+            <div className="op-hd">
+              <div><small>CEDUP HERMANN HERING · PLATAFORMA DO PLANO FINANCEIRO</small><h1>Orientação da equipe — {o.nome}{o.teste ? " (CONTA DE TESTE)" : ""}</h1></div>
+              <div style={{ textAlign: "right", fontSize: 10, color: "#444" }}>Emitido em {emitidoEm}</div>
+            </div>
+            <div className="op-meta">
+              <div><b>Turma:</b> {turma?.nome || "—"}</div><div><b>Professor(a):</b> {turma?.professor || "—"}</div>
+              <div><b>Integrantes:</b> {o.integrantes.join(", ") || "sem integrantes"}</div><div><b>Segmento:</b> {o.segmento}</div>{o.gestor && <div><b>Último Gestor:</b> {o.gestor}</div>}
+            </div>
+            <div className="op-res">
+              <div>MÓDULOS CORRIGIDOS<b style={{ color: "#047857" }}>{o.corrigidos} de {o.total}</b></div>
+              <div>PARA A EQUIPE FAZER<b style={{ color: "#b91c1c" }}>{o.comEquipe}</b></div>
+              <div>AGUARDANDO O PROFESSOR<b style={{ color: "#0369a1" }}>{o.comProfessor}</b></div>
+              <div>PRAZO<b style={{ color: venc ? "#b91c1c" : "#0f172a", fontSize: 14 }}>{prazoRes}</b></div>
+            </div>
+
+            <h2>O que a equipe precisa fazer</h2>
+            {o.achados.length === 0 ? <div style={{ color: "#047857", fontWeight: 700 }}>Nenhuma pendência encontrada. Parabéns, continue assim!</div> : (
+              <table>
+                <thead><tr><th style={{ width: "22%" }}>MÓDULO</th><th style={{ width: "10%" }}>GRAVIDADE</th><th>PROBLEMA</th><th style={{ width: "34%" }}>O QUE FAZER E ONDE</th></tr></thead>
+                <tbody>
+                  {o.achados.map((a, i) => (
+                    <tr key={i} style={{ background: a.grav === "erro" ? "#fef2f2" : "#fffbeb" }}>
+                      <td><b>{a.modulo}</b></td>
+                      <td>{a.grav === "erro"
+                        ? <span className="op-pill" style={{ background: "#b91c1c", color: "#fff" }}>● erro</span>
+                        : <span className="op-pill" style={{ border: "1.5px solid #d97706", color: "#b45309", background: "#fffbeb" }}>○ conferir</span>}</td>
+                      <td>{a.titulo}</td>
+                      <td>{a.orientacao}<br /><span style={{ color: "#777" }}>{a.onde}</span>{a.quem === "ambos" && <><br /><span style={{ color: "#777" }}>Quem age: equipe e professor</span></>}{a.quem === "professor" && <><br /><span style={{ color: "#777" }}>Quem age: professor</span></>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {o.diagnostico && (<>
+              <h2>Diagnóstico de viabilidade</h2>
+              <table>
+                <thead><tr><th>RUBRICA</th><th style={{ width: "17%" }}>VALOR MENSAL</th><th style={{ width: "12%" }}>% RECEITA</th><th style={{ width: "19%" }}>LEITURA</th></tr></thead>
+                <tbody>{o.diagnostico.dre.map((r, i) => (
+                  <tr key={i}><td>{r.rubrica}</td><td>{fmtBRL(r.valor)}</td><td>{fmtNum(r.pct, 1)}%</td><td style={{ fontWeight: 700, color: /^(Crítico|Prejuízo|Margem negativa|Alto)/.test(r.status) ? "#b91c1c" : /^(Atenção|Necessita|Margem baixa)/.test(r.status) ? "#b45309" : "#047857" }}>{r.status}</td></tr>
+                ))}</tbody>
+              </table>
+              <div className="op-leg">Ponto de equilíbrio: {o.diagnostico.peMensal ? `${fmtBRL(o.diagnostico.peMensal)} por mês` : "—"}{o.diagnostico.cobertura != null ? ` (a receita atual cobre ${fmtNum(o.diagnostico.cobertura, 1)}%)` : ""} · Capital de giro: {o.diagnostico.mesesCaixa != null ? `dura cerca de ${fmtNum(o.diagnostico.mesesCaixa, 1)} meses com o resultado atual` : "sem consumo pelo resultado"} · Capital de terceiros: {fmtNum(o.diagnostico.pctTerc, 0)}% do investimento. Leituras usam limites de referência pedagógica, não normas.</div>
+            </>)}
+
+            <h2>Situação por módulo</h2>
+            <table>
+              <thead><tr><th style={{ width: "38%" }}>MÓDULO</th><th style={{ width: "34%" }}>SITUAÇÃO</th><th>PRAZO</th></tr></thead>
+              <tbody>
+                {[...o.linhas].sort((a, b) => a.mod - b.mod).map((x) => {
+                  const cor = x.tipo === "bad" ? C.err : x.tipo === "ok" ? C.ok : x.tipo === "aw" ? C.aw : x.tipo === "lib" ? C.lib : C.blq;
+                  return (
+                    <tr key={x.mod} style={{ background: cor.bg }}>
+                      <td>{x.mod} · {x.nome}</td>
+                      <td style={{ color: cor.fg, fontWeight: x.tipo === "blq" ? 400 : 700 }}>{x.rotulo}</td>
+                      <td style={{ color: x.prazoRuim ? "#b91c1c" : "#111", fontWeight: x.prazoRuim ? 700 : 400 }}>{x.prazoTxt}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div className="op-leg">✓ significa “corrigido pelo professor”, não “plano financeiramente viável”. · ⏳ aguardando o professor · – ainda não liberado. ● erro precisa ser corrigido; ○ conferir vale uma revisão.</div>
+
+            <div className="op-obs-bloco"><h2>Observações do professor</h2>
+            <div className="op-obs"><i style={{ top: 22 }} /><i style={{ top: 44 }} /></div>
+            <div className="op-ft"><span>Plataforma do Plano Financeiro (PPFCHH) · ppfn.com.br</span><span>{o.nome} · Orientação</span></div></div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+// Envia a orientação para a equipe DENTRO da plataforma: acrescenta um
+// comentário "Geral" (visível na aba Feedback do aluno e no Registro do
+// processo). Releitura fresca antes de gravar e só o campo `comentarios` é
+// alterado; nada mais da equipe é tocado.
+async function enviarOrientacaoComentario(equipeId, texto, autor, loteId) {
+  const r = await window.storage.get(`dados_equipe_${equipeId}`, true);
+  if (!r) throw new Error("equipe não encontrada");
+  const d = JSON.parse(r.value);
+  const novo = { modulo: "Geral", texto, autor, timestamp: Date.now(), tipo: "orientacao", ...(loteId ? { lote: loteId } : {}) };
+  await window.storage.set(`dados_equipe_${equipeId}`, JSON.stringify({ ...d, comentarios: [...(d.comentarios || []), novo] }), true);
+  return novo.timestamp;
+}
+
+function RelatorioOrientacao({ turma, dadosEquipes, onAtualizar, podeEnviar }) {
+  const [selId, setSelId] = useState(null);
+  const [folhas, setFolhas] = useState(null); // lista de orientações a imprimir (retrato)
+  const [copiado, setCopiado] = useState(false);
+  const [envio, setEnvio] = useState(null);       // { alvos: [{ o, texto }] }
+  const [ocupadoEnvio, setOcupadoEnvio] = useState(false);
+  const [avisoEnvio, setAvisoEnvio] = useState("");
+
+  const [cfgSeg] = useSharedObject(turma?.professorUid ? `itens_segmento_${turma.professorUid}` : null, null);
+  const lista = useMemo(() => (dadosEquipes || []).map((it) => gerarOrientacaoEquipe(it, cfgSeg || null)), [dadosEquipes, cfgSeg]);
+
+  // Impressão em retrato, uma equipe por folha. A folha vai para um portal
+  // direto no <body>; durante o print() todo o resto da página some.
+  useEffect(() => {
+    if (!folhas) return undefined;
+    const titulo = folhas.length === 1 ? `Orientacao - ${folhas[0].nome} - ${sufixoDataHoraArquivo()}` : `Orientacao - ${turma.nome} - todas as equipes - ${sufixoDataHoraArquivo()}`;
+    const estilo = document.createElement("style");
+    estilo.textContent = "@media screen { #orient-print-root-wrap { display: none !important; } } @media print { @page { size: A4 portrait; margin: 10mm; } body > *:not(#orient-print-root-wrap) { display: none !important; } #orient-print-root-wrap { display: block !important; } }";
+    document.head.appendChild(estilo);
+    const original = document.title;
+    const t = setTimeout(() => {
+      document.title = titulo;
+      window.print();
+      document.title = original;
+      if (estilo.parentNode) estilo.parentNode.removeChild(estilo);
+      setFolhas(null);
+    }, 150);
+    return () => { clearTimeout(t); if (estilo.parentNode) estilo.parentNode.removeChild(estilo); };
+  }, [folhas, turma]);
+
+  if (dadosEquipes === null) return <LoadingScreen />;
+  if (dadosEquipes.length === 0) return <Card className="p-8 text-center text-slate-500">Nenhuma empresa nesta turma ainda.</Card>;
+
+  const ordemSit = { problema: 0, conferir: 1, aguardando: 2, andamento: 3, emdia: 4 };
+  const ordenada = [...lista].sort((a, b) => ordemSit[a.situacao] - ordemSit[b.situacao] || a.nome.localeCompare(b.nome, "pt-BR"));
+  const emitidoEm = new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }).replace(",", " às");
+  const sel = selId ? lista.find((o) => o.id === selId) : null;
+
+  const copiar = async (texto) => {
+    try { await navigator.clipboard.writeText(texto); }
+    catch {
+      const ta = document.createElement("textarea"); ta.value = texto; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); } catch {}
+      document.body.removeChild(ta);
+    }
+    setCopiado(true); setTimeout(() => setCopiado(false), 2500);
+  };
+
+  const abrirEnvioUm = (o) => { setAvisoEnvio(""); setEnvio({ alvos: [{ o, texto: orientacaoEmTexto(o, turma) }] }); };
+  const abrirEnvioTodas = () => {
+    const alvos = ordenada.filter((o) => !o.teste && o.achados.length > 0).map((o) => ({ o, texto: orientacaoEmTexto(o, turma) }));
+    setAvisoEnvio(alvos.length ? "" : "Nenhuma equipe com pendências para enviar."); setEnvio(alvos.length ? { alvos } : null);
+  };
+  const confirmarEnvio = async () => {
+    if (!envio) return;
+    setOcupadoEnvio(true);
+    const loteId = uid(); let ok = 0; const falhas = [];
+    for (const a of envio.alvos) {
+      if (!a.texto.trim()) continue;
+      try { await enviarOrientacaoComentario(a.o.id, a.texto, turma?.professor || "Professor", envio.alvos.length > 1 ? loteId : null); ok++; }
+      catch { falhas.push(a.o.nome); }
+    }
+    setOcupadoEnvio(false); setEnvio(null);
+    setAvisoEnvio(`Orientação enviada pela plataforma para ${ok} equipe(s).${falhas.length ? ` Não foi possível enviar para: ${falhas.join(", ")}.` : ""} Os alunos veem em "Feedback" e o envio fica no Registro do processo.`);
+    if (onAtualizar) onAtualizar();
+  };
+  const painelEnvio = (
+    <>
+      {avisoEnvio && <div className="no-print mb-3 text-xs text-emerald-300 bg-emerald-950/30 border border-emerald-700/50 rounded-md px-3 py-2">{avisoEnvio}</div>}
+      {envio && (
+        <Card className="no-print p-4 mb-4 border-amber-500/40">
+          <div className="text-sm font-bold text-amber-300 mb-1">Enviar pela plataforma — confirme</div>
+          <p className="text-xs text-slate-400 mb-3">O texto abaixo vira um comentário “Geral” no painel de cada equipe (aba Feedback do aluno) e fica registrado no Registro do processo. Nada é alterado nos lançamentos.</p>
+          <div className="space-y-3 max-h-[26rem] overflow-y-auto">
+            {envio.alvos.map((a, i) => (
+              <div key={a.o.id}>
+                <div className="text-xs font-semibold text-slate-200 mb-1">{a.o.nome}{a.o.ultimoEnvio ? <span className="font-normal text-slate-500"> · último envio em {fmtData(a.o.ultimoEnvio)}</span> : null}</div>
+                <textarea value={a.texto} onChange={(e) => setEnvio((v) => ({ alvos: v.alvos.map((x, k) => (k === i ? { ...x, texto: e.target.value } : x)) }))} rows={envio.alvos.length > 1 ? 5 : 12} className="w-full bg-slate-950 border border-slate-700 rounded-md px-2.5 py-2 text-xs text-slate-100" />
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button onClick={confirmarEnvio} disabled={ocupadoEnvio} className="bg-amber-500 text-slate-900 font-bold text-sm px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40">{ocupadoEnvio ? "Enviando…" : `Confirmar envio (${envio.alvos.length} equipe${envio.alvos.length === 1 ? "" : "s"})`}</button>
+            <button onClick={() => setEnvio(null)} disabled={ocupadoEnvio} className="border border-slate-600 text-slate-200 text-sm px-4 py-2 rounded-md hover:bg-slate-800">Cancelar</button>
+          </div>
+        </Card>
+      )}
+    </>
+  );
+
+  const portal = folhas ? createPortal(<div id="orient-print-root-wrap"><FolhasOrientacaoImpressao lista={folhas} turma={turma} emitidoEm={emitidoEm} /></div>, document.body) : null;
+  const th = "py-2 px-3 text-left text-[11px] uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40";
+  const td = "py-2 px-3 text-sm border-b border-slate-800";
+
+  if (!sel) {
+    const totEq = lista.reduce((s, o) => s + o.comEquipe, 0);
+    const totPr = lista.reduce((s, o) => s + o.comProfessor, 0);
+    const vencidas = lista.filter((o) => o.maxVencido > 0).length;
+    return (
+      <div>
+        {portal}
+        <div className="no-print flex flex-wrap items-center justify-between gap-2 mb-4">
+          <p className="text-xs text-slate-400 max-w-xl">Quem precisa agir agora, o que está pendente e onde corrigir. Calculado na hora, <b>só leitura</b> — nada é gravado nos dados das equipes.</p>
+          <div className="flex gap-2">
+            <button onClick={() => imprimirComTitulo(`Orientacao da turma - ${turma.nome} - ${sufixoDataHoraArquivo()}`, true)} className="flex items-center gap-1.5 text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800"><Printer size={13} /> Imprimir resumo (paisagem)</button>
+            <button onClick={() => setFolhas(ordenada)} className="flex items-center gap-1.5 text-xs font-semibold bg-amber-500 text-slate-900 px-2.5 py-1.5 rounded-md hover:bg-amber-400"><Printer size={13} /> Imprimir todas as equipes (1 folha cada)</button>
+            {podeEnviar && <button onClick={abrirEnvioTodas} className="flex items-center gap-1.5 text-xs font-semibold border border-sky-500/60 text-sky-300 px-2.5 py-1.5 rounded-md hover:bg-sky-500/10"><Send size={13} /> Enviar a todas pela plataforma</button>}
+          </div>
+        </div>
+        {painelEnvio}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+          <StatCard label="Equipes" value={String(lista.length)} tone="slate" small />
+          <StatCard label="Módulos com a equipe" value={String(totEq)} tone="emerald" small />
+          <StatCard label="Módulos com o professor" value={String(totPr)} tone="blue" small />
+          <StatCard label="Equipes com prazo vencido" value={String(vencidas)} tone={vencidas ? "rose" : "slate"} small />
+        </div>
+        <Card className="p-0 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px]">
+              <thead><tr><th className={th}>Equipe / empresa</th><th className={th}>Módulos corrigidos</th><th className={`${th} text-center`}>Com a equipe</th><th className={`${th} text-center`}>Com o professor</th><th className={th}>Situação</th><th className={`${th} no-print`}></th></tr></thead>
+              <tbody>
+                {ordenada.map((o) => {
+                  const s = ORIENT_SITUACAO[o.situacao];
+                  return (
+                    <tr key={o.id}>
+                      <td className={td}><div className="font-semibold text-slate-100">{o.nome}{o.teste && <span className="ml-2 text-[10px] border border-dashed border-violet-400 text-violet-300 rounded-full px-2 py-0.5">CONTA DE TESTE</span>}</div><div className="text-xs text-slate-500">{o.segmento}</div></td>
+                      <td className={`${td} text-slate-300`}>{o.corrigidos} de {o.total}</td>
+                      <td className={`${td} text-center text-slate-200`}>{o.comEquipe}</td>
+                      <td className={`${td} text-center text-slate-200`}>{o.comProfessor}</td>
+                      <td className={td}><span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${s.cls}`}>{s.rotulo}</span></td>
+                      <td className={`${td} no-print`}><button onClick={() => setSelId(o.id)} className="text-xs border border-slate-600 text-slate-200 px-2.5 py-1 rounded-md hover:bg-slate-800">ver orientação</button></td>
+                    </tr>
+                  );
+                })}
+                <tr className="bg-slate-900/60 font-bold"><td className={td}>Total da turma</td><td className={td}></td><td className={`${td} text-center`}>{totEq}</td><td className={`${td} text-center`}>{totPr}</td><td className={td} colSpan={2}></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </Card>
+        <p className="text-[11px] text-slate-500 mt-3">“Com o professor” = módulos enviados aguardando correção. “Com a equipe” = módulos devolvidos, liberados, ou com prazo vencido (neste caso, também do professor, que reabre). Ordem: problema primeiro, em dia por último.</p>
+      </div>
+    );
+  }
+
+  const o = sel;
+  return (
+    <div>
+      {portal}
+      <div className="no-print flex flex-wrap items-center gap-2 mb-4">
+        <button onClick={() => setSelId(null)} className="text-xs border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800">← Voltar ao resumo da turma</button>
+        <button onClick={() => copiar(orientacaoEmTexto(o, turma))} className="flex items-center gap-1.5 text-xs font-semibold bg-amber-500 text-slate-900 px-2.5 py-1.5 rounded-md hover:bg-amber-400"><ClipboardList size={13} /> {copiado ? "Copiado!" : "Copiar texto da orientação"}</button>
+        <button onClick={() => setFolhas([o])} className="flex items-center gap-1.5 text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800"><Printer size={13} /> Imprimir esta equipe (A4 retrato)</button>
+        {podeEnviar && <button onClick={() => abrirEnvioUm(o)} className="flex items-center gap-1.5 text-xs font-semibold bg-sky-600 text-white px-2.5 py-1.5 rounded-md hover:bg-sky-500"><Send size={13} /> Enviar para a equipe (pela plataforma)</button>}
+        {o.ultimoEnvio && <span className="text-[11px] text-slate-500">último envio em {fmtData(o.ultimoEnvio)}</span>}
+      </div>
+      {painelEnvio}
+      <div className="mb-4">
+        <h3 className="text-xl font-bold text-slate-100">Orientação — {o.nome}{o.teste && <span className="ml-2 text-[10px] border border-dashed border-violet-400 text-violet-300 rounded-full px-2 py-0.5 align-middle">CONTA DE TESTE</span>}</h3>
+        <div className="text-xs text-slate-400">{turma.nome} · Segmento: {o.segmento}{o.integrantes.length ? ` · ${o.integrantes.join(", ")}` : ""}{o.maxVencido > 0 && <> · <b className="text-rose-400">prazo vencido há {o.maxVencido} dia(s)</b></>}</div>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        <StatCard label="Corrigidos" value={`${o.corrigidos} de ${o.total}`} tone="emerald" small />
+        <StatCard label="Com a equipe" value={String(o.comEquipe)} tone="emerald" small />
+        <StatCard label="Com o professor" value={String(o.comProfessor)} tone="blue" small />
+        <StatCard label="Situação" value={ORIENT_SITUACAO[o.situacao].rotulo} tone="gold" small />
+      </div>
+
+      <h4 className="text-sm font-bold text-slate-200 mb-2">Situação por módulo</h4>
+      <Card className="p-0 overflow-hidden mb-6">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px]">
+            <thead><tr><th className={th}>Módulo</th><th className={th}>Situação</th><th className={th}>Prazo</th><th className={th}>Quem age agora</th></tr></thead>
+            <tbody>
+              {[...o.linhas].sort((x, y) => x.mod - y.mod).map((x) => (
+                <tr key={x.mod}>
+                  <td className={`${td} text-slate-200`}>{x.mod} · {x.nome}</td>
+                  <td className={`${td} font-semibold ${x.tipo === "bad" ? "text-rose-400" : x.tipo === "ok" ? "text-emerald-400" : x.tipo === "aw" ? "text-sky-400" : x.tipo === "lib" ? "text-amber-400" : "text-slate-500"}`}>{x.rotulo}</td>
+                  <td className={`${td} ${x.prazoRuim ? "text-rose-400 font-bold" : "text-slate-400"}`}>{x.prazoTxt}</td>
+                  <td className={td}><QuemAgePill quem={x.quem} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+      <p className="text-[11px] text-slate-500 -mt-4 mb-6">✓ significa “corrigido pelo professor”, <b>não</b> “plano financeiramente viável”. Módulos em ordem, do 1 ao 13.</p>
+
+      <h4 className="text-sm font-bold text-slate-200 mb-2">Diagnóstico de viabilidade</h4>
+      <div className="mb-6"><BlocoDiagnosticoTela d={o.diagnostico} /></div>
+
+      <h4 className="text-sm font-bold text-slate-200 mb-2">O que precisa de ajuste ({o.achados.length})</h4>
+      {o.achados.length === 0 ? <Card className="p-5 text-sm text-emerald-400">Nenhuma pendência encontrada.</Card> : (
+        <Card className="p-0 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px]">
+              <thead><tr><th className={th}>Módulo</th><th className={th}>Gravidade</th><th className={th}>Problema</th><th className={th}>O que fazer</th><th className={th}>Onde</th><th className={th}>Quem age</th></tr></thead>
+              <tbody>
+                {o.achados.map((a, i) => (
+                  <tr key={i}>
+                    <td className={`${td} text-slate-200 font-semibold`}>{a.modulo}</td>
+                    <td className={td}>{a.grav === "erro" ? <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-700 text-white">● erro</span> : <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-amber-500 text-amber-400">○ conferir</span>}</td>
+                    <td className={`${td} text-slate-300`}>{a.titulo}</td>
+                    <td className={`${td} text-slate-300`}>{a.orientacao}</td>
+                    <td className={`${td} text-slate-500 text-xs`}>{a.onde}</td>
+                    <td className={td}><QuemAgePill quem={a.quem === "ambos" ? ["equipe", "professor"] : [a.quem]} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// DESCRIÇÕES PARA O SISTEMA DE NOTAS DA ESCOLA ("Professor On-line").
+// Só leitura: monta, a partir do cronograma da turma, o texto de cada
+// atividade avaliativa (Assunto + data de entrega) para o professor copiar e
+// colar no formulário "Nova Avaliação". Não grava nada.
+// ============================================================================
+const ATIVIDADES_DESCRICAO_ESCOLA = [
+  { id: "m1", rotulo: "Módulo 1", titulo: "Módulo 1: Investimentos Fixos", ordem: 2, conteudo: "máquinas, equipamentos, móveis, utensílios e veículos necessários ao negócio, com quantidade e valor unitário" },
+  { id: "m2", rotulo: "Módulo 2", titulo: "Módulo 2: Capital de Giro", ordem: 2, conteudo: "estoque inicial e caixa mínimo para financiar a operação, considerando prazos de vendas, estoque e compras" },
+  { id: "m3", rotulo: "Módulo 3", titulo: "Módulo 3: Investimentos Pré-Operacionais", ordem: 2, conteudo: "gastos realizados antes de começar a vender (reformas, legalização, divulgação de lançamento, treinamentos)" },
+  { id: "m5", rotulo: "Módulo 5", titulo: "Módulo 5: Faturamento Mensal", ordem: 3, conteudo: "estimativa da receita mensal a partir da quantidade vendida e do preço de venda de cada produto/serviço" },
+  { id: "m6", rotulo: "Módulo 6", titulo: "Módulo 6: Custo Unitário de Matéria-Prima", ordem: 3, conteudo: "custo dos materiais de cada unidade produzida (quantidade × custo unitário do material)" },
+  { id: "m7", rotulo: "Módulo 7", titulo: "Módulo 7: Custos de Comercialização", ordem: 3, conteudo: "impostos, comissões, taxas e demais custos incidentes sobre as vendas" },
+  { id: "m9", rotulo: "Módulo 9", titulo: "Módulo 9: Mão de Obra", ordem: 3, conteudo: "quadro de funcionários, salários, encargos e benefícios da empresa" },
+  { id: "m11", rotulo: "Módulo 11", titulo: "Módulo 11: Custos Fixos Mensais", ordem: 4, conteudo: "despesas fixas mensais (aluguel, energia, água, internet, pró-labore e outras)" },
+  { id: "m13", rotulo: "Módulo 13", titulo: "Módulo 13: Indicadores de Viabilidade", ordem: 5, conteudo: "análise dos indicadores (lucratividade, ponto de equilíbrio, retorno e prazo de retorno) e conclusão sobre a viabilidade do negócio" },
+  { id: "cen", rotulo: "Cenários / Fluxo", titulo: "Cenários e Fluxo de Caixa", ordem: 6, conteudo: "simulação de cenários (otimista, provável e pessimista) e fluxo de caixa projetado" },
+  { id: "apr", rotulo: "Apresentação", titulo: "Apresentação Final", ordem: 7, conteudo: "apresentação do plano financeiro da empresa à turma e ao professor" },
+];
+
+function montarDescricaoEscola(at, linha) {
+  const data = linha?.dataEntrega ? fmtDataCurta(linha.dataEntrega) : null;
+  const hora = (linha?.horaEntrega || HORARIO_CRONOGRAMA_PADRAO).replace(":", "h");
+  const prazo = data ? `Entrega até ${data} às ${hora}.` : "Data de entrega a definir no cronograma.";
+  return `PROJETO PPF – ${at.titulo}. Conteúdo: ${at.conteudo}. Lançamento na Plataforma PPF (ppfn.com.br). ${prazo} Avaliação de 0 a 10.`;
+}
+
+function RelatorioDescricoesEscola({ turma }) {
+  const [cronograma] = useSharedObject(`cronograma_${turma.id}`, null);
+  const [aulas, setAulas] = useState("1");
+  const [copiado, setCopiado] = useState("");
+  const copiar = async (texto, chave) => {
+    try { await navigator.clipboard.writeText(texto); }
+    catch {
+      const ta = document.createElement("textarea"); ta.value = texto; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); } catch {}
+      document.body.removeChild(ta);
+    }
+    setCopiado(chave); setTimeout(() => setCopiado(""), 2500);
+  };
+  if (cronograma === undefined) return <LoadingScreen />;
+  const linhas = cronograma?.linhas || [];
+  const itens = ATIVIDADES_DESCRICAO_ESCOLA.map((at) => {
+    const linha = linhas.find((l) => l.ordem === at.ordem);
+    return { ...at, data: linha?.dataEntrega ? fmtDataCurta(linha.dataEntrega) : "", texto: montarDescricaoEscola(at, linha) };
+  });
+  const tudo = itens.map((i) => `${i.rotulo} — Data: ${i.data || "a definir"}\n${i.texto}`).join("\n\n");
+  const th = "py-2 px-3 text-left text-[11px] uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40";
+  const td = "py-2 px-3 text-sm border-b border-slate-800 align-top";
+  return (
+    <div>
+      <p className="text-sm text-slate-400 mb-3">Textos prontos para colar no formulário <b className="text-slate-200">Nova Avaliação</b> do sistema da escola (campo Descrição/Assunto). As datas vêm do cronograma desta turma e acompanham qualquer ajuste feito nele. Somente leitura.</p>
+      {!cronograma && <Card className="p-3 mb-3 text-sm text-amber-400">Esta turma ainda não tem cronograma definido — as datas aparecem como "a definir". Configure a Semana 1 em Turmas → Cronograma.</Card>}
+      <Card className="p-3 mb-3 flex flex-wrap items-center gap-3 text-sm">
+        <span className="text-slate-300">Período: <b className="text-slate-100">1ª AVALIAÇÃO</b></span>
+        <span className="text-slate-300">Tipo: <b className="text-slate-100">Projeto</b></span>
+        <label className="text-slate-300 flex items-center gap-1.5">Total de aula(s):
+          <input type="number" min="1" value={aulas} onChange={(e) => setAulas(e.target.value)} className="w-16 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100" />
+        </label>
+        <button onClick={() => copiar(tudo, "tudo")} className="ml-auto flex items-center gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-md">
+          {copiado === "tudo" ? <><CheckCircle2 size={13} /> Copiado!</> : <><Copy size={13} /> Copiar tudo</>}
+        </button>
+      </Card>
+      <Card className="p-0 overflow-x-auto">
+        <table className="w-full">
+          <thead><tr><th className={th}>Atividade</th><th className={th}>Data</th><th className={th}>Aulas</th><th className={th}>Descrição / Assunto</th><th className={th}></th></tr></thead>
+          <tbody>
+            {itens.map((i) => (
+              <tr key={i.id}>
+                <td className={td + " font-semibold text-slate-200 whitespace-nowrap"}>{i.rotulo}</td>
+                <td className={td + " whitespace-nowrap"}>{i.data || <span className="text-amber-400">a definir</span>}</td>
+                <td className={td}>{aulas}</td>
+                <td className={td + " text-xs text-slate-300 min-w-[320px]"}>{i.texto}</td>
+                <td className={td}>
+                  <div className="flex flex-col gap-1">
+                    <button onClick={() => copiar(i.texto, i.id)} className="text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1.5 rounded-md whitespace-nowrap">{copiado === i.id ? "Copiado!" : "Copiar texto"}</button>
+                    <button onClick={() => copiar(i.data, i.id + "d")} disabled={!i.data} className="text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800 disabled:opacity-40 whitespace-nowrap">{copiado === i.id + "d" ? "Copiado!" : "Copiar data"}</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
+// ============================================================================
+// PLANO SEMESTRAL (modelo CEDUP Hermann Hering) — aba em GESTÃO → Relatórios.
+// Texto-base = plano de Administração Financeira (Pós-Médio 2026) do professor.
+// Edita, salva por turma (chave própria `planos_{turmaId}`, não toca em dados
+// de equipes) e imprime em A4 paisagem. As datas previstas do Projeto vêm do
+// cronograma da turma. Ver abas "Descrições p/ Escola" e "Orientação".
+// ============================================================================
+const PLANO_ADM_BASE = {
+ "hdr": {
+  "curso": "TÉCNICO EM ADMINISTRAÇÃO",
+  "disciplina": "ADMINISTRAÇÃO FINANCEIRA",
+  "modulo": "2",
+  "turma": "202",
+  "professor": "JORGE LIMA CARDOSO",
+  "aulas": "4"
+ },
+ "rows": [
+  {
+   "label": "EMENTA:",
+   "texto": "Introdução à Administração Financeira Conceito, objetivos, funções; Principais Rotinas e Ferramentas da Administração Financeira; Tipos de empresa; Ambiente econômico e financeiro; Índices econômicos e financeiros; Elaboração do Fluxo de Caixa; Planejamento Financeiro; Análise de Crédito e Cobrança. Prazos e Ciclo operacional; Fundamentos da Administração dos Ativos Permanentes e Investimento de Capital; Custo de Capital; Financiamento a Longo Prazo; Análise e Acompanhamento do Planejamento Financeiro da Empresa Modelo; Análise de Investimentos"
+  },
+  {
+   "label": "HABILIDADES",
+   "texto": "Desenvolvimento da autonomia e do pensamento crítico ao acessar e refletir sobre os conteúdos.\nPlanejamento, organização e solução criativa de problemas.\nUtilização de diferentes linguagens para promover colaboração e respeito às diversidades.\nReflexão crítica sobre o próprio aprendizado e organização de conteúdo."
+  },
+  {
+   "label": "BASES TECNOLÓGICA/Conteúdos por unidade.",
+   "texto": "O conteúdo será ministrado em conformidade com a ementa da Unidade Curricular (UC), de forma integrada e adaptada à proposta do Projeto Interdisciplinar. Para o desenvolvimento das atividades e atribuições previstas, será utilizada a **Plataforma do Plano Financeiro de Negócio**, desenvolvida pelo professor como ferramenta de apoio à execução e integração das etapas do projeto."
+  },
+  {
+   "label": "OBJETO DO CONHECIMENTO",
+   "texto": "Introdução à Administração, Financeira: Conceito, objetivos, funções. Principais Rotinas e Ferramentas da Administração Financeira. Análise Financeira e Demonstrações Financeiras. Mercado de capitais e tipos de investimentos, índices econômicos e financeiros e alternativas de investimentos. Elaboração e Análise do Fluxo de Caixa. Análise de Crédito e Cobrança. Prazos e Ciclo operacional. Análise do Ponto de Equilíbrio. Fundamentos da Administração dos Ativos Permanentes e Investimento de Capital. Custo de Capital. Estrutura de Capital. Financiamento a Longo Prazo. Planejamento Financeiro. Análise de Investimentos. Análise horizontal e vertical e Análise do Quocientes."
+  },
+  {
+   "label": "METODOLOGIA DE ENSINO APRENDIZAGEM",
+   "texto": "A metodologia será desenvolvida de forma **interdisciplinar, prática e contextualizada**, integrando os conteúdos das Unidades Curriculares às etapas do **Projeto Interdisciplinar – Plano Financeiro de Negócio**. As atividades serão realizadas por meio de **aulas expositivas dialogadas, situações-problema, simulações empresariais, atividades individuais e em equipe**, utilizando a **Plataforma do Plano Financeiro de Negócio**, desenvolvida pelo professor, como ferramenta para execução, registro e acompanhamento das etapas do projeto. O professor atuará como mediador, orientando e acompanhando o desenvolvimento das atividades, com **avaliação contínua e processual**, considerando a participação, aplicação dos conhecimentos, cumprimento das etapas e qualidade dos resultados apresentados."
+  },
+  {
+   "label": "RECURSOS UTILIZADOS",
+   "texto": "Serão utilizados **computadores, projetor multimídia, acesso à internet, materiais didáticos e de apoio, planilhas eletrônicas, recursos audiovisuais e a Plataforma do Plano Financeiro de Negócio**, desenvolvida pelo professor, além de outros recursos necessários ao desenvolvimento das atividades práticas e interdisciplinares."
+  },
+  {
+   "label": "INSTRUMENTOS DIVERSIFICADOS DE AVALIAÇÃO",
+   "texto": "**Estudos de caso: **Resolução de problemas reais ou fictício; Pode envolver escrita, discussão e proposição de soluções.\n**Resolução de Exercícios**: Atividades individuais que consolidam os conceitos abordados, incentivando a organização de ideias e o raciocínio lógico.\n**Art. 6º Portaria Nº 874 de 01/04/2025**\n**§ 6º**. Para cada avaliação realizada, independente do instrumento utilizado, deverá constar no professor on-line o registro da respectiva recuperação paralela.\n**Art. 7º. Portaria Nº 874 de 01/04/2025**\n**§10- **Os professores devem registrar no sistema Professor On-line o resultado das avaliações e recuperações em até 15 dias úteis após a sua aplicação."
+  },
+  {
+   "label": "RECUPERAÇÃO PARALELA DE APRENDIZAGEM",
+   "texto": "**Art. 6º Portaria Nº 874 de 01/04/2025**. Entende-se por recuperação paralela a oferta de novas oportunidades de aprendizagens sucedidas de avaliação quando verificado que o nível de aprendizagem e desenvolvimento das habilidades forem insuficientes.\n**§ 1º.** A oferta de novas oportunidades de aprendizagem deverá ocorrer por meio da retomada pedagógica de conceitos, objetos de conhecimento, habilidades e competências não apropriados e/ ou desenvolvidos pelo estudante em determinado período letivo, sendo de responsabilidade da escola e dos professores o seu devido registro no diário de classe.\n**§ 2º.** É direito do estudante, fazer a recuperação paralela, mesmo aquele com resultado de avaliação igual ou acima da média, e é dever do professor ofertá-la a todos os estudantes, independente do rendimento obtido.\n**§ 3º.** Para a oferta de novas oportunidades de aprendizagem, o professor deverá aplicar instrumento diversificado de avaliação durante as aulas, antes do fechamento do trimestre/semestre, realizando o devido lançamento dos resultados no diário de classe.\n**§ 4º.** As atividades de recuperação paralela devem possuir o mesmo peso e grau de complexidade da que originou a necessidade de oferta de nova oportunidade de aprendizagem, prevalecendo o resultado maior obtido.\n**§ 6º**. Para cada avaliação realizada, independente do instrumento utilizado, deverá constar no professor on-line o registro da respectiva recuperação paralela.\n**Art. 7º.§10- **Os professores devem registrar no sistema Professor On-line o resultado das avaliações e recuperações em até 15 dias úteis após a sua aplicação."
+  }
+ ]
+};
+const PLANO_IMG_BRASAO = "data:image/png;base64,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";
+const PLANO_IMG_CEDUP = "data:image/jpeg;base64,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";
+const PLANO_CSS = `
+.plano-folha{background:#fff;color:#000;font:10pt/1.45 "Times New Roman",Times,serif;padding:14px 16px;border:1px solid #c9c4b4;min-width:980px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.plano-cab{position:relative;text-align:center;min-height:78px;font-size:9.5pt;line-height:1.3}
+.plano-cab img.fl{position:absolute;left:14px;top:0;height:72px}.plano-cab img.lg{position:absolute;right:14px;top:0;height:72px}
+.plano-tit{text-align:center;font-weight:700;font-size:11pt;color:#001d35;margin:10px 0 6px}
+.plano-folha table{border-collapse:collapse;width:100%;table-layout:fixed}
+.plano-folha td{border:1px solid #000;padding:5px 7px;vertical-align:top}
+.plano-folha td.lb{background:#FBD5B5;font-weight:700}
+.plano-folha td p{margin:0 0 5px}.plano-folha td.j p{text-align:justify}
+.plano-loc{margin:10px 0 0}
+.plano-wrap{overflow-x:auto}
+.plano-campos{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:10px}
+.plano-campos label{display:flex;flex-direction:column;gap:2px;font-size:12px;color:#94a3b8}
+.plano-campos input,.plano-ed textarea{font:inherit;font-size:14px;padding:6px 8px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;width:100%;box-sizing:border-box}
+.plano-ed textarea{min-height:110px;font-size:13px;line-height:1.4}
+.plano-ed label{display:block;font-size:12px;font-weight:700;margin:10px 0 3px}
+@media print{
+  .plano-wrap{overflow:visible}
+  .plano-folha{border:none;min-width:0;padding:0}
+}
+.plano-auto{background:#EAF4EA;border-left:3px solid #2e7d32;padding:3px 6px}.plano-ed label{color:#cbd5e1}`;
+
+function planoMd(t) {
+  return String(t).split(/\*\*(.+?)\*\*/g).map((p, i) => (i % 2 ? <b key={i}>{p}</b> : p));
+}
+const PlanoParas = ({ texto }) => String(texto || "").split("\n").filter((l) => l.trim()).map((l, i) => <p key={i}>{planoMd(l)}</p>);
+
+// "Módulos 1, 2 e 3: 28/09/2026. Módulos 5, 6, 7 e 9: 12/10/2026. … Apresentação Final: 09/11/2026."
+function linhaDatasPlano(linhas) {
+  if (!linhas || !linhas.length) return "";
+  const grupos = [];
+  ATIVIDADES_DESCRICAO_ESCOLA.forEach((at) => {
+    let g = grupos.find((x) => x.ordem === at.ordem);
+    if (!g) { g = { ordem: at.ordem, itens: [] }; grupos.push(g); }
+    g.itens.push(at);
+  });
+  const partes = grupos.map((g) => {
+    const linha = linhas.find((l) => l.ordem === g.ordem);
+    const data = linha?.dataEntrega ? fmtDataCurta(linha.dataEntrega) : "a definir";
+    const mods = g.itens.filter((a) => /^m\d+$/.test(a.id)).map((a) => a.id.slice(1));
+    const outros = g.itens.filter((a) => !/^m\d+$/.test(a.id)).map((a) => a.titulo);
+    const nomes = [];
+    if (mods.length) nomes.push((mods.length > 1 ? "Módulos " : "Módulo ") + (mods.length > 1 ? mods.slice(0, -1).join(", ") + " e " + mods[mods.length - 1] : mods[0]));
+    nomes.push(...outros);
+    return `${nomes.join(" e ")}: ${data}`;
+  });
+  return "**Projeto Interdisciplinar – Plano Financeiro de Negócio (datas previstas de entrega):** " + partes.join(". ") + ".";
+}
+
+function PlanoFolha({ hdr, ano, local, rows, datas }) {
+  return (
+    <div className="plano-folha">
+      <div className="plano-cab">
+        <img className="fl" src={PLANO_IMG_BRASAO} alt="" /><img className="lg" src={PLANO_IMG_CEDUP} alt="" />
+        <div>
+          <b>ESTADO DE SANTA CATARINA</b><br /><b>SECRETARIA DE ESTADO DA EDUCAÇÃO</b><br /><b>CRE – COORDENADORIA REGIONAL DE EDUCAÇÃO</b><br />
+          <b>CEDUP – CENTRO DE EDUCAÇÃO PROFISSIONAL HERMANN HERING</b><br />Rua Benjamin Constant, 857, Escola Agrícola, CEP 89037-501.<br />
+          Email: <u style={{ color: "#0563c1" }}>ceduphh@sed.sc.gov.br</u> &nbsp;Fone: 473378-8610
+        </div>
+      </div>
+      <div className="plano-tit">PLANO SEMESTRAL PÓS MÉDIO PERÍODO {ano}</div>
+      <table>
+        <colgroup><col style={{ width: "20.5%" }} /><col style={{ width: "41%" }} /><col style={{ width: "9.8%" }} /><col style={{ width: "28.7%" }} /></colgroup>
+        <tbody>
+          <tr><td className="lb">Curso:</td><td>{hdr.curso}</td><td className="lb">Disciplina:</td><td>{hdr.disciplina}</td></tr>
+          <tr><td className="lb">Módulo:</td><td>{hdr.modulo}</td><td className="lb">Turma:</td><td>{hdr.turma}</td></tr>
+          <tr><td className="lb">Professor:</td><td>{hdr.professor}</td><td className="lb">Nº aulas:</td><td>{hdr.aulas}</td></tr>
+          {rows.map((r, i) => (
+            <tr key={i}>
+              <td className="lb">{r.label}</td>
+              <td colSpan={3} className="j">
+                <PlanoParas texto={r.texto} />
+                {/instrumentos/i.test(r.label) && datas && datas.trim() && <p className="plano-auto">{planoMd(datas)}</p>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="plano-loc">{local}</p>
+    </div>
+  );
+}
+
+function RelatorioPlanoSemestral({ turma }) {
+  const chave = `planos_${turma.id}`;
+  const [cronograma] = useSharedObject(`cronograma_${turma.id}`, null);
+  const clonar = (o) => JSON.parse(JSON.stringify(o));
+  const hojeBR = () => new Date().toLocaleDateString("pt-BR");
+  const [carregado, setCarregado] = useState(false);
+  const [ano, setAno] = useState(String(new Date().getFullYear()));
+  const [local, setLocal] = useState(`Blumenau, ${hojeBR()}.`);
+  const [hdr, setHdr] = useState({ ...PLANO_ADM_BASE.hdr, turma: turma.nome || PLANO_ADM_BASE.hdr.turma, professor: turma.professor || PLANO_ADM_BASE.hdr.professor });
+  const [rows, setRows] = useState(() => clonar(PLANO_ADM_BASE.rows));
+  const [datas, setDatas] = useState("");
+  const [datasEditadas, setDatasEditadas] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [imprimindo, setImprimindo] = useState(false);
+
+  // lê o que o professor já salvou nesta turma (somente leitura)
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      try {
+        const r = await window.storage.get(chave, true);
+        if (!vivo) return;
+        if (r) {
+          const s = JSON.parse(r.value);
+          if (s.ano) setAno(String(s.ano));
+          if (s.local) setLocal(s.local);
+          if (s.hdr) setHdr((h) => ({ ...h, ...s.hdr }));
+          if (Array.isArray(s.textos)) setRows((rs) => rs.map((x, i) => (typeof s.textos[i] === "string" ? { ...x, texto: s.textos[i] } : x)));
+          if (typeof s.datas === "string") { setDatas(s.datas); setDatasEditadas(true); }
+        }
+      } catch {}
+      if (vivo) setCarregado(true);
+    })();
+    return () => { vivo = false; };
+  }, [chave]);
+
+  // datas do Projeto: automáticas pelo cronograma, enquanto o professor não as editar
+  const datasAuto = useMemo(() => linhaDatasPlano(cronograma?.linhas), [cronograma]);
+  useEffect(() => { if (carregado && !datasEditadas) setDatas(datasAuto); }, [carregado, datasEditadas, datasAuto]);
+
+  const salvar = async () => {
+    try {
+      await window.storage.set(chave, JSON.stringify({ ano, local, hdr, textos: rows.map((r) => r.texto), datas, atualizadoEm: new Date().toISOString() }), true);
+      setMsg("Salvo nesta turma.");
+    } catch { setMsg("Não foi possível salvar agora. Tente de novo."); }
+  };
+  const atualizarDatas = () => { setDatas(datasAuto); setDatasEditadas(false); setMsg(datasAuto ? "Datas atualizadas pelo cronograma. Lembre de salvar." : "Esta turma ainda não tem cronograma definido."); };
+  const voltarBase = () => {
+    if (!window.confirm("Voltar ao texto-base? As edições dos textos serão perdidas na tela até você salvar de novo.")) return;
+    setRows(clonar(PLANO_ADM_BASE.rows)); setMsg("Texto-base restaurado. Salve para gravar.");
+  };
+
+  // impressão A4 paisagem: a folha vai para um portal no <body>
+  useEffect(() => {
+    if (!imprimindo) return undefined;
+    const estilo = document.createElement("style");
+    estilo.textContent = "@media screen { #plano-print-root-wrap { display: none !important; } } @media print { @page { size: A4 landscape; margin: 10mm; } body > *:not(#plano-print-root-wrap) { display: none !important; } #plano-print-root-wrap { display: block !important; } }";
+    document.head.appendChild(estilo);
+    const original = document.title;
+    const t = setTimeout(() => {
+      document.title = `Plano Semestral ${hdr.disciplina || ""} ${ano} - ${turma.nome} - ${sufixoDataHoraArquivo()}`;
+      window.print();
+      document.title = original;
+      if (estilo.parentNode) estilo.parentNode.removeChild(estilo);
+      setImprimindo(false);
+    }, 150);
+    return () => { clearTimeout(t); if (estilo.parentNode) estilo.parentNode.removeChild(estilo); };
+  }, [imprimindo]);
+
+  if (cronograma === undefined) return <LoadingScreen />;
+  const btn = "text-xs font-semibold border border-slate-600 text-slate-200 px-3 py-2 rounded-md hover:bg-slate-800";
+  const portal = imprimindo ? createPortal(<div id="plano-print-root-wrap"><PlanoFolha hdr={hdr} ano={ano} local={local} rows={rows} datas={datas} /></div>, document.body) : null;
+  return (
+    <div>
+      <style>{PLANO_CSS}</style>
+      <p className="text-sm text-slate-400 mb-3">Plano semestral no modelo do CEDUP, com o texto do seu plano de Administração Financeira. Ajuste o que precisar, salve nesta turma e use <b className="text-slate-200">Imprimir / Salvar PDF</b> (A4 paisagem) para anexar no sistema da escola.</p>
+      <Card className="p-4 mb-3">
+        <div className="plano-campos">
+          <label>Período (ano)<input value={ano} onChange={(e) => setAno(e.target.value)} /></label>
+          <label>Módulo<input value={hdr.modulo} onChange={(e) => setHdr({ ...hdr, modulo: e.target.value })} /></label>
+          <label>Turma<input value={hdr.turma} onChange={(e) => setHdr({ ...hdr, turma: e.target.value })} /></label>
+          <label>Nº aulas<input value={hdr.aulas} onChange={(e) => setHdr({ ...hdr, aulas: e.target.value })} /></label>
+          <label>Professor<input value={hdr.professor} onChange={(e) => setHdr({ ...hdr, professor: e.target.value })} /></label>
+          <label>Local e data<input value={local} onChange={(e) => setLocal(e.target.value)} /></label>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={atualizarDatas} className={btn}>Atualizar datas pelo cronograma</button>
+          <button onClick={voltarBase} className={btn}>Voltar ao texto-base</button>
+          <button onClick={salvar} disabled={!carregado} className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white px-3 py-2 rounded-md">Salvar nesta turma</button>
+          <button onClick={() => setImprimindo(true)} className="text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-md flex items-center gap-1.5"><Printer size={13} /> Imprimir / Salvar PDF</button>
+          {msg && <span className="text-xs text-emerald-400" role="status">{msg}</span>}
+        </div>
+        {!cronograma && <div className="text-xs text-amber-400 mt-2">Esta turma ainda não tem cronograma — o parágrafo de datas do Projeto fica vazio até você configurar a Semana 1.</div>}
+        <details className="plano-ed mt-3">
+          <summary className="cursor-pointer font-bold text-sm text-slate-200">Editar os textos dos campos</summary>
+          {rows.map((r, i) => (
+            <div key={i}>
+              <label>{r.label}</label>
+              <textarea value={r.texto} onChange={(e) => setRows((rs) => rs.map((x, j) => (j === i ? { ...x, texto: e.target.value } : x)))} />
+            </div>
+          ))}
+          <label>Datas previstas do Projeto (aparece em “Instrumentos de avaliação”)</label>
+          <textarea value={datas} onChange={(e) => { setDatas(e.target.value); setDatasEditadas(true); }} />
+          <div className="text-[11px] text-slate-500 mt-1">Cada linha vira um parágrafo; **texto** vira negrito.</div>
+        </details>
+      </Card>
+      <div className="plano-wrap"><PlanoFolha hdr={hdr} ano={ano} local={local} rows={rows} datas={datas} /></div>
+      {portal}
     </div>
   );
 }
@@ -6793,27 +10927,46 @@ const ABAS_RELATORIO = [
   { id: "empresa", label: "Relatório por Empresa", icon: Building2 },
   { id: "notas", label: "Relatório de Notas", icon: GraduationCap },
   { id: "pendencias", label: "Pendências", icon: ClipboardCheck },
+  { id: "orientacao", label: "Orientação", icon: ClipboardList },
+  { id: "descricoes", label: "Descrições p/ Escola", icon: Copy },
+  { id: "plano", label: "Plano Semestral", icon: FileText },
 ];
 
-function GestaoRelatoriosView({ turmas }) {
-  const [turmaId, setTurmaId] = useState("");
-  const [aba, setAba] = useState("resumo");
+function GestaoRelatoriosView({ turmas, abaInicial, semAbas, abasPermitidas }) {
+  const abasVisiveis = abasPermitidas ? ABAS_RELATORIO.filter((a) => abasPermitidas.includes(a.id)) : ABAS_RELATORIO;
+  const [turmaId, setTurmaIdLocal] = useState(() => (semAbas ? (turmas.some((t) => t.id === ULTIMA_TURMA_SEL) ? ULTIMA_TURMA_SEL : (turmas[0]?.id || "")) : ""));
+  const setTurmaId = (v) => { if (semAbas) ULTIMA_TURMA_SEL = v; setTurmaIdLocal(v); };
+  const [aba, setAba] = useState(abaInicial || (abasVisiveis[0] || {}).id || "resumo");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [leituraEm, setLeituraEm] = useState(null);
   const turma = turmas.find((t) => t.id === turmaId);
-  const dadosEquipes = useEquipesComDados(turmaId);
+  const [incluirTeste, setIncluirTeste] = useState(false);
+  const dadosEquipes = useEquipesComDados(turmaId, refreshKey, incluirTeste && (aba === "empresa" || aba === "orientacao"));
+  // Hora da última leitura dos dados no banco — os relatórios mostram uma
+  // "foto" carregada ao abrir a turma; o botão Atualizar relê tudo.
+  useEffect(() => { if (dadosEquipes !== null) setLeituraEm(Date.now()); }, [dadosEquipes]);
 
   return (
     <div>
-      <SectionTitle icon={FileBarChart} sub="Escolha a turma e o tipo de relatório para acompanhar o desempenho das equipes.">Relatórios</SectionTitle>
-      <div className="mb-4">
+      <SectionTitle icon={FileBarChart} sub="Escolha a turma e o tipo de relatório para acompanhar o desempenho das equipes.">{semAbas ? ((ABAS_RELATORIO.find((a) => a.id === aba) || {}).label || "Relatórios") : "Relatórios"}</SectionTitle>
+      <div className="no-print mb-4 flex flex-wrap items-center gap-3">
         <SeletorTurma turmas={turmas} value={turmaId} onChange={setTurmaId} />
+        {turmaId && (
+          <div className="flex items-center gap-2">
+            <button onClick={() => setRefreshKey((k) => k + 1)} disabled={dadosEquipes === null} className="flex items-center gap-1.5 text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-2 rounded-md hover:bg-slate-800 disabled:opacity-40">
+              <RefreshCw size={13} /> Atualizar dados
+            </button>
+            {leituraEm && dadosEquipes !== null && <span className="text-[11px] text-slate-500">Dados lidos às {new Date(leituraEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>}
+          </div>
+        )}
       </div>
 
       {!turmaId && <Card className="p-8 text-center text-slate-500">Selecione uma turma para ver os relatórios.</Card>}
 
       {turmaId && (
         <div>
-          <div className="flex flex-wrap gap-2 mb-5 border-b border-slate-800 pb-4">
-            {ABAS_RELATORIO.map((a) => {
+          {!semAbas && (<div className="no-print flex flex-wrap gap-2 mb-5 border-b border-slate-800 pb-4">
+            {abasVisiveis.map((a) => {
               const Icon = a.icon;
               const ativo = aba === a.id;
               return (
@@ -6823,11 +10976,21 @@ function GestaoRelatoriosView({ turmas }) {
                 </button>
               );
             })}
-          </div>
+          </div>)}
+          <div className="text-xs text-slate-400 mb-3">Turma: <b className="text-slate-200">{turma?.nome}</b>{turma?.professor ? <> · Professor(a): <b className="text-slate-200">{turma.professor}</b></> : null}</div>
+          {(aba === "empresa" || aba === "orientacao") && (
+            <label className="no-print flex items-center gap-2 text-xs text-slate-400 mb-4 cursor-pointer w-fit">
+              <input type="checkbox" checked={incluirTeste} onChange={(e) => setIncluirTeste(e.target.checked)} />
+              🧪 Mostrar empresa de teste (só aqui e em Orientação; os demais relatórios nunca a incluem)
+            </label>
+          )}
           {aba === "resumo" && <ResumoComparativo turma={turma} dadosEquipes={dadosEquipes} />}
-          {aba === "empresa" && <RelatorioPorEmpresa dadosEquipes={dadosEquipes} />}
+          {aba === "empresa" && <RelatorioPorEmpresa dadosEquipes={dadosEquipes} turma={turma} />}
           {aba === "notas" && <RelatorioNotas turma={turma} dadosEquipes={dadosEquipes} />}
           {aba === "pendencias" && <RelatorioPendencias turma={turma} dadosEquipes={dadosEquipes} />}
+          {aba === "orientacao" && <RelatorioOrientacao turma={turma} dadosEquipes={dadosEquipes} onAtualizar={() => setRefreshKey((k) => k + 1)} podeEnviar={!abasPermitidas} />}
+          {aba === "descricoes" && <RelatorioDescricoesEscola turma={turma} />}
+          {aba === "plano" && <RelatorioPlanoSemestral turma={turma} />}
         </div>
       )}
     </div>
@@ -6837,7 +11000,7 @@ function GestaoRelatoriosView({ turmas }) {
 async function buscarEquipesComDados(turmaId) {
   try {
     const r = await window.storage.get(`equipes_${turmaId}`, true);
-    const equipes = r ? JSON.parse(r.value) : [];
+    const equipes = (r ? JSON.parse(r.value) : []).filter((e) => !e.teste);
     return await Promise.all(equipes.map(async (eq) => {
       let dados = { lancamentos: defaultLancamentos(), historico: [], comentarios: [] };
       try {
@@ -6941,6 +11104,12 @@ function GestaoBackupView({ turmas, onExcluir }) {
       const pacote = JSON.parse(texto);
       if (!pacote.equipes) throw new Error("Arquivo inválido");
       const listaEquipes = pacote.equipes.map((e) => e.equipe);
+      // Preserva a empresa de teste da turma (o backup nunca a inclui).
+      try {
+        const atual = await window.storage.get(`equipes_${turma.id}`, true);
+        const testesAtuais = (atual ? JSON.parse(atual.value) : []).filter((e) => e.teste && !listaEquipes.some((x) => x.id === e.id));
+        listaEquipes.push(...testesAtuais);
+      } catch {}
       await window.storage.set(`equipes_${turma.id}`, JSON.stringify(listaEquipes), true);
       for (const { equipe, dados } of pacote.equipes) {
         await window.storage.set(`dados_equipe_${equipe.id}`, JSON.stringify(dados), true);
@@ -7217,6 +11386,907 @@ function ProfessorInicio({ user, turmas, onIrPara }) {
   );
 }
 
+// ============================================================================
+// EMPRESA TESTE (menu do professor)
+// Uma empresa marcada com teste:true dentro da turma, sem integrantes, para o
+// professor percorrer o fluxo do aluno (lançar, enviar, corrigir, ver o
+// feedback) sem usar conta de aluno e sem tocar nos dados reais. Ela fica de
+// fora das listas/relatórios/backup/contagens (filtro por `teste` nos pontos
+// de leitura) e só aparece em Correções pendentes com selo, sem somar no
+// número do menu. "Zerar" e "Excluir" só aceitam empresas com teste === true.
+// ============================================================================
+
+// Lê a lista MAIS RECENTE do servidor, aplica a mudança e grava — evita
+// sobrescrever, com uma cópia antiga, um aluno que entrou na turma agora.
+async function atualizarEquipesTurma(turmaId, mudar) {
+  const chave = `equipes_${turmaId}`;
+  let lista = [];
+  try { const r = await window.storage.get(chave, true); lista = r ? JSON.parse(r.value) : []; } catch {}
+  const nova = mudar(lista);
+  await window.storage.set(chave, JSON.stringify(nova), true);
+  return nova;
+}
+
+function ResumoEmpresaTeste({ equipe }) {
+  const [dados] = useSharedObject(`dados_equipe_${equipe.id}`, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
+  if (dados === undefined) return <div className="text-xs text-slate-500">Carregando…</div>;
+  const fluxo = dados?.fluxoModulos || {};
+  const progresso = calcularProgressoAprovado(fluxo);
+  const aguardando = MODULOS.filter((m) => estadoModulo(fluxo, m.id).status === "enviado").length;
+  const ajustes = MODULOS.filter((m) => estadoModulo(fluxo, m.id).status === "ajustes").length;
+  return (
+    <div className="grid sm:grid-cols-3 gap-3">
+      <StatCard label="Módulos aprovados" value={`${progresso}%`} tone="gold" small />
+      <StatCard label="Aguardando correção" value={String(aguardando)} tone="blue" small />
+      <StatCard label="Devolvidos para ajustes" value={String(ajustes)} tone="slate" small />
+    </div>
+  );
+}
+
+function PainelEmpresaTeste({ turma, onEntrar, onAbrirCorrecao }) {
+  const [equipes, setEquipes] = useState(null);
+  const [rev, setRev] = useState(0);
+  const [ocupado, setOcupado] = useState(false);
+  const [aviso, setAviso] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await window.storage.get(`equipes_${turma.id}`, true);
+        if (alive) setEquipes(r ? JSON.parse(r.value) : []);
+      } catch { if (alive) setEquipes([]); }
+    })();
+    return () => { alive = false; };
+  }, [turma.id, rev]);
+
+  if (equipes === null) return <LoadingScreen />;
+  const teste = equipes.find((e) => e.teste === true) || null;
+
+  const executar = async (fn, okMsg) => {
+    setOcupado(true); setAviso(null);
+    try { await fn(); setAviso({ tom: "ok", texto: okMsg }); }
+    catch { setAviso({ tom: "erro", texto: "Não foi possível concluir agora — verifique a conexão e tente novamente." }); }
+    setRev((k) => k + 1);
+    setOcupado(false);
+  };
+
+  const criar = () => executar(
+    () => atualizarEquipesTurma(turma.id, (lista) => (lista.some((e) => e.teste === true) ? lista : [...lista, { id: uid(), turmaId: turma.id, nomeNegocio: "Empresa de teste", integrantes: [], teste: true }])),
+    "Empresa de teste criada."
+  );
+
+  const zerar = () => {
+    if (!teste || teste.teste !== true) return;
+    if (!window.confirm("Zerar a empresa de teste?\n\nApaga lançamentos, notas, feedbacks, histórico e cenários dela e volta ao estado inicial (todos os módulos liberados). Só afeta a empresa de teste — os alunos reais não são tocados.")) return;
+    executar(async () => {
+      await window.storage.delete(`dados_equipe_${teste.id}`, true);
+      await atualizarEquipesTurma(turma.id, (lista) => lista.map((e) => (e.id === teste.id && e.teste === true ? { ...e, segmento: null, segmentoStatus: null, segmentoObservacao: null, segmentoAprovadoEm: null } : e)));
+    }, "Empresa de teste zerada.");
+  };
+
+  const excluir = () => {
+    if (!teste || teste.teste !== true) return;
+    if (!window.confirm("Excluir a empresa de teste e todos os dados dela? (Você pode criar outra depois.)")) return;
+    executar(async () => {
+      await atualizarEquipesTurma(turma.id, (lista) => lista.filter((e) => !(e.id === teste.id && e.teste === true)));
+      try { await window.storage.delete(`dados_equipe_${teste.id}`, true); } catch {}
+    }, "Empresa de teste excluída.");
+  };
+
+  return (
+    <div className="space-y-4">
+      {aviso && (
+        <div className={`text-xs rounded-lg p-3 border ${aviso.tom === "ok" ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-400" : "bg-rose-950/40 border-rose-800/60 text-rose-400"}`}>{aviso.texto}</div>
+      )}
+
+      {!teste && (
+        <Card className="p-6 text-center">
+          <p className="text-sm text-slate-400 mb-4">A turma <b className="text-slate-200">{turma.nome}</b> ainda não tem empresa de teste.</p>
+          <button onClick={criar} disabled={ocupado} className="bg-amber-500 text-slate-900 font-bold px-5 py-2.5 rounded-md hover:bg-amber-400 disabled:opacity-40 text-sm flex items-center gap-2 mx-auto"><Plus size={15} /> Criar empresa de teste</button>
+        </Card>
+      )}
+
+      {teste && (
+        <Card className="p-5 border-dashed border-violet-500/60">
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+            <div>
+              <div className="flex items-center gap-2"><span className="font-bold text-slate-100">{teste.nomeNegocio}</span><span className="text-[10px] font-bold text-violet-300 bg-violet-950/40 border border-violet-500/40 rounded-full px-2 py-0.5">TESTE</span></div>
+              <div className="text-xs text-slate-500 mt-0.5">Turma {turma.nome} · sem integrantes · invisível para os alunos</div>
+              {teste.segmento && <div className="text-xs text-amber-400 mt-1">🏷️ Segmento: {teste.segmento}</div>}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => onEntrar(turma, teste)} className="flex items-center gap-2 bg-amber-500 text-slate-900 font-bold text-sm px-4 py-2 rounded-md hover:bg-amber-400"><Play size={14} /> Entrar como equipe de teste</button>
+              <button onClick={() => onAbrirCorrecao(turma.id, teste.id)} className="flex items-center gap-2 border border-slate-600 text-slate-100 text-sm font-semibold px-3 py-2 rounded-md hover:bg-slate-800"><ClipboardCheck size={14} /> Corrigir como professor</button>
+            </div>
+          </div>
+          <ResumoEmpresaTeste key={`${teste.id}-${rev}`} equipe={teste} />
+          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-800">
+            <button onClick={zerar} disabled={ocupado} className="flex items-center gap-2 border border-amber-700/60 text-amber-400 text-xs font-semibold px-3 py-2 rounded-md hover:bg-amber-950/30 disabled:opacity-40"><RotateCcw size={13} /> Zerar dados</button>
+            <button onClick={excluir} disabled={ocupado} className="flex items-center gap-2 border border-rose-900/60 text-rose-300 text-xs font-semibold px-3 py-2 rounded-md hover:bg-rose-950/30 disabled:opacity-40"><Trash2 size={13} /> Excluir</button>
+          </div>
+        </Card>
+      )}
+
+      <Card className="p-4">
+        <div className="text-xs font-bold text-slate-300 mb-2">Como funciona</div>
+        <ul className="list-disc list-inside space-y-1 text-xs text-slate-400 leading-relaxed">
+          <li>"Entrar como equipe de teste" abre a área do aluno (mesmo menu, módulos e fluxo de envio/correção). <b className="text-slate-300">Todos os módulos ficam liberados e sem prazo</b> nesta empresa, para você navegar livremente ao explicar o sistema; nas empresas reais o fluxo continua normal. Uma faixa laranja no topo avisa que é teste e traz o botão para sair.</li>
+          <li>Para ver o fluxo completo: lance, envie um módulo, clique em "Corrigir como professor", devolva ou aprove e depois entre de novo para ver o feedback do lado do aluno.</li>
+          <li>A empresa de teste <b className="text-slate-300">não aparece</b> para os alunos, nem em Resumo Comparativo, Notas, Pendências, Backup, Auditoria, Integrantes ou contagens. Em Correções pendentes aparece com o selo TESTE e não soma no número do menu.</li>
+          <li>No Relatório por Empresa há a opção "Mostrar empresa de teste", para conferir os relatórios com esses dados.</li>
+          <li>Atualizar a página (F5) sai do modo de teste; o que foi lançado continua salvo.</li>
+        </ul>
+      </Card>
+    </div>
+  );
+}
+
+function GestaoEmpresaTesteView({ turmas, onEntrar, onAbrirCorrecao }) {
+  const [turmaId, setTurmaId] = useState("");
+  const turma = turmas.find((t) => t.id === turmaId);
+  return (
+    <div>
+      <SectionTitle icon={FlaskConical} sub="Uma empresa fictícia por turma para você testar o fluxo do aluno sem afetar os dados reais.">Empresa Teste</SectionTitle>
+      <div className="mb-4"><SeletorTurma turmas={turmas} value={turmaId} onChange={setTurmaId} /></div>
+      {!turma && <Card className="p-8 text-center text-slate-500">Selecione uma turma para criar ou abrir a empresa de teste.</Card>}
+      {turma && <PainelEmpresaTeste key={turma.id} turma={turma} onEntrar={onEntrar} onAbrirCorrecao={onAbrirCorrecao} />}
+    </div>
+  );
+}
+
+// ============================================================================
+// MESA DE JANELAS (v2.5) — modo OPCIONAL de apresentar as MESMAS telas do
+// sistema em janelas flutuantes (menus no topo, janelas que se arrastam,
+// redimensionam e se encaixam lado a lado). Não cria nenhuma tela nem dado
+// novo por si: cada janela mostra exatamente a tela que o menu lateral
+// mostraria. O menu lateral continua sendo o padrão; a preferência de modo
+// fica só neste navegador (localStorage), nunca no banco de dados.
+// ============================================================================
+const MESA_GAP = 6;
+const MESA_LARGURA_MIN = 900;
+
+function useTelaLarga() {
+  const [larga, setLarga] = useState(() => typeof window !== "undefined" && window.innerWidth >= MESA_LARGURA_MIN);
+  useEffect(() => {
+    const f = () => setLarga(window.innerWidth >= MESA_LARGURA_MIN);
+    window.addEventListener("resize", f);
+    return () => window.removeEventListener("resize", f);
+  }, []);
+  return larga;
+}
+
+function useModoMesa(chave) {
+  const [on, setOn] = useState(() => { try { return localStorage.getItem(chave) === "1"; } catch { return false; } });
+  const definir = (v) => { setOn(v); try { localStorage.setItem(chave, v ? "1" : "0"); } catch {} };
+  return [on, definir];
+}
+
+function mesaOrganizar(wins, d, modo) {
+  const ks = Object.keys(wins).filter((k) => !wins[k].min).sort((a, b) => (wins[a].ord || 0) - (wins[b].ord || 0));
+  if (ks.length === 0) return wins;
+  const out = { ...wins };
+  const n = ks.length; const W = d.w; const H = d.h; const g = MESA_GAP;
+  const put = (k, x, y, w, h) => { out[k] = { ...out[k], x: x + g / 2, y: y + g / 2, w: Math.max(300, w - g), h: Math.max(160, h - g), max: false }; };
+  if (modo === "casc") {
+    ks.forEach((k, i) => { out[k] = { ...out[k], x: 30 + i * 30, y: 15 + i * 30, w: Math.min(760, W - 80), h: Math.min(520, H - 60), max: false }; });
+  } else if (n === 1) put(ks[0], 0, 0, W, H);
+  else if (n === 2) { put(ks[0], 0, 0, W / 2, H); put(ks[1], W / 2, 0, W / 2, H); }
+  else if (n === 3) { put(ks[0], 0, 0, W / 2, H); put(ks[1], W / 2, 0, W / 2, H / 2); put(ks[2], W / 2, H / 2, W / 2, H / 2); }
+  else if (n === 4) ks.forEach((k, i) => put(k, (i % 2) * W / 2, Math.floor(i / 2) * H / 2, W / 2, H / 2));
+  else { const c = 3; const r = Math.ceil(n / c); ks.forEach((k, i) => put(k, (i % c) * W / c, Math.floor(i / c) * H / r, W / c, H / r)); }
+  return out;
+}
+
+function useMesa() {
+  const [wins, setWins] = useState({});
+  const [auto, setAuto] = useState(true);
+  const deskRef = useRef(null);
+  const cont = useRef({ z: 10, ord: 0 });
+  const autoRef = useRef(true);
+  useEffect(() => { autoRef.current = auto; }, [auto]);
+  const dim = () => { const el = deskRef.current; return { w: el ? el.clientWidth : 1000, h: el ? el.clientHeight : 600 }; };
+
+  const abrir = useCallback((k, ctx) => {
+    setWins((prev) => {
+      const d = dim();
+      if (prev[k]) {
+        const eraMin = prev[k].min;
+        const nx = { ...prev, [k]: { ...prev[k], min: false, z: ++cont.current.z, ctx: ctx !== undefined ? ctx : prev[k].ctx } };
+        return eraMin && autoRef.current ? mesaOrganizar(nx, d, "lado") : nx;
+      }
+      const o = (Object.keys(prev).length % 7) * 28;
+      const nx = { ...prev, [k]: { x: 40 + o, y: 20 + o, w: Math.min(760, d.w - 10), h: Math.min(520, d.h - 10), max: false, min: false, z: ++cont.current.z, ord: ++cont.current.ord, ctx } };
+      return autoRef.current ? mesaOrganizar(nx, d, "lado") : nx;
+    });
+  }, []);
+  const foco = useCallback((k) => setWins((p) => (p[k] ? { ...p, [k]: { ...p[k], z: ++cont.current.z } } : p)), []);
+  const fechar = useCallback((k) => setWins((p) => { const n = { ...p }; delete n[k]; return autoRef.current ? mesaOrganizar(n, dim(), "lado") : n; }), []);
+  const minimizar = useCallback((k) => setWins((p) => { if (!p[k]) return p; const n = { ...p, [k]: { ...p[k], min: true } }; return autoRef.current ? mesaOrganizar(n, dim(), "lado") : n; }), []);
+  const alternarMax = useCallback((k) => setWins((p) => (p[k] ? { ...p, [k]: { ...p[k], max: !p[k].max } } : p)), []);
+  const geometria = useCallback((k, patch) => setWins((p) => (p[k] ? { ...p, [k]: { ...p[k], ...patch } } : p)), []);
+  const encaixar = useCallback((k, lado) => { const d = dim(); geometria(k, lado === "L" ? { x: 0, y: 0, w: d.w / 2, h: d.h, max: false } : lado === "R" ? { x: d.w / 2, y: 0, w: d.w / 2, h: d.h, max: false } : { max: true }); }, [geometria]);
+  const organizar = useCallback((modo) => setWins((p) => mesaOrganizar(p, dim(), modo)), []);
+  const minimizarTodas = useCallback(() => setWins((p) => Object.fromEntries(Object.entries(p).map(([k, w]) => [k, { ...w, min: true }]))), []);
+  const fecharTodas = useCallback(() => setWins({}), []);
+  let ativo = null; let zMax = -1;
+  Object.keys(wins).forEach((k) => { if (!wins[k].min && wins[k].z > zMax) { zMax = wins[k].z; ativo = k; } });
+  return { wins, auto, setAuto, deskRef, ativo, abrir, foco, fechar, minimizar, alternarMax, geometria, encaixar, organizar, minimizarTodas, fecharTodas, dim };
+}
+
+// menu: [{ direct, key, label, badge, itens: [{ key, label, badge, novo, cab, sep, acao, status }] }]
+function MesaJanelas({ menu, mesa, renderTela, tituloDe, brand, homeChave, info, onVoltar, avisos }) {
+  const [menuAberto, setMenuAberto] = useState(null);
+  const [snap, setSnap] = useState(null);
+  const drag = useRef(null);
+  const mesaRef = useRef(mesa);
+  mesaRef.current = mesa;
+  const { wins, ativo } = mesa;
+
+  useEffect(() => {
+    const fecha = () => setMenuAberto(null);
+    document.addEventListener("click", fecha);
+    return () => document.removeEventListener("click", fecha);
+  }, []);
+
+  useEffect(() => {
+    const mv = (e) => {
+      const g = drag.current; const m = mesaRef.current; if (!g) return;
+      const d = m.dim();
+      if (g.t === "m") {
+        const rect = m.deskRef.current.getBoundingClientRect();
+        const px = e.clientX - rect.left; const py = e.clientY - rect.top;
+        g.sn = px < 14 ? "L" : px > d.w - 14 ? "R" : py < 6 ? "T" : null;
+        setSnap(g.sn);
+        m.geometria(g.k, { x: g.ox + e.clientX - g.sx, y: Math.max(0, g.oy + e.clientY - g.sy) });
+      } else {
+        m.geometria(g.k, { w: Math.max(300, g.ow + e.clientX - g.sx), h: Math.max(160, g.oh + e.clientY - g.sy) });
+      }
+    };
+    const up = () => {
+      const g = drag.current; if (!g) return;
+      if (g.t === "m" && g.sn) mesaRef.current.encaixar(g.k, g.sn);
+      drag.current = null; setSnap(null);
+    };
+    window.addEventListener("pointermove", mv);
+    window.addEventListener("pointerup", up);
+    return () => { window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); };
+  }, []);
+
+  const iniciarMover = (e, k) => {
+    if (e.target.tagName === "BUTTON" || wins[k].max) return;
+    drag.current = { t: "m", k, sx: e.clientX, sy: e.clientY, ox: wins[k].x, oy: wins[k].y, sn: null };
+    e.preventDefault();
+  };
+  const iniciarRedim = (e, k) => {
+    drag.current = { t: "r", k, sx: e.clientX, sy: e.clientY, ow: wins[k].w, oh: wins[k].h };
+    e.preventDefault(); e.stopPropagation();
+  };
+  const escolher = (it) => { setMenuAberto(null); if (it.acao) it.acao(); else mesa.abrir(it.key); };
+  const d = mesa.dim();
+  const teclas = Object.keys(wins);
+
+  return (
+    <div className="mesa-root h-screen flex flex-col bg-slate-950 text-slate-100 isolate">
+      <style>{`
+        @media print {
+          .mesa-root { height: auto !important; display: block !important; }
+          .mesa-desk { position: static !important; overflow: visible !important; display: block !important; }
+          .mesa-win { display: none !important; }
+          .mesa-win.mesa-ativa { display: block !important; position: static !important; width: auto !important; height: auto !important; border: 0 !important; box-shadow: none !important; overflow: visible !important; }
+          .mesa-wb { overflow: visible !important; padding: 0 !important; }
+          .mesa-wt, .mesa-rz, .mesa-bar, .mesa-task { display: none !important; }
+        }
+      `}</style>
+      <div className="mesa-bar no-print flex items-stretch h-9 shrink-0 bg-slate-900 border-b border-slate-700 relative z-50 select-none">
+        <div className="px-4 flex items-center font-bold text-amber-400 whitespace-nowrap text-sm">{brand}</div>
+        {menu.map((m, i) => (
+          <div key={m.label} className="relative" onMouseEnter={() => { if (menuAberto !== null && !m.direct) setMenuAberto(i); }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); if (m.direct) { setMenuAberto(null); mesa.abrir(m.key); } else setMenuAberto(menuAberto === i ? null : i); }}
+              className={`h-full px-3 text-sm whitespace-nowrap flex items-center gap-1.5 ${menuAberto === i ? "bg-slate-800 text-amber-400" : "text-slate-300 hover:bg-slate-800 hover:text-amber-400"}`}
+            >
+              {m.label}
+              {m.badge ? <span className="bg-rose-600 text-white text-[11px] font-bold rounded-full px-1.5">{m.badge}</span> : null}
+              {!m.direct && <span className="text-[10px]">▾</span>}
+            </button>
+            {!m.direct && menuAberto === i && (
+              <div className="absolute top-full left-0 min-w-[270px] bg-slate-800 border border-slate-600 shadow-2xl py-1 z-50" onClick={(e) => e.stopPropagation()}>
+                {m.itens.map((it, j) => it.cab ? (
+                  <div key={j} className="px-4 pt-2 pb-1 text-[10px] font-bold tracking-widest text-slate-400 uppercase border-t border-slate-700 mt-1">{it.cab}</div>
+                ) : it.sep ? (
+                  <div key={j} className="border-t border-slate-700 my-1" />
+                ) : (
+                  <button key={it.key || j} onClick={() => escolher(it)} className="w-full flex items-center justify-between gap-4 text-left px-4 py-1.5 text-sm text-slate-100 hover:bg-amber-900">
+                    <span>{it.label}{it.novo && <span className="ml-1.5 text-[10px] font-bold text-amber-400">NOVO</span>}</span>
+                    <span className="flex items-center gap-2">
+                      {it.status && <BadgeStatusModuloMenu status={it.status} />}
+                      {it.badge ? <span className="bg-rose-600 text-white text-[11px] font-bold rounded-full px-1.5">{it.badge}</span> : null}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+        <div className="flex-1" />
+        <div className="flex items-center gap-2 px-3 text-xs text-slate-400 whitespace-nowrap">
+          {info}
+          <button onClick={onVoltar} className="border border-slate-600 rounded px-2.5 py-1 text-slate-100 hover:bg-slate-800">Ver menu lateral</button>
+        </div>
+      </div>
+      {avisos}
+      <div ref={mesa.deskRef} className="mesa-desk relative flex-1 min-h-0 overflow-hidden bg-slate-950">
+        {snap && (
+          <div className="absolute z-40 pointer-events-none border-2 border-dashed border-amber-400 bg-amber-400/10" style={{ top: 0, height: d.h, left: snap === "R" ? d.w / 2 : 0, width: snap === "T" ? d.w : d.w / 2 }} />
+        )}
+        {teclas.map((k) => {
+          const w = wins[k];
+          const on = k === ativo;
+          const estilo = w.max ? { inset: 0, zIndex: w.z } : { left: w.x, top: w.y, width: w.w, height: w.h, zIndex: w.z };
+          return (
+            <div key={k} onPointerDown={() => { if (ativo !== k) mesa.foco(k); }}
+              className={`mesa-win ${on ? "mesa-ativa" : ""} absolute flex flex-col bg-slate-950 border border-slate-600 shadow-2xl rounded overflow-hidden ${w.min ? "hidden" : ""}`} style={estilo}>
+              <div className={`mesa-wt h-8 shrink-0 flex items-center gap-1 pl-3 pr-1 text-white font-bold text-sm cursor-move select-none ${on ? "bg-amber-800" : "bg-slate-700"}`}
+                onPointerDown={(e) => iniciarMover(e, k)} onDoubleClick={(e) => { if (e.target.tagName !== "BUTTON") mesa.alternarMax(k); }}>
+                <span className="flex-1 truncate">{tituloDe(k)}</span>
+                <button title="Encaixar à esquerda" onClick={() => mesa.encaixar(k, "L")} className="w-7 h-6 bg-white/15 hover:bg-white/30">◧</button>
+                <button title="Encaixar à direita" onClick={() => mesa.encaixar(k, "R")} className="w-7 h-6 bg-white/15 hover:bg-white/30">◨</button>
+                <button title="Minimizar" onClick={() => mesa.minimizar(k)} className="w-7 h-6 bg-white/15 hover:bg-white/30">–</button>
+                <button title="Maximizar / restaurar" onClick={() => mesa.alternarMax(k)} className="w-7 h-6 bg-white/15 hover:bg-white/30">▢</button>
+                <button title="Fechar" onClick={() => mesa.fechar(k)} className="w-7 h-6 bg-white/15 hover:bg-rose-700">✕</button>
+              </div>
+              <div className="mesa-wb flex-1 overflow-auto p-4 md:p-5">{renderTela(k, w.ctx)}</div>
+              {!w.max && <div className="mesa-rz absolute right-0 bottom-0 w-4 h-4 cursor-nwse-resize" onPointerDown={(e) => iniciarRedim(e, k)} style={{ background: "linear-gradient(135deg, transparent 55%, #64748b 55% 62%, transparent 62% 72%, #64748b 72% 79%, transparent 79%)" }} />}
+            </div>
+          );
+        })}
+        {teclas.length === 0 && <div className="absolute inset-0 flex items-center justify-center text-slate-600 text-sm">Abra uma tela pelos menus acima.</div>}
+      </div>
+      <div className="mesa-task no-print shrink-0 h-9 flex items-center gap-1.5 px-2 bg-slate-900 border-t border-slate-700 overflow-x-auto">
+        <button onClick={() => mesa.abrir(homeChave)} className="shrink-0 bg-amber-800 text-white font-bold text-xs rounded px-3 py-1">⌂ {tituloDe(homeChave)}</button>
+        {teclas.map((k) => (
+          <button key={k} onClick={() => { const w = wins[k]; if (!w.min && ativo === k) mesa.minimizar(k); else mesa.abrir(k); }}
+            className={`shrink-0 text-xs rounded px-3 py-1 border whitespace-nowrap ${k === ativo ? "border-amber-400 text-white bg-slate-800" : "border-slate-600 text-slate-300 bg-slate-800/60"} ${wins[k].min ? "opacity-50" : ""}`}>{tituloDe(k)}</button>
+        ))}
+        <span className="mx-1 h-5 border-l border-slate-700" />
+        <button onClick={() => mesa.setAuto(!mesa.auto)} className={`shrink-0 text-xs rounded px-3 py-1 border whitespace-nowrap ${mesa.auto ? "border-amber-400 text-white" : "border-slate-600 text-slate-300"}`}>{mesa.auto ? "☑" : "☐"} Organizar sozinho</button>
+        <button onClick={() => mesa.organizar("lado")} className="shrink-0 text-xs rounded px-3 py-1 border border-slate-600 text-slate-300 whitespace-nowrap">▦ Lado a lado</button>
+        <button onClick={() => mesa.organizar("casc")} className="shrink-0 text-xs rounded px-3 py-1 border border-slate-600 text-slate-300 whitespace-nowrap">❐ Cascata</button>
+        <button onClick={mesa.minimizarTodas} className="shrink-0 text-xs rounded px-3 py-1 border border-slate-600 text-slate-300 whitespace-nowrap">Minimizar todas</button>
+        <button onClick={mesa.fecharTodas} className="shrink-0 text-xs rounded px-3 py-1 border border-slate-600 text-slate-300 whitespace-nowrap">Fechar todas</button>
+        <span className="ml-auto text-[11px] text-slate-500 whitespace-nowrap">{teclas.length} janela(s)</span>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// TELAS NOVAS (v2.5) — todas SOMENTE LEITURA sobre os dados que o sistema já
+// grava (fluxoModulos, histórico, comentários, cronograma). A única gravação
+// nova é a da Lixeira de segurança, em chaves próprias e separadas
+// (lixeira_equipe_{id}); nenhum dado existente é alterado por elas.
+// ============================================================================
+let ULTIMA_TURMA_SEL = "";
+function useTurmaSelecionada(turmas) {
+  const [id, setId] = useState(() => (turmas.some((t) => t.id === ULTIMA_TURMA_SEL) ? ULTIMA_TURMA_SEL : (turmas[0]?.id || "")));
+  const definir = (v) => { ULTIMA_TURMA_SEL = v; setId(v); };
+  return [id, definir];
+}
+
+function hojeISO() { return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+
+// Sugestão de nota (apenas exibição — o professor decide e lança a nota de sempre):
+// 10, menos 1,0 por devolução, menos 2,0 se entregue com atraso (mesma regra de
+// pontualidade já informada aos alunos). Só aparece em módulo já corrigido.
+function sugerirNotaModulo(estado) {
+  if (!estado || estado.status !== "corrigido") return null;
+  const devolucoes = (estado.historico || []).filter((h) => h.tipo === "devolucao").length;
+  return Math.max(0, 10 - devolucoes - (estado.atraso ? 2 : 0));
+}
+
+const COR_STATUS_SVG = { corrigido: "#10b981", ajustes: "#f59e0b", liberado: "#3b82f6", enviado: "#8b5cf6", pendente: "#334155" };
+function CaminhoSvg({ fluxo, rotuloAqui = "▼ aqui" }) {
+  const x = (i) => 34 + i * 52;
+  const nos = [...MODULOS.map((m, i) => ({ k: String(i + 1), st: estadoModulo(fluxo, m.id).status, n: m.n })), { k: "C", st: "pendente", r: "Cenários" }, { k: "A", st: "pendente", r: "Apresent." }];
+  const atual = MODULOS.findIndex((m) => { const s = estadoModulo(fluxo, m.id).status; return s !== "corrigido" && s !== "pendente"; });
+  return (
+    <div className="overflow-x-auto">
+      <svg width={34 + 15 * 52} height="104" role="img" aria-label="Caminho da equipe pelos 13 módulos">
+        <line x1="34" y1="50" x2={x(14)} y2="50" stroke="#475569" strokeWidth="4" />
+        {nos.map((n, i) => (
+          <g key={n.k}>
+            <circle cx={x(i)} cy="50" r="14" fill={COR_STATUS_SVG[n.st]} />
+            <text x={x(i)} y="54" textAnchor="middle" fontSize="10" fill="#fff" fontWeight="700">{n.k}</text>
+            {n.r && <text x={x(i)} y="86" textAnchor="middle" fontSize="9" fill="#94a3b8">{n.r}</text>}
+          </g>
+        ))}
+        {atual >= 0 && <text x={x(atual)} y="24" textAnchor="middle" fontSize="11" fill="#fbbf24" fontWeight="700">{rotuloAqui}</text>}
+      </svg>
+      <div className="flex flex-wrap gap-2 text-[11px] text-slate-400 mt-1">
+        <span className="text-emerald-400">● corrigido</span><span className="text-amber-400">● ajustes</span><span className="text-blue-400">● liberado</span><span className="text-violet-400">● enviado</span><span className="text-slate-500">● bloqueado</span>
+      </div>
+    </div>
+  );
+}
+
+function linhaTempoEquipe(dados, modFiltro) {
+  const L = [];
+  const fluxo = dados.fluxoModulos || {};
+  MODULOS.forEach((m) => {
+    if (modFiltro && modFiltro !== m.n) return;
+    (estadoModulo(fluxo, m.id).historico || []).forEach((h) => L.push({ t: h.data, n: m.n, tipo: h.tipo, fb: h.feedback }));
+  });
+  (dados.comentarios || []).forEach((c) => {
+    const n = Number(String(c.modulo || "").replace(/\D/g, "")) || 0;
+    if (modFiltro && modFiltro !== n) return;
+    L.push({ t: c.timestamp, n, tipo: "comentario", fb: c.texto, autor: c.autor });
+  });
+  return L.sort((a, b) => a.t - b.t);
+}
+
+function LinhaTempoEventos({ eventos }) {
+  if (eventos.length === 0) return <div className="text-sm text-slate-500">Nenhum evento registrado ainda.</div>;
+  return (
+    <div className="space-y-2.5">
+      {eventos.map((ev, i) => {
+        const info = ev.tipo === "comentario" ? { label: "Comentário do professor", Icon: MessageSquare, cor: "text-sky-400" } : (HISTORICO_EVENTO_INFO[ev.tipo] || HISTORICO_EVENTO_INFO.envio);
+        const Icon = info.Icon;
+        return (
+          <div key={i} className="flex gap-3">
+            <div className={`w-6 h-6 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 ${info.cor}`}><Icon size={12} /></div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-slate-200">{ev.n ? `Módulo ${ev.n} · ` : ""}{info.label}</span>
+                <span className="text-[11px] text-slate-500">{fmtData(ev.t)}</span>
+              </div>
+              {ev.fb && <div className="mt-1 text-xs text-slate-300 bg-slate-800/60 border border-slate-700 rounded-md p-2 whitespace-pre-wrap">{ev.fb}</div>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function BarraTurmaEquipe({ turmas, turmaId, setTurmaId, dadosEquipes, equipeId, setEquipeId, onAtualizar }) {
+  return (
+    <div className="no-print mb-4 flex flex-wrap items-center gap-3">
+      <SeletorTurma turmas={turmas} value={turmaId} onChange={(v) => { setTurmaId(v); if (setEquipeId) setEquipeId(""); }} />
+      {setEquipeId && (
+        <select value={equipeId} onChange={(e) => setEquipeId(e.target.value)} className="border border-slate-600 bg-slate-900 text-slate-100 rounded-md px-3 py-2 text-sm">
+          <option value="">{dadosEquipes === null ? "Carregando…" : "Selecione a empresa…"}</option>
+          {(dadosEquipes || []).map(({ equipe }) => <option key={equipe.id} value={equipe.id}>{equipe.nomeNegocio}</option>)}
+        </select>
+      )}
+      {onAtualizar && <button onClick={onAtualizar} className="flex items-center gap-1.5 text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-2 rounded-md hover:bg-slate-800"><RefreshCw size={13} /> Atualizar</button>}
+    </div>
+  );
+}
+
+// ---------- Hoje do professor ----------
+function HojeProfessorView({ turmas, onAbrirCorrecao }) {
+  const [turmaId, setTurmaId] = useTurmaSelecionada(turmas);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const dadosEquipes = useEquipesComDados(turmaId, refreshKey);
+  const [cron] = useSharedObject(turmaId ? `cronograma_${turmaId}` : null, null);
+  const lista = useMemo(() => {
+    if (!dadosEquipes) return [];
+    const L = [];
+    dadosEquipes.forEach((item) => {
+      const o = gerarOrientacaoEquipe(item);
+      o.linhas.forEach((ln) => {
+        if (ln.tipo === "aw") L.push({ prio: 1, cor: "sky", rot: "corrigir", o, ln, txt: `${o.nome} enviou o Módulo ${ln.mod} — aguardando a sua correção` });
+        else if (ln.tipo === "bad" && ln.status === "ajustes") L.push({ prio: ln.prazoRuim ? 2 : 3, cor: ln.prazoRuim ? "rose" : "amber", rot: ln.prazoRuim ? "atrasado" : "devolvido", o, ln, txt: `${o.nome} · Módulo ${ln.mod} devolvido — aguardando a equipe (${ln.prazoTxt})` });
+        else if (ln.tipo === "bad") L.push({ prio: 2, cor: "rose", rot: "vencido", o, ln, txt: `${o.nome} · Módulo ${ln.mod} com prazo vencido sem envio (${ln.prazoTxt})` });
+      });
+    });
+    return L.sort((a, b) => a.prio - b.prio);
+  }, [dadosEquipes]);
+  const proxima = useMemo(() => {
+    const h = hojeISO();
+    return (cron?.linhas || []).filter((l) => l.dataEntrega >= h).sort((a, b) => a.dataEntrega.localeCompare(b.dataEntrega))[0] || null;
+  }, [cron]);
+  const nCorrigir = lista.filter((x) => x.prio === 1).length;
+  const nAguard = lista.filter((x) => x.rot === "devolvido" || x.rot === "atrasado").length;
+  const nVenc = lista.filter((x) => x.rot === "vencido" || x.rot === "atrasado").length;
+  const corCls = { sky: "bg-sky-950/40 text-sky-300", rose: "bg-rose-950/40 text-rose-300", amber: "bg-amber-950/40 text-amber-300" };
+  return (
+    <div>
+      <SectionTitle icon={ClipboardCheck} sub="Uma lista só com o que precisa de você hoje — calculada com os mesmos dados que o sistema já grava; nada é alterado aqui.">Hoje do professor</SectionTitle>
+      <BarraTurmaEquipe turmas={turmas} turmaId={turmaId} setTurmaId={setTurmaId} onAtualizar={() => setRefreshKey((k) => k + 1)} />
+      {dadosEquipes === null && <LoadingScreen />}
+      {dadosEquipes !== null && (
+        <>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <StatCard label="Para corrigir" value={String(nCorrigir)} tone="blue" small />
+            <StatCard label="Aguardando a equipe" value={String(nAguard)} tone="gold" small />
+            <StatCard label="Prazo vencido" value={String(nVenc)} tone="rose" small />
+          </div>
+          {proxima && <Card className="p-3 mb-4 text-sm text-slate-300"><b className="text-amber-400">Próxima entrega:</b> {fmtDataCurta(proxima.dataEntrega)} às {proxima.horaEntrega || HORARIO_CRONOGRAMA_PADRAO} — {proxima.etapa}</Card>}
+          {nCorrigir === 0 && <Card className="p-3 mb-4 text-sm text-emerald-300">✔ Nenhuma correção pendente agora.</Card>}
+          {lista.length === 0 ? <Card className="p-6 text-center text-slate-500">Nada pendente nesta turma.</Card> : (
+            <Card className="p-0 overflow-hidden">
+              <table className="w-full text-sm">
+                <tbody>
+                  {lista.map((x, i) => (
+                    <tr key={i} className="border-b border-slate-800 last:border-0">
+                      <td className="py-2 px-3 w-28"><span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${corCls[x.cor]}`}>{x.rot}</span></td>
+                      <td className="py-2 px-3 text-slate-200">{x.txt}</td>
+                      <td className="py-2 px-3 text-right">
+                        {x.prio === 1 && onAbrirCorrecao && <button onClick={() => onAbrirCorrecao(turmaId, x.o.id, `m${x.ln.mod}`)} className="text-xs font-semibold text-amber-400 hover:text-amber-300">corrigir ›</button>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------- Registro do processo ----------
+function RegistroProcessoView({ turmas }) {
+  const [turmaId, setTurmaId] = useTurmaSelecionada(turmas);
+  const [equipeId, setEquipeId] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const dadosEquipes = useEquipesComDados(turmaId, refreshKey);
+  const item = (dadosEquipes || []).find((x) => x.equipe.id === equipeId);
+  const eventos = useMemo(() => (item ? linhaTempoEquipe(item.dados) : []), [item]);
+  return (
+    <div>
+      <SectionTitle icon={History} sub="Linha do tempo de cada empresa, montada com o histórico de envios/devoluções e os comentários que o sistema já guarda. Só leitura.">Registro do processo</SectionTitle>
+      <BarraTurmaEquipe turmas={turmas} turmaId={turmaId} setTurmaId={setTurmaId} dadosEquipes={dadosEquipes} equipeId={equipeId} setEquipeId={setEquipeId} onAtualizar={() => setRefreshKey((k) => k + 1)} />
+      {!item && <Card className="p-6 text-center text-slate-500">Selecione a empresa para ver o registro.</Card>}
+      {item && (
+        <div>
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="text-sm text-slate-300"><b className="text-slate-100">{item.equipe.nomeNegocio}</b> · {(item.equipe.integrantes || []).join(", ")}</div>
+            <button onClick={() => imprimirComTitulo(`Registro do processo - ${item.equipe.nomeNegocio} - ${sufixoDataHoraArquivo()}`)} className="no-print flex items-center gap-2 text-xs font-semibold border border-slate-600 text-slate-100 px-3 py-2 rounded-md hover:bg-slate-800"><Printer size={14} /> Imprimir / PDF</button>
+          </div>
+          <Card className="p-4"><LinhaTempoEventos eventos={eventos} /></Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- Caminho do aluno (visão do professor) ----------
+function CaminhoProfessorView({ turmas }) {
+  const [turmaId, setTurmaId] = useTurmaSelecionada(turmas);
+  const [equipeId, setEquipeId] = useState("");
+  const dadosEquipes = useEquipesComDados(turmaId, 0);
+  const item = (dadosEquipes || []).find((x) => x.equipe.id === equipeId);
+  return (
+    <div>
+      <SectionTitle icon={Target} sub="O mapa da trajetória da equipe pelos 13 módulos — o mesmo que o aluno vê em “Início”.">Caminho do aluno</SectionTitle>
+      <BarraTurmaEquipe turmas={turmas} turmaId={turmaId} setTurmaId={setTurmaId} dadosEquipes={dadosEquipes} equipeId={equipeId} setEquipeId={setEquipeId} />
+      {!item && dadosEquipes && (
+        <div className="space-y-3">
+          {dadosEquipes.map(({ equipe, dados }) => (
+            <Card key={equipe.id} className="p-4">
+              <div className="text-sm font-semibold text-slate-100 mb-1">{equipe.nomeNegocio}</div>
+              <CaminhoSvg fluxo={dados.fluxoModulos} rotuloAqui="▼ aqui" />
+            </Card>
+          ))}
+        </div>
+      )}
+      {item && <Card className="p-4"><div className="text-sm font-semibold text-slate-100 mb-1">{item.equipe.nomeNegocio}</div><CaminhoSvg fluxo={item.dados.fluxoModulos} /></Card>}
+    </div>
+  );
+}
+
+// ---------- Diretriz da semana ----------
+const DIRETRIZ_POR_ORDEM = {
+  1: { prof: "Apresentar a plataforma, formar os grupos e cadastrar as empresas.", equipe: "Entrar na plataforma, escolher o negócio e o segmento." },
+  2: { prof: "Orientar o Bloco 1 (Módulos 1 a 4); corrigir e liberar o próximo módulo conforme chegam os envios.", equipe: "Pesquisar preços reais, lançar os Módulos 1 a 4 e enviar para correção." },
+  3: { prof: "Orientar receitas e custos (Módulos 5 a 9); devolver ajustes com feedback claro.", equipe: "Lançar faturamento, custos e mão de obra; responder às devolutivas." },
+  4: { prof: "Orientar custos fixos e depreciação (Módulos 10 e 11).", equipe: "Concluir depreciação e custos fixos mensais." },
+  5: { prof: "Acompanhar DRE e viabilidade (Módulos 12 e 13); lançar a nota final de síntese.", equipe: "Interpretar os indicadores e escrever a conclusão de viabilidade." },
+  6: { prof: "Orientar Cenários e Fluxo de Caixa.", equipe: "Criar simulações e analisar o fluxo de caixa anual." },
+  7: { prof: "Conduzir as apresentações finais e o encerramento.", equipe: "Apresentar o plano financeiro da empresa." },
+};
+function DiretrizSemanaView({ turmas }) {
+  const [turmaId, setTurmaId] = useTurmaSelecionada(turmas);
+  const [cron] = useSharedObject(turmaId ? `cronograma_${turmaId}` : null, null);
+  const linhas = cron?.linhas || [];
+  return (
+    <div>
+      <SectionTitle icon={Calendar} sub="O que fazer em cada semana, ligado às datas do cronograma da turma. Texto-guia fixo; o cronograma continua sendo editado em Gestão → Cronograma.">Diretriz da semana</SectionTitle>
+      <BarraTurmaEquipe turmas={turmas} turmaId={turmaId} setTurmaId={setTurmaId} />
+      {cron === undefined && <LoadingScreen />}
+      {cron === null && <Card className="p-6 text-center text-slate-500">Esta turma ainda não tem cronograma definido (Gestão → Cronograma).</Card>}
+      {linhas.length > 0 && (
+        <div className="space-y-3">
+          {linhas.map((l) => {
+            const sit = situacaoCronograma(l);
+            const d = DIRETRIZ_POR_ORDEM[l.ordem] || { prof: "", equipe: "" };
+            return (
+              <Card key={l.ordem} className={`p-4 ${sit === "em_andamento" ? "border-amber-500/70" : ""}`}>
+                <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+                  <div className="text-sm font-bold text-slate-100">{l.semana} · {l.etapa}</div>
+                  <BadgeSituacaoCronograma status={sit} />
+                </div>
+                <div className="text-xs text-slate-400 mb-2">{fmtDataCurta(l.dataInicio)} → entrega {fmtDataCurta(l.dataEntrega)} às {l.horaEntrega || HORARIO_CRONOGRAMA_PADRAO}</div>
+                <div className="grid sm:grid-cols-2 gap-3 text-xs">
+                  <div className="bg-slate-900 border border-slate-800 rounded-md p-2.5"><div className="font-bold text-slate-400 mb-1">O PROFESSOR</div><div className="text-slate-300">{d.prof}</div></div>
+                  <div className="bg-slate-900 border border-slate-800 rounded-md p-2.5"><div className="font-bold text-slate-400 mb-1">A EQUIPE</div><div className="text-slate-300">{d.equipe}</div></div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- Mensagens para o Classroom ----------
+function MensagensClassroomView({ turmas }) {
+  const [turmaId, setTurmaId] = useTurmaSelecionada(turmas);
+  const [equipeId, setEquipeId] = useState("");
+  const [modN, setModN] = useState(1);
+  const [tipo, setTipo] = useState("lem");
+  const [copiado, setCopiado] = useState(false);
+  const [editado, setEditado] = useState(null);
+  const dadosEquipes = useEquipesComDados(turmaId, 0);
+  const turma = turmas.find((t) => t.id === turmaId);
+  const item = (dadosEquipes || []).find((x) => x.equipe.id === equipeId);
+  const gerado = useMemo(() => {
+    if (!item) return "";
+    const m = MODULOS[modN - 1];
+    const est = estadoModulo(item.dados.fluxoModulos, m.id);
+    const prazo = est.prazo ? fmtDataCurta(est.prazo) : "(prazo a definir)";
+    const dev = [...(est.historico || [])].reverse().find((h) => h.tipo === "devolucao");
+    const prof = (turma?.professor || "").split(" ")[0] || "Professor(a)";
+    const nome = item.equipe.nomeNegocio;
+    const T = {
+      lem: `Olá, equipe ${nome}!\nLembrete: o Módulo ${m.n} (${m.nome}) deve ser enviado na plataforma PPF até ${prazo} às ${HORARIO_CRONOGRAMA_PADRAO}.\nQualquer dúvida, falem comigo na aula.\nProf. ${prof}`,
+      aj: `Olá, equipe ${nome}!\nO Módulo ${m.n} (${m.nome}) foi devolvido para ajustes:\n“${est.feedback || dev?.feedback || "(descreva os ajustes aqui)"}”\nReenviem pela plataforma PPF até ${prazo}.\nProf. ${prof}`,
+      lib: `Olá, equipe ${nome}!\nO Módulo ${m.n} (${m.nome}) já está liberado na plataforma PPF. Prazo de envio: ${prazo} às ${HORARIO_CRONOGRAMA_PADRAO}.\nProf. ${prof}`,
+      ok: `Parabéns, equipe ${nome}!\nO Módulo ${m.n} (${m.nome}) foi corrigido e aprovado. Podem seguir para a próxima etapa.\nProf. ${prof}`,
+    };
+    return T[tipo];
+  }, [item, modN, tipo, turma]);
+  useEffect(() => { setEditado(null); setCopiado(false); }, [gerado]);
+  const texto = editado !== null ? editado : gerado;
+  const copiar = async () => {
+    try { await navigator.clipboard.writeText(texto); }
+    catch { const ta = document.createElement("textarea"); ta.value = texto; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch {} document.body.removeChild(ta); }
+    setCopiado(true); setTimeout(() => setCopiado(false), 2500);
+  };
+  return (
+    <div>
+      <SectionTitle icon={Send} sub="Escolha a empresa, o módulo e o tipo: o texto sai pronto, com o prazo do cronograma. Copie e cole no Classroom. Nada é enviado nem gravado.">Mensagens para o Classroom</SectionTitle>
+      <BarraTurmaEquipe turmas={turmas} turmaId={turmaId} setTurmaId={setTurmaId} dadosEquipes={dadosEquipes} equipeId={equipeId} setEquipeId={setEquipeId} />
+      <div className="flex flex-wrap gap-3 mb-3">
+        <select value={modN} onChange={(e) => setModN(Number(e.target.value))} className="border border-slate-600 bg-slate-900 text-slate-100 rounded-md px-3 py-2 text-sm">
+          {MODULOS.map((m) => <option key={m.id} value={m.n}>M{m.n} · {m.nome}</option>)}
+        </select>
+        <select value={tipo} onChange={(e) => setTipo(e.target.value)} className="border border-slate-600 bg-slate-900 text-slate-100 rounded-md px-3 py-2 text-sm">
+          <option value="lem">Lembrete de prazo</option><option value="aj">Ajustes solicitados</option><option value="lib">Módulo liberado</option><option value="ok">Parabéns / aprovado</option>
+        </select>
+      </div>
+      {!item ? <Card className="p-6 text-center text-slate-500">Selecione a empresa para gerar a mensagem.</Card> : (
+        <div>
+          <textarea value={texto} onChange={(e) => setEditado(e.target.value)} rows={8} className="w-full bg-slate-900 border border-slate-600 text-slate-100 rounded-md p-3 text-sm leading-relaxed" />
+          <button onClick={copiar} className="mt-2 flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold px-4 py-2 rounded-md"><Copy size={14} /> {copiado ? "Copiado ✔" : "Copiar mensagem"}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- Lixeira de segurança ----------
+const LIXEIRA_DIAS = 30;
+const LIXEIRA_MAX = 60;
+const chaveLixeira = (equipeId) => `lixeira_equipe_${equipeId}`;
+
+function itensRemovidos(anterior, novo) {
+  const out = [];
+  if (!anterior || !novo || typeof anterior !== "object" || typeof novo !== "object") return out;
+  Object.keys(anterior).forEach((campo) => {
+    const a = anterior[campo]; const n = novo[campo];
+    if (!Array.isArray(a) || !Array.isArray(n)) return;
+    const ids = new Set(n.map((x) => x && x.id).filter((v) => v !== undefined && v !== null));
+    a.forEach((it) => { if (it && it.id !== undefined && it.id !== null && !ids.has(it.id)) out.push({ campo, item: it }); });
+  });
+  return out;
+}
+
+async function lerLixeira(equipeId) {
+  try {
+    const r = await window.storage.get(chaveLixeira(equipeId), true);
+    const lista = r ? JSON.parse(r.value) : [];
+    const limite = Date.now() - LIXEIRA_DIAS * 86400000;
+    return Array.isArray(lista) ? lista.filter((e) => e.em > limite) : [];
+  } catch { return []; }
+}
+
+// Guarda uma CÓPIA do que foi excluído numa chave própria. Nunca altera os
+// lançamentos; qualquer falha aqui é ignorada para não atrapalhar a equipe.
+async function registrarNaLixeira(equipeId, quem, modId, removidos) {
+  try {
+    const atual = await lerLixeira(equipeId);
+    const novos = removidos.map((r) => ({ id: uid(), em: Date.now(), modId, campo: r.campo, item: r.item, por: quem, restaurado: false }));
+    await window.storage.set(chaveLixeira(equipeId), JSON.stringify([...atual, ...novos].slice(-LIXEIRA_MAX)), true);
+  } catch {}
+}
+
+function descreverItemLixeira(it) {
+  const x = it || {};
+  const nome = x.desc || x.nome || x.cargo || x.descricao || x.produto || "(item sem nome)";
+  const valor = x.valorUnit ?? x.precoUnit ?? x.valor ?? x.salario;
+  const qtd = x.qtd !== undefined ? `${x.qtd} × ` : "";
+  return `${nome}${valor !== undefined ? ` · ${qtd}${fmtBRL(Number(valor))}` : ""}`;
+}
+
+function LixeiraProfessorView({ turmas }) {
+  const [turmaId, setTurmaId] = useTurmaSelecionada(turmas);
+  const dadosEquipes = useEquipesComDados(turmaId, 0);
+  const [mapa, setMapa] = useState(null);
+  useEffect(() => {
+    if (!dadosEquipes) { setMapa(null); return; }
+    let alive = true;
+    (async () => {
+      const m = {};
+      await Promise.all(dadosEquipes.map(async ({ equipe }) => { m[equipe.id] = await lerLixeira(equipe.id); }));
+      if (alive) setMapa(m);
+    })();
+    return () => { alive = false; };
+  }, [dadosEquipes]);
+  const linhas = [];
+  (dadosEquipes || []).forEach(({ equipe }) => ((mapa && mapa[equipe.id]) || []).forEach((e) => linhas.push({ equipe, e })));
+  linhas.sort((a, b) => b.e.em - a.e.em);
+  return (
+    <div>
+      <SectionTitle icon={Trash2} sub={`Itens que os alunos excluíram dos módulos ficam guardados por ${LIXEIRA_DIAS} dias. A equipe restaura na própria Lixeira; aqui você só acompanha.`}>Lixeira de segurança</SectionTitle>
+      <BarraTurmaEquipe turmas={turmas} turmaId={turmaId} setTurmaId={setTurmaId} />
+      {mapa === null && <LoadingScreen />}
+      {mapa !== null && linhas.length === 0 && <Card className="p-6 text-center text-slate-500">Nenhum item excluído nos últimos {LIXEIRA_DIAS} dias.</Card>}
+      {linhas.length > 0 && (
+        <Card className="p-0 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead><tr className="text-left text-xs uppercase text-slate-500 bg-slate-900/40"><th className="py-2 px-3">Empresa</th><th className="py-2 px-3">Módulo</th><th className="py-2 px-3">Item</th><th className="py-2 px-3">Excluído em</th><th className="py-2 px-3">Situação</th></tr></thead>
+            <tbody>
+              {linhas.map(({ equipe, e }) => (
+                <tr key={e.id} className="border-t border-slate-800">
+                  <td className="py-2 px-3 text-slate-100">{equipe.nomeNegocio}</td>
+                  <td className="py-2 px-3 text-slate-400">{(MODULOS.find((m) => m.id === e.modId) || {}).n ? `M${MODULOS.find((m) => m.id === e.modId).n}` : e.modId}</td>
+                  <td className="py-2 px-3 text-slate-300">{descreverItemLixeira(e.item)}</td>
+                  <td className="py-2 px-3 text-slate-500 text-xs">{fmtData(e.em)}{e.por ? ` · ${e.por}` : ""}</td>
+                  <td className="py-2 px-3 text-xs">{e.restaurado ? <span className="text-emerald-400">restaurado</span> : <span className="text-amber-400">na lixeira</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function LixeiraAlunoView({ equipe, fluxo, onRestaurar, podeEditar }) {
+  const [lista, setLista] = useState(null);
+  const [rev, setRev] = useState(0);
+  useEffect(() => { let alive = true; lerLixeira(equipe.id).then((l) => { if (alive) setLista(l); }); return () => { alive = false; }; }, [equipe.id, rev]);
+  const restaurar = async (e) => {
+    if (!podeEditar) return;
+    const ok = onRestaurar(e);
+    if (!ok) return;
+    try {
+      const atual = await lerLixeira(equipe.id);
+      await window.storage.set(chaveLixeira(equipe.id), JSON.stringify(atual.map((x) => (x.id === e.id ? { ...x, restaurado: true } : x))), true);
+    } catch {}
+    setRev((r) => r + 1);
+  };
+  const pendentes = (lista || []).filter((e) => !e.restaurado).sort((a, b) => b.em - a.em);
+  return (
+    <div>
+      <SectionTitle icon={Trash2} sub={`Se alguém excluir um item de um módulo por engano, uma cópia fica aqui por ${LIXEIRA_DIAS} dias e pode ser restaurada.`}>Lixeira de segurança</SectionTitle>
+      {lista === null && <LoadingScreen />}
+      {lista !== null && pendentes.length === 0 && <Card className="p-6 text-center text-slate-500">Nenhum item excluído recentemente. Tudo certo!</Card>}
+      {pendentes.length > 0 && (
+        <Card className="p-0 overflow-hidden">
+          <table className="w-full text-sm">
+            <tbody>
+              {pendentes.map((e) => {
+                const m = MODULOS.find((mm) => mm.id === e.modId);
+                const bloqueado = !!(m && estadoModulo(fluxo, m.id).status !== "liberado" && estadoModulo(fluxo, m.id).status !== "ajustes");
+                return (
+                  <tr key={e.id} className="border-b border-slate-800 last:border-0">
+                    <td className="py-2 px-3 text-slate-300">{descreverItemLixeira(e.item)}<div className="text-[11px] text-slate-500">Módulo {m ? m.n : e.modId} · excluído em {fmtData(e.em)}</div></td>
+                    <td className="py-2 px-3 text-right">
+                      <button disabled={!podeEditar || bloqueado} title={bloqueado ? "O módulo está travado (enviado/corrigido). Peça ao professor para reabrir." : ""} onClick={() => restaurar(e)} className="text-xs font-semibold border border-amber-600 text-amber-400 px-3 py-1.5 rounded-md hover:bg-amber-950/30 disabled:opacity-40">Restaurar</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ---------- Telas do aluno: Guia da semana e Minha trajetória ----------
+const PASSOS_GUIA_MODULO = {
+  m1: ["Listar máquinas, equipamentos, móveis e utensílios", "Pesquisar o preço real de cada item (guardar a fonte)", "Informar quantidade e valor unitário", "Conferir o total e enviar"],
+  m2: ["Definir o estoque inicial", "Informar prazos de vendas, compras e estoque", "Conferir o capital de giro calculado", "Enviar"],
+  m3: ["Listar os gastos antes de abrir (alvará, reforma, divulgação)", "Informar o valor de cada um", "Conferir o total e enviar"],
+  m4: ["Conferir o total consolidado (cálculo automático)", "Enviar"],
+  m5: ["Cadastrar cada produto/serviço", "Definir quantidade mensal e preço de venda", "Ter a justificativa dos preços (pesquisa) para apresentar", "Enviar"],
+  m6: ["Escolher o produto", "Listar matérias-primas e quantidades", "Informar o custo unitário de cada material", "Enviar"],
+  m7: ["Informar impostos, comissões e taxas", "Conferir os percentuais", "Enviar"],
+  m8: ["Conferir o CMV (cálculo automático)", "Enviar"],
+  m9: ["Listar funcionários e cargos", "Informar salários e encargos", "Enviar"],
+  m10: ["Conferir a depreciação (cálculo automático)", "Conferir a vida útil de cada bem", "Enviar"],
+  m11: ["Listar aluguel, energia, água, internet, pró-labore e outros", "Informar os valores mensais", "Enviar"],
+  m12: ["Conferir o DRE (cálculo automático)", "Enviar"],
+  m13: ["Interpretar os indicadores", "Escrever a conclusão sobre a viabilidade", "Enviar"],
+};
+
+function GuiaSemanaAlunoView({ fluxo, equipeKey, onIrPara }) {
+  const mod = MODULOS.find((m) => { const s = estadoModulo(fluxo, m.id).status; return s !== "corrigido" && s !== "pendente"; });
+  const [marcados, setMarcados] = useState({});
+  const chave = mod ? `guia_check_${equipeKey}_${mod.id}` : null;
+  useEffect(() => {
+    if (!chave) return;
+    try { setMarcados(JSON.parse(localStorage.getItem(chave) || "{}")); } catch { setMarcados({}); }
+  }, [chave]);
+  const marcar = (i) => {
+    const novo = { ...marcados, [i]: !marcados[i] };
+    setMarcados(novo);
+    try { localStorage.setItem(chave, JSON.stringify(novo)); } catch {}
+  };
+  if (!mod) {
+    const todos = MODULOS.every((m) => estadoModulo(fluxo, m.id).status === "corrigido");
+    return (
+      <div>
+        <SectionTitle icon={Target} sub="O que fazer agora no projeto.">Guia da semana</SectionTitle>
+        <Card className="p-5 text-sm text-slate-300">{todos ? "✔ Todos os módulos foram corrigidos. Falta só a apresentação final!" : "Aguardem o(a) professor(a) liberar o próximo módulo — por enquanto não há nada pendente com vocês."}</Card>
+      </div>
+    );
+  }
+  const est = estadoModulo(fluxo, mod.id);
+  const atrasado = moduloAtrasadoSemEnvio(est);
+  const dev = [...(est.historico || [])].reverse().find((h) => h.tipo === "devolucao");
+  const passos = PASSOS_GUIA_MODULO[mod.id] || [];
+  return (
+    <div>
+      <SectionTitle icon={Target} sub="O módulo em que vocês estão agora, o prazo e o passo a passo. Os ✓ ficam só neste navegador.">Guia da semana</SectionTitle>
+      <Card className={`p-4 mb-3 ${atrasado ? "border-rose-700/70" : ""}`}>
+        <div className="flex items-center gap-2 flex-wrap"><span className="font-bold text-slate-100">Foco: Módulo {mod.n} — {mod.nome}</span><BadgeStatusModuloMenu status={est.status} /></div>
+        <div className="text-sm text-slate-300 mt-1">Prazo: <b>{est.prazo ? `${fmtDataCurta(est.prazo)} às ${HORARIO_CRONOGRAMA_PADRAO}` : "a definir pelo(a) professor(a)"}</b>{atrasado && <span className="ml-2 text-rose-400 text-xs font-bold">prazo vencido — falem com o(a) professor(a)</span>}</div>
+      </Card>
+      {(est.status === "ajustes") && (est.feedback || dev?.feedback) && (
+        <Card className="p-4 mb-3 border-amber-700/60"><div className="text-xs font-bold text-amber-400 mb-1">Devolutiva do professor{dev ? ` (${fmtData(dev.data)})` : ""}</div><div className="text-sm text-amber-100 whitespace-pre-wrap">{est.feedback || dev.feedback}</div></Card>
+      )}
+      <Card className="p-4 mb-3">
+        <div className="text-sm font-bold text-slate-200 mb-2">Passo a passo</div>
+        {passos.map((p, i) => (
+          <label key={i} className="flex items-start gap-2 text-sm text-slate-300 mb-1.5 cursor-pointer"><input type="checkbox" checked={!!marcados[i]} onChange={() => marcar(i)} className="mt-1" /> <span>{p}</span></label>
+        ))}
+      </Card>
+      <button onClick={() => onIrPara(mod.id)} className="bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm">Abrir o Módulo {mod.n}</button>
+    </div>
+  );
+}
+
+function TrajetoriaAlunoView({ dados }) {
+  const eventos = useMemo(() => linhaTempoEquipe(dados || {}), [dados]);
+  return (
+    <div>
+      <SectionTitle icon={History} sub="A história do projeto de vocês, do primeiro envio até agora — envios, devoluções, aprovações e comentários do professor.">Minha trajetória</SectionTitle>
+      <Card className="p-4"><LinhaTempoEventos eventos={eventos} /></Card>
+    </div>
+  );
+}
+
 function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades }) {
   const chaveMinhas = `turmas_prof_${user.uid}`;
   const [minhasTurmas, setMinhasTurmas] = useSharedList(chaveMinhas);
@@ -7230,10 +12300,50 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
   const [menuAberto, setMenuAberto] = useState(false);
   const [pdfAberto, setPdfAberto] = useState(null);
   const [alvoCorrecao, setAlvoCorrecao] = useState(null); // { equipeId, moduloId, trigger }
+  const [testeAtivo, setTesteAtivo] = useState(null); // { turmaId, equipeId, turmaNome } | null — modo "Empresa Teste"
 
   const pendentesCorrecao = usePendentesCorrecao(turmas);
+  const [modoMesa, setModoMesa] = useModoMesa("ppf_modo_mesa_prof");
+  const larga = useTelaLarga();
+  const mesa = useMesa();
+  const mesaAtiva = modoMesa && larga;
+  useEffect(() => {
+    if (!mesaAtiva) return undefined;
+    const t = setTimeout(() => { if (Object.keys(mesa.wins).length === 0) mesa.abrir("inicio"); }, 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mesaAtiva]);
 
   if (turmas === null) return <LoadingScreen />;
+
+  // MODO EMPRESA TESTE: mostra a área do aluno (mesmas telas e fluxo) usando
+  // a empresa de teste da turma, com uma faixa de aviso fixa no topo.
+  if (testeAtivo) {
+    const sairDoTeste = () => setTesteAtivo(null);
+    return (
+      <div>
+        <style>{`.modo-teste .app-mobile-header{top:2.5rem}`}</style>
+        <div className="sticky top-0 z-[60] h-10 flex items-center justify-between gap-3 px-4 bg-orange-950 border-b border-orange-600/70 text-orange-200 text-xs font-semibold">
+          <span className="truncate">🧪 Modo de teste — você está agindo como a "Empresa de teste" ({testeAtivo.turmaNome}). Nada aqui conta para os alunos reais.</span>
+          <button onClick={sairDoTeste} className="shrink-0 bg-orange-500 text-slate-900 font-bold rounded-md px-3 py-1 hover:bg-orange-400">Sair do modo de teste</button>
+        </div>
+        <div className="modo-teste">
+          <AlunoWorkspaceCarregado
+            userSessao={{ uid: user.uid, nome: user.nome, email: user.email, papel: "aluno" }}
+            turmaId={testeAtivo.turmaId}
+            equipeId={testeAtivo.equipeId}
+            onSair={sairDoTeste}
+            onTrocarEmpresa={() => alert("Trocar de empresa não se aplica ao modo de teste. Use \"Sair do modo de teste\".")}
+            professorUid={user.uid}
+            professorNome={user.nome}
+            turmaNome={testeAtivo.turmaNome}
+            ultimaVersaoVista={APP_VERSION}
+            onVerNovidades={undefined}
+          />
+        </div>
+      </div>
+    );
+  }
 
   const criarTurma = async (nome) => {
     const nova = { id: uid(), nome, codigo: codigoTurma(), professor: user.nome, professorUid: user.uid, criadaEm: Date.now() };
@@ -7253,16 +12363,104 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
   };
 
   const turmaAtiva = turmas.find((t) => t.id === turmaAtivaId) || null;
-  const irPara = (id) => { setAba(id); if (id !== "turmas") setTurmaAtivaId(null); setMenuAberto(false); };
+  const irPara = (id) => {
+    if (mesaAtiva) { mesa.abrir(id); return; }
+    setAba(id); if (id !== "turmas") setTurmaAtivaId(null); setMenuAberto(false);
+  };
   const abrirCorrecao = (turmaId, equipeId, moduloId) => {
     setTurmaAtivaId(turmaId);
     setAlvoCorrecao({ equipeId, moduloId, trigger: Date.now() });
+    if (mesaAtiva) { mesa.abrir("turmas"); return; }
     setAba("turmas");
     setMenuAberto(false);
   };
 
   const itensMenu = user.mestre ? [...GESTAO_ITENS, ITEM_APROVACOES] : GESTAO_ITENS;
   const itensManuais = user.mestre ? [...MANUAIS_ITENS_BASE, ...MANUAIS_ITENS_MESTRE] : MANUAIS_ITENS_BASE;
+
+  const renderAbaProf = (aba) => (
+    <>
+        {aba === "inicio" && <ProfessorInicio user={user} turmas={turmas} onIrPara={irPara} />}
+        {aba === "turmas" && (
+          turmaAtiva
+
+            ? <TurmaDetail turma={turmaAtiva} professorNome={user.nome} onVoltar={() => { setTurmaAtivaId(null); setAlvoCorrecao(null); }} alvoCorrecao={alvoCorrecao} />
+            : <GestaoTurmasView turmas={turmas} onCriar={criarTurma} onAbrir={setTurmaAtivaId} onExcluir={removerTurmaDaLista} mestre={user.mestre} />
+        )}
+        {aba === "correcoes" && <CorrecoesPendentesView pendentes={pendentesCorrecao} onAbrir={abrirCorrecao} />}
+        {aba === "usuarios" && <GestaoUsuariosView turmas={turmas} />}
+        {aba === "cronograma" && <GestaoCronogramaView turmas={turmas} />}
+        {aba === "itensSegmento" && <GestaoItensSegmentoView user={user} />}
+        {aba === "parecer" && <GestaoParecerView turmas={turmas} professorNome={user.nome} />}
+        {aba === "liberarAjustes" && <GestaoLiberarAjustesView turmas={turmas} professorNome={user.nome} />}
+        {aba === "integrantes" && <GestaoIntegrantesView turmas={turmas} user={user} />}
+        {aba === "acessos" && <GestaoAcessosView turmas={turmas} user={user} />}
+        {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}
+        {aba === "empresaTeste" && <GestaoEmpresaTesteView turmas={turmas} onEntrar={(t, eq) => setTesteAtivo({ turmaId: t.id, equipeId: eq.id, turmaNome: t.nome })} onAbrirCorrecao={abrirCorrecao} />}
+        {aba === "backup" && <GestaoBackupView turmas={turmas} onExcluir={removerTurmaDaLista} />}
+        {aba === "auditoria" && <GestaoAuditoriaView turmas={turmas} />}
+        {aba === "aprovacoes" && user.mestre && <GestaoAprovacoesView usuarioAtualUid={user.uid} />}
+        {aba === "manualProfessor" && <ManualProfessorView />}
+        {aba === "manualAlunoRef" && <ManualAlunoView contexto="professor" />}
+        {aba === "manualOperacional" && user.mestre && <ManualOperacionalView />}
+        {aba === "checklistStatus" && user.mestre && <ChecklistStatusView />}
+        {aba === "guiaPedagogico" && <GuiaPedagogicoView />}
+        {aba === "suporte" && (
+          <SuporteView ctx={{ uid: user.uid, nome: user.nome, papel: "professor", mestre: !!user.mestre }} />
+        )}
+        {aba === "novidades" && <NovidadesView />}
+        {aba === "tutoriais" && <TutoriaisView categoria="professor" />}
+        {aba === "hoje" && <HojeProfessorView turmas={turmas} onAbrirCorrecao={abrirCorrecao} />}
+        {aba === "registro" && <RegistroProcessoView turmas={turmas} />}
+        {aba === "caminho" && <CaminhoProfessorView turmas={turmas} />}
+        {aba === "diretriz" && <DiretrizSemanaView turmas={turmas} />}
+        {aba === "mensagens" && <MensagensClassroomView turmas={turmas} />}
+        {aba === "lixeira" && <LixeiraProfessorView turmas={turmas} />}
+    </>
+  );
+
+  const badgeCorr = (pendentesCorrecao || []).filter((p) => !p.teste).length;
+  const menuMesaProf = [
+    { direct: true, key: "inicio", label: "Início" },
+    { label: "Gestão", itens: itensMenu.filter((i) => i.id !== "relatorios").map((i) => ({ key: i.id, label: i.label, badge: i.id === "correcoes" ? badgeCorr : 0 })) },
+    { label: "Relatórios", itens: ABAS_RELATORIO.map((a) => ({ key: `rel:${a.id}`, label: a.label })) },
+    { label: "Acompanhar", itens: [
+      { key: "hoje", label: "Hoje do professor", novo: true },
+      { key: "registro", label: "Registro do processo", novo: true },
+      { key: "caminho", label: "Caminho do aluno", novo: true },
+      { key: "diretriz", label: "Diretriz da semana", novo: true },
+      { key: "mensagens", label: "Mensagens Classroom", novo: true },
+    ] },
+    { label: "Manuais", itens: itensManuais.map((i) => ({ key: i.id, label: i.label, acao: MANUAIS_PDF[i.id] ? () => window.open(MANUAIS_PDF[i.id], "_blank", "noopener") : undefined })) },
+    { label: "Pedagógico", itens: [{ key: "guiaPedagogico", label: "Guia Pedagógico" }] },
+    { label: "Outros", itens: [
+      { key: "suporte", label: "Suporte" }, { key: "novidades", label: "Novidades" }, { key: "tutoriais", label: "Tutoriais" },
+      { sep: true }, { key: "lixeira", label: "Lixeira de segurança", novo: true },
+    ] },
+  ];
+  const tituloMesaProf = (k) => {
+    if (k.startsWith("rel:")) return (ABAS_RELATORIO.find((a) => a.id === k.slice(4)) || {}).label || "Relatórios";
+    for (const m of menuMesaProf) {
+      if (m.key === k) return m.label;
+      for (const it of (m.itens || [])) if (it.key === k) return it.label;
+    }
+    return (itensMenu.find((i) => i.id === k) || {}).label || k;
+  };
+  const renderTelaProf = (k) => (k.startsWith("rel:") ? <GestaoRelatoriosView turmas={turmas} abaInicial={k.slice(4)} semAbas /> : renderAbaProf(k));
+
+  if (mesaAtiva) {
+    return (
+      <>
+        <MesaJanelas
+          menu={menuMesaProf} mesa={mesa} renderTela={renderTelaProf} tituloDe={tituloMesaProf}
+          brand="PPF · Professor" homeChave="inicio" onVoltar={() => setModoMesa(false)}
+          info={<><span>Prof. <b className="text-slate-200">{user.nome}</b></span><button onClick={onSair} className="border border-slate-600 rounded px-2.5 py-1 text-slate-100 hover:bg-slate-800">Sair</button></>}
+        />
+        {onVerNovidades && <NovidadesOverlay perfil={{ ultimaVersaoVista }} onFechar={onVerNovidades} onIrParaHistorico={() => { onVerNovidades(); irPara("novidades"); }} />}
+        {pdfAberto && <VisualizadorManualPDF url={pdfAberto.url} titulo={pdfAberto.titulo} onFechar={() => setPdfAberto(null)} />}
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen flex bg-slate-950 relative">
@@ -7271,6 +12469,27 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
           .app-sidebar, .app-mobile-header, .no-print { display: none !important; }
           main { padding: 0 !important; max-width: 100% !important; overflow: visible !important; }
           body, .min-h-screen { background: #fff !important; }
+
+          /* As cores de texto/borda do sistema foram pensadas para o fundo
+             escuro da tela (tons claros sobre fundo escuro) e ficam quase
+             apagadas quando impressas em fundo branco. Estas regras só valem
+             na impressão (@media print) — a tela continua exatamente igual —
+             e reforçam o contraste, sem alterar nenhum dado, cálculo ou
+             lançamento: são seletores "contém a classe" que pegam qualquer
+             tom/opacidade já usado (ex.: text-slate-400, border-amber-500/40)
+             e trocam só a cor exibida na impressão.             */
+          [class*="text-slate-"] { color: #1e293b !important; }
+          [class*="text-amber-"] { color: #b45309 !important; }
+          [class*="text-emerald-"] { color: #047857 !important; }
+          [class*="text-sky-"] { color: #0369a1 !important; }
+          [class*="text-rose-"] { color: #be123c !important; }
+          [class*="text-violet-"] { color: #6d28d9 !important; }
+          [class*="border-slate-"] { border-color: #94a3b8 !important; }
+          [class*="border-amber-"] { border-color: #d97706 !important; }
+          [class*="border-emerald-"] { border-color: #10b981 !important; }
+          [class*="border-sky-"] { border-color: #0ea5e9 !important; }
+          [class*="border-rose-"] { border-color: #f43f5e !important; }
+          [class*="border-violet-"] { border-color: #8b5cf6 !important; }
         }
       `}</style>
       <header className="app-mobile-header md:hidden fixed top-0 inset-x-0 z-20 bg-slate-900 border-b border-white/10 flex items-center justify-between px-4 py-3">
@@ -7299,7 +12518,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
           {itensMenu.map((it) => {
             const Icon = it.icon;
             const active = aba === it.id;
-            const contagem = it.id === "correcoes" ? (pendentesCorrecao?.length || 0) : 0;
+            const contagem = it.id === "correcoes" ? ((pendentesCorrecao || []).filter((p) => !p.teste).length) : 0;
             return (
               <button key={it.id} onClick={() => irPara(it.id)} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${active ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
                 <Icon size={16} className="shrink-0" /> <span className="flex-1">{it.label}</span>
@@ -7336,6 +12555,22 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
           <button onClick={() => irPara("guiaPedagogico")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "guiaPedagogico" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
             <GraduationCap size={16} className="shrink-0" /> Guia Pedagógico
           </button>
+          <div className="px-5 pt-5 pb-2 text-[10px] font-bold tracking-widest text-white/40">ACOMPANHAR</div>
+          <button onClick={() => irPara("hoje")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "hoje" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
+            <span className="flex-1">Hoje do professor</span> <span className="text-[9px] font-bold text-amber-400">NOVO</span>
+          </button>
+          <button onClick={() => irPara("registro")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "registro" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
+            <span className="flex-1">Registro do processo</span> <span className="text-[9px] font-bold text-amber-400">NOVO</span>
+          </button>
+          <button onClick={() => irPara("caminho")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "caminho" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
+            <span className="flex-1">Caminho do aluno</span> <span className="text-[9px] font-bold text-amber-400">NOVO</span>
+          </button>
+          <button onClick={() => irPara("diretriz")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "diretriz" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
+            <span className="flex-1">Diretriz da semana</span> <span className="text-[9px] font-bold text-amber-400">NOVO</span>
+          </button>
+          <button onClick={() => irPara("mensagens")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "mensagens" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
+            <span className="flex-1">Mensagens Classroom</span> <span className="text-[9px] font-bold text-amber-400">NOVO</span>
+          </button>
           <div className="px-5 pt-5 pb-2 text-[10px] font-bold tracking-widest text-white/40">OUTROS</div>
           <button onClick={() => irPara("suporte")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "suporte" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
             <LifeBuoy size={16} className="shrink-0" /> Suporte
@@ -7346,8 +12581,12 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
           <button onClick={() => irPara("tutoriais")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "tutoriais" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
             <Video size={16} className="shrink-0" /> Tutoriais
           </button>
+          <button onClick={() => irPara("lixeira")} className={`w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition ${aba === "lixeira" ? "bg-white/10 text-white font-semibold border-l-4 border-amber-500" : "text-white/60 hover:bg-white/5 border-l-4 border-transparent"}`}>
+            <span className="flex-1">Lixeira de segurança</span> <span className="text-[9px] font-bold text-amber-400">NOVO</span>
+          </button>
         </nav>
         <div className="p-4 border-t border-white/10">
+          {larga && <button onClick={() => setModoMesa(true)} className="flex items-center gap-2 text-sm text-amber-400 hover:text-amber-300 mb-3" title="Mostra as mesmas telas em janelas flutuantes, lado a lado">▦ Abrir Mesa de janelas</button>}
           <button onClick={onSair} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><LogOut size={15} /> Sair</button>
         </div>
       </aside>
@@ -7355,32 +12594,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
       {onVerNovidades && <NovidadesOverlay perfil={{ ultimaVersaoVista }} onFechar={onVerNovidades} onIrParaHistorico={() => { onVerNovidades(); irPara("novidades"); }} />}
 
       <main className="flex-1 overflow-y-auto p-4 pt-20 md:p-8 md:pt-8 max-w-6xl mx-auto w-full">
-        {aba === "inicio" && <ProfessorInicio user={user} turmas={turmas} onIrPara={irPara} />}
-        {aba === "turmas" && (
-          turmaAtiva
-
-            ? <TurmaDetail turma={turmaAtiva} professorNome={user.nome} onVoltar={() => { setTurmaAtivaId(null); setAlvoCorrecao(null); }} alvoCorrecao={alvoCorrecao} />
-            : <GestaoTurmasView turmas={turmas} onCriar={criarTurma} onAbrir={setTurmaAtivaId} onExcluir={removerTurmaDaLista} mestre={user.mestre} />
-        )}
-        {aba === "correcoes" && <CorrecoesPendentesView pendentes={pendentesCorrecao} onAbrir={abrirCorrecao} />}
-        {aba === "usuarios" && <GestaoUsuariosView turmas={turmas} />}
-        {aba === "cronograma" && <GestaoCronogramaView turmas={turmas} />}
-        {aba === "integrantes" && <GestaoIntegrantesView turmas={turmas} user={user} />}
-        {aba === "acessos" && <GestaoAcessosView turmas={turmas} user={user} />}
-        {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}
-        {aba === "backup" && <GestaoBackupView turmas={turmas} onExcluir={removerTurmaDaLista} />}
-        {aba === "auditoria" && <GestaoAuditoriaView turmas={turmas} />}
-        {aba === "aprovacoes" && user.mestre && <GestaoAprovacoesView usuarioAtualUid={user.uid} />}
-        {aba === "manualProfessor" && <ManualProfessorView />}
-        {aba === "manualAlunoRef" && <ManualAlunoView contexto="professor" />}
-        {aba === "manualOperacional" && user.mestre && <ManualOperacionalView />}
-        {aba === "checklistStatus" && user.mestre && <ChecklistStatusView />}
-        {aba === "guiaPedagogico" && <GuiaPedagogicoView />}
-        {aba === "suporte" && (
-          <SuporteView ctx={{ uid: user.uid, nome: user.nome, papel: "professor", mestre: !!user.mestre }} />
-        )}
-        {aba === "novidades" && <NovidadesView />}
-        {aba === "tutoriais" && <TutoriaisView categoria="professor" />}
+        {renderAbaProf(aba)}
       </main>
       {pdfAberto && <VisualizadorManualPDF url={pdfAberto.url} titulo={pdfAberto.titulo} onFechar={() => setPdfAberto(null)} />}
     </div>
@@ -7428,13 +12642,201 @@ function LinhaUsuarioPendente({ usuario, onAprovar, onRejeitar, onMudarPapel, on
   );
 }
 
+// ============================================================================
+// COORDENAÇÃO (v2.7) — perfil SOMENTE LEITURA para acompanhar o processo das
+// empresas. O Usuário Mestre aprova o cadastro e libera as turmas que a
+// coordenação pode ver. Nada aqui grava dados dos alunos: as telas de
+// acompanhamento só leem, e a área da empresa abre em modo somente leitura
+// (toda gravação é descartada na origem — ver `somenteLeitura` no AlunoWorkspace).
+// ============================================================================
+function SecaoCoordenacaoAprovacoes({ coordenacao, onAtualizar, onExcluir }) {
+  const turmasTodas = useTodasTurmas(0);
+  return (
+    <div className="mb-8">
+      <h3 className="text-sm font-bold text-slate-200 mb-1 mt-2 flex items-center gap-2"><Eye size={15} className="text-sky-400" /> Coordenação — somente leitura ({coordenacao.length})</h3>
+      <p className="text-xs text-slate-500 mb-3">Quem se cadastra como Coordenação só enxerga as turmas marcadas aqui e nada pode alterar. Marque as turmas e aprove; as mudanças valem no próximo acesso.</p>
+      <div className="space-y-3">
+        {coordenacao.length === 0 && <Card className="p-5 text-center text-slate-500 text-sm">Nenhum cadastro de Coordenação ainda.</Card>}
+        {coordenacao.map((u) => <LinhaCoordenacao key={u.uid} usuario={u} turmas={turmasTodas} onAtualizar={onAtualizar} onExcluir={onExcluir} />)}
+      </div>
+    </div>
+  );
+}
+
+function LinhaCoordenacao({ usuario, turmas, onAtualizar, onExcluir }) {
+  const [sel, setSel] = useState(() => new Set(usuario.turmasLiberadas || []));
+  const [msg, setMsg] = useState("");
+  const aprovado = usuario.status === "aprovado";
+  const alternar = (id) => setSel((a) => { const n = new Set(a); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const salvar = async (status) => {
+    await onAtualizar(usuario.uid, { status, turmasLiberadas: [...sel] });
+    setMsg(status === "aprovado" ? "Salvo." : "Acesso suspenso.");
+    setTimeout(() => setMsg(""), 2500);
+  };
+  return (
+    <Card className="p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+        <div>
+          <div className="font-semibold text-slate-100">{usuario.nome}</div>
+          <div className="text-xs text-slate-500">{usuario.email}</div>
+        </div>
+        <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 border ${aprovado ? "text-emerald-300 border-emerald-700 bg-emerald-950/40" : usuario.status === "rejeitado" ? "text-rose-300 border-rose-700 bg-rose-950/40" : "text-amber-300 border-amber-700 bg-amber-950/40"}`}>
+          {aprovado ? "Aprovada" : usuario.status === "rejeitado" ? "Acesso suspenso" : "Aguardando aprovação"}
+        </span>
+      </div>
+      <div className="text-xs font-semibold text-slate-400 mb-1.5">Turmas liberadas para acompanhamento:</div>
+      {turmas === null ? <div className="text-xs text-slate-500">Carregando turmas…</div> : turmas.length === 0 ? <div className="text-xs text-slate-500">Nenhuma turma cadastrada.</div> : (
+        <div className="grid sm:grid-cols-2 gap-1.5 mb-3">
+          {turmas.map((t) => (
+            <label key={t.id} className="flex items-center gap-2 text-sm text-slate-200 bg-slate-900/60 border border-slate-700 rounded-md px-2.5 py-1.5 cursor-pointer">
+              <input type="checkbox" checked={sel.has(t.id)} onChange={() => alternar(t.id)} />
+              <span className="truncate">{t.nome}{t.professor ? <span className="text-slate-500"> · {t.professor}</span> : null}</span>
+            </label>
+          ))}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={() => salvar("aprovado")} disabled={sel.size === 0} title={sel.size === 0 ? "Marque ao menos uma turma" : ""} className="bg-emerald-500 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-md hover:bg-emerald-400 disabled:opacity-40">{aprovado ? "Salvar turmas" : "Aprovar e liberar turmas"}</button>
+        {aprovado && <button onClick={() => salvar("rejeitado")} className="border border-slate-600 text-slate-300 text-xs font-semibold px-3 py-1.5 rounded-md hover:bg-slate-800">Suspender acesso</button>}
+        <button onClick={() => onExcluir(usuario)} title="Excluir esta conta permanentemente" className="text-slate-500 hover:text-rose-400 ml-auto"><Trash2 size={14} /></button>
+        {msg && <span className="text-xs text-emerald-400">{msg}</span>}
+      </div>
+    </Card>
+  );
+}
+
+const ABAS_COORD = [
+  { id: "inicio", label: "Início" },
+  { id: "empresas", label: "Empresas" },
+  { id: "hoje", label: "Situação de hoje" },
+  { id: "caminho", label: "Caminho dos módulos" },
+  { id: "registro", label: "Registro do processo" },
+  { id: "diretriz", label: "Diretriz da semana" },
+  { id: "relatorios", label: "Relatórios" },
+];
+
+// Lista as empresas das turmas liberadas e abre a área da empresa SOMENTE LEITURA.
+function CoordEmpresasView({ turmas, onAbrir }) {
+  const [turmaId, setTurmaId] = useState(turmas[0]?.id || "");
+  const [equipes] = useSharedList(turmaId ? `equipes_${turmaId}` : null);
+  const turma = turmas.find((t) => t.id === turmaId);
+  const reais = (equipes || []).filter((e) => e.teste !== true);
+  return (
+    <div>
+      <SectionTitle icon={Building2} sub="Escolha a turma e abra a empresa para ver, módulo a módulo, o que a equipe lançou, as devolutivas e as notas. Somente leitura.">Empresas</SectionTitle>
+      <div className="mb-4"><SeletorTurma turmas={turmas} value={turmaId} onChange={setTurmaId} /></div>
+      {!turmaId && <Card className="p-8 text-center text-slate-500">Selecione uma turma.</Card>}
+      {turmaId && equipes === null && <LoadingScreen />}
+      {turmaId && equipes !== null && reais.length === 0 && <Card className="p-8 text-center text-slate-500">Nenhuma empresa cadastrada nesta turma.</Card>}
+      <div className="grid md:grid-cols-2 gap-3">
+        {reais.map((e) => (
+          <Card key={e.id} className="p-4">
+            <div className="font-bold text-slate-100">{e.nomeNegocio || "(sem nome)"}</div>
+            <div className="text-xs text-slate-500 mb-1">{e.segmento ? `Segmento: ${e.segmento}` : "Segmento não definido"}</div>
+            <div className="text-xs text-slate-400 mb-3 line-clamp-2">{(e.integrantes || []).map((i) => (typeof i === "string" ? i : i.nome)).filter(Boolean).join(", ") || "Sem integrantes informados"}</div>
+            <button onClick={() => onAbrir({ turmaId, equipeId: e.id, turmaNome: turma?.nome || "", professorUid: turma?.professorUid, professorNome: turma?.professor })} className="text-xs font-bold bg-amber-500 text-slate-900 rounded-md px-3 py-1.5 hover:bg-amber-400">Abrir (somente leitura)</button>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CoordenacaoDashboard({ user, onSair }) {
+  const [perfilAtual, setPerfilAtual] = useState(null); // relê (só leitura) o cadastro: turmas liberadas podem ter mudado
+  useEffect(() => {
+    let vivo = true;
+    (async () => { try { const p = await buscarUsuario(user.uid); if (vivo) setPerfilAtual(p || false); } catch { if (vivo) setPerfilAtual(false); } })();
+    return () => { vivo = false; };
+  }, [user.uid]);
+  const todas = useTodasTurmas(0);
+  const [aba, setAba] = useState("inicio");
+  const [alvo, setAlvo] = useState(null);
+
+  if (perfilAtual === null || todas === null) return <LoadingScreen />;
+  const liberadas = (perfilAtual && perfilAtual.status === "aprovado" ? (perfilAtual.turmasLiberadas || []) : []);
+  const turmas = todas.filter((t) => liberadas.includes(t.id));
+
+  if (alvo) {
+    return (
+      <div>
+        <div className="sticky top-0 z-[60] h-10 flex items-center justify-between gap-3 px-4 bg-sky-950 border-b border-sky-700/70 text-sky-200 text-xs font-semibold">
+          <span className="truncate">👁 Modo Coordenação — somente leitura · {alvo.turmaNome}</span>
+          <button onClick={() => setAlvo(null)} className="shrink-0 bg-sky-400 text-slate-900 font-bold rounded-md px-3 py-1 hover:bg-sky-300">Voltar à Coordenação</button>
+        </div>
+        <AlunoWorkspaceCarregado
+          userSessao={{ uid: user.uid, nome: user.nome, email: user.email, papel: "aluno" }}
+          turmaId={alvo.turmaId} equipeId={alvo.equipeId} somenteLeitura
+          onSair={() => setAlvo(null)} onTrocarEmpresa={() => setAlvo(null)}
+          professorUid={alvo.professorUid} professorNome={alvo.professorNome} turmaNome={alvo.turmaNome}
+          ultimaVersaoVista={APP_VERSION} onVerNovidades={undefined}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100">
+      <style>{`@media print { .coord-topo, .no-print { display: none !important; } }`}</style>
+      <header className="coord-topo sticky top-0 z-30 bg-slate-900 border-b border-slate-700">
+        <div className="max-w-6xl mx-auto px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="font-bold text-amber-400 text-sm whitespace-nowrap">PPF · Coordenação</div>
+          <nav className="flex flex-wrap gap-1 flex-1">
+            {ABAS_COORD.map((a) => (
+              <button key={a.id} onClick={() => setAba(a.id)} className={`text-sm px-3 py-1.5 rounded-md ${aba === a.id ? "bg-white/10 text-amber-400 font-semibold" : "text-slate-300 hover:text-amber-400"}`}>{a.label}</button>
+            ))}
+          </nav>
+          <div className="flex items-center gap-3 text-xs text-slate-400">
+            <span className="hidden sm:inline">{user.nome}</span>
+            <span className="text-[10px] font-bold text-sky-300 border border-sky-700 rounded-full px-2 py-0.5">SOMENTE LEITURA</span>
+            <button onClick={onSair} className="border border-slate-600 rounded px-2.5 py-1 text-slate-100 hover:bg-slate-800">Sair</button>
+          </div>
+        </div>
+      </header>
+      <main className="max-w-6xl mx-auto px-4 py-6">
+        {perfilAtual === false || perfilAtual.status !== "aprovado" ? (
+          <Card className="p-8 text-center text-slate-400">Seu acesso de Coordenação não está ativo no momento. Procure o Usuário Mestre.</Card>
+        ) : turmas.length === 0 ? (
+          <Card className="p-8 text-center text-slate-400">Nenhuma turma foi liberada para você ainda. Peça ao Usuário Mestre para liberar as turmas que deseja acompanhar.</Card>
+        ) : (
+          <>
+            {aba === "inicio" && (
+              <div>
+                <div className="text-xs font-bold tracking-widest text-amber-500 mb-2">CURSO TÉCNICO EM ADMINISTRAÇÃO E CONTABILIDADE</div>
+                <h1 className="text-3xl font-bold text-slate-50 mb-3">Acompanhamento da Coordenação</h1>
+                <p className="text-slate-400 max-w-2xl mb-6">Bem-vindo(a), {user.nome}. Aqui você acompanha o processo das empresas — situação dos módulos, prazos, devolutivas e notas — e emite relatórios. O acesso é somente leitura: nada do que os alunos lançaram pode ser alterado.</p>
+                <h3 className="text-sm font-bold text-slate-200 mb-2">Turmas liberadas ({turmas.length})</h3>
+                <div className="grid sm:grid-cols-2 gap-3 mb-6">
+                  {turmas.map((t) => <Card key={t.id} className="p-4"><div className="font-semibold text-slate-100">{t.nome}</div><div className="text-xs text-slate-500">Professor(a): {t.professor || "—"}</div></Card>)}
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <button onClick={() => setAba("empresas")} className="bg-amber-500 text-slate-900 font-bold px-5 py-2.5 rounded-md hover:bg-amber-400 text-sm">Ver empresas</button>
+                  <button onClick={() => setAba("hoje")} className="border border-slate-600 text-slate-100 px-5 py-2.5 rounded-md hover:bg-slate-800 text-sm font-semibold">Situação de hoje</button>
+                  <button onClick={() => setAba("relatorios")} className="border border-slate-600 text-slate-100 px-5 py-2.5 rounded-md hover:bg-slate-800 text-sm font-semibold">Relatórios</button>
+                </div>
+              </div>
+            )}
+            {aba === "empresas" && <CoordEmpresasView turmas={turmas} onAbrir={setAlvo} />}
+            {aba === "hoje" && <HojeProfessorView turmas={turmas} />}
+            {aba === "caminho" && <CaminhoProfessorView turmas={turmas} />}
+            {aba === "registro" && <RegistroProcessoView turmas={turmas} />}
+            {aba === "diretriz" && <DiretrizSemanaView turmas={turmas} />}
+            {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} abasPermitidas={["resumo", "empresa", "notas", "pendencias"]} />}
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
+
 function GestaoAprovacoesView({ usuarioAtualUid }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const usuarios = useListaUsuarios(refreshKey);
   if (usuarios === null) return <LoadingScreen />;
 
-  const pendentes = usuarios.filter((u) => u.status === "pendente");
-  const aprovados = usuarios.filter((u) => u.status === "aprovado");
+  const coordenacao = usuarios.filter((u) => u.papel === "coordenacao");
+  const pendentes = usuarios.filter((u) => u.status === "pendente" && u.papel !== "coordenacao");
+  const aprovados = usuarios.filter((u) => u.status === "aprovado" && u.papel !== "coordenacao");
 
   const atualizar = async (uidAlvo, mudancas) => {
     await atualizarUsuario(uidAlvo, mudancas);
@@ -7459,6 +12861,8 @@ function GestaoAprovacoesView({ usuarioAtualUid }) {
   return (
     <div>
       <SectionTitle icon={Crown} sub="Aprove ou recuse os cadastros novos. Esta tela só aparece para Usuários Mestre.">Aprovações</SectionTitle>
+
+      <SecaoCoordenacaoAprovacoes coordenacao={coordenacao} onAtualizar={atualizar} onExcluir={excluir} />
 
       <h3 className="text-sm font-bold text-slate-200 mb-2 mt-2">Pendentes ({pendentes.length})</h3>
       <div className="space-y-3 mb-8">
@@ -7832,7 +13236,9 @@ function TelaPrimeiroAcessoAluno({ perfil, onSair, onResultado, onVirarProfessor
 // cadastrada pelo professor dentro da turma — evita nomes digitados errado
 // ou duplicados, e permite que vários alunos entrem na mesma empresa.
 function EscolherEmpresa({ perfil, turmaId, turmaNome, onSair, onEscolhida }) {
-  const [equipes] = useSharedList(`equipes_${turmaId}`);
+  const [equipesTodas] = useSharedList(`equipes_${turmaId}`);
+  // A empresa de teste do professor nunca aparece para o aluno escolher.
+  const equipes = equipesTodas === null ? null : equipesTodas.filter((e) => !e.teste);
   const [entrando, setEntrando] = useState(null);
 
   if (equipes === null) return <LoadingScreen />;
@@ -7908,10 +13314,19 @@ function EscolherEmpresa({ perfil, turmaId, turmaNome, onSair, onEscolhida }) {
   );
 }
 
-function AlunoWorkspaceCarregado({ userSessao, turmaId, equipeId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades }) {
-  const equipe = useEquipeSalva(turmaId, equipeId);
+function AlunoWorkspaceCarregado({ userSessao, turmaId, equipeId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades, somenteLeitura }) {
+  // Trocado de useEquipeSalva (leitura única) para useSharedList: a equipe
+  // precisa de um jeito de gravar sua própria escolha de segmento de volta
+  // na mesma lista `equipes_{turmaId}` que a tela da turma usa — sem isso,
+  // não haveria como persistir a escolha feita pelo aluno.
+  const [equipes, setEquipes] = useSharedList(`equipes_${turmaId}`);
+  if (equipes === null) return <LoadingScreen />;
+  const equipe = equipes.find((e) => e.id === equipeId);
   if (!equipe) return <LoadingScreen />;
-  return <AlunoWorkspace user={userSessao} equipe={equipe} equipeKey={`dados_equipe_${equipe.id}`} turmaId={turmaId} onSair={onSair} onTrocarEmpresa={() => onTrocarEmpresa(equipe)} professorUid={professorUid} professorNome={professorNome} turmaNome={turmaNome} ultimaVersaoVista={ultimaVersaoVista} onVerNovidades={onVerNovidades} />;
+  const atualizarEquipe = async (patch) => {
+    await setEquipes(equipes.map((e) => (e.id === equipeId ? { ...e, ...patch } : e)));
+  };
+  return <AlunoWorkspace user={userSessao} equipe={equipe} equipeKey={`dados_equipe_${equipe.id}`} turmaId={turmaId} onSair={onSair} onTrocarEmpresa={() => onTrocarEmpresa(equipe)} professorUid={professorUid} professorNome={professorNome} turmaNome={turmaNome} ultimaVersaoVista={ultimaVersaoVista} onVerNovidades={onVerNovidades} onAtualizarEquipe={somenteLeitura ? undefined : atualizarEquipe} somenteLeitura={!!somenteLeitura} />;
 }
 
 function AlunoRoteador({ perfil, onSair, onVirarProfessor }) {
@@ -8029,7 +13444,7 @@ function TelaAguardandoAprovacao({ perfil, onSair, rejeitado, onTrocarTurma, onV
             <Clock size={40} className="mx-auto text-amber-500 mb-3" />
             <h2 className="text-lg font-bold text-slate-100 mb-2">Cadastro em análise</h2>
             <p className="text-sm text-slate-400 mb-1">
-              Olá, {perfil.nome}! Seu cadastro como {perfil.papel === "professor" ? "professor(a)" : "aluno(a)"}
+              Olá, {perfil.nome}! Seu cadastro como {perfil.papel === "professor" ? "professor(a)" : perfil.papel === "coordenacao" ? "coordenação (somente leitura)" : "aluno(a)"}
               {perfil.turmaNome ? <> para a turma <b>{perfil.turmaNome}</b></> : ""} foi enviado e está aguardando aprovação de um Usuário Mestre.
             </p>
             <p className="text-xs text-slate-500 mb-3">Assim que for aprovado, é só entrar novamente com sua conta Google.</p>
@@ -8103,14 +13518,18 @@ function TelaLogin({ onEscolherPerfil }) {
       <p className="text-sm text-slate-400 mb-5">Entre com sua conta Google para acessar a Plataforma do Plano Financeiro.</p>
 
       <Field label="Perfil de acesso" hint="Só é usado na primeira vez que esta conta entra no sistema. Depois disso, o perfil só pode ser alterado por um Usuário Mestre, no painel de Usuários.">
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-1.5">
           <button type="button" onClick={() => setPapel("aluno")} className={`flex items-center justify-center gap-2 py-2 rounded-md text-sm font-semibold border ${papel === "aluno" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300 hover:border-slate-400"}`}>
             <GraduationCap size={15} /> Aluno(a)
           </button>
           <button type="button" onClick={() => setPapel("professor")} className={`flex items-center justify-center gap-2 py-2 rounded-md text-sm font-semibold border ${papel === "professor" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300 hover:border-slate-400"}`}>
             <UserCog size={15} /> Professor(a)
           </button>
+          <button type="button" onClick={() => setPapel("coordenacao")} className={`flex items-center justify-center gap-1.5 px-1 py-2 rounded-md text-[13px] font-semibold border ${papel === "coordenacao" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300 hover:border-slate-400"}`}>
+            <Eye size={15} /> Coordenação
+          </button>
         </div>
+        {papel === "coordenacao" && <p className="text-[11px] text-sky-300 mt-2">Acesso somente de leitura para acompanhar o processo das empresas. Depende de aprovação do Usuário Mestre, que libera as turmas.</p>}
       </Field>
 
       {papel === "professor" && (
@@ -8290,6 +13709,7 @@ export default function App() {
       papel,
       status: papel === "professor" ? "aprovado" : "pendente",
       mestre: souMestre,
+      ...(papel === "coordenacao" ? { turmasLiberadas: [] } : {}),
       turmaId: null, turmaNome: null, equipeId: null,
       criadoEm: Date.now(),
     };
@@ -8331,6 +13751,12 @@ export default function App() {
       const atualizado = await atualizarUsuario(perfil.uid, mudancas);
       if (atualizado) setPerfilRecemCriado(atualizado);
     }} />;
+  }
+
+  // coordenação (somente leitura): precisa de aprovação do Mestre, que também libera as turmas
+  if (perfil.papel === "coordenacao") {
+    if (perfil.status !== "aprovado") return <TelaAguardandoAprovacao perfil={perfil} onSair={efetuarSaidaComLog} rejeitado={perfil.status === "rejeitado"} />;
+    return <CoordenacaoDashboard user={{ uid: perfil.uid, nome: perfil.nome, email: perfil.email, turmasLiberadas: perfil.turmasLiberadas || [] }} onSair={efetuarSaidaComLog} />;
   }
 
   // professor

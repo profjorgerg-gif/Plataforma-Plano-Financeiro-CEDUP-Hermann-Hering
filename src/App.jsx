@@ -1,4 +1,4 @@
-// build: 20261023_16h10m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261023_16h40m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -7931,7 +7931,7 @@ function GestaoCronogramaView({ turmas }) {
 // DESFEITO enquanto os módulos não tiverem sido reenviados.
 // ============================================================================
 const MODULO_GATILHO_AJUSTES = "m11"; // a fase começa quando a equipe conclui os lançamentos (M1–M11)
-const MSG_AJUSTES_PADRAO = "Fase de análise e ajustes — vocês concluíram os lançamentos (Módulos 1 a 11). Agora estão liberados TODOS os módulos: usem os Módulos 12 e 13 para analisar o negócio e, com base nessa análise, revisem os lançamentos anteriores e façam os ajustes necessários no plano financeiro. Reenviem cada módulo até {prazo}. As notas já atribuídas foram mantidas.";
+const MSG_AJUSTES_PADRAO = "Fase de análise e ajustes — vocês concluíram os lançamentos (Módulos 1 a 11). Agora estão liberados os Módulos 12 e 13 para analisar o negócio e os módulos em que o relatório indicou ajustes: com base nessa análise, revisem os lançamentos e façam os ajustes necessários no plano financeiro. Reenviem cada módulo liberado até {prazo}; os demais continuam concluídos. As notas já atribuídas foram mantidas.";
 const chaveLotesAjustes = (turmaId) => `lotes_ajustes_${turmaId}`;
 
 async function lerDadosEquipeFresco(equipeId) {
@@ -7964,7 +7964,7 @@ function GestaoLiberarAjustesView({ turmas, professorNome }) {
   }
   return (
     <div>
-      <SectionTitle icon={RotateCcw} sub="Quando a equipe conclui o Módulo 11, libere TODOS os módulos para análise (M12 e M13) e ajustes dos lançamentos. Escolha a turma.">Liberar análise e ajustes</SectionTitle>
+      <SectionTitle icon={RotateCcw} sub="Quando a equipe conclui o Módulo 11, libere a análise (M12 e M13) e os ajustes dos módulos indicados no relatório. Escolha a turma.">Liberar análise e ajustes</SectionTitle>
       {turmas.length === 0 ? (
         <Card className="p-10 text-center text-slate-500">Você ainda não criou nenhuma turma.</Card>
       ) : (

@@ -1,4 +1,4 @@
-// build: 20261022_23h10m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261023_10h20m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -706,6 +706,7 @@ const GESTAO_ITENS = [
   { id: "turmas", label: "Turmas", icon: School },
   { id: "correcoes", label: "Correções pendentes", icon: Inbox },
   { id: "liberarAjustes", label: "Liberar análise e ajustes", icon: RotateCcw },
+  { id: "itensSegmento", label: "Itens esperados por segmento", icon: ClipboardList },
   { id: "cronograma", label: "Cronograma", icon: Calendar },
   { id: "integrantes", label: "Integrantes por Empresa", icon: Users2 },
   { id: "usuarios", label: "Usuários", icon: Users },
@@ -1328,6 +1329,11 @@ function chamadoPassaFiltro(c, filtro) {
 // Lista do mais recente para o mais antigo — o primeiro item é a versão vigente.
 // ============================================================================
 const VERSOES = [
+  { versao: "3.1", data: "23/10/2026", itens: [
+    "A \"Orientação da equipe\" (tela e PDF) ganhou o Diagnóstico de viabilidade: DRE com o percentual de cada rubrica sobre a receita, ponto de equilíbrio e quanto a receita atual cobre dele, quanto tempo dura o capital de giro e o peso do capital de terceiros.",
+    "Para equipes que concluíram os lançamentos (Módulo 11), a orientação passa a trazer um plano de ação por módulo, com valores (ex.: mão de obra com 68,7% da receita no Módulo 9; custos usuais do segmento que faltam no Módulo 11).",
+    "Novo item no menu Gestão: \"Itens esperados por segmento\", onde o professor edita a lista de custos que cada segmento deve ter. Os limites usados são referências pedagógicas, não normas.",
+  ]},
   { versao: "3.0", data: "22/10/2026", itens: [
     "O novo item de menu \"Liberar análise e ajustes\" (em Gestão) abre a \"Fase de análise e ajustes\", que passa a começar quando a equipe conclui o Módulo 11 (fim dos lançamentos): o professor libera TODOS os módulos de uma vez, ficando os Módulos 12 e 13 (análise do negócio) liberados e os módulos já corrigidos reabertos para a equipe revisar os lançamentos com base na análise.",
     "Notas, lançamentos e comentários continuam intactos; o professor reaprova módulo a módulo e pode desfazer a liberação enquanto não houver reenvio.",
@@ -7820,6 +7826,47 @@ function GestaoIntegrantesView({ turmas, user }) {
   );
 }
 
+// Tela de MENU: Gestão → Itens esperados por segmento. O professor ajusta a lista
+// de custos que a Orientação cobra de cada segmento (só afeta a análise; nada
+// é gravado nos dados das equipes). Fica na chave "itens_segmento_{uid}".
+function GestaoItensSegmentoView({ user }) {
+  const [cfg, setCfg] = useSharedObject(`itens_segmento_${user.uid}`, null);
+  const [seg, setSeg] = useState(SEGMENTOS_NEGOCIO[5]);
+  if (cfg === undefined) return <LoadingScreen />;
+  const salvos = cfg || {};
+  const personalizado = Array.isArray(salvos[seg]);
+  const itens = personalizado ? salvos[seg] : (ITENS_ESPERADOS_PADRAO[seg] || []);
+  const gravar = (novos) => setCfg({ ...salvos, [seg]: novos });
+  const mudar = (i, campo, v) => gravar(itens.map((it, k) => (k === i ? { ...it, [campo]: v } : it)));
+  const inp = "w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-100";
+  return (
+    <div>
+      <SectionTitle icon={ClipboardList} sub="Custos que a Orientação da equipe espera encontrar no Módulo 11 (ou 3) de cada segmento. Se faltar, o sistema avisa a equipe. Os itens comuns a todos (aluguel, energia, água, internet, contabilidade, marketing) sempre são conferidos.">Itens esperados por segmento</SectionTitle>
+      <Card className="p-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="text-xs text-slate-400">Segmento</label>
+          <select value={seg} onChange={(e) => setSeg(e.target.value)} className="bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-100">
+            {SEGMENTOS_NEGOCIO.map((s) => <option key={s} value={s}>{s}{Array.isArray(salvos[s]) ? " (editado)" : ""}</option>)}
+          </select>
+          {personalizado && <button onClick={() => { const n = { ...salvos }; delete n[seg]; setCfg(n); }} className="text-xs border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 hover:bg-slate-800">Restaurar o padrão deste segmento</button>}
+        </div>
+        {itens.length === 0 && <div className="text-xs text-slate-500">Este segmento não tem itens específicos (só os comuns). Adicione se quiser.</div>}
+        <div className="space-y-2">
+          {itens.map((it, i) => (
+            <div key={i} className="grid md:grid-cols-[1fr_1.4fr_auto] gap-2 items-center">
+              <input value={it.nome} onChange={(e) => mudar(i, "nome", e.target.value)} placeholder="Nome do custo (o que aparece para a equipe)" className={inp} />
+              <input value={it.palavras} onChange={(e) => mudar(i, "palavras", e.target.value)} placeholder="Palavras que indicam que a equipe lançou (separe por vírgula)" className={inp} />
+              <button onClick={() => gravar(itens.filter((_, k) => k !== i))} className="text-xs text-rose-400 hover:text-rose-300 px-2 py-1.5" title="Remover este item"><Trash2 size={15} /></button>
+            </div>
+          ))}
+        </div>
+        <button onClick={() => gravar([...itens, { nome: "", palavras: "" }])} className="text-xs font-semibold border border-amber-500/50 text-amber-300 rounded-md px-3 py-1.5 hover:bg-amber-500/10">+ Adicionar item</button>
+        <p className="text-[11px] text-slate-500">A conferência procura as palavras na descrição dos itens do Módulo 11 e do Módulo 3 (sem diferenciar acentos nem maiúsculas). Ex.: “refriger, freezer” reconhece “Manutenção dos freezers”.</p>
+      </Card>
+    </div>
+  );
+}
+
 function GestaoCronogramaView({ turmas }) {
   const [turmaSelId, setTurmaSelId] = useState(turmas.length === 1 ? turmas[0].id : null);
   const turmaSel = turmas.find((t) => t.id === turmaSelId) || null;
@@ -9564,7 +9611,111 @@ function diasDesdePrazo(prazoIso) {
   return Math.round((hoje.getTime() - p.getTime()) / 86400000); // >0 = vencido há N dias
 }
 
-function gerarOrientacaoEquipe(item) {
+// ============================================================================
+// DIAGNÓSTICO DE VIABILIDADE (v3.1) — usado no PDF/tela de "Orientação da
+// equipe". Só LÊ os dados e calcula na hora (nada é gravado). Transforma os
+// números do plano em: DRE com % da receita, ponto de equilíbrio, folga de
+// caixa, peso do capital de terceiros e um plano de ação por módulo. Os
+// limites abaixo são REFERÊNCIAS PEDAGÓGICAS (regra prática), não normas
+// contábeis: servem para abrir a conversa com a equipe.
+// ============================================================================
+const LIMITES_DIAG = { comercializacao: 15, cmvOk: 40, cmvAlto: 55, maoObraOk: 30, maoObraAlto: 40, outrasFixasOk: 25, terceirosAlto: 70, mcBoa: 40, caixaMesesMin: 12 };
+
+const ITENS_ESPERADOS_COMUNS = [
+  { nome: "Aluguel", palavras: "alugu" },
+  { nome: "Energia elétrica", palavras: "energia, luz" },
+  { nome: "Água", palavras: "agua" },
+  { nome: "Internet/telefone", palavras: "internet, telefone" },
+  { nome: "Contabilidade", palavras: "contab, contador" },
+  { nome: "Marketing/divulgação", palavras: "marketing, divulg, publicidade, propaganda, redes sociais" },
+];
+const ITENS_PDV = { nome: "Software PDV com emissão fiscal", palavras: "software, pdv, sistema, nota fiscal, fiscal" };
+const ITENS_ALVARA = { nome: "Alvarás, licenças e taxas", palavras: "alvara, licenc, vigilancia, bombeiro, taxa" };
+const ITENS_PRAGAS = { nome: "Controle de pragas", palavras: "praga, dedetiz" };
+const ITENS_ESPERADOS_PADRAO = {
+  "Sorveteria": [
+    { nome: "Manutenção de refrigeração e freezers", palavras: "refriger, freezer, manuten, ar condicionado" }, ITENS_PRAGAS, ITENS_PDV,
+    { nome: "Seguro empresarial (perda de estoque congelado)", palavras: "seguro" }, ITENS_ALVARA,
+    { nome: "Direitos autorais de música (ECAD)", palavras: "ecad, musica, direito autoral" },
+  ],
+  "Restaurante / lanchonete": [ITENS_PRAGAS, ITENS_PDV, ITENS_ALVARA, { nome: "Gás", palavras: "gas" }, { nome: "Limpeza de coifa/exaustão", palavras: "coifa, exaust" }, { nome: "Descartáveis e embalagens", palavras: "descart, embalag" }, { nome: "Direitos autorais de música (ECAD)", palavras: "ecad, musica, direito autoral" }],
+  "Padaria / confeitaria": [ITENS_PRAGAS, ITENS_PDV, ITENS_ALVARA, { nome: "Gás", palavras: "gas" }, { nome: "Manutenção de fornos e refrigeração", palavras: "manuten, forno, refriger" }, { nome: "Embalagens", palavras: "embalag" }],
+  "Estética / beleza": [ITENS_PDV, ITENS_ALVARA, { nome: "Esterilização e higienização", palavras: "esteriliz, higien, limpeza" }, { nome: "Descarte de resíduos (perfurocortantes)", palavras: "resid, descarte, lixo" }, { nome: "Software de agendamento", palavras: "agenda, software, sistema" }, { nome: "Seguro", palavras: "seguro" }],
+  "Moda / brechó": [ITENS_PDV, ITENS_ALVARA, { nome: "Embalagens e etiquetas", palavras: "embalag, etiqueta, sacola" }, { nome: "Higienização das peças", palavras: "lavand, higieniz, limpeza" }, { nome: "Seguro", palavras: "seguro" }],
+  "Semijoias / acessórios": [ITENS_PDV, ITENS_ALVARA, { nome: "Embalagens", palavras: "embalag" }, { nome: "Seguro", palavras: "seguro" }],
+};
+function itensEsperadosDoSegmento(segmento, cfg) {
+  const custom = cfg && cfg[segmento];
+  const base = Array.isArray(custom) ? custom : (ITENS_ESPERADOS_PADRAO[segmento] || []);
+  return [...ITENS_ESPERADOS_COMUNS, ...base];
+}
+
+function diagnosticoViabilidade(l, calc, segmento, cfg) {
+  if (!(calc.faturamento > 0)) return null;
+  const F = calc.faturamento; const pct = (v) => (F > 0 ? (v / F) * 100 : 0);
+  const LIM = LIMITES_DIAG;
+  const outras = (calc.custoFixoManual || 0) + (calc.depreciacaoMensal || 0);
+  const mc = calc.margemContribuicao; const res = calc.resultadoOperacional;
+  const faixa = (p, ok, alto, a, b, c) => (p <= ok ? a : p <= alto ? b : c);
+  const dre = [
+    { rubrica: "Faturamento bruto (receita)", valor: F, pct: 100, status: "" },
+    { rubrica: "(-) Custos de comercialização (impostos/comissões)", valor: calc.custoComercializacao, pct: pct(calc.custoComercializacao), status: faixa(pct(calc.custoComercializacao), LIM.comercializacao, 25, "Adequado", "Atenção", "Alto") },
+    { rubrica: "(-) CMV / CMD (insumos e matéria-prima)", valor: calc.cmv, pct: pct(calc.cmv), status: faixa(pct(calc.cmv), LIM.cmvOk, LIM.cmvAlto, "Dentro da média", "Atenção", "Crítico") },
+    { rubrica: "(=) Margem de contribuição total", valor: mc, pct: pct(mc), status: pct(mc) >= LIM.mcBoa ? "Margem boa" : mc > 0 ? "Margem baixa" : "Margem negativa" },
+    { rubrica: "(-) Mão de obra, encargos e pró-labore (Módulo 9)", valor: calc.maoDeObra, pct: pct(calc.maoDeObra), status: faixa(pct(calc.maoDeObra), LIM.maoObraOk, LIM.maoObraAlto, "Adequado", "Atenção", "Crítico / excessivo") },
+    { rubrica: "(-) Outras despesas fixas e depreciação (Módulos 10 e 11)", valor: outras, pct: pct(outras), status: pct(outras) <= LIM.outrasFixasOk ? "Adequado" : "Necessita ajustes" },
+    { rubrica: "(=) Resultado operacional mensal", valor: res, pct: pct(res), status: res >= 0 ? "Lucro" : pct(res) < -20 ? "Prejuízo grave" : "Prejuízo" },
+  ];
+  const peMensal = calc.indiceMargemContribuicao > 0 ? calc.custoFixoTotal / calc.indiceMargemContribuicao : null;
+  const cobertura = peMensal ? (F / peMensal) * 100 : null;
+  const mesesCaixa = res < 0 && calc.capitalGiroTotal > 0 ? calc.capitalGiroTotal / -res : null;
+  const prop = Number(l.m4.pctProprio); const pctTerc = Number.isFinite(prop) ? Math.min(100, Math.max(0, 100 - prop)) : 0;
+  const valorTerc = (calc.investimentoTotal || 0) * pctTerc / 100;
+
+  // plano de ação por módulo (cada item vira uma linha na Orientação)
+  const plano = [];
+  const mdoP = pct(calc.maoDeObra);
+  if (mdoP > LIM.maoObraOk) plano.push({ mod: 9, titulo: `A mão de obra custa ${fmtBRL(calc.maoDeObra)} por mês, ${fmtNum(mdoP, 1)}% da receita (referência usual: até ${LIM.maoObraOk}%).`, orientacao: "Revisem o número de funcionários em tempo integral, usem escalas parciais nos dias de pico e adequem o pró-labore dos sócios à fase de abertura do negócio." });
+  const textoM11 = [...l.m11.itens, ...l.m3.itens].map((x) => normTxt(x.desc || x.nome)).join(" | ");
+  const faltam = itensEsperadosDoSegmento(segmento, cfg).filter((it) => !String(it.palavras || "").split(",").map((p) => normTxt(p)).filter(Boolean).some((p) => textoM11.includes(p))).map((it) => it.nome);
+  if (l.m11.itens.length > 0 && faltam.length) plano.push({ mod: 11, titulo: `Custos usuais do segmento (${segmento || "não informado"}) que não encontrei no Módulo 11 nem no 3: ${faltam.join("; ")}.`, orientacao: "Incluam os que se aplicam ao negócio (ou expliquem por que não se aplicam). Para compensar o aumento, avaliem cortar despesas fixas secundárias." });
+  if (cobertura !== null && cobertura < 100) plano.push({ mod: 5, titulo: `O faturamento de ${fmtBRL(F)} cobre apenas ${fmtNum(cobertura, 1)}% do ponto de equilíbrio (${fmtBRL(peMensal)} por mês).`, orientacao: "Revisem as quantidades vendidas e os preços praticados no mercado local (Módulo 5) e confiram os custos unitários de insumos e embalagens (Módulos 6 e 8) para que o faturamento e os custos sejam coerentes." });
+  if (pctTerc > LIM.terceirosAlto) plano.push({ mod: 4, titulo: `${fmtNum(pctTerc, 0)}% do investimento (${fmtBRL(valorTerc)}) vem de capital de terceiros.`, orientacao: "O fluxo de caixa precisa pagar o financiamento. Revisem a proporção entre capital próprio e de terceiros ou justifiquem a capacidade de pagamento." });
+  if (mesesCaixa !== null && mesesCaixa < LIM.caixaMesesMin) plano.push({ mod: 2, titulo: `Com o resultado atual (${fmtBRL(res)} por mês), o capital de giro de ${fmtBRL(calc.capitalGiroTotal)} dura cerca de ${fmtNum(mesesCaixa, 1)} meses.`, orientacao: "Reavaliem o capital de giro depois de ajustar receita e custos, e a necessidade de caixa mínimo." });
+  if (res < 0) plano.push({ mod: 12, titulo: `Resultado operacional negativo: ${fmtBRL(res)} por mês (${fmtNum(pct(res), 1)}% da receita).`, orientacao: "Depois de ajustar os módulos acima, o Demonstrativo deve mostrar resultado positivo antes de ser reenviado." });
+  if (calc.prazoRetorno == null) plano.push({ mod: 13, titulo: "Com o resultado atual o investimento não se paga (não há prazo de retorno).", orientacao: "Elaborem os cenários otimista e pessimista, calculando payback e TIR, e concluam sobre a viabilidade do negócio." });
+  return { dre, peMensal, peAnual: peMensal ? peMensal * 12 : null, cobertura, mesesCaixa, pctTerc, valorTerc, giro: calc.capitalGiroTotal, plano, faltam };
+}
+
+function TabelaDRE({ d }) {
+  const cor = (s) => (/^(Crítico|Prejuízo|Margem negativa|Alto)/.test(s) ? "text-rose-400" : /^(Atenção|Necessita|Margem baixa)/.test(s) ? "text-amber-400" : "text-emerald-400");
+  return (
+    <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-sm">
+      <thead><tr className="text-left text-[11px] uppercase text-slate-500 border-b border-slate-700"><th className="py-1.5 px-3">Rubrica</th><th className="py-1.5 px-3 text-right">Valor mensal</th><th className="py-1.5 px-3 text-right">% da receita</th><th className="py-1.5 px-3">Leitura</th></tr></thead>
+      <tbody>{d.dre.map((r, i) => (
+        <tr key={i} className="border-b border-slate-800"><td className="py-1.5 px-3 text-slate-200">{r.rubrica}</td><td className="py-1.5 px-3 text-right text-slate-200">{fmtBRL(r.valor)}</td><td className="py-1.5 px-3 text-right text-slate-400">{fmtNum(r.pct, 1)}%</td><td className={`py-1.5 px-3 font-semibold ${cor(r.status)}`}>{r.status}</td></tr>
+      ))}</tbody>
+    </table></div>
+  );
+}
+
+function BlocoDiagnosticoTela({ d }) {
+  if (!d) return <Card className="p-4 text-sm text-slate-500">O diagnóstico de viabilidade aparece quando houver faturamento lançado (Módulo 5).</Card>;
+  return (
+    <div className="space-y-3">
+      <Card className="p-0 overflow-hidden"><TabelaDRE d={d} /></Card>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard label="Ponto de equilíbrio (mês)" value={d.peMensal ? fmtBRL(d.peMensal) : "—"} tone="gold" small />
+        <StatCard label="Receita cobre do equilíbrio" value={d.cobertura != null ? `${fmtNum(d.cobertura, 1)}%` : "—"} tone={d.cobertura != null && d.cobertura < 100 ? "rose" : "emerald"} small />
+        <StatCard label="Capital de giro dura" value={d.mesesCaixa != null ? `${fmtNum(d.mesesCaixa, 1)} meses` : "sem consumo"} tone={d.mesesCaixa != null && d.mesesCaixa < LIMITES_DIAG.caixaMesesMin ? "rose" : "emerald"} small />
+        <StatCard label="Capital de terceiros" value={`${fmtNum(d.pctTerc, 0)}%`} tone={d.pctTerc > LIMITES_DIAG.terceirosAlto ? "rose" : "slate"} small />
+      </div>
+      <p className="text-[11px] text-slate-500">As leituras (“adequado”, “crítico”…) usam limites de referência pedagógica (ex.: mão de obra até {LIMITES_DIAG.maoObraOk}% da receita, CMV até {LIMITES_DIAG.cmvOk}%) — servem para conversar com a equipe, não são normas.</p>
+    </div>
+  );
+}
+
+function gerarOrientacaoEquipe(item, cfg) {
   const { equipe, dados, calc } = item;
   const fluxoMod = dados.fluxoModulos || {};
   const l = mergeLancamentos(dados.lancamentos);
@@ -9630,6 +9781,17 @@ function gerarOrientacaoEquipe(item) {
     const fluxo = projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0);
     if (!fluxo.some((mm) => mm.mes > 0 && mm.saldo >= 0)) fim("O negócio não recupera o investimento nos 12 meses do fluxo de caixa.", "Rever receita, custos e investimento; analisar cenários alternativos.");
   }
+  // Diagnóstico de viabilidade + plano por módulo (só quando a equipe já concluiu os lançamentos: M11 corrigido)
+  const diagnostico = diagnosticoViabilidade(l, calc, equipe.segmento, cfg);
+  if (diagnostico && estadoModulo(fluxoMod, "m11").status === "corrigido") {
+    if (diagnostico.plano.length) {
+      for (let k = achados.length - 1; k >= 0; k--) if (achados[k].mod === 0 && /^(Resultado operacional negativo|O faturamento anual projetado)/.test(achados[k].titulo)) achados.splice(k, 1);
+    }
+    diagnostico.plano.forEach((pl) => {
+      const mm = MODULOS[pl.mod - 1];
+      achados.push({ grav: "conferir", mod: pl.mod, modulo: `${mm.n} · ${mm.nome}`, titulo: pl.titulo, orientacao: pl.orientacao, onde: `Menu → ${mm.n} ${mm.nome}`, quem: "equipe" });
+    });
+  }
 
   const ordemG = { erro: 0, conferir: 1 };
   achados.sort((a, b) => ordemG[a.grav] - ordemG[b.grav] || a.mod - b.mod);
@@ -9643,7 +9805,7 @@ function gerarOrientacaoEquipe(item) {
     id: equipe.id, nome: equipe.nomeNegocio, teste: !!equipe.teste, segmento: equipe.segmento || "não informado",
     integrantes: equipe.integrantes || [], gestor: dados.gestor?.nome || null,
     total: MODULOS.length, corrigidos, comEquipe, comProfessor, achados, linhas: linhasOrd,
-    maxVencido, proximo, situacao,
+    maxVencido, proximo, situacao, diagnostico,
   };
 }
 
@@ -9661,6 +9823,11 @@ function orientacaoEmTexto(o, turma) {
       L.push(`   O que fazer: ${a.orientacao}`);
       if (a.onde) L.push(`   Onde: ${a.onde}`);
     });
+  }
+  if (o.diagnostico) {
+    L.push("", "Diagnóstico de viabilidade (valores mensais):");
+    o.diagnostico.dre.forEach((r) => L.push(`- ${r.rubrica}: ${fmtBRL(r.valor)} (${fmtNum(r.pct, 1)}% da receita)${r.status ? ` — ${r.status}` : ""}`));
+    if (o.diagnostico.peMensal) L.push(`- Ponto de equilíbrio: ${fmtBRL(o.diagnostico.peMensal)} por mês (a receita atual cobre ${fmtNum(o.diagnostico.cobertura, 1)}%).`);
   }
   const aguard = o.linhas.filter((x) => x.tipo === "aw").map((x) => x.mod).sort((a, b) => a - b);
   if (aguard.length) L.push("", `Aguardando o professor: ${aguard.length > 1 ? "Módulos" : "Módulo"} ${aguard.join(", ")}.`);
@@ -9757,6 +9924,17 @@ function FolhasOrientacaoImpressao({ lista, turma, emitidoEm }) {
               </table>
             )}
 
+            {o.diagnostico && (<>
+              <h2>Diagnóstico de viabilidade</h2>
+              <table>
+                <thead><tr><th>RUBRICA</th><th style={{ width: "17%" }}>VALOR MENSAL</th><th style={{ width: "12%" }}>% RECEITA</th><th style={{ width: "19%" }}>LEITURA</th></tr></thead>
+                <tbody>{o.diagnostico.dre.map((r, i) => (
+                  <tr key={i}><td>{r.rubrica}</td><td>{fmtBRL(r.valor)}</td><td>{fmtNum(r.pct, 1)}%</td><td style={{ fontWeight: 700, color: /^(Crítico|Prejuízo|Margem negativa|Alto)/.test(r.status) ? "#b91c1c" : /^(Atenção|Necessita|Margem baixa)/.test(r.status) ? "#b45309" : "#047857" }}>{r.status}</td></tr>
+                ))}</tbody>
+              </table>
+              <div className="op-leg">Ponto de equilíbrio: {o.diagnostico.peMensal ? `${fmtBRL(o.diagnostico.peMensal)} por mês` : "—"}{o.diagnostico.cobertura != null ? ` (a receita atual cobre ${fmtNum(o.diagnostico.cobertura, 1)}%)` : ""} · Capital de giro: {o.diagnostico.mesesCaixa != null ? `dura cerca de ${fmtNum(o.diagnostico.mesesCaixa, 1)} meses com o resultado atual` : "sem consumo pelo resultado"} · Capital de terceiros: {fmtNum(o.diagnostico.pctTerc, 0)}% do investimento. Leituras usam limites de referência pedagógica, não normas.</div>
+            </>)}
+
             <h2>Situação por módulo</h2>
             <table>
               <thead><tr><th style={{ width: "38%" }}>MÓDULO</th><th style={{ width: "34%" }}>SITUAÇÃO</th><th>PRAZO</th></tr></thead>
@@ -9790,7 +9968,8 @@ function RelatorioOrientacao({ turma, dadosEquipes }) {
   const [folhas, setFolhas] = useState(null); // lista de orientações a imprimir (retrato)
   const [copiado, setCopiado] = useState(false);
 
-  const lista = useMemo(() => (dadosEquipes || []).map(gerarOrientacaoEquipe), [dadosEquipes]);
+  const [cfgSeg] = useSharedObject(turma?.professorUid ? `itens_segmento_${turma.professorUid}` : null, null);
+  const lista = useMemo(() => (dadosEquipes || []).map((it) => gerarOrientacaoEquipe(it, cfgSeg || null)), [dadosEquipes, cfgSeg]);
 
   // Impressão em retrato, uma equipe por folha. A folha vai para um portal
   // direto no <body>; durante o print() todo o resto da página some.
@@ -9920,6 +10099,9 @@ function RelatorioOrientacao({ turma, dadosEquipes }) {
         </div>
       </Card>
       <p className="text-[11px] text-slate-500 -mt-4 mb-6">✓ significa “corrigido pelo professor”, <b>não</b> “plano financeiramente viável”. Módulos em ordem, do 1 ao 13.</p>
+
+      <h4 className="text-sm font-bold text-slate-200 mb-2">Diagnóstico de viabilidade</h4>
+      <div className="mb-6"><BlocoDiagnosticoTela d={o.diagnostico} /></div>
 
       <h4 className="text-sm font-bold text-slate-200 mb-2">O que precisa de ajuste ({o.achados.length})</h4>
       {o.achados.length === 0 ? <Card className="p-5 text-sm text-emerald-400">Nenhuma pendência encontrada.</Card> : (
@@ -11751,6 +11933,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
         {aba === "correcoes" && <CorrecoesPendentesView pendentes={pendentesCorrecao} onAbrir={abrirCorrecao} />}
         {aba === "usuarios" && <GestaoUsuariosView turmas={turmas} />}
         {aba === "cronograma" && <GestaoCronogramaView turmas={turmas} />}
+        {aba === "itensSegmento" && <GestaoItensSegmentoView user={user} />}
         {aba === "liberarAjustes" && <GestaoLiberarAjustesView turmas={turmas} professorNome={user.nome} />}
         {aba === "integrantes" && <GestaoIntegrantesView turmas={turmas} user={user} />}
         {aba === "acessos" && <GestaoAcessosView turmas={turmas} user={user} />}

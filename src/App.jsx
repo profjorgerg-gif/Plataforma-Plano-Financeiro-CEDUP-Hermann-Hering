@@ -1,4 +1,4 @@
-// build: 20261023_16h40m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261022_21h00m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -706,6 +706,7 @@ const GESTAO_ITENS = [
   { id: "turmas", label: "Turmas", icon: School },
   { id: "correcoes", label: "Correções pendentes", icon: Inbox },
   { id: "liberarAjustes", label: "Liberar análise e ajustes", icon: RotateCcw },
+  { id: "parecer", label: "Parecer do projeto", icon: ScrollText },
   { id: "itensSegmento", label: "Itens esperados por segmento", icon: ClipboardList },
   { id: "cronograma", label: "Cronograma", icon: Calendar },
   { id: "integrantes", label: "Integrantes por Empresa", icon: Users2 },
@@ -1329,6 +1330,10 @@ function chamadoPassaFiltro(c, filtro) {
 // Lista do mais recente para o mais antigo — o primeiro item é a versão vigente.
 // ============================================================================
 const VERSOES = [
+  { versao: "3.4", data: "22/10/2026", itens: [
+    "Novo item de menu em Gestão: \"Parecer do projeto\". O professor escolhe a turma e a empresa, o sistema analisa o negócio inteiro e sugere o veredito (projeto finalizado, finalizado com ressalvas ou com inconsistências), mostra o que está bom e, onde houver inconsistência, ONDE corrigir e O QUE fazer.",
+    "O parecer é editável e pode ser salvo no histórico, enviado para a equipe pela plataforma (aba Feedback do aluno) e baixado em PDF. Não altera módulos, notas nem lançamentos.",
+  ]},
   { versao: "3.3", data: "23/10/2026", itens: [
     "Na revisão, só os módulos com ponto a ajustar vêm marcados para abrir (12 e 13 sempre abrem); os sem inconsistência permanecem concluídos, e o professor pode marcar qualquer um para abrir também.",
     "\"Liberar análise e ajustes\" agora é um processo único: o professor marca as equipes e o prazo, o sistema gera o relatório de cada uma (diagnóstico + plano por módulo), o professor revisa e edita, e ao confirmar todos os módulos são liberados e cada um mostra à equipe a orientação específica daquele módulo. O relatório completo vai também para a aba Feedback.",
@@ -7945,6 +7950,308 @@ function equipeChegouAoFinal(fluxo) {
 }
 function fmtDataBR(iso) { const [a, m, d] = String(iso || "").split("-"); return d ? `${d}/${m}/${a}` : iso; }
 
+// ===== Parecer do projeto (menu Gestão → Parecer do projeto) =====
+// O professor escolhe a turma e a empresa; o sistema analisa o negócio inteiro
+// (reaproveitando a Orientação e o Diagnóstico de viabilidade), sugere o veredito
+// e redige o parecer: o que está bom e, nas inconsistências, ONDE e O QUE FAZER.
+// Só leitura até o professor salvar/enviar. Grava apenas `pareceres_{turmaId}`
+// (histórico) e, se ele escolher enviar, acrescenta UM comentário em `comentarios`.
+const PARECER_NIVEIS = {
+  finalizado: { rotulo: "Projeto finalizado", curto: "FINALIZADO", cls: "bg-emerald-700 text-emerald-50", cor: "#047857", bg: "#f0fdf4" },
+  ressalvas: { rotulo: "Finalizado com ressalvas", curto: "FINALIZADO COM RESSALVAS", cls: "bg-amber-500 text-slate-900", cor: "#b45309", bg: "#fffbeb" },
+  inconsistencias: { rotulo: "Com inconsistências a corrigir", curto: "COM INCONSISTÊNCIAS A CORRIGIR", cls: "bg-rose-600 text-white", cor: "#b91c1c", bg: "#fef2f2" },
+};
+const chavePareceres = (turmaId) => `pareceres_${turmaId}`;
+async function lerPareceres(turmaId) {
+  try { const r = await window.storage.get(chavePareceres(turmaId), true); return r ? JSON.parse(r.value) : []; } catch { return []; }
+}
+
+// Sugere o veredito pelas regras já usadas na plataforma (nada novo é inventado)
+function analisarParecer(o, calc) {
+  const criticos = []; const fortes = [];
+  if (o.corrigidos < o.total) criticos.push(`${o.total - o.corrigidos} módulo(s) ainda não concluído(s) (corrigidos: ${o.corrigidos} de ${o.total})`);
+  else fortes.push(`Todos os ${o.total} módulos foram lançados e corrigidos.`);
+  if (o.achados.some((a) => a.grav === "erro")) criticos.push("há módulo devolvido ou com prazo vencido");
+  if (!(calc.faturamento > 0)) criticos.push("não há faturamento lançado (Módulo 5)");
+  else {
+    const dg = o.diagnostico;
+    if (calc.resultadoOperacional < 0) criticos.push(`resultado operacional mensal negativo (${fmtBRL(calc.resultadoOperacional)})`);
+    else fortes.push(`Resultado operacional positivo: ${fmtBRL(calc.resultadoOperacional)} por mês.`);
+    if (dg && dg.cobertura != null) {
+      if (dg.cobertura < 100) criticos.push(`o faturamento cobre só ${fmtNum(dg.cobertura, 1)}% do ponto de equilíbrio`);
+      else fortes.push(`O faturamento cobre o ponto de equilíbrio (${fmtNum(dg.cobertura, 1)}%).`);
+    }
+    if (calc.prazoRetorno == null) criticos.push("o investimento não se paga com o resultado atual (sem prazo de retorno)");
+    else if (calc.prazoRetorno <= 5) fortes.push(`Prazo de retorno do investimento de ${fmtNum(calc.prazoRetorno, 1)} ano(s).`);
+    if (dg && dg.mesesCaixa == null) fortes.push("Capital de giro sem consumo de caixa pelo resultado.");
+  }
+  const nivel = criticos.length ? "inconsistencias" : o.achados.length ? "ressalvas" : "finalizado";
+  return { nivel, criticos, fortes };
+}
+
+function parecerEmTexto({ o, turma, calc, nivel, criticos, fortes, obs }) {
+  const L = [];
+  L.push(`PARECER DO PROJETO — ${o.nome}${turma?.nome ? ` (turma ${turma.nome})` : ""}`);
+  if (turma?.professor) L.push(`Professor(a): ${turma.professor}`);
+  L.push(`Segmento: ${o.segmento}`);
+  L.push("", `RESULTADO: ${PARECER_NIVEIS[nivel].curto}`);
+  if (nivel === "finalizado") L.push("O projeto está completo e consistente: não foram encontradas pendências nos lançamentos nem nos indicadores de viabilidade.");
+  else if (nivel === "ressalvas") L.push("O projeto está concluído e viável, mas há pontos de melhoria indicados abaixo.");
+  else L.push(`O projeto ainda apresenta inconsistências que precisam ser corrigidas: ${criticos.join("; ")}.`);
+  if (calc.faturamento > 0) {
+    L.push("", "Principais números (mensais):");
+    L.push(`- Investimento total: ${fmtBRL(calc.investimentoTotal)}`);
+    L.push(`- Faturamento: ${fmtBRL(calc.faturamento)}`);
+    L.push(`- Resultado operacional: ${fmtBRL(calc.resultadoOperacional)}`);
+    if (o.diagnostico?.peMensal) L.push(`- Ponto de equilíbrio: ${fmtBRL(o.diagnostico.peMensal)} por mês (a receita cobre ${fmtNum(o.diagnostico.cobertura, 1)}%)`);
+    L.push(`- Prazo de retorno: ${calc.prazoRetorno != null ? `${fmtNum(calc.prazoRetorno, 1)} ano(s)` : "não se paga com o resultado atual"}`);
+  }
+  if (fortes.length) { L.push("", "O que está bom:"); fortes.forEach((f) => L.push(`✓ ${f}`)); }
+  if (o.achados.length) {
+    L.push("", "O que precisa de ajuste (onde e o que fazer):");
+    o.achados.forEach((a, i) => {
+      L.push(`${i + 1}. [${a.modulo}] ${a.titulo}`);
+      L.push(`   O que fazer: ${a.orientacao}`);
+      if (a.onde) L.push(`   Onde: ${a.onde}`);
+    });
+  }
+  if (obs && obs.trim()) L.push("", "Observações do professor:", obs.trim());
+  L.push("", "Qualquer dúvida, procure o professor em aula.");
+  return L.join("\n");
+}
+
+async function enviarParecerComentario(equipeId, texto, autor, parecerId) {
+  const r = await window.storage.get(`dados_equipe_${equipeId}`, true);
+  if (!r) throw new Error("equipe não encontrada");
+  const d = JSON.parse(r.value);
+  const novo = { modulo: "Geral", texto, autor, timestamp: Date.now(), tipo: "parecer", parecer: parecerId };
+  await window.storage.set(`dados_equipe_${equipeId}`, JSON.stringify({ ...d, comentarios: [...(d.comentarios || []), novo] }), true);
+  return novo.timestamp;
+}
+
+function FolhaParecerImpressao({ nome, turma, nivel, texto, calc, emitidoEm }) {
+  const N = PARECER_NIVEIS[nivel];
+  const css = `
+    .pp-pg{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:12px;line-height:1.45;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .pp-hd{display:flex;justify-content:space-between;border-bottom:3px solid #f59e0b;padding-bottom:8px}
+    .pp-hd small{font-size:9.5px;letter-spacing:1.5px;color:#b45309;font-weight:700}
+    .pp-pg h1{font-size:19px;margin:2px 0 0;color:#0f172a}
+    .pp-ver{margin:12px 0;padding:10px 14px;border-radius:6px;font-weight:700;font-size:15px}
+    .pp-txt{white-space:pre-wrap;border:1.5px solid #cbd5e1;border-radius:6px;padding:12px 14px;background:#fff}
+    .pp-ass{margin-top:36px;display:flex;gap:40px}.pp-ass div{flex:1;border-top:1px solid #111;padding-top:4px;font-size:10px;text-align:center}
+    .pp-ft{margin-top:14px;font-size:9px;color:#666;border-top:2px solid #fde68a;padding-top:5px;display:flex;justify-content:space-between}
+  `;
+  return (
+    <div id="parecer-print-root">
+      <style>{css}</style>
+      <section className="pp-pg">
+        <div className="pp-hd">
+          <div><small>CEDUP HERMANN HERING · PLATAFORMA DO PLANO FINANCEIRO</small><h1>Parecer do projeto — {nome}</h1></div>
+          <div style={{ textAlign: "right", fontSize: 10, color: "#444" }}>Emitido em {emitidoEm}</div>
+        </div>
+        <div className="pp-ver" style={{ background: N.bg, color: N.cor, border: `2px solid ${N.cor}` }}>{N.rotulo}</div>
+        <div className="pp-txt">{texto}</div>
+        <div className="pp-ass"><div>Professor(a) {turma?.professor || ""}</div><div>Equipe (ciente)</div></div>
+        <div className="pp-ft"><span>Plataforma do Plano Financeiro (PPFCHH) · ppfn.com.br</span><span>{nome} · Parecer</span></div>
+      </section>
+    </div>
+  );
+}
+
+function ParecerEmpresa({ turma, equipe, professorNome, onVoltar }) {
+  const [estado, setEstado] = useState({ carregando: true });
+  const [nivel, setNivel] = useState("finalizado");
+  const [obs, setObs] = useState("");
+  const [texto, setTexto] = useState("");
+  const [editado, setEditado] = useState(false);
+  const [hist, setHist] = useState([]);
+  const [aberto, setAberto] = useState(null);
+  const [aviso, setAviso] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const [folha, setFolha] = useState(null);
+
+  const analisar = async () => {
+    setEstado({ carregando: true });
+    const d = await lerDadosEquipeFresco(equipe.id);
+    if (!d) { setEstado({ erro: true }); return; }
+    let cfg = null;
+    try { const r = await window.storage.get(`itens_segmento_${turma.professorUid}`, true); cfg = r ? JSON.parse(r.value) : null; } catch { cfg = null; }
+    const calc = calcular(d.lancamentos);
+    const o = gerarOrientacaoEquipe({ equipe, dados: d, calc }, cfg);
+    const a = analisarParecer(o, calc);
+    setEstado({ o, calc, a }); setNivel(a.nivel); setEditado(false);
+    setHist((await lerPareceres(turma.id)).filter((p) => p.equipeId === equipe.id).sort((x, y) => y.em - x.em));
+  };
+  useEffect(() => { analisar(); /* eslint-disable-next-line */ }, [equipe.id]);
+
+  const textoAuto = useMemo(() => (estado.o ? parecerEmTexto({ o: estado.o, turma, calc: estado.calc, nivel, criticos: estado.a.criticos, fortes: estado.a.fortes, obs }) : ""), [estado, nivel, obs, turma]);
+  useEffect(() => { if (!editado) setTexto(textoAuto); }, [textoAuto, editado]);
+
+  useEffect(() => {
+    if (!folha) return undefined;
+    const estilo = document.createElement("style");
+    estilo.textContent = "@media screen { #parecer-print-root-wrap { display: none !important; } } @media print { @page { size: A4 portrait; margin: 12mm; } body > *:not(#parecer-print-root-wrap) { display: none !important; } #parecer-print-root-wrap { display: block !important; } }";
+    document.head.appendChild(estilo);
+    const original = document.title;
+    const t = setTimeout(() => {
+      document.title = `Parecer - ${equipe.nomeNegocio} - ${sufixoDataHoraArquivo()}`;
+      window.print(); document.title = original;
+      if (estilo.parentNode) estilo.parentNode.removeChild(estilo);
+      setFolha(null);
+    }, 150);
+    return () => { clearTimeout(t); if (estilo.parentNode) estilo.parentNode.removeChild(estilo); };
+  }, [folha, equipe]);
+
+  const guardar = async (enviar) => {
+    if (!texto.trim()) { setAviso("O parecer está vazio."); return; }
+    if (enviar && !window.confirm(`Enviar o parecer "${PARECER_NIVEIS[nivel].rotulo}" para a equipe ${equipe.nomeNegocio}? Ele aparece na aba Feedback dos alunos. Nenhum módulo, nota ou lançamento é alterado.`)) return;
+    setOcupado(true); setAviso("");
+    try {
+      const reg = { id: uid(), equipeId: equipe.id, nome: equipe.nomeNegocio, em: Date.now(), por: professorNome || "Professor", nivel, texto, enviado: false };
+      const lista = await lerPareceres(turma.id);
+      await window.storage.set(chavePareceres(turma.id), JSON.stringify([...lista, reg]), true);   // 1º: histórico
+      if (enviar) {
+        try { await enviarParecerComentario(equipe.id, texto, professorNome || "Professor", reg.id); reg.enviado = true; reg.enviadoEm = Date.now();
+          const l2 = await lerPareceres(turma.id);
+          await window.storage.set(chavePareceres(turma.id), JSON.stringify(l2.map((p) => (p.id === reg.id ? reg : p))), true);
+        } catch { setAviso("Parecer salvo no histórico, mas não foi possível enviar para a equipe. Tente enviar pelo histórico."); setOcupado(false); setHist((await lerPareceres(turma.id)).filter((p) => p.equipeId === equipe.id).sort((x, y) => y.em - x.em)); return; }
+      }
+      setHist((await lerPareceres(turma.id)).filter((p) => p.equipeId === equipe.id).sort((x, y) => y.em - x.em));
+      setAviso(enviar ? "Parecer salvo e enviado para a equipe (aba Feedback e Registro do processo)." : "Parecer salvo no histórico (ainda não enviado à equipe).");
+    } catch { setAviso("Não foi possível salvar. Verifique a conexão e tente de novo."); }
+    setOcupado(false);
+  };
+  const enviarDoHistorico = async (p) => {
+    if (!window.confirm(`Enviar este parecer de ${fmtData(p.em)} para a equipe?`)) return;
+    setOcupado(true); setAviso("");
+    try {
+      await enviarParecerComentario(equipe.id, p.texto, professorNome || "Professor", p.id);
+      const l2 = await lerPareceres(turma.id);
+      await window.storage.set(chavePareceres(turma.id), JSON.stringify(l2.map((x) => (x.id === p.id ? { ...x, enviado: true, enviadoEm: Date.now() } : x))), true);
+      setHist((await lerPareceres(turma.id)).filter((x) => x.equipeId === equipe.id).sort((a, b) => b.em - a.em));
+      setAviso("Parecer enviado para a equipe.");
+    } catch { setAviso("Não foi possível enviar."); }
+    setOcupado(false);
+  };
+
+  const emitidoEm = new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }).replace(",", " às");
+  const portal = folha ? createPortal(<div id="parecer-print-root-wrap"><FolhaParecerImpressao nome={equipe.nomeNegocio} turma={turma} nivel={nivel} texto={texto} calc={estado.calc} emitidoEm={emitidoEm} /></div>, document.body) : null;
+
+  return (
+    <div className="space-y-4">
+      {portal}
+      <button onClick={onVoltar} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Escolher outra empresa</button>
+      <SectionTitle icon={ScrollText} sub={`Turma: ${turma.nome} · Segmento: ${equipe.segmento || "não informado"}`}>Parecer — {equipe.nomeNegocio}</SectionTitle>
+      {estado.carregando ? <div className="text-sm text-slate-500">Analisando o negócio…</div>
+        : estado.erro ? <Card className="p-6 text-sm text-rose-300">Não foi possível ler os dados desta empresa.</Card>
+        : (
+          <>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <StatCard label="Módulos corrigidos" value={`${estado.o.corrigidos} de ${estado.o.total}`} tone="emerald" small />
+              <StatCard label="Pontos a ajustar" value={String(estado.o.achados.length)} tone={estado.o.achados.length ? "rose" : "slate"} small />
+              <StatCard label="Resultado/mês" value={estado.calc.faturamento > 0 ? fmtBRL(estado.calc.resultadoOperacional) : "—"} tone={estado.calc.resultadoOperacional < 0 ? "rose" : "emerald"} small />
+              <StatCard label="Retorno" value={estado.calc.prazoRetorno != null ? `${fmtNum(estado.calc.prazoRetorno, 1)} ano(s)` : "—"} tone="gold" small />
+            </div>
+            <Card className="p-4">
+              <div className="text-xs text-slate-400 mb-2">Veredito sugerido pelo sistema (você pode trocar):</div>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {Object.entries(PARECER_NIVEIS).map(([k, v]) => (
+                  <button key={k} onClick={() => { setNivel(k); setEditado(false); }} className={`text-sm font-bold px-3 py-1.5 rounded-full border ${nivel === k ? v.cls + " border-transparent" : "border-slate-600 text-slate-300 hover:bg-slate-800"}`}>{v.rotulo}{k === estado.a.nivel ? " ★" : ""}</button>
+                ))}
+              </div>
+              {estado.a.criticos.length > 0 && <div className="text-xs text-rose-300 mb-1">Motivos das inconsistências: {estado.a.criticos.join("; ")}.</div>}
+              <div className="text-[11px] text-slate-500">★ = sugestão automática. Regras: com inconsistências se há módulo pendente/devolvido, resultado negativo, abaixo do ponto de equilíbrio ou sem retorno; com ressalvas se só há pontos de melhoria; finalizado se não há pendências. Os limites são referências pedagógicas.</div>
+            </Card>
+            <Card className="p-4">
+              <label className="block text-[11px] text-slate-400 mb-1">Suas observações (entram no parecer)</label>
+              <textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={3} className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm mb-3" placeholder="Opcional: elogios, orientações adicionais, data de reapresentação…" />
+              <label className="flex items-center justify-between text-[11px] text-slate-400 mb-1"><span>Parecer (editável)</span>{editado && <button onClick={() => setEditado(false)} className="underline hover:text-slate-100">refazer texto automático</button>}</label>
+              <textarea value={texto} onChange={(e) => { setTexto(e.target.value); setEditado(true); }} rows={18} className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-xs font-mono" />
+              <div className="flex flex-wrap gap-2 mt-3">
+                <button onClick={() => guardar(true)} disabled={ocupado} className="flex items-center gap-1.5 bg-amber-500 text-slate-900 font-bold text-sm px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40"><Send size={14} /> {ocupado ? "Processando…" : "Salvar e enviar para a equipe"}</button>
+                <button onClick={() => guardar(false)} disabled={ocupado} className="border border-slate-600 text-slate-200 text-sm px-4 py-2 rounded-md hover:bg-slate-800 disabled:opacity-40">Salvar sem enviar</button>
+                <button onClick={() => setFolha(true)} className="flex items-center gap-1.5 border border-slate-600 text-slate-200 text-sm px-4 py-2 rounded-md hover:bg-slate-800"><Printer size={14} /> Baixar PDF</button>
+                <button onClick={analisar} disabled={ocupado} className="text-xs text-slate-400 hover:text-slate-100 underline px-2">Reanalisar com os dados atuais</button>
+              </div>
+              {aviso && <div className="mt-3 text-xs text-emerald-300 bg-emerald-950/30 border border-emerald-700/50 rounded-md px-3 py-2">{aviso}</div>}
+            </Card>
+            {hist.length > 0 && (
+              <Card className="p-4">
+                <div className="text-xs font-bold text-slate-300 mb-2">Pareceres desta empresa</div>
+                <div className="space-y-1.5">
+                  {hist.map((p) => (
+                    <div key={p.id} className="bg-slate-900/60 border border-slate-800 rounded-md px-3 py-2 text-xs">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${PARECER_NIVEIS[p.nivel]?.cls || ""}`}>{PARECER_NIVEIS[p.nivel]?.rotulo || p.nivel}</span>
+                        <span className="text-slate-300">{fmtData(p.em)} · {p.por}</span>
+                        <span className={p.enviado ? "text-emerald-300" : "text-slate-500"}>{p.enviado ? `enviado à equipe em ${fmtData(p.enviadoEm)}` : "não enviado à equipe"}</span>
+                        <span className="flex-1" />
+                        <button onClick={() => setAberto(aberto === p.id ? null : p.id)} className="underline text-slate-400 hover:text-slate-100">{aberto === p.id ? "ocultar" : "ver texto"}</button>
+                        {!p.enviado && <button onClick={() => enviarDoHistorico(p)} disabled={ocupado} className="border border-sky-500/60 text-sky-300 px-2 py-0.5 rounded-md hover:bg-sky-500/10">Enviar à equipe</button>}
+                      </div>
+                      {aberto === p.id && <pre className="mt-2 whitespace-pre-wrap text-slate-300 font-sans">{p.texto}</pre>}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+          </>
+        )}
+    </div>
+  );
+}
+
+function GestaoParecerView({ turmas, professorNome }) {
+  const [turmaSelId, setTurmaSelId] = useState(turmas.length === 1 ? turmas[0].id : null);
+  const [equipeId, setEquipeId] = useState(null);
+  const turmaSel = turmas.find((t) => t.id === turmaSelId) || null;
+  const [equipes] = useSharedList(turmaSel ? "equipes_" + turmaSel.id : "equipes_sem_turma");
+  const reais = (equipes || []).filter((e) => !e.teste);
+  const [pareceres, setPareceres] = useState([]);
+  useEffect(() => { if (turmaSel && !equipeId) lerPareceres(turmaSel.id).then(setPareceres); }, [turmaSel, equipeId]);
+  const equipeSel = reais.find((e) => e.id === equipeId) || null;
+  if (turmaSel && equipeSel) return <ParecerEmpresa key={equipeSel.id} turma={turmaSel} equipe={equipeSel} professorNome={professorNome} onVoltar={() => setEquipeId(null)} />;
+  if (turmaSel) {
+    return (
+      <div className="space-y-4">
+        {turmas.length > 1 && <button onClick={() => { setTurmaSelId(null); setEquipeId(null); }} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Escolher outra turma</button>}
+        <SectionTitle icon={ScrollText} sub={`Turma: ${turmaSel.nome} · escolha a empresa para analisar o negócio e emitir o parecer.`}>Parecer do projeto</SectionTitle>
+        {equipes === null ? <div className="text-sm text-slate-500">Carregando empresas…</div>
+          : reais.length === 0 ? <Card className="p-8 text-center text-slate-500">Esta turma ainda não tem empresas.</Card>
+          : (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {reais.map((e) => {
+                const meus = pareceres.filter((p) => p.equipeId === e.id).sort((a, b) => b.em - a.em);
+                const ult = meus[0];
+                return (
+                  <button key={e.id} onClick={() => setEquipeId(e.id)} className="text-left bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-amber-500 transition">
+                    <div className="font-bold text-slate-100 truncate">{e.nomeNegocio}</div>
+                    <div className="text-xs text-slate-400 mb-2 truncate">{(e.integrantes || []).join(", ") || "sem integrantes"}</div>
+                    {ult ? <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${PARECER_NIVEIS[ult.nivel]?.cls || ""}`}>último: {PARECER_NIVEIS[ult.nivel]?.rotulo} · {fmtData(ult.em)}</span> : <span className="text-[11px] text-slate-500">nenhum parecer emitido</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+      </div>
+    );
+  }
+  return (
+    <div>
+      <SectionTitle icon={ScrollText} sub="Análise geral do negócio de uma empresa, com parecer: projeto finalizado ou inconsistências (onde e o que fazer). Escolha a turma.">Parecer do projeto</SectionTitle>
+      {turmas.length === 0 ? <Card className="p-10 text-center text-slate-500">Você ainda não criou nenhuma turma.</Card> : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {turmas.map((t) => (
+            <button key={t.id} onClick={() => setTurmaSelId(t.id)} className="text-left bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-amber-500 transition">
+              <div className="flex items-center gap-2"><School size={16} className="text-sky-400 shrink-0" /><span className="font-bold text-slate-100 truncate">{t.nome}</span></div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Tela de MENU: Gestão → Liberar análise e ajustes (escolhe a turma e libera).
 function GestaoLiberarAjustesView({ turmas, professorNome }) {
   const [turmaSelId, setTurmaSelId] = useState(turmas.length === 1 ? turmas[0].id : null);
@@ -12084,6 +12391,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
         {aba === "usuarios" && <GestaoUsuariosView turmas={turmas} />}
         {aba === "cronograma" && <GestaoCronogramaView turmas={turmas} />}
         {aba === "itensSegmento" && <GestaoItensSegmentoView user={user} />}
+        {aba === "parecer" && <GestaoParecerView turmas={turmas} professorNome={user.nome} />}
         {aba === "liberarAjustes" && <GestaoLiberarAjustesView turmas={turmas} professorNome={user.nome} />}
         {aba === "integrantes" && <GestaoIntegrantesView turmas={turmas} user={user} />}
         {aba === "acessos" && <GestaoAcessosView turmas={turmas} user={user} />}

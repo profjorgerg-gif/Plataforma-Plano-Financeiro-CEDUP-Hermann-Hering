@@ -1,4 +1,4 @@
-// build: 20261023_10h20m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261023_15h30m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1329,6 +1329,14 @@ function chamadoPassaFiltro(c, filtro) {
 // Lista do mais recente para o mais antigo — o primeiro item é a versão vigente.
 // ============================================================================
 const VERSOES = [
+  { versao: "3.3", data: "23/10/2026", itens: [
+    "\"Liberar análise e ajustes\" agora é um processo único: o professor marca as equipes e o prazo, o sistema gera o relatório de cada uma (diagnóstico + plano por módulo), o professor revisa e edita, e ao confirmar todos os módulos são liberados e cada um mostra à equipe a orientação específica daquele módulo. O relatório completo vai também para a aba Feedback.",
+    "Nada é gravado antes da confirmação. Notas e lançamentos continuam intactos, e \"Desfazer\" também remove o relatório enviado naquela liberação.",
+  ]},
+  { versao: "3.2", data: "23/10/2026", itens: [
+    "Em Relatórios → Orientação, o professor agora envia o diagnóstico e as orientações para a equipe DENTRO da plataforma: botão \"Enviar para a equipe (pela plataforma)\" em cada empresa e \"Enviar a todas pela plataforma\" na turma. O texto pode ser editado antes de confirmar.",
+    "A orientação vira um comentário \"Geral\" no painel da equipe (aba Feedback do aluno) e fica registrada no Registro do processo. Nada é alterado nos lançamentos. O acesso da Coordenação continua só de leitura (sem botão de envio).",
+  ]},
   { versao: "3.1", data: "23/10/2026", itens: [
     "A \"Orientação da equipe\" (tela e PDF) ganhou o Diagnóstico de viabilidade: DRE com o percentual de cada rubrica sobre a receita, ponto de equilíbrio e quanto a receita atual cobre dele, quanto tempo dura o capital de giro e o peso do capital de terceiros.",
     "Para equipes que concluíram os lançamentos (Módulo 11), a orientação passa a trazer um plano de ação por módulo, com valores (ex.: mão de obra com 68,7% da receita no Módulo 9; custos usuais do segmento que faltam no Módulo 11).",
@@ -4039,7 +4047,7 @@ function ComentariosPanel({ comentarios, onAdd, autor, readOnlyInput, moduloFixo
               {!moduloFixo && <span className="font-semibold text-sky-400">{c.modulo}</span>}
               <span className={moduloFixo ? "ml-auto" : ""}>{new Date(c.timestamp).toLocaleString("pt-BR")}</span>
             </div>
-            <p className="text-slate-200">{c.texto}</p>
+            <p className="text-slate-200 whitespace-pre-line">{c.texto}</p>
             <p className="text-xs text-slate-500 mt-1">— {c.autor}</p>
           </div>
         ))}
@@ -5348,7 +5356,16 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
                 <RotateCcw size={16} className="mt-0.5 shrink-0" />
                 <div>
                   <b>O(a) professor(a) devolveu este módulo para ajustes.</b> Corrijam o que for indicado abaixo e enviem novamente.
-                  {estado.feedback && <div className="mt-2 bg-slate-900/60 border border-amber-800/40 rounded-md p-2.5 text-amber-100">{estado.feedback}</div>}
+                  {estado.feedback && <div className="mt-2 bg-slate-900/60 border border-amber-800/40 rounded-md p-2.5 text-amber-100 whitespace-pre-line">{estado.feedback}</div>}
+                </div>
+              </div>
+            )}
+            {estado.status === "liberado" && estado.loteAjustes && estado.feedback && (
+              <div className="mb-3 text-sm text-amber-300 flex items-start gap-2 bg-amber-950/30 border border-amber-800/50 rounded-lg p-3">
+                <RotateCcw size={16} className="mt-0.5 shrink-0" />
+                <div>
+                  <b>Orientação do(a) professor(a) para este módulo.</b>
+                  <div className="mt-2 bg-slate-900/60 border border-amber-800/40 rounded-md p-2.5 text-amber-100 whitespace-pre-line">{estado.feedback}</div>
                 </div>
               </div>
             )}
@@ -6247,7 +6264,7 @@ function PainelFluxoModulo({ modId, nomeModulo, lanc, calc, estado, ultimoModulo
       {estado.status === "ajustes" && estado.feedback && (
         <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/30 rounded-md p-2.5">
           <MessageSquare size={13} className="text-amber-400 shrink-0 mt-0.5" />
-          <div className="text-xs text-amber-100"><b>Feedback enviado à equipe:</b> {estado.feedback}</div>
+          <div className="text-xs text-amber-100"><b>Feedback enviado à equipe:</b> <span className="whitespace-pre-line">{estado.feedback}</span></div>
         </div>
       )}
 
@@ -7972,6 +7989,7 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
   const [lotes, setLotes] = useState([]);
   const [ocupado, setOcupado] = useState(false);
   const [aviso, setAviso] = useState("");
+  const [previa, setPrevia] = useState(null);   // [{ id, nome, o, geral, mods }]
 
   const carregar = async () => {
     const mapa = {};
@@ -7989,27 +8007,56 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
   const alternar = (id) => setSel((a) => { const n = new Set(a); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const hoje = new Date().toISOString().slice(0, 10);
 
-  const liberar = async () => {
+  const IGNORA_ACHADO = /^(Devolvido pelo professor|Prazo vencido|Módulo liberado e ainda sem lançamentos)/;
+  const textoDoModulo = (base, n, achadosEq) => {
+    const meus = achadosEq.filter((x) => x.mod === n && !IGNORA_ACHADO.test(x.titulo));
+    if (!meus.length) return base;
+    return `${base}\n\nO que ajustar neste módulo:\n${meus.map((x) => `• ${x.titulo}\n  O que fazer: ${x.orientacao}`).join("\n")}`;
+  };
+
+  // PASSO 1 — gera o relatório (só leitura) e mostra a prévia editável
+  const gerarPrevia = async () => {
     setAviso("");
-    const ids = aptas.filter((e) => sel.has(e.id)).map((e) => e.id);
-    if (ids.length === 0) { setAviso("Marque ao menos uma equipe apta."); return; }
+    const escolhidas = aptas.filter((e) => sel.has(e.id));
+    if (escolhidas.length === 0) { setAviso("Marque ao menos uma equipe apta."); return; }
     if (!prazo || prazo < hoje) { setAviso("Informe uma data limite que não esteja no passado."); return; }
-    const nomes = aptas.filter((e) => sel.has(e.id)).map((e) => e.nomeNegocio).join(", ");
-    if (!window.confirm(`Liberar TODOS os módulos (1 a 13) em ${ids.length} equipe(s)?\n\n${nomes}\n\nPrazo: ${fmtDataBR(prazo)}.\nMódulos concluídos voltam para ajustes e os ainda bloqueados (ex.: 12 e 13) são liberados. As notas e os lançamentos são mantidos; a equipe reenvia cada módulo. Você poderá desfazer enquanto não houver reenvio.`)) return;
+    setOcupado(true);
+    try {
+      let cfg = null;
+      try { const r = await window.storage.get(`itens_segmento_${turma.professorUid}`, true); cfg = r ? JSON.parse(r.value) : null; } catch { cfg = null; }
+      const base = (msg || MSG_AJUSTES_PADRAO).replace(/\{prazo\}/g, fmtDataBR(prazo));
+      const lista = [];
+      for (const e of escolhidas) {
+        const d = await lerDadosEquipeFresco(e.id);
+        if (!d) continue;
+        const o = gerarOrientacaoEquipe({ equipe: e, dados: d, calc: calcular(d.lancamentos) }, cfg);
+        const mods = {}; MODULOS.forEach((m) => { mods[m.id] = textoDoModulo(base, m.n, o.achados); });
+        lista.push({ id: e.id, nome: e.nomeNegocio, o, geral: orientacaoEmTexto(o, turma), mods });
+      }
+      setPrevia(lista);
+    } catch { setAviso("Não foi possível gerar o relatório. Tente de novo."); }
+    setOcupado(false);
+  };
+
+  // PASSO 2 — confirma: libera os módulos e coloca a orientação em cada um
+  const liberar = async () => {
+    if (!previa || previa.length === 0) return;
+    setAviso("");
+    if (!window.confirm(`Liberar TODOS os módulos (1 a 13) em ${previa.length} equipe(s) e enviar as orientações pela plataforma?\n\n${previa.map((x) => x.nome).join(", ")}\n\nPrazo: ${fmtDataBR(prazo)}.\nMódulos concluídos voltam para ajustes (com a orientação de cada módulo) e os ainda bloqueados (ex.: 12 e 13) são liberados. Notas e lançamentos são mantidos. Você poderá desfazer enquanto não houver reenvio.`)) return;
     setOcupado(true);
     try {
       const agora = Date.now();
-      const texto = (msg || MSG_AJUSTES_PADRAO).replace(/\{prazo\}/g, fmtDataBR(prazo));
       const loteId = uid();
-      const plano = []; // [{ equipe, dados, novoFluxo, antes }]
-      for (const id of ids) {
-        const d = await lerDadosEquipeFresco(id);              // leitura fresca, logo antes de gravar
+      const plano = [];
+      for (const pv of previa) {
+        const d = await lerDadosEquipeFresco(pv.id);          // leitura fresca, logo antes de gravar
         if (!d) continue;
         const fluxo = d.fluxoModulos || fluxoModulosPadrao();
         if (!equipeChegouAoFinal(fluxo)) continue;             // reconfere elegibilidade
         const novo = { ...fluxo }; const antes = {};
         MODULOS.forEach((m) => {
           const atual = estadoModulo(fluxo, m.id);
+          const texto = pv.mods[m.id];
           if (atual.status === "corrigido") {                  // concluído -> reaberto para ajustes
             antes[m.id] = atual;
             novo[m.id] = {
@@ -8018,20 +8065,23 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
             };
           } else if (atual.status === "pendente") {            // ainda bloqueado (ex.: M12 e M13) -> liberado
             antes[m.id] = atual;
-            novo[m.id] = { ...atual, status: "liberado", prazo, prazoManual: true, loteAjustes: loteId };
+            novo[m.id] = { ...atual, status: "liberado", prazo, prazoManual: true, loteAjustes: loteId, feedback: texto };
           }                                                    // liberado/enviado/ajustes: não mexe
         });
-        if (Object.keys(antes).length) plano.push({ id, nome: (equipes.find((e) => e.id === id) || {}).nomeNegocio || id, d, novo, antes });
+        if (Object.keys(antes).length) plano.push({ id: pv.id, nome: pv.nome, d, novo, antes, geral: pv.geral });
       }
       if (plano.length === 0) { setAviso("Nenhuma equipe apta no momento (releitura do banco)."); setOcupado(false); return; }
       // 1) grava primeiro o registro do lote (estado anterior) — se falhar, nada é alterado
-      const registro = { id: loteId, em: agora, por: professorNome, prazo, mensagem: texto, equipes: plano.map((p) => ({ id: p.id, nome: p.nome, antes: p.antes })) };
+      const registro = { id: loteId, em: agora, por: professorNome, prazo, mensagem: msg, equipes: plano.map((p) => ({ id: p.id, nome: p.nome, antes: p.antes })) };
       const lista = await lerLotesAjustes(turma.id);
       await window.storage.set(chaveLotesAjustes(turma.id), JSON.stringify([...lista, registro]), true);
-      // 2) altera SOMENTE fluxoModulos de cada equipe
-      for (const p of plano) await window.storage.set(`dados_equipe_${p.id}`, JSON.stringify({ ...p.d, fluxoModulos: p.novo }), true);
-      setAviso(`Pronto: ${plano.length} equipe(s) com ${plano.reduce((s, p) => s + Object.keys(p.antes).length, 0)} módulos liberados para ajustes até ${fmtDataBR(prazo)}.`);
-      setSel(new Set());
+      // 2) altera SOMENTE fluxoModulos e acrescenta o comentário "Geral" com o relatório
+      for (const p of plano) {
+        const coment = { modulo: "Geral", texto: p.geral, autor: professorNome || "Professor", timestamp: agora, tipo: "orientacao", lote: loteId };
+        await window.storage.set(`dados_equipe_${p.id}`, JSON.stringify({ ...p.d, fluxoModulos: p.novo, comentarios: [...(p.d.comentarios || []), coment] }), true);
+      }
+      setAviso(`Pronto: ${plano.length} equipe(s) com ${plano.reduce((s, p) => s + Object.keys(p.antes).length, 0)} módulos liberados até ${fmtDataBR(prazo)}. Cada módulo mostra a orientação para a equipe e o relatório completo está em "Feedback".`);
+      setSel(new Set()); setPrevia(null);
       await carregar();
     } catch (e) { setAviso("Não foi possível concluir. Verifique a conexão e tente de novo."); }
     setOcupado(false);
@@ -8051,7 +8101,7 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
           const intacto = atual && ((prev.status === "pendente" ? (atual.status === "liberado" && atual.loteAjustes === lote.id) : (atual.status === "ajustes" && (atual.ciclo || 1) === (prev.ciclo || 1) + 1)));
           if (intacto) { fluxo[modId] = prev; revertidos++; mudou = true; } else mantidos++;
         });
-        if (mudou) await window.storage.set(`dados_equipe_${eq.id}`, JSON.stringify({ ...d, fluxoModulos: fluxo }), true);
+        if (mudou) await window.storage.set(`dados_equipe_${eq.id}`, JSON.stringify({ ...d, fluxoModulos: fluxo, comentarios: (d.comentarios || []).filter((c) => c.lote !== lote.id) }), true);
       }
       const lista = await lerLotesAjustes(turma.id);
       await window.storage.set(chaveLotesAjustes(turma.id), JSON.stringify(lista.map((l) => (l.id === lote.id ? { ...l, desfeitoEm: Date.now() } : l))), true);
@@ -8070,7 +8120,35 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
       {aberto && (
         <div className="mt-4">
           <p className="text-xs text-slate-400 mb-3">Quando a equipe conclui o <b>Módulo 11</b> (fim dos lançamentos), você libera <b>todos os módulos</b> de uma vez: os Módulos 12 e 13 (análise do negócio) são liberados e os módulos já corrigidos voltam para ajustes, para a equipe revisar os lançamentos com base na análise. As notas, os lançamentos e os comentários não são alterados; a equipe reenvia cada módulo e você reaprova um a um, como sempre.</p>
-          {info === null ? <div className="text-xs text-slate-500">Lendo situação das equipes…</div> : (
+          {previa ? (
+            <div>
+              <div className="text-sm text-slate-200 mb-1 font-bold">Relatório gerado — revise antes de liberar</div>
+              <p className="text-xs text-slate-400 mb-3">Nada foi gravado ainda. Edite o que quiser: o texto de cada módulo aparece para a equipe naquele módulo; o relatório "Geral" vai para a aba Feedback. Prazo: {fmtDataBR(prazo)}.</p>
+              <div className="space-y-2 mb-4">
+                {previa.map((pv, ix) => (
+                  <details key={pv.id} className="rounded-md border border-slate-700 bg-slate-900/60" open={previa.length === 1}>
+                    <summary className="cursor-pointer px-3 py-2 text-sm text-slate-200 font-bold">{pv.nome} <span className="text-xs font-normal text-slate-400">— {pv.o.achados.length} ponto(s) de atenção</span></summary>
+                    <div className="px-3 pb-3 space-y-3">
+                      <div>
+                        <label className="block text-[11px] text-slate-400 mb-1">Relatório geral (aba Feedback)</label>
+                        <textarea value={pv.geral} rows={8} onChange={(e) => setPrevia(previa.map((x, k) => k === ix ? { ...x, geral: e.target.value } : x))} className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-xs" />
+                      </div>
+                      {MODULOS.map((m) => (
+                        <div key={m.id}>
+                          <label className="block text-[11px] text-slate-400 mb-1">Módulo {m.n} — {m.nome}</label>
+                          <textarea value={pv.mods[m.id]} rows={pv.mods[m.id].includes("O que ajustar") ? 6 : 3} onChange={(e) => setPrevia(previa.map((x, k) => k === ix ? { ...x, mods: { ...x.mods, [m.id]: e.target.value } } : x))} className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-xs" />
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <button onClick={liberar} disabled={ocupado} className="bg-amber-500 text-slate-900 font-bold text-sm px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40">{ocupado ? "Processando…" : "Confirmar e liberar todos os módulos"}</button>
+                <button onClick={() => { setPrevia(null); setAviso(""); }} disabled={ocupado} className="text-xs text-slate-400 hover:text-slate-100 underline">← Voltar</button>
+              </div>
+            </div>
+          ) : info === null ? <div className="text-xs text-slate-500">Lendo situação das equipes…</div> : (
             <>
               <div className="space-y-1.5 mb-4">
                 {(equipes || []).length === 0 && <div className="text-xs text-slate-500">Nenhuma empresa nesta turma.</div>}
@@ -8100,7 +8178,7 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
               )}
               {aptas.length > 0 && (
                 <div className="flex flex-wrap items-center gap-3">
-                  <button onClick={liberar} disabled={ocupado || sel.size === 0 || !prazo} className="bg-amber-500 text-slate-900 font-bold text-sm px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40">{ocupado ? "Processando…" : `Liberar ajustes (${sel.size} equipe${sel.size === 1 ? "" : "s"})`}</button>
+                  <button onClick={gerarPrevia} disabled={ocupado || sel.size === 0 || !prazo} className="bg-amber-500 text-slate-900 font-bold text-sm px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40">{ocupado ? "Gerando…" : `Gerar relatório e revisar (${sel.size} equipe${sel.size === 1 ? "" : "s"})`}</button>
                   <button onClick={() => setSel(new Set(aptas.map((e) => e.id)))} className="text-xs text-slate-400 hover:text-slate-100 underline">Marcar todas as aptas</button>
                 </div>
               )}
@@ -9800,12 +9878,14 @@ function gerarOrientacaoEquipe(item, cfg) {
   const comProfessor = linhas.filter((x) => x.quem.includes("professor")).length;
   const ordemL = { bad: 0, lib: 1, aw: 2, blq: 3, ok: 4 };
   const linhasOrd = [...linhas].sort((a, b) => ordemL[a.tipo] - ordemL[b.tipo] || a.mod - b.mod);
+  const enviosOrient = (dados.comentarios || []).filter((c) => c.tipo === "orientacao");
+  const ultimoEnvio = enviosOrient.length ? enviosOrient[enviosOrient.length - 1].timestamp : null;
   const situacao = achados.some((a) => a.grav === "erro") ? "problema" : achados.length > 0 ? "conferir" : comProfessor > 0 ? "aguardando" : comEquipe > 0 ? "andamento" : "emdia";
   return {
     id: equipe.id, nome: equipe.nomeNegocio, teste: !!equipe.teste, segmento: equipe.segmento || "não informado",
     integrantes: equipe.integrantes || [], gestor: dados.gestor?.nome || null,
     total: MODULOS.length, corrigidos, comEquipe, comProfessor, achados, linhas: linhasOrd,
-    maxVencido, proximo, situacao, diagnostico,
+    maxVencido, proximo, situacao, diagnostico, ultimoEnvio,
   };
 }
 
@@ -9963,10 +10043,26 @@ function FolhasOrientacaoImpressao({ lista, turma, emitidoEm }) {
   );
 }
 
-function RelatorioOrientacao({ turma, dadosEquipes }) {
+// Envia a orientação para a equipe DENTRO da plataforma: acrescenta um
+// comentário "Geral" (visível na aba Feedback do aluno e no Registro do
+// processo). Releitura fresca antes de gravar e só o campo `comentarios` é
+// alterado; nada mais da equipe é tocado.
+async function enviarOrientacaoComentario(equipeId, texto, autor, loteId) {
+  const r = await window.storage.get(`dados_equipe_${equipeId}`, true);
+  if (!r) throw new Error("equipe não encontrada");
+  const d = JSON.parse(r.value);
+  const novo = { modulo: "Geral", texto, autor, timestamp: Date.now(), tipo: "orientacao", ...(loteId ? { lote: loteId } : {}) };
+  await window.storage.set(`dados_equipe_${equipeId}`, JSON.stringify({ ...d, comentarios: [...(d.comentarios || []), novo] }), true);
+  return novo.timestamp;
+}
+
+function RelatorioOrientacao({ turma, dadosEquipes, onAtualizar, podeEnviar }) {
   const [selId, setSelId] = useState(null);
   const [folhas, setFolhas] = useState(null); // lista de orientações a imprimir (retrato)
   const [copiado, setCopiado] = useState(false);
+  const [envio, setEnvio] = useState(null);       // { alvos: [{ o, texto }] }
+  const [ocupadoEnvio, setOcupadoEnvio] = useState(false);
+  const [avisoEnvio, setAvisoEnvio] = useState("");
 
   const [cfgSeg] = useSharedObject(turma?.professorUid ? `itens_segmento_${turma.professorUid}` : null, null);
   const lista = useMemo(() => (dadosEquipes || []).map((it) => gerarOrientacaoEquipe(it, cfgSeg || null)), [dadosEquipes, cfgSeg]);
@@ -10008,6 +10104,48 @@ function RelatorioOrientacao({ turma, dadosEquipes }) {
     setCopiado(true); setTimeout(() => setCopiado(false), 2500);
   };
 
+  const abrirEnvioUm = (o) => { setAvisoEnvio(""); setEnvio({ alvos: [{ o, texto: orientacaoEmTexto(o, turma) }] }); };
+  const abrirEnvioTodas = () => {
+    const alvos = ordenada.filter((o) => !o.teste && o.achados.length > 0).map((o) => ({ o, texto: orientacaoEmTexto(o, turma) }));
+    setAvisoEnvio(alvos.length ? "" : "Nenhuma equipe com pendências para enviar."); setEnvio(alvos.length ? { alvos } : null);
+  };
+  const confirmarEnvio = async () => {
+    if (!envio) return;
+    setOcupadoEnvio(true);
+    const loteId = uid(); let ok = 0; const falhas = [];
+    for (const a of envio.alvos) {
+      if (!a.texto.trim()) continue;
+      try { await enviarOrientacaoComentario(a.o.id, a.texto, turma?.professor || "Professor", envio.alvos.length > 1 ? loteId : null); ok++; }
+      catch { falhas.push(a.o.nome); }
+    }
+    setOcupadoEnvio(false); setEnvio(null);
+    setAvisoEnvio(`Orientação enviada pela plataforma para ${ok} equipe(s).${falhas.length ? ` Não foi possível enviar para: ${falhas.join(", ")}.` : ""} Os alunos veem em "Feedback" e o envio fica no Registro do processo.`);
+    if (onAtualizar) onAtualizar();
+  };
+  const painelEnvio = (
+    <>
+      {avisoEnvio && <div className="no-print mb-3 text-xs text-emerald-300 bg-emerald-950/30 border border-emerald-700/50 rounded-md px-3 py-2">{avisoEnvio}</div>}
+      {envio && (
+        <Card className="no-print p-4 mb-4 border-amber-500/40">
+          <div className="text-sm font-bold text-amber-300 mb-1">Enviar pela plataforma — confirme</div>
+          <p className="text-xs text-slate-400 mb-3">O texto abaixo vira um comentário “Geral” no painel de cada equipe (aba Feedback do aluno) e fica registrado no Registro do processo. Nada é alterado nos lançamentos.</p>
+          <div className="space-y-3 max-h-[26rem] overflow-y-auto">
+            {envio.alvos.map((a, i) => (
+              <div key={a.o.id}>
+                <div className="text-xs font-semibold text-slate-200 mb-1">{a.o.nome}{a.o.ultimoEnvio ? <span className="font-normal text-slate-500"> · último envio em {fmtData(a.o.ultimoEnvio)}</span> : null}</div>
+                <textarea value={a.texto} onChange={(e) => setEnvio((v) => ({ alvos: v.alvos.map((x, k) => (k === i ? { ...x, texto: e.target.value } : x)) }))} rows={envio.alvos.length > 1 ? 5 : 12} className="w-full bg-slate-950 border border-slate-700 rounded-md px-2.5 py-2 text-xs text-slate-100" />
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button onClick={confirmarEnvio} disabled={ocupadoEnvio} className="bg-amber-500 text-slate-900 font-bold text-sm px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40">{ocupadoEnvio ? "Enviando…" : `Confirmar envio (${envio.alvos.length} equipe${envio.alvos.length === 1 ? "" : "s"})`}</button>
+            <button onClick={() => setEnvio(null)} disabled={ocupadoEnvio} className="border border-slate-600 text-slate-200 text-sm px-4 py-2 rounded-md hover:bg-slate-800">Cancelar</button>
+          </div>
+        </Card>
+      )}
+    </>
+  );
+
   const portal = folhas ? createPortal(<div id="orient-print-root-wrap"><FolhasOrientacaoImpressao lista={folhas} turma={turma} emitidoEm={emitidoEm} /></div>, document.body) : null;
   const th = "py-2 px-3 text-left text-[11px] uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40";
   const td = "py-2 px-3 text-sm border-b border-slate-800";
@@ -10024,8 +10162,10 @@ function RelatorioOrientacao({ turma, dadosEquipes }) {
           <div className="flex gap-2">
             <button onClick={() => imprimirComTitulo(`Orientacao da turma - ${turma.nome} - ${sufixoDataHoraArquivo()}`, true)} className="flex items-center gap-1.5 text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800"><Printer size={13} /> Imprimir resumo (paisagem)</button>
             <button onClick={() => setFolhas(ordenada)} className="flex items-center gap-1.5 text-xs font-semibold bg-amber-500 text-slate-900 px-2.5 py-1.5 rounded-md hover:bg-amber-400"><Printer size={13} /> Imprimir todas as equipes (1 folha cada)</button>
+            {podeEnviar && <button onClick={abrirEnvioTodas} className="flex items-center gap-1.5 text-xs font-semibold border border-sky-500/60 text-sky-300 px-2.5 py-1.5 rounded-md hover:bg-sky-500/10"><Send size={13} /> Enviar a todas pela plataforma</button>}
           </div>
         </div>
+        {painelEnvio}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
           <StatCard label="Equipes" value={String(lista.length)} tone="slate" small />
           <StatCard label="Módulos com a equipe" value={String(totEq)} tone="emerald" small />
@@ -10068,7 +10208,10 @@ function RelatorioOrientacao({ turma, dadosEquipes }) {
         <button onClick={() => setSelId(null)} className="text-xs border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800">← Voltar ao resumo da turma</button>
         <button onClick={() => copiar(orientacaoEmTexto(o, turma))} className="flex items-center gap-1.5 text-xs font-semibold bg-amber-500 text-slate-900 px-2.5 py-1.5 rounded-md hover:bg-amber-400"><ClipboardList size={13} /> {copiado ? "Copiado!" : "Copiar texto da orientação"}</button>
         <button onClick={() => setFolhas([o])} className="flex items-center gap-1.5 text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800"><Printer size={13} /> Imprimir esta equipe (A4 retrato)</button>
+        {podeEnviar && <button onClick={() => abrirEnvioUm(o)} className="flex items-center gap-1.5 text-xs font-semibold bg-sky-600 text-white px-2.5 py-1.5 rounded-md hover:bg-sky-500"><Send size={13} /> Enviar para a equipe (pela plataforma)</button>}
+        {o.ultimoEnvio && <span className="text-[11px] text-slate-500">último envio em {fmtData(o.ultimoEnvio)}</span>}
       </div>
+      {painelEnvio}
       <div className="mb-4">
         <h3 className="text-xl font-bold text-slate-100">Orientação — {o.nome}{o.teste && <span className="ml-2 text-[10px] border border-dashed border-violet-400 text-violet-300 rounded-full px-2 py-0.5 align-middle">CONTA DE TESTE</span>}</h3>
         <div className="text-xs text-slate-400">{turma.nome} · Segmento: {o.segmento}{o.integrantes.length ? ` · ${o.integrantes.join(", ")}` : ""}{o.maxVencido > 0 && <> · <b className="text-rose-400">prazo vencido há {o.maxVencido} dia(s)</b></>}</div>
@@ -10531,7 +10674,7 @@ function GestaoRelatoriosView({ turmas, abaInicial, semAbas, abasPermitidas }) {
           {aba === "empresa" && <RelatorioPorEmpresa dadosEquipes={dadosEquipes} turma={turma} />}
           {aba === "notas" && <RelatorioNotas turma={turma} dadosEquipes={dadosEquipes} />}
           {aba === "pendencias" && <RelatorioPendencias turma={turma} dadosEquipes={dadosEquipes} />}
-          {aba === "orientacao" && <RelatorioOrientacao turma={turma} dadosEquipes={dadosEquipes} />}
+          {aba === "orientacao" && <RelatorioOrientacao turma={turma} dadosEquipes={dadosEquipes} onAtualizar={() => setRefreshKey((k) => k + 1)} podeEnviar={!abasPermitidas} />}
           {aba === "descricoes" && <RelatorioDescricoesEscola turma={turma} />}
           {aba === "plano" && <RelatorioPlanoSemestral turma={turma} />}
         </div>

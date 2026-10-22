@@ -1,4 +1,4 @@
-// build: 20261023_15h30m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261023_16h10m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1330,6 +1330,7 @@ function chamadoPassaFiltro(c, filtro) {
 // ============================================================================
 const VERSOES = [
   { versao: "3.3", data: "23/10/2026", itens: [
+    "Na revisão, só os módulos com ponto a ajustar vêm marcados para abrir (12 e 13 sempre abrem); os sem inconsistência permanecem concluídos, e o professor pode marcar qualquer um para abrir também.",
     "\"Liberar análise e ajustes\" agora é um processo único: o professor marca as equipes e o prazo, o sistema gera o relatório de cada uma (diagnóstico + plano por módulo), o professor revisa e edita, e ao confirmar todos os módulos são liberados e cada um mostra à equipe a orientação específica daquele módulo. O relatório completo vai também para a aba Feedback.",
     "Nada é gravado antes da confirmação. Notas e lançamentos continuam intactos, e \"Desfazer\" também remove o relatório enviado naquela liberação.",
   ]},
@@ -8031,7 +8032,8 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
         if (!d) continue;
         const o = gerarOrientacaoEquipe({ equipe: e, dados: d, calc: calcular(d.lancamentos) }, cfg);
         const mods = {}; MODULOS.forEach((m) => { mods[m.id] = textoDoModulo(base, m.n, o.achados); });
-        lista.push({ id: e.id, nome: e.nomeNegocio, o, geral: orientacaoEmTexto(o, turma), mods });
+        const abrir = {}; MODULOS.forEach((m) => { abrir[m.id] = m.n > 11 || o.achados.some((x) => x.mod === m.n && !IGNORA_ACHADO.test(x.titulo)); });
+        lista.push({ id: e.id, nome: e.nomeNegocio, o, geral: orientacaoEmTexto(o, turma), mods, abrir });
       }
       setPrevia(lista);
     } catch { setAviso("Não foi possível gerar o relatório. Tente de novo."); }
@@ -8042,7 +8044,7 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
   const liberar = async () => {
     if (!previa || previa.length === 0) return;
     setAviso("");
-    if (!window.confirm(`Liberar TODOS os módulos (1 a 13) em ${previa.length} equipe(s) e enviar as orientações pela plataforma?\n\n${previa.map((x) => x.nome).join(", ")}\n\nPrazo: ${fmtDataBR(prazo)}.\nMódulos concluídos voltam para ajustes (com a orientação de cada módulo) e os ainda bloqueados (ex.: 12 e 13) são liberados. Notas e lançamentos são mantidos. Você poderá desfazer enquanto não houver reenvio.`)) return;
+    if (!window.confirm(`Liberar os módulos marcados (${previa.reduce((t, x) => t + Object.values(x.abrir).filter(Boolean).length, 0)} no total) em ${previa.length} equipe(s) e enviar as orientações pela plataforma?\n\n${previa.map((x) => x.nome).join(", ")}\n\nPrazo: ${fmtDataBR(prazo)}.\nMódulos marcados e concluídos voltam para ajustes (com a orientação de cada um) e os ainda bloqueados (12 e 13) são liberados; os não marcados permanecem concluídos. Notas e lançamentos são mantidos. Você poderá desfazer enquanto não houver reenvio.`)) return;
     setOcupado(true);
     try {
       const agora = Date.now();
@@ -8057,6 +8059,7 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
         MODULOS.forEach((m) => {
           const atual = estadoModulo(fluxo, m.id);
           const texto = pv.mods[m.id];
+          if (!pv.abrir[m.id]) return;                         // sem achado e não marcado: permanece como está
           if (atual.status === "corrigido") {                  // concluído -> reaberto para ajustes
             antes[m.id] = atual;
             novo[m.id] = {
@@ -8123,7 +8126,7 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
           {previa ? (
             <div>
               <div className="text-sm text-slate-200 mb-1 font-bold">Relatório gerado — revise antes de liberar</div>
-              <p className="text-xs text-slate-400 mb-3">Nada foi gravado ainda. Edite o que quiser: o texto de cada módulo aparece para a equipe naquele módulo; o relatório "Geral" vai para a aba Feedback. Prazo: {fmtDataBR(prazo)}.</p>
+              <p className="text-xs text-slate-400 mb-3">Nada foi gravado ainda. Só os módulos com ponto a ajustar vêm marcados (12 e 13 abrem sempre); os demais permanecem concluídos, com nota e lançamentos intactos — marque se quiser abrir algum. Edite o que quiser: o texto de cada módulo aparece para a equipe naquele módulo; o relatório "Geral" vai para a aba Feedback. Prazo: {fmtDataBR(prazo)}.</p>
               <div className="space-y-2 mb-4">
                 {previa.map((pv, ix) => (
                   <details key={pv.id} className="rounded-md border border-slate-700 bg-slate-900/60" open={previa.length === 1}>
@@ -8134,9 +8137,13 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
                         <textarea value={pv.geral} rows={8} onChange={(e) => setPrevia(previa.map((x, k) => k === ix ? { ...x, geral: e.target.value } : x))} className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-xs" />
                       </div>
                       {MODULOS.map((m) => (
-                        <div key={m.id}>
-                          <label className="block text-[11px] text-slate-400 mb-1">Módulo {m.n} — {m.nome}</label>
-                          <textarea value={pv.mods[m.id]} rows={pv.mods[m.id].includes("O que ajustar") ? 6 : 3} onChange={(e) => setPrevia(previa.map((x, k) => k === ix ? { ...x, mods: { ...x.mods, [m.id]: e.target.value } } : x))} className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-xs" />
+                        <div key={m.id} className={pv.abrir[m.id] ? "" : "opacity-60"}>
+                          <label className="flex items-center gap-2 text-[11px] text-slate-300 mb-1">
+                            <input type="checkbox" checked={!!pv.abrir[m.id]} disabled={ocupado} onChange={(e) => setPrevia(previa.map((x, k) => k === ix ? { ...x, abrir: { ...x.abrir, [m.id]: e.target.checked } } : x))} />
+                            <span>Módulo {m.n} — {m.nome}</span>
+                            <span className="text-slate-500">{pv.abrir[m.id] ? (m.n > 11 ? "(análise: sempre aberto)" : "(abrir para ajuste)") : "(sem achado — permanece concluído)"}</span>
+                          </label>
+                          {pv.abrir[m.id] && <textarea value={pv.mods[m.id]} rows={pv.mods[m.id].includes("O que ajustar") ? 6 : 3} onChange={(e) => setPrevia(previa.map((x, k) => k === ix ? { ...x, mods: { ...x.mods, [m.id]: e.target.value } } : x))} className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-xs" />}
                         </div>
                       ))}
                     </div>
@@ -8144,7 +8151,7 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
                 ))}
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <button onClick={liberar} disabled={ocupado} className="bg-amber-500 text-slate-900 font-bold text-sm px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40">{ocupado ? "Processando…" : "Confirmar e liberar todos os módulos"}</button>
+                <button onClick={liberar} disabled={ocupado} className="bg-amber-500 text-slate-900 font-bold text-sm px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40">{ocupado ? "Processando…" : "Confirmar e liberar os módulos marcados"}</button>
                 <button onClick={() => { setPrevia(null); setAviso(""); }} disabled={ocupado} className="text-xs text-slate-400 hover:text-slate-100 underline">← Voltar</button>
               </div>
             </div>

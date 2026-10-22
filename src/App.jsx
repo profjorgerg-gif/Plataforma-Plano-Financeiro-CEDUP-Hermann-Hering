@@ -1,4 +1,4 @@
-// build: 20261022_09h30m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261022_23h10m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -705,6 +705,7 @@ const CHART_TOOLTIP_STYLE = { background: "#0f1e30", border: "1px solid #22344a"
 const GESTAO_ITENS = [
   { id: "turmas", label: "Turmas", icon: School },
   { id: "correcoes", label: "Correções pendentes", icon: Inbox },
+  { id: "liberarAjustes", label: "Liberar análise e ajustes", icon: RotateCcw },
   { id: "cronograma", label: "Cronograma", icon: Calendar },
   { id: "integrantes", label: "Integrantes por Empresa", icon: Users2 },
   { id: "usuarios", label: "Usuários", icon: Users },
@@ -1327,13 +1328,17 @@ function chamadoPassaFiltro(c, filtro) {
 // Lista do mais recente para o mais antigo — o primeiro item é a versão vigente.
 // ============================================================================
 const VERSOES = [
+  { versao: "3.0", data: "22/10/2026", itens: [
+    "O novo item de menu \"Liberar análise e ajustes\" (em Gestão) abre a \"Fase de análise e ajustes\", que passa a começar quando a equipe conclui o Módulo 11 (fim dos lançamentos): o professor libera TODOS os módulos de uma vez, ficando os Módulos 12 e 13 (análise do negócio) liberados e os módulos já corrigidos reabertos para a equipe revisar os lançamentos com base na análise.",
+    "Notas, lançamentos e comentários continuam intactos; o professor reaprova módulo a módulo e pode desfazer a liberação enquanto não houver reenvio.",
+  ]},
   { versao: "2.9", data: "22/10/2026", itens: [
     "Pré-análise automática dos módulos 1 a 13: quando a equipe envia um módulo, o professor pode clicar em \"Analisar este módulo\" e o sistema confere o que foi lançado (campos vazios, valores zerados, itens repetidos, quantidades e custos fora do padrão, custo acima do preço, coerência entre módulos etc.).",
     "Cada achado vira uma orientação já escrita para a equipe, que o professor pode editar ou desmarcar. O botão coloca o texto no campo de feedback; nada é enviado, devolvido ou aprovado sem o clique do professor.",
     "A análise só lê os dados: não grava nada nos lançamentos da equipe.",
   ]},
   { versao: "2.8", data: "21/10/2026", itens: [
-    "Nova \"Fase de ajustes finais\" na tela de cada turma (Gestão → Turmas): o professor libera, de uma vez, todos os módulos corrigidos das equipes que chegaram ao final (Módulo 13 corrigido), com prazo único e mensagem para a equipe.",
+    "Nova \"Fase de ajustes finais\" : o professor libera, de uma vez, todos os módulos corrigidos das equipes que chegaram ao final (Módulo 13 corrigido), com prazo único e mensagem para a equipe.",
     "É a mesma \"reabertura pós-correção\" de um módulo, só que em lote: as notas, os lançamentos e os comentários são mantidos; a equipe reenvia cada módulo e o professor reaprova um a um.",
     "Segurança: cada liberação guarda o estado anterior em registro próprio e pode ser desfeita (\"Desfazer\") enquanto os módulos não tiverem sido reenviados.",
   ]},
@@ -7860,7 +7865,8 @@ function GestaoCronogramaView({ turmas }) {
 // tocados. Cada lote guarda o estado anterior (chave própria) e pode ser
 // DESFEITO enquanto os módulos não tiverem sido reenviados.
 // ============================================================================
-const MSG_AJUSTES_PADRAO = "Fase de ajustes finais — vocês concluíram o projeto. Revisem todos os módulos conferindo valores, unidades e a coerência entre eles, façam os ajustes necessários e reenviem cada módulo até {prazo}. As notas já atribuídas foram mantidas.";
+const MODULO_GATILHO_AJUSTES = "m11"; // a fase começa quando a equipe conclui os lançamentos (M1–M11)
+const MSG_AJUSTES_PADRAO = "Fase de análise e ajustes — vocês concluíram os lançamentos (Módulos 1 a 11). Agora estão liberados TODOS os módulos: usem os Módulos 12 e 13 para analisar o negócio e, com base nessa análise, revisem os lançamentos anteriores e façam os ajustes necessários no plano financeiro. Reenviem cada módulo até {prazo}. As notas já atribuídas foram mantidas.";
 const chaveLotesAjustes = (turmaId) => `lotes_ajustes_${turmaId}`;
 
 async function lerDadosEquipeFresco(equipeId) {
@@ -7870,12 +7876,48 @@ async function lerLotesAjustes(turmaId) {
   try { const r = await window.storage.get(chaveLotesAjustes(turmaId), true); return r ? JSON.parse(r.value) : []; } catch { return []; }
 }
 function equipeChegouAoFinal(fluxo) {
-  return estadoModulo(fluxo, NOTA_MODULO_FINAL).status === "corrigido";
+  return estadoModulo(fluxo, MODULO_GATILHO_AJUSTES).status === "corrigido";
 }
 function fmtDataBR(iso) { const [a, m, d] = String(iso || "").split("-"); return d ? `${d}/${m}/${a}` : iso; }
 
-function AjustesFinaisTurma({ turma, equipes, professorNome }) {
-  const [aberto, setAberto] = useState(false);
+// Tela de MENU: Gestão → Liberar análise e ajustes (escolhe a turma e libera).
+function GestaoLiberarAjustesView({ turmas, professorNome }) {
+  const [turmaSelId, setTurmaSelId] = useState(turmas.length === 1 ? turmas[0].id : null);
+  const turmaSel = turmas.find((t) => t.id === turmaSelId) || null;
+  const [equipes] = useSharedList(turmaSel ? "equipes_" + turmaSel.id : "equipes_sem_turma");
+  const reais = (equipes || []).filter((e) => !e.teste);
+  if (turmaSel) {
+    return (
+      <div className="space-y-4">
+        {turmas.length > 1 && <button onClick={() => setTurmaSelId(null)} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Escolher outra turma</button>}
+        <SectionTitle icon={RotateCcw} sub={`Turma: ${turmaSel.nome}`}>Liberar análise e ajustes</SectionTitle>
+        {equipes === null ? <div className="text-sm text-slate-500">Carregando empresas…</div>
+          : reais.length === 0 ? <Card className="p-8 text-center text-slate-500">Esta turma ainda não tem empresas.</Card>
+          : <AjustesFinaisTurma key={turmaSel.id} turma={turmaSel} equipes={reais} professorNome={professorNome} fixo />}
+      </div>
+    );
+  }
+  return (
+    <div>
+      <SectionTitle icon={RotateCcw} sub="Quando a equipe conclui o Módulo 11, libere TODOS os módulos para análise (M12 e M13) e ajustes dos lançamentos. Escolha a turma.">Liberar análise e ajustes</SectionTitle>
+      {turmas.length === 0 ? (
+        <Card className="p-10 text-center text-slate-500">Você ainda não criou nenhuma turma.</Card>
+      ) : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {turmas.map((t) => (
+            <button key={t.id} onClick={() => setTurmaSelId(t.id)} className="text-left bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-amber-500 transition">
+              <div className="flex items-center gap-2 mb-2"><School size={16} className="text-sky-400 shrink-0" /><span className="font-bold text-slate-100 truncate">{t.nome}</span></div>
+              <div className="flex items-center gap-2 text-xs text-slate-400"><KeyRound size={13} /> Código: <span className="font-mono font-bold text-amber-400">{t.codigo}</span></div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
+  const [aberto, setAberto] = useState(!!fixo);
   const [info, setInfo] = useState(null);   // { [equipeId]: { fluxo, corrigidos, final } }
   const [sel, setSel] = useState(new Set());
   const [prazo, setPrazo] = useState("");
@@ -7906,7 +7948,7 @@ function AjustesFinaisTurma({ turma, equipes, professorNome }) {
     if (ids.length === 0) { setAviso("Marque ao menos uma equipe apta."); return; }
     if (!prazo || prazo < hoje) { setAviso("Informe uma data limite que não esteja no passado."); return; }
     const nomes = aptas.filter((e) => sel.has(e.id)).map((e) => e.nomeNegocio).join(", ");
-    if (!window.confirm(`Liberar TODOS os módulos corrigidos para ajustes em ${ids.length} equipe(s)?\n\n${nomes}\n\nPrazo: ${fmtDataBR(prazo)}.\nAs notas e os lançamentos são mantidos; a equipe precisará reenviar cada módulo. Você poderá desfazer enquanto não houver reenvio.`)) return;
+    if (!window.confirm(`Liberar TODOS os módulos (1 a 13) em ${ids.length} equipe(s)?\n\n${nomes}\n\nPrazo: ${fmtDataBR(prazo)}.\nMódulos concluídos voltam para ajustes e os ainda bloqueados (ex.: 12 e 13) são liberados. As notas e os lançamentos são mantidos; a equipe reenvia cada módulo. Você poderá desfazer enquanto não houver reenvio.`)) return;
     setOcupado(true);
     try {
       const agora = Date.now();
@@ -7921,12 +7963,16 @@ function AjustesFinaisTurma({ turma, equipes, professorNome }) {
         const novo = { ...fluxo }; const antes = {};
         MODULOS.forEach((m) => {
           const atual = estadoModulo(fluxo, m.id);
-          if (atual.status !== "corrigido") return;            // só reabre o que está corrigido
-          antes[m.id] = atual;
-          novo[m.id] = {
-            ...atual, status: "ajustes", feedback: texto, ciclo: (atual.ciclo || 1) + 1, prazo, prazoManual: true,
-            historico: [...(atual.historico || []), { tipo: "reaberto_pos_correcao", data: agora, feedback: texto, lote: loteId }],
-          };
+          if (atual.status === "corrigido") {                  // concluído -> reaberto para ajustes
+            antes[m.id] = atual;
+            novo[m.id] = {
+              ...atual, status: "ajustes", feedback: texto, ciclo: (atual.ciclo || 1) + 1, prazo, prazoManual: true,
+              historico: [...(atual.historico || []), { tipo: "reaberto_pos_correcao", data: agora, feedback: texto, lote: loteId }],
+            };
+          } else if (atual.status === "pendente") {            // ainda bloqueado (ex.: M12 e M13) -> liberado
+            antes[m.id] = atual;
+            novo[m.id] = { ...atual, status: "liberado", prazo, prazoManual: true, loteAjustes: loteId };
+          }                                                    // liberado/enviado/ajustes: não mexe
         });
         if (Object.keys(antes).length) plano.push({ id, nome: (equipes.find((e) => e.id === id) || {}).nomeNegocio || id, d, novo, antes });
       }
@@ -7955,7 +8001,7 @@ function AjustesFinaisTurma({ turma, equipes, professorNome }) {
         const fluxo = { ...d.fluxoModulos }; let mudou = false;
         Object.keys(eq.antes).forEach((modId) => {
           const prev = eq.antes[modId]; const atual = fluxo[modId];
-          const intacto = atual && atual.status === "ajustes" && (atual.ciclo || 1) === (prev.ciclo || 1) + 1;
+          const intacto = atual && ((prev.status === "pendente" ? (atual.status === "liberado" && atual.loteAjustes === lote.id) : (atual.status === "ajustes" && (atual.ciclo || 1) === (prev.ciclo || 1) + 1)));
           if (intacto) { fluxo[modId] = prev; revertidos++; mudou = true; } else mantidos++;
         });
         if (mudou) await window.storage.set(`dados_equipe_${eq.id}`, JSON.stringify({ ...d, fluxoModulos: fluxo }), true);
@@ -7970,13 +8016,13 @@ function AjustesFinaisTurma({ turma, equipes, professorNome }) {
 
   return (
     <Card className="p-4">
-      <button onClick={() => setAberto((v) => !v)} className="w-full flex items-center justify-between text-left">
-        <span className="flex items-center gap-2 font-bold text-slate-100"><RotateCcw size={16} className="text-amber-500" /> Fase de ajustes finais <span className="text-xs font-normal text-slate-500">— liberar todos os módulos de equipes que chegaram ao final</span></span>
+      {!fixo && (<button onClick={() => setAberto((v) => !v)} className="w-full flex items-center justify-between text-left">
+        <span className="flex items-center gap-2 font-bold text-slate-100"><RotateCcw size={16} className="text-amber-500" /> Fase de análise e ajustes <span className="text-xs font-normal text-slate-500">— liberar todos os módulos de equipes que concluíram os lançamentos (M1–M11)</span></span>
         {aberto ? <ChevronDown size={18} className="text-slate-500" /> : <ChevronRight size={18} className="text-slate-500" />}
-      </button>
+      </button>)}
       {aberto && (
         <div className="mt-4">
-          <p className="text-xs text-slate-400 mb-3">Reabre, em uma única ação, todos os módulos <b>corrigidos</b> das equipes que concluíram o Módulo 13. As notas, os lançamentos e os comentários não são alterados; a equipe reenvia cada módulo e você reaprova um a um, como sempre.</p>
+          <p className="text-xs text-slate-400 mb-3">Quando a equipe conclui o <b>Módulo 11</b> (fim dos lançamentos), você libera <b>todos os módulos</b> de uma vez: os Módulos 12 e 13 (análise do negócio) são liberados e os módulos já corrigidos voltam para ajustes, para a equipe revisar os lançamentos com base na análise. As notas, os lançamentos e os comentários não são alterados; a equipe reenvia cada módulo e você reaprova um a um, como sempre.</p>
           {info === null ? <div className="text-xs text-slate-500">Lendo situação das equipes…</div> : (
             <>
               <div className="space-y-1.5 mb-4">
@@ -7987,8 +8033,8 @@ function AjustesFinaisTurma({ turma, equipes, professorNome }) {
                     <label key={e.id} className={`flex items-center gap-3 text-sm rounded-md border px-3 py-2 ${apta ? "border-slate-700 bg-slate-900/60 cursor-pointer" : "border-slate-800 bg-slate-900/20 text-slate-500"}`}>
                       <input type="checkbox" disabled={!apta || ocupado} checked={sel.has(e.id)} onChange={() => alternar(e.id)} />
                       <span className="flex-1 truncate text-slate-200">{e.nomeNegocio}</span>
-                      <span className="text-xs">{i ? `${i.corrigidos}/${MODULOS.length} corrigidos` : "—"}</span>
-                      <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 border ${apta ? "text-emerald-300 border-emerald-700" : "text-slate-500 border-slate-700"}`}>{apta ? "Chegou ao final" : "Ainda em andamento"}</span>
+                      <span className="text-xs">{i ? `${i.corrigidos}/${MODULOS.length} módulos corrigidos` : "—"}</span>
+                      <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 border ${apta ? "text-emerald-300 border-emerald-700" : "text-slate-500 border-slate-700"}`}>{apta ? "Concluiu o M11" : "Ainda em andamento"}</span>
                     </label>
                   );
                 })}
@@ -7996,7 +8042,7 @@ function AjustesFinaisTurma({ turma, equipes, professorNome }) {
               {aptas.length > 0 && (
                 <div className="grid md:grid-cols-[200px_1fr] gap-3 mb-3">
                   <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Prazo da fase de ajustes (obrigatório)</label>
+                    <label className="block text-[11px] text-slate-400 mb-1">Prazo da fase de análise e ajustes (obrigatório)</label>
                     <input type="date" value={prazo} min={hoje} onChange={(e) => setPrazo(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm" />
                   </div>
                   <div>
@@ -8011,7 +8057,7 @@ function AjustesFinaisTurma({ turma, equipes, professorNome }) {
                   <button onClick={() => setSel(new Set(aptas.map((e) => e.id)))} className="text-xs text-slate-400 hover:text-slate-100 underline">Marcar todas as aptas</button>
                 </div>
               )}
-              {aptas.length === 0 && <div className="text-xs text-slate-500">Nenhuma equipe chegou ao final (Módulo 13 corrigido) ainda.</div>}
+              {aptas.length === 0 && <div className="text-xs text-slate-500">Nenhuma equipe concluiu o Módulo 11 ainda.</div>}
             </>
           )}
           {aviso && <div className="mt-3 text-xs text-amber-300 bg-amber-950/30 border border-amber-800/50 rounded-md px-3 py-2">{aviso}</div>}
@@ -8118,7 +8164,6 @@ function TurmaDetail({ turma, onVoltar, professorNome, alvoCorrecao }) {
 
       <PainelRoster turmaId={turma.id} turmaNome={turma.nome} professorUid={turma.professorUid} professorNome={turma.professor} />
 
-      {equipes !== null && equipesReais.length > 0 && <AjustesFinaisTurma turma={turma} equipes={equipesReais} professorNome={professorNome} />}
 
       {equipesAguardandoSegmento.length > 0 && (
         <Card className="p-4 border-amber-800/50">
@@ -11706,6 +11751,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
         {aba === "correcoes" && <CorrecoesPendentesView pendentes={pendentesCorrecao} onAbrir={abrirCorrecao} />}
         {aba === "usuarios" && <GestaoUsuariosView turmas={turmas} />}
         {aba === "cronograma" && <GestaoCronogramaView turmas={turmas} />}
+        {aba === "liberarAjustes" && <GestaoLiberarAjustesView turmas={turmas} professorNome={user.nome} />}
         {aba === "integrantes" && <GestaoIntegrantesView turmas={turmas} user={user} />}
         {aba === "acessos" && <GestaoAcessosView turmas={turmas} user={user} />}
         {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}

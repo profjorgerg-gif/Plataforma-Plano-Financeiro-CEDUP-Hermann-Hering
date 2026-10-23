@@ -1,4 +1,4 @@
-// build: 20261022_21h00m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261022_22h00m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1332,6 +1332,7 @@ function chamadoPassaFiltro(c, filtro) {
 const VERSOES = [
   { versao: "3.4", data: "22/10/2026", itens: [
     "Novo item de menu em Gestão: \"Parecer do projeto\". O professor escolhe a turma e a empresa, o sistema analisa o negócio inteiro e sugere o veredito (projeto finalizado, finalizado com ressalvas ou com inconsistências), mostra o que está bom e, onde houver inconsistência, ONDE corrigir e O QUE fazer.",
+    "No parecer o prazo de retorno do investimento (payback) aparece como resultado do projeto, sem ser tratado como falha; \"não se paga nos 12 meses\" e \"retorno acima de 5 anos\" deixam de ser problemas na Orientação, na pré-análise e nos alertas.",
     "O parecer é editável e pode ser salvo no histórico, enviado para a equipe pela plataforma (aba Feedback do aluno) e baixado em PDF. Não altera módulos, notas nem lançamentos.",
   ]},
   { versao: "3.3", data: "23/10/2026", itens: [
@@ -3530,7 +3531,6 @@ function alertasNegocio(calc) {
   const alerts = [];
   if (calc.resultadoOperacional < 0) alerts.push({ tone: "rose", texto: "O resultado operacional mensal está negativo. Reveja preços (Módulo 5) ou custos (Módulos 7 a 11)." });
   if (calc.pontoEquilibrio != null && calc.receitaAnual < calc.pontoEquilibrio) alerts.push({ tone: "gold", texto: "O faturamento projetado está abaixo do ponto de equilíbrio anual." });
-  if (calc.prazoRetorno != null && calc.prazoRetorno > 5) alerts.push({ tone: "gold", texto: "O prazo de retorno do investimento está acima de 5 anos — considere reduzir o investimento inicial ou aumentar a margem de contribuição." });
   if (calc.investimentoTotal > 0 && calc.investFixo / calc.investimentoTotal > 0.8) alerts.push({ tone: "gold", texto: "Mais de 80% do investimento está concentrado em bens fixos — avalie se é possível alugar ou terceirizar parte dos equipamentos." });
   if (alerts.length === 0) alerts.push({ tone: "emerald", texto: "Os indicadores calculados até aqui não apontam alertas críticos. Continue detalhando os módulos para maior precisão." });
   return alerts;
@@ -7967,26 +7967,32 @@ async function lerPareceres(turmaId) {
 }
 
 // Sugere o veredito pelas regras já usadas na plataforma (nada novo é inventado)
+function prazoRetornoCurto(anos) {
+  const meses = Math.round(anos * 12); const a = Math.floor(meses / 12); const m = meses % 12;
+  const partes = [];
+  if (a) partes.push(`${a} ${a > 1 ? "anos" : "ano"}`);
+  if (m || !a) partes.push(`${m} ${m === 1 ? "mês" : "meses"}`);
+  return `${partes.join(" e ")} (${fmtNum(anos, 1)} ano(s))`;
+}
+function prazoRetornoTexto(anos) { return `o investimento se paga em cerca de ${prazoRetornoCurto(anos)}`; }
 function analisarParecer(o, calc) {
   const criticos = []; const fortes = [];
   if (o.corrigidos < o.total) criticos.push(`${o.total - o.corrigidos} módulo(s) ainda não concluído(s) (corrigidos: ${o.corrigidos} de ${o.total})`);
   else fortes.push(`Todos os ${o.total} módulos foram lançados e corrigidos.`);
   if (o.achados.some((a) => a.grav === "erro")) criticos.push("há módulo devolvido ou com prazo vencido");
+  // O objetivo do projeto é IDENTIFICAR em quanto tempo o negócio devolve o investimento — o prazo
+  // (curto ou longo) é um resultado a informar, não uma falha. Retorno inexistente vira ressalva.
   if (!(calc.faturamento > 0)) criticos.push("não há faturamento lançado (Módulo 5)");
   else {
     const dg = o.diagnostico;
-    if (calc.resultadoOperacional < 0) criticos.push(`resultado operacional mensal negativo (${fmtBRL(calc.resultadoOperacional)})`);
-    else fortes.push(`Resultado operacional positivo: ${fmtBRL(calc.resultadoOperacional)} por mês.`);
-    if (dg && dg.cobertura != null) {
-      if (dg.cobertura < 100) criticos.push(`o faturamento cobre só ${fmtNum(dg.cobertura, 1)}% do ponto de equilíbrio`);
-      else fortes.push(`O faturamento cobre o ponto de equilíbrio (${fmtNum(dg.cobertura, 1)}%).`);
-    }
-    if (calc.prazoRetorno == null) criticos.push("o investimento não se paga com o resultado atual (sem prazo de retorno)");
-    else if (calc.prazoRetorno <= 5) fortes.push(`Prazo de retorno do investimento de ${fmtNum(calc.prazoRetorno, 1)} ano(s).`);
+    if (calc.resultadoOperacional >= 0) fortes.push(`Resultado operacional positivo: ${fmtBRL(calc.resultadoOperacional)} por mês.`);
+    if (dg && dg.cobertura != null && dg.cobertura >= 100) fortes.push(`O faturamento cobre o ponto de equilíbrio (${fmtNum(dg.cobertura, 1)}%).`);
+    if (calc.prazoRetorno != null) fortes.push(`O retorno do investimento foi identificado: ${prazoRetornoTexto(calc.prazoRetorno)}.`);
     if (dg && dg.mesesCaixa == null) fortes.push("Capital de giro sem consumo de caixa pelo resultado.");
   }
-  const nivel = criticos.length ? "inconsistencias" : o.achados.length ? "ressalvas" : "finalizado";
-  return { nivel, criticos, fortes };
+  const semRetorno = calc.faturamento > 0 && calc.prazoRetorno == null;
+  const nivel = criticos.length ? "inconsistencias" : (o.achados.length || semRetorno) ? "ressalvas" : "finalizado";
+  return { nivel, criticos, fortes, semRetorno };
 }
 
 function parecerEmTexto({ o, turma, calc, nivel, criticos, fortes, obs }) {
@@ -7995,8 +8001,8 @@ function parecerEmTexto({ o, turma, calc, nivel, criticos, fortes, obs }) {
   if (turma?.professor) L.push(`Professor(a): ${turma.professor}`);
   L.push(`Segmento: ${o.segmento}`);
   L.push("", `RESULTADO: ${PARECER_NIVEIS[nivel].curto}`);
-  if (nivel === "finalizado") L.push("O projeto está completo e consistente: não foram encontradas pendências nos lançamentos nem nos indicadores de viabilidade.");
-  else if (nivel === "ressalvas") L.push("O projeto está concluído e viável, mas há pontos de melhoria indicados abaixo.");
+  if (nivel === "finalizado") L.push("O projeto está completo e consistente: não foram encontradas pendências e o retorno do investimento foi identificado.");
+  else if (nivel === "ressalvas") L.push(calc.faturamento > 0 && calc.prazoRetorno == null ? "O projeto está concluído, mas com os números atuais o investimento não se paga; há pontos a rever, indicados abaixo." : "O projeto está concluído, com pontos de melhoria indicados abaixo.");
   else L.push(`O projeto ainda apresenta inconsistências que precisam ser corrigidas: ${criticos.join("; ")}.`);
   if (calc.faturamento > 0) {
     L.push("", "Principais números (mensais):");
@@ -8004,7 +8010,7 @@ function parecerEmTexto({ o, turma, calc, nivel, criticos, fortes, obs }) {
     L.push(`- Faturamento: ${fmtBRL(calc.faturamento)}`);
     L.push(`- Resultado operacional: ${fmtBRL(calc.resultadoOperacional)}`);
     if (o.diagnostico?.peMensal) L.push(`- Ponto de equilíbrio: ${fmtBRL(o.diagnostico.peMensal)} por mês (a receita cobre ${fmtNum(o.diagnostico.cobertura, 1)}%)`);
-    L.push(`- Prazo de retorno: ${calc.prazoRetorno != null ? `${fmtNum(calc.prazoRetorno, 1)} ano(s)` : "não se paga com o resultado atual"}`);
+    L.push(`- Retorno do investimento (payback): ${calc.prazoRetorno != null ? prazoRetornoCurto(calc.prazoRetorno) : "não há retorno com os números atuais"}`);
   }
   if (fortes.length) { L.push("", "O que está bom:"); fortes.forEach((f) => L.push(`✓ ${f}`)); }
   if (o.achados.length) {
@@ -8150,7 +8156,7 @@ function ParecerEmpresa({ turma, equipe, professorNome, onVoltar }) {
               <StatCard label="Módulos corrigidos" value={`${estado.o.corrigidos} de ${estado.o.total}`} tone="emerald" small />
               <StatCard label="Pontos a ajustar" value={String(estado.o.achados.length)} tone={estado.o.achados.length ? "rose" : "slate"} small />
               <StatCard label="Resultado/mês" value={estado.calc.faturamento > 0 ? fmtBRL(estado.calc.resultadoOperacional) : "—"} tone={estado.calc.resultadoOperacional < 0 ? "rose" : "emerald"} small />
-              <StatCard label="Retorno" value={estado.calc.prazoRetorno != null ? `${fmtNum(estado.calc.prazoRetorno, 1)} ano(s)` : "—"} tone="gold" small />
+              <StatCard label="Retorno do investimento" value={estado.calc.prazoRetorno != null ? prazoRetornoCurto(estado.calc.prazoRetorno) : "não se paga"} tone="gold" small />
             </div>
             <Card className="p-4">
               <div className="text-xs text-slate-400 mb-2">Veredito sugerido pelo sistema (você pode trocar):</div>
@@ -8160,7 +8166,7 @@ function ParecerEmpresa({ turma, equipe, professorNome, onVoltar }) {
                 ))}
               </div>
               {estado.a.criticos.length > 0 && <div className="text-xs text-rose-300 mb-1">Motivos das inconsistências: {estado.a.criticos.join("; ")}.</div>}
-              <div className="text-[11px] text-slate-500">★ = sugestão automática. Regras: com inconsistências se há módulo pendente/devolvido, resultado negativo, abaixo do ponto de equilíbrio ou sem retorno; com ressalvas se só há pontos de melhoria; finalizado se não há pendências. Os limites são referências pedagógicas.</div>
+              <div className="text-[11px] text-slate-500">★ = sugestão automática. Regras: com inconsistências se há módulo pendente/devolvido ou sem faturamento; com ressalvas se há pontos de melhoria ou o investimento não se paga com os números atuais; finalizado se não há pendências. O prazo de retorno (curto ou longo) é só um resultado a informar. Os limites são referências pedagógicas.</div>
             </Card>
             <Card className="p-4">
               <label className="block text-[11px] text-slate-400 mb-1">Suas observações (entram no parecer)</label>
@@ -9297,10 +9303,8 @@ function diagnosticoGerencial(l, calc, fluxoMod, dados) {
   if (calc.faturamento > 0) {
     if (calc.resultadoOperacional < 0) add("alta", 5, `Resultado operacional mensal negativo (${fmtBRL(calc.resultadoOperacional)}).`, "Rever preços (Módulo 5) e custos (Módulos 7 a 11).");
     if (calc.pontoEquilibrio != null && calc.receitaAnual < calc.pontoEquilibrio) add("media", 13, "O faturamento anual projetado está abaixo do ponto de equilíbrio.", "Aumentar receita ou reduzir custos fixos/variáveis.");
-    if (calc.prazoRetorno != null && calc.prazoRetorno > 5) add("media", 13, `Prazo de retorno de ${fmtNum(calc.prazoRetorno, 1)} anos (acima de 5).`, "Reduzir o investimento inicial ou aumentar a margem de contribuição.");
     if (calc.investimentoTotal > 0 && calc.investFixo / calc.investimentoTotal > 0.8) add("info", 1, "Mais de 80% do investimento está em bens fixos.", "Avaliar alugar, terceirizar ou comprar usado parte dos equipamentos.");
     const fluxo = projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0);
-    if (!fluxo.some((m) => m.mes > 0 && m.saldo >= 0)) add("media", 13, "O negócio não recupera o investimento nos 12 meses projetados no fluxo de caixa.", "Rever receita, custos e investimento; analisar cenários alternativos.");
   }
 
   // Fluxo de correção
@@ -10075,7 +10079,7 @@ function diagnosticoViabilidade(l, calc, segmento, cfg) {
   if (pctTerc > LIM.terceirosAlto) plano.push({ mod: 4, titulo: `${fmtNum(pctTerc, 0)}% do investimento (${fmtBRL(valorTerc)}) vem de capital de terceiros.`, orientacao: "O fluxo de caixa precisa pagar o financiamento. Revisem a proporção entre capital próprio e de terceiros ou justifiquem a capacidade de pagamento." });
   if (mesesCaixa !== null && mesesCaixa < LIM.caixaMesesMin) plano.push({ mod: 2, titulo: `Com o resultado atual (${fmtBRL(res)} por mês), o capital de giro de ${fmtBRL(calc.capitalGiroTotal)} dura cerca de ${fmtNum(mesesCaixa, 1)} meses.`, orientacao: "Reavaliem o capital de giro depois de ajustar receita e custos, e a necessidade de caixa mínimo." });
   if (res < 0) plano.push({ mod: 12, titulo: `Resultado operacional negativo: ${fmtBRL(res)} por mês (${fmtNum(pct(res), 1)}% da receita).`, orientacao: "Depois de ajustar os módulos acima, o Demonstrativo deve mostrar resultado positivo antes de ser reenviado." });
-  if (calc.prazoRetorno == null) plano.push({ mod: 13, titulo: "Com o resultado atual o investimento não se paga (não há prazo de retorno).", orientacao: "Elaborem os cenários otimista e pessimista, calculando payback e TIR, e concluam sobre a viabilidade do negócio." });
+  if (calc.prazoRetorno == null) plano.push({ mod: 13, titulo: "Com o resultado atual o investimento não se paga: não há prazo de retorno.", orientacao: "O objetivo do projeto é identificar em quanto tempo o negócio devolve o investimento. Confiram receita, preços e custos (Módulos 5 a 11) e registrem no Módulo 13 a conclusão: com os números atuais não há retorno, e o que precisaria mudar para haver." });
   return { dre, peMensal, peAnual: peMensal ? peMensal * 12 : null, cobertura, mesesCaixa, pctTerc, valorTerc, giro: calc.capitalGiroTotal, plano, faltam };
 }
 
@@ -10099,7 +10103,7 @@ function BlocoDiagnosticoTela({ d }) {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard label="Ponto de equilíbrio (mês)" value={d.peMensal ? fmtBRL(d.peMensal) : "—"} tone="gold" small />
         <StatCard label="Receita cobre do equilíbrio" value={d.cobertura != null ? `${fmtNum(d.cobertura, 1)}%` : "—"} tone={d.cobertura != null && d.cobertura < 100 ? "rose" : "emerald"} small />
-        <StatCard label="Capital de giro dura" value={d.mesesCaixa != null ? `${fmtNum(d.mesesCaixa, 1)} meses` : "sem consumo"} tone={d.mesesCaixa != null && d.mesesCaixa < LIMITES_DIAG.caixaMesesMin ? "rose" : "emerald"} small />
+        <StatCard label="Capital de giro dura" value={d.mesesCaixa != null ? `${fmtNum(d.mesesCaixa, 1)} meses` : "sem consumo"} tone={d.mesesCaixa != null && d.mesesCaixa < LIMITES_DIAG.caixaMesesMin ? "gold" : "emerald"} small />
         <StatCard label="Capital de terceiros" value={`${fmtNum(d.pctTerc, 0)}%`} tone={d.pctTerc > LIMITES_DIAG.terceirosAlto ? "rose" : "slate"} small />
       </div>
       <p className="text-[11px] text-slate-500">As leituras (“adequado”, “crítico”…) usam limites de referência pedagógica (ex.: mão de obra até {LIMITES_DIAG.maoObraOk}% da receita, CMV até {LIMITES_DIAG.cmvOk}%) — servem para conversar com a equipe, não são normas.</p>
@@ -10169,9 +10173,7 @@ function gerarOrientacaoEquipe(item, cfg) {
     const fim = (titulo, orientacao) => achados.push({ grav: "conferir", mod: 0, modulo: "Resultado do negócio", titulo, orientacao, onde: "Menu → Análise do Negócio", quem: "equipe" });
     if (calc.resultadoOperacional < 0) fim(`Resultado operacional negativo (${fmtBRL(calc.resultadoOperacional)} por mês).`, "Revisem preços, custos e quantidades vendidas — ponto para conversar em aula.");
     if (calc.pontoEquilibrio != null && calc.receitaAnual < calc.pontoEquilibrio) fim("O faturamento anual projetado está abaixo do ponto de equilíbrio.", "Aumentar a receita ou reduzir custos fixos/variáveis.");
-    if (calc.prazoRetorno != null && calc.prazoRetorno > 5) fim(`Prazo de retorno de ${fmtNum(calc.prazoRetorno, 1)} anos (acima de 5).`, "Reduzir o investimento inicial ou aumentar a margem de contribuição.");
     const fluxo = projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0);
-    if (!fluxo.some((mm) => mm.mes > 0 && mm.saldo >= 0)) fim("O negócio não recupera o investimento nos 12 meses do fluxo de caixa.", "Rever receita, custos e investimento; analisar cenários alternativos.");
   }
   // Diagnóstico de viabilidade + plano por módulo (só quando a equipe já concluiu os lançamentos: M11 corrigido)
   const diagnostico = diagnosticoViabilidade(l, calc, equipe.segmento, cfg);

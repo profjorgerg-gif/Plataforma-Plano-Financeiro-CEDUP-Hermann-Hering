@@ -1,4 +1,4 @@
-// build: 20261022_22h00m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261022_22h30m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1331,6 +1331,7 @@ function chamadoPassaFiltro(c, filtro) {
 // ============================================================================
 const VERSOES = [
   { versao: "3.4", data: "22/10/2026", itens: [
+    "A sugestão automática de nota deixou de aparecer no Relatório de Notas; agora aparece só no campo onde o professor digita a nota do módulo (\"sugestão: X\" com botão \"usar\"), sem gravar nada sozinha.",
     "Novo item de menu em Gestão: \"Parecer do projeto\". O professor escolhe a turma e a empresa, o sistema analisa o negócio inteiro e sugere o veredito (projeto finalizado, finalizado com ressalvas ou com inconsistências), mostra o que está bom e, onde houver inconsistência, ONDE corrigir e O QUE fazer.",
     "No parecer o prazo de retorno do investimento (payback) aparece como resultado do projeto, sem ser tratado como falha; \"não se paga nos 12 meses\" e \"retorno acima de 5 anos\" deixam de ser problemas na Orientação, na pré-análise e nos alertas.",
     "O parecer é editável e pode ser salvo no histórico, enviado para a equipe pela plataforma (aba Feedback do aluno) e baixado em PDF. Não altera módulos, notas nem lançamentos.",
@@ -5868,7 +5869,7 @@ function PainelAvaliacao({ media, notasDadasLength, totalModulos, notaFinal, not
   );
 }
 
-function NotaModulo({ nota, onSetNota, ehFinal, readOnly }) {
+function NotaModulo({ nota, onSetNota, ehFinal, readOnly, sugestao }) {
   const [valor, setValor] = useState(nota ?? "");
   useEffect(() => { setValor(nota ?? ""); }, [nota]);
 
@@ -5901,6 +5902,12 @@ function NotaModulo({ nota, onSetNota, ehFinal, readOnly }) {
         placeholder="—"
         className="w-16 bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-sm text-slate-100 focus:border-amber-500 focus:outline-none text-center"
       />
+      {sugestao !== null && sugestao !== undefined && String(sugestao) !== String(valor) && (
+        <span className="flex items-center gap-1.5 text-[11px] text-violet-300" title="Sugestão automática (10 − 1 por devolução − 2 se entregue com atraso). Só informativa: a nota é sua.">
+          sugestão: <b>{sugestao}</b>
+          <button type="button" onClick={() => { setValor(String(sugestao)); onSetNota(sugestao); }} className="border border-violet-400/50 text-violet-200 rounded px-1.5 py-0.5 hover:bg-violet-500/10">usar</button>
+        </span>
+      )}
     </div>
   );
 }
@@ -6385,7 +6392,7 @@ function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentario
           <PainelFluxoModulo modId={m.id} nomeModulo={`Módulo ${m.n} (${m.nome})`} lanc={lanc} calc={calc} estado={estado} ultimoModulo={ultimoModulo} onSetPrazo={onSetPrazo} onConfirmarCorrecao={onConfirmarCorrecao} onReabrir={onReabrir} onRestaurarPrazoAutomatico={onRestaurarPrazoAutomatico} onDevolverAjustes={onDevolverAjustes} onReabrirPosCorrecao={onReabrirPosCorrecao} nota={nota} prazoCronograma={prazoCronograma} />
           <OrientacaoAlunoParaProfessor modId={m.id} segmento={segmento} />
           <div className="pt-4"><ModuloLeitura mId={m.id} lanc={lanc} calc={calc} /></div>
-          {(avaliavel || ehFinal) && <NotaModulo nota={nota} onSetNota={onSetNota} ehFinal={ehFinal} />}
+          {(avaliavel || ehFinal) && <NotaModulo nota={nota} onSetNota={onSetNota} ehFinal={ehFinal} sugestao={sugerirNotaModulo(estado)} />}
           <ComentariosPanel
             comentarios={comentariosModulo}
             onAdd={onAddComentario}
@@ -9977,7 +9984,7 @@ function RelatorioNotas({ turma, dadosEquipes }) {
                   <td className="py-2 px-3 text-slate-100 font-medium">{l.nomeAluno}</td>
                   <td className="py-2 px-3 text-slate-400">{l.empresa}</td>
                   {modulosColuna.map((m) => (
-                    <td key={m.id} className="py-2 px-2 text-center text-slate-300">{!vazio(l.notas[m.id]) ? l.notas[m.id] : "—"}{(() => { const sg = sugerirNotaModulo(estadoModulo(l.fluxo, m.id)); return sg !== null && String(sg) !== String(l.notas[m.id]) ? <span className="no-print block text-[10px] text-violet-300" title="Sugestão automática (10 − 1 por devolução − 2 se entregue com atraso). Só informativa: a nota é sua.">sug. {sg}</span> : null; })()}</td>
+                    <td key={m.id} className="py-2 px-2 text-center text-slate-300">{!vazio(l.notas[m.id]) ? l.notas[m.id] : "—"}</td>
                   ))}
                   <td className="py-2 px-2 text-center text-slate-300">{!vazio(l.notaCenariosFluxo) ? l.notaCenariosFluxo : "—"}</td>
                   <td className="py-2 px-2 text-center text-slate-300">{!vazio(l.notaApresentacao) ? l.notaApresentacao : "—"}</td>
@@ -9988,7 +9995,7 @@ function RelatorioNotas({ turma, dadosEquipes }) {
           </table>
         </div>
       </Card>
-      <p className="no-print text-[11px] text-slate-500 mt-2"><span className="text-violet-300 font-semibold">sug.</span> = sugestão automática (10 − 1,0 por devolução − 2,0 se entregue com atraso), exibida só quando difere da nota lançada. Não grava nada: a nota continua sendo decisão do professor.</p>
+      
     </div>
   );
 }

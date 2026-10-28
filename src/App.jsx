@@ -1,4 +1,4 @@
-// build: 20261022_22h30m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261028_20h30m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1331,6 +1331,8 @@ function chamadoPassaFiltro(c, filtro) {
 // ============================================================================
 const VERSOES = [
   { versao: "3.4", data: "22/10/2026", itens: [
+    "Em Gestão → Liberar análise e ajustes, novo bloco \"Reta final\": libera TODOS os módulos (1 a 13) de TODAS as equipes de uma vez, sem exigir o Módulo 11, com o prazo automático no último prazo do cronograma. Corrigidos voltam para ajustes (notas mantidas), bloqueados são liberados e os já abertos ganham o novo prazo. Mostra uma prévia por equipe antes de confirmar e pode ser desfeito.",
+    "Correção de segurança no acesso: quando o sistema não consegue ler o cadastro da pessoa (falha de conexão ou limite do banco), ele agora mostra \"Não deu para carregar\" em vez de achar que a conta é nova. O cadastro só é criado quando a pessoa escolhe o perfil na tela de entrada, e nunca por cima de um cadastro existente.",
     "A sugestão automática de nota deixou de aparecer no Relatório de Notas; agora aparece só no campo onde o professor digita a nota do módulo (\"sugestão: X\" com botão \"usar\"), sem gravar nada sozinha.",
     "Novo item de menu em Gestão: \"Parecer do projeto\". O professor escolhe a turma e a empresa, o sistema analisa o negócio inteiro e sugere o veredito (projeto finalizado, finalizado com ressalvas ou com inconsistências), mostra o que está bom e, onde houver inconsistência, ONDE corrigir e O QUE fazer.",
     "No parecer o prazo de retorno do investimento (payback) aparece como resultado do projeto, sem ser tratado como falha; \"não se paga nos 12 meses\" e \"retorno acima de 5 anos\" deixam de ser problemas na Orientação, na pré-análise e nos alertas.",
@@ -2004,11 +2006,15 @@ function SuporteRelatorio({ chamados, onFechar }) {
   );
 }
 
-async function buscarUsuario(uid) {
+// `estrito`: se a LEITURA falhar (conexão, limite do banco…), lança o erro em vez de
+// devolver null — assim "não consegui ler" nunca é confundido com "conta nova".
+async function buscarUsuario(uid, estrito = false) {
+  let leituraFalhou = false;
   try {
     const r = await window.storage.get(`usuario_${uid}`, true);
     if (r) return JSON.parse(r.value);
-  } catch {}
+  } catch (e) { if (estrito) throw e; leituraFalhou = true; }
+  if (leituraFalhou) return null;   // leitura falhou: não migra nada da lista antiga por cima do cadastro
   // Não achou no formato novo — tenta recuperar do formato antigo (lista
   // única) e, se achar, já migra para o formato novo automaticamente.
   const antigo = await buscarUsuarioListaAntiga(uid);
@@ -2116,7 +2122,8 @@ function useUsuario(uid) {
     let alive = true;
     if (!uid) { setEstado({ uid, perfil: null }); return; }
     (async () => {
-      const p = await buscarUsuario(uid);
+      let p;
+      try { p = await buscarUsuario(uid, true); } catch { p = { __erro: true }; }
       if (alive) setEstado({ uid, perfil: p });
     })();
     return () => { alive = false; };
@@ -7943,6 +7950,7 @@ function GestaoCronogramaView({ turmas }) {
 // DESFEITO enquanto os módulos não tiverem sido reenviados.
 // ============================================================================
 const MODULO_GATILHO_AJUSTES = "m11"; // a fase começa quando a equipe conclui os lançamentos (M1–M11)
+const MSG_RETA_FINAL = "Reta final — TODOS os módulos (1 a 13) estão liberados até {prazo}, o último prazo do cronograma. Revisem e completem os lançamentos de qualquer módulo e reenviem cada um para correção. As notas já atribuídas foram mantidas.";
 const MSG_AJUSTES_PADRAO = "Fase de análise e ajustes — vocês concluíram os lançamentos (Módulos 1 a 11). Agora estão liberados os Módulos 12 e 13 para analisar o negócio e os módulos em que o relatório indicou ajustes: com base nessa análise, revisem os lançamentos e façam os ajustes necessários no plano financeiro. Reenviem cada módulo liberado até {prazo}; os demais continuam concluídos. As notas já atribuídas foram mantidas.";
 const chaveLotesAjustes = (turmaId) => `lotes_ajustes_${turmaId}`;
 
@@ -8306,11 +8314,15 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
   const [info, setInfo] = useState(null);   // { [equipeId]: { fluxo, corrigidos, final } }
   const [sel, setSel] = useState(new Set());
   const [prazo, setPrazo] = useState("");
+  const prazoNormal = prazo;
   const [msg, setMsg] = useState(MSG_AJUSTES_PADRAO);
   const [lotes, setLotes] = useState([]);
   const [ocupado, setOcupado] = useState(false);
   const [aviso, setAviso] = useState("");
-  const [previa, setPrevia] = useState(null);   // [{ id, nome, o, geral, mods }]
+  const [previa, setPrevia] = useState(null);   // [{ id, nome, o, geral, mods, abrir, reta?, resumo? }]
+  const [cronUltimo, setCronUltimo] = useState(null);      // último prazo do cronograma (AAAA-MM-DD) ou null
+  const [prazoRetaManual, setPrazoRetaManual] = useState("");
+  const [msgReta, setMsgReta] = useState(MSG_RETA_FINAL);
 
   const carregar = async () => {
     const mapa = {};
@@ -8321,12 +8333,48 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
     }));
     setInfo(mapa);
     setLotes(await lerLotesAjustes(turma.id));
+    try {
+      const rc = await window.storage.get(`cronograma_${turma.id}`, true);
+      const linhas = rc ? (JSON.parse(rc.value).linhas || []) : [];
+      const datas = linhas.map((l) => l.dataEntrega).filter(Boolean).sort();
+      setCronUltimo(datas.length ? datas[datas.length - 1] : null);
+    } catch { setCronUltimo(null); }
   };
   useEffect(() => { if (aberto) carregar(); /* eslint-disable-next-line */ }, [aberto]);
 
   const aptas = (equipes || []).filter((e) => info && info[e.id] && info[e.id].final);
   const alternar = (id) => setSel((a) => { const n = new Set(a); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const hoje = new Date().toISOString().slice(0, 10);
+  const retaAuto = cronUltimo && cronUltimo >= hoje ? cronUltimo : "";
+  const prazoReta = retaAuto || prazoRetaManual;
+
+  // RETA FINAL — prévia da liberação de TODOS os módulos de TODAS as equipes (só leitura)
+  const gerarPreviaReta = async () => {
+    setAviso("");
+    if (!prazoReta || prazoReta < hoje) { setAviso("Informe uma data limite que não esteja no passado."); return; }
+    setOcupado(true);
+    try {
+      const base = (msgReta || MSG_RETA_FINAL).replace(/\{prazo\}/g, fmtDataBR(prazoReta));
+      const lista = [];
+      for (const e of equipes || []) {
+        const d = await lerDadosEquipeFresco(e.id);
+        if (!d) continue;
+        const fluxo = d.fluxoModulos || fluxoModulosPadrao();
+        const resumo = { reabre: 0, libera: 0, estende: 0, mantem: 0 };
+        MODULOS.forEach((m) => {
+          const st = estadoModulo(fluxo, m.id);
+          if (st.status === "corrigido") resumo.reabre++;
+          else if (st.status === "pendente") resumo.libera++;
+          else if ((st.status === "liberado" || st.status === "ajustes") && (!st.prazo || st.prazo < prazoReta)) resumo.estende++;
+          else resumo.mantem++;
+        });
+        const mods = {}; const abrir = {}; MODULOS.forEach((m) => { mods[m.id] = base; abrir[m.id] = true; });
+        lista.push({ id: e.id, nome: e.nomeNegocio, geral: base, mods, abrir, reta: true, resumo });
+      }
+      setPrevia(lista);
+    } catch { setAviso("Não foi possível gerar a prévia. Tente de novo."); }
+    setOcupado(false);
+  };
 
   const IGNORA_ACHADO = /^(Devolvido pelo professor|Prazo vencido|Módulo liberado e ainda sem lançamentos)/;
   const textoDoModulo = (base, n, achadosEq) => {
@@ -8364,7 +8412,10 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
   const liberar = async () => {
     if (!previa || previa.length === 0) return;
     setAviso("");
-    if (!window.confirm(`Liberar os módulos marcados (${previa.reduce((t, x) => t + Object.values(x.abrir).filter(Boolean).length, 0)} no total) em ${previa.length} equipe(s) e enviar as orientações pela plataforma?\n\n${previa.map((x) => x.nome).join(", ")}\n\nPrazo: ${fmtDataBR(prazo)}.\nMódulos marcados e concluídos voltam para ajustes (com a orientação de cada um) e os ainda bloqueados (12 e 13) são liberados; os não marcados permanecem concluídos. Notas e lançamentos são mantidos. Você poderá desfazer enquanto não houver reenvio.`)) return;
+    const reta = !!previa[0].reta;
+    const prazo = reta ? prazoReta : prazoNormal;
+    if (reta && (!prazo || prazo < hoje)) { setAviso("Informe uma data limite que não esteja no passado."); return; }
+    if (reta ? !window.confirm(`RETA FINAL — liberar TODOS os módulos (1 a 13) de ${previa.length} equipe(s) até ${fmtDataBR(prazo)} (último prazo do cronograma)?\n\n${previa.map((x) => x.nome).join(", ")}\n\n• Módulos corrigidos voltam para ajustes (notas mantidas).\n• Módulos bloqueados são liberados.\n• Módulos já liberados ou em ajustes com prazo anterior ganham o novo prazo.\n• Módulos enviados aguardando sua correção não são alterados.\nVocê poderá desfazer enquanto não houver reenvio.`) : !window.confirm(`Liberar os módulos marcados (${previa.reduce((t, x) => t + Object.values(x.abrir).filter(Boolean).length, 0)} no total) em ${previa.length} equipe(s) e enviar as orientações pela plataforma?\n\n${previa.map((x) => x.nome).join(", ")}\n\nPrazo: ${fmtDataBR(prazo)}.\nMódulos marcados e concluídos voltam para ajustes (com a orientação de cada um) e os ainda bloqueados (12 e 13) são liberados; os não marcados permanecem concluídos. Notas e lançamentos são mantidos. Você poderá desfazer enquanto não houver reenvio.`)) return;
     setOcupado(true);
     try {
       const agora = Date.now();
@@ -8374,7 +8425,7 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
         const d = await lerDadosEquipeFresco(pv.id);          // leitura fresca, logo antes de gravar
         if (!d) continue;
         const fluxo = d.fluxoModulos || fluxoModulosPadrao();
-        if (!equipeChegouAoFinal(fluxo)) continue;             // reconfere elegibilidade
+        if (!reta && !equipeChegouAoFinal(fluxo)) continue;    // reconfere elegibilidade (na reta final, todas as equipes)
         const novo = { ...fluxo }; const antes = {};
         MODULOS.forEach((m) => {
           const atual = estadoModulo(fluxo, m.id);
@@ -8389,13 +8440,16 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
           } else if (atual.status === "pendente") {            // ainda bloqueado (ex.: M12 e M13) -> liberado
             antes[m.id] = atual;
             novo[m.id] = { ...atual, status: "liberado", prazo, prazoManual: true, loteAjustes: loteId, feedback: texto };
-          }                                                    // liberado/enviado/ajustes: não mexe
+          } else if (reta && (atual.status === "liberado" || atual.status === "ajustes") && (!atual.prazo || atual.prazo < prazo)) {
+            antes[m.id] = atual;                               // já aberto: só estende o prazo (nunca encurta)
+            novo[m.id] = { ...atual, prazo, prazoManual: true, loteAjustes: loteId };
+          }                                                    // enviado (e abertos com prazo maior): não mexe
         });
         if (Object.keys(antes).length) plano.push({ id: pv.id, nome: pv.nome, d, novo, antes, geral: pv.geral });
       }
       if (plano.length === 0) { setAviso("Nenhuma equipe apta no momento (releitura do banco)."); setOcupado(false); return; }
       // 1) grava primeiro o registro do lote (estado anterior) — se falhar, nada é alterado
-      const registro = { id: loteId, em: agora, por: professorNome, prazo, mensagem: msg, equipes: plano.map((p) => ({ id: p.id, nome: p.nome, antes: p.antes })) };
+      const registro = { id: loteId, em: agora, por: professorNome, prazo, reta, mensagem: reta ? msgReta : msg, equipes: plano.map((p) => ({ id: p.id, nome: p.nome, antes: p.antes })) };
       const lista = await lerLotesAjustes(turma.id);
       await window.storage.set(chaveLotesAjustes(turma.id), JSON.stringify([...lista, registro]), true);
       // 2) altera SOMENTE fluxoModulos e acrescenta o comentário "Geral" com o relatório
@@ -8421,7 +8475,7 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
         const fluxo = { ...d.fluxoModulos }; let mudou = false;
         Object.keys(eq.antes).forEach((modId) => {
           const prev = eq.antes[modId]; const atual = fluxo[modId];
-          const intacto = atual && ((prev.status === "pendente" ? (atual.status === "liberado" && atual.loteAjustes === lote.id) : (atual.status === "ajustes" && (atual.ciclo || 1) === (prev.ciclo || 1) + 1)));
+          const intacto = atual && (prev.status === "pendente" ? (atual.status === "liberado" && atual.loteAjustes === lote.id) : prev.status === "corrigido" ? (atual.status === "ajustes" && (atual.ciclo || 1) === (prev.ciclo || 1) + 1) : (atual.status === prev.status && atual.loteAjustes === lote.id));
           if (intacto) { fluxo[modId] = prev; revertidos++; mudou = true; } else mantidos++;
         });
         if (mudou) await window.storage.set(`dados_equipe_${eq.id}`, JSON.stringify({ ...d, fluxoModulos: fluxo, comentarios: (d.comentarios || []).filter((c) => c.lote !== lote.id) }), true);
@@ -8443,7 +8497,26 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
       {aberto && (
         <div className="mt-4">
           <p className="text-xs text-slate-400 mb-3">Quando a equipe conclui o <b>Módulo 11</b> (fim dos lançamentos), você libera <b>todos os módulos</b> de uma vez: os Módulos 12 e 13 (análise do negócio) são liberados e os módulos já corrigidos voltam para ajustes, para a equipe revisar os lançamentos com base na análise. As notas, os lançamentos e os comentários não são alterados; a equipe reenvia cada módulo e você reaprova um a um, como sempre.</p>
-          {previa ? (
+          {previa && previa[0] && previa[0].reta ? (
+            <div>
+              <div className="text-sm text-slate-200 mb-1 font-bold">Reta final — revise a liberação geral</div>
+              <p className="text-xs text-slate-400 mb-3">Nada foi gravado ainda. Todos os módulos (1 a 13) de todas as equipes abrem até <b className="text-amber-300">{fmtDataBR(prazoReta)}</b>{retaAuto ? " (último prazo do cronograma)" : ""}. Notas e lançamentos são mantidos.</p>
+              <label className="block text-[11px] text-slate-400 mb-1">Mensagem que a equipe verá em cada módulo ({"{prazo}"} vira a data)</label>
+              <textarea value={previa[0].geral} rows={4} onChange={(e) => { const v = e.target.value; setMsgReta(v); setPrevia(previa.map((x) => { const t = v.replace(/\{prazo\}/g, fmtDataBR(prazoReta)); const mods = {}; MODULOS.forEach((m) => { mods[m.id] = t; }); return { ...x, geral: t, mods }; })); }} className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm mb-3" />
+              <div className="overflow-x-auto mb-4">
+                <table className="w-full text-xs">
+                  <thead><tr className="text-left text-[11px] uppercase text-slate-500 border-b border-slate-700"><th className="py-1.5 px-2">Equipe</th><th className="py-1.5 px-2 text-center">Reabre (corrigidos)</th><th className="py-1.5 px-2 text-center">Libera (bloqueados)</th><th className="py-1.5 px-2 text-center">Novo prazo (já abertos)</th><th className="py-1.5 px-2 text-center">Sem alteração</th></tr></thead>
+                  <tbody>{previa.map((pv) => (
+                    <tr key={pv.id} className="border-b border-slate-800"><td className="py-1.5 px-2 text-slate-200">{pv.nome}</td><td className="py-1.5 px-2 text-center">{pv.resumo.reabre}</td><td className="py-1.5 px-2 text-center">{pv.resumo.libera}</td><td className="py-1.5 px-2 text-center">{pv.resumo.estende}</td><td className="py-1.5 px-2 text-center text-slate-500">{pv.resumo.mantem}</td></tr>
+                  ))}</tbody>
+                </table>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <button onClick={liberar} disabled={ocupado} className="bg-amber-500 text-slate-900 font-bold text-sm px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40">{ocupado ? "Processando…" : "Confirmar e liberar TODOS os módulos"}</button>
+                <button onClick={() => { setPrevia(null); setAviso(""); }} disabled={ocupado} className="text-xs text-slate-400 hover:text-slate-100 underline">← Voltar</button>
+              </div>
+            </div>
+          ) : previa ? (
             <div>
               <div className="text-sm text-slate-200 mb-1 font-bold">Relatório gerado — revise antes de liberar</div>
               <p className="text-xs text-slate-400 mb-3">Nada foi gravado ainda. Só os módulos com ponto a ajustar vêm marcados (12 e 13 abrem sempre); os demais permanecem concluídos, com nota e lançamentos intactos — marque se quiser abrir algum. Edite o que quiser: o texto de cada módulo aparece para a equipe naquele módulo; o relatório "Geral" vai para a aba Feedback. Prazo: {fmtDataBR(prazo)}.</p>
@@ -8477,6 +8550,14 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
             </div>
           ) : info === null ? <div className="text-xs text-slate-500">Lendo situação das equipes…</div> : (
             <>
+              {(equipes || []).length > 0 && (
+                <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-950/20 p-3">
+                  <div className="text-sm font-bold text-amber-300 mb-1">Reta final — liberar TODOS os módulos de TODAS as equipes</div>
+                  <p className="text-xs text-slate-400 mb-2">Não depende de a equipe ter concluído o Módulo 11. O prazo é o <b>último prazo do cronograma</b> da turma{retaAuto ? <>: <b className="text-amber-300">{fmtDataBR(retaAuto)}</b></> : ", que não está disponível ou já passou — informe a data abaixo"}.</p>
+                  {!retaAuto && <input type="date" value={prazoRetaManual} min={hoje} onChange={(e) => setPrazoRetaManual(e.target.value)} className="bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm mb-2" />}
+                  <div><button onClick={gerarPreviaReta} disabled={ocupado || !prazoReta} className="bg-amber-500 text-slate-900 font-bold text-sm px-4 py-2 rounded-md hover:bg-amber-400 disabled:opacity-40">{ocupado ? "Gerando…" : `Revisar liberação geral (${(equipes || []).length} equipe${(equipes || []).length === 1 ? "" : "s"})`}</button></div>
+                </div>
+              )}
               <div className="space-y-1.5 mb-4">
                 {(equipes || []).length === 0 && <div className="text-xs text-slate-500">Nenhuma empresa nesta turma.</div>}
                 {(equipes || []).map((e) => {
@@ -13158,7 +13239,11 @@ function TelaPrimeiroAcessoAluno({ perfil, onSair, onResultado, onVirarProfessor
       setVerificandoMestre(false);
       return;
     }
-    await onVirarProfessor({ papel: "professor", status: "aprovado", mestre: true, turmaId: null, equipeId: null });
+    try {
+      await onVirarProfessor({ papel: "professor", status: "aprovado", mestre: true, turmaId: null, equipeId: null });
+    } catch {
+      setErroMestre("Código correto, mas não foi possível gravar agora (conexão ou limite do banco de dados). Nada foi alterado — tente de novo em alguns minutos.");
+    }
     setVerificandoMestre(false);
   };
 
@@ -13650,7 +13735,9 @@ export default function App() {
   // Guarda o perfil (Aluno/Professor + código de Mestre) escolhido na tela
   // de login, ANTES de entrar com o Google — só é usado se for a primeira
   // vez que essa conta acessa o sistema (ver useEffect abaixo).
-  const escolhaRef = useRef({ papel: "aluno", codigoMestre: "" });
+  const escolhaRef = useRef({ papel: "aluno", codigoMestre: "", explicita: false });
+  const criacaoTentadaRef = useRef(null);
+  const [erroCriacao, setErroCriacao] = useState(false);
   const ultimoUidComEntradaRegistradaRef = useRef(null);
 
   useEffect(() => {
@@ -13663,7 +13750,9 @@ export default function App() {
     try { if (firebaseUser?.uid) sessionStorage.removeItem(`ppf_entrada_${firebaseUser.uid}`); } catch {}
     ultimoUidComEntradaRegistradaRef.current = null;
     setPerfilRecemCriado(null);
-    escolhaRef.current = { papel: "aluno", codigoMestre: "" };
+    escolhaRef.current = { papel: "aluno", codigoMestre: "", explicita: false };
+    criacaoTentadaRef.current = null;
+    setErroCriacao(false);
   };
 
   const perfilCarregado = useUsuario(firebaseUser?.uid);
@@ -13677,7 +13766,7 @@ export default function App() {
   // Google" — como o Firebase mantém a sessão entre recarregamentos, isso
   // fazia a entrada nunca aparecer de novo depois do primeiro login (ex.:
   // alguém que já estava logado e só deu F5 não gerava nenhum registro).
-  const perfilParaLogEntrada = (perfilRecemCriado?.uid === firebaseUser?.uid ? perfilRecemCriado : null) || perfilCarregado || null;
+  const perfilParaLogEntrada = (perfilRecemCriado?.uid === firebaseUser?.uid ? perfilRecemCriado : null) || (perfilCarregado && !perfilCarregado.__erro ? perfilCarregado : null) || null;
   useEffect(() => {
     if (!perfilParaLogEntrada) return;
     const chaveSessao = `ppf_entrada_${perfilParaLogEntrada.uid}`;
@@ -13703,6 +13792,10 @@ export default function App() {
   // papel escolhido na tela de login (sem uma segunda tela de confirmação).
   useEffect(() => {
     if (!firebaseUser || perfilCarregado === undefined || perfilCarregado || perfilRecemCriado || criandoPerfil) return;
+    // Só cria cadastro se a pessoa ESCOLHEU o perfil nesta tela de entrada (nunca ao recarregar a
+    // página com a sessão já aberta) e só uma vez por conta — evita criar/trocar cadastro por engano.
+    if (!escolhaRef.current.explicita || criacaoTentadaRef.current === firebaseUser.uid) return;
+    criacaoTentadaRef.current = firebaseUser.uid;
     setCriandoPerfil(true);
     const { papel, codigoMestre } = escolhaRef.current;
     const souMestre = papel === "professor" && codigoMestre !== "" && codigoMestre === CODIGO_MESTRE;
@@ -13724,9 +13817,11 @@ export default function App() {
     };
     (async () => {
       try {
-        await salvarUsuario(perfil);
-        setPerfilRecemCriado(perfil);
-      } catch {}
+        // releitura estrita logo antes de gravar: se o cadastro já existe (ou a leitura falha), NÃO grava
+        const existente = await buscarUsuario(perfil.uid, true);
+        if (existente) setPerfilRecemCriado(existente);
+        else { await salvarUsuario(perfil); setPerfilRecemCriado(perfil); }
+      } catch { setErroCriacao(true); }
       setCriandoPerfil(false);
     })();
   }, [firebaseUser, perfilCarregado, perfilRecemCriado, criandoPerfil]);
@@ -13734,10 +13829,37 @@ export default function App() {
   if (firebaseUser === undefined) return <LoadingScreen />;
 
   if (!firebaseUser) {
-    return <TelaEntrada onEscolherPerfil={(papel, codigoMestre) => { escolhaRef.current = { papel, codigoMestre }; }} />;
+    return <TelaEntrada onEscolherPerfil={(papel, codigoMestre) => { escolhaRef.current = { papel, codigoMestre, explicita: true }; }} />;
   }
 
   if (perfilCarregado === undefined) return <LoadingScreen />;
+
+  // Não conseguiu LER o cadastro (conexão/limite do banco): não cria nem altera nada.
+  if ((perfilCarregado && perfilCarregado.__erro) || (erroCriacao && !perfilRecemCriado)) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-5">
+        <Card className="p-6 max-w-md w-full">
+          <SectionTitle icon={ShieldCheck} sub="Não foi possível ler o seu cadastro agora (falha de conexão ou limite do banco de dados). Nada foi criado nem alterado.">Não deu para carregar</SectionTitle>
+          <div className="flex gap-2 mt-2">
+            <button onClick={() => window.location.reload()} className="bg-amber-500 text-slate-900 font-bold text-sm px-4 py-2 rounded-md hover:bg-amber-400">Tentar de novo</button>
+            <button onClick={efetuarSaida} className="border border-slate-600 text-slate-200 text-sm px-4 py-2 rounded-md hover:bg-slate-800">Sair</button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // Conta sem cadastro e sem escolha de perfil nesta sessão (ex.: página recarregada): pede para entrar de novo.
+  if (perfilCarregado === null && !perfilRecemCriado && !escolhaRef.current.explicita) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-5">
+        <Card className="p-6 max-w-md w-full">
+          <SectionTitle icon={ShieldCheck} sub="Não encontramos um cadastro para esta conta. Saia e entre de novo escolhendo Professor(a), Aluno(a) ou Coordenação.">Cadastro não encontrado</SectionTitle>
+          <button onClick={efetuarSaida} className="mt-2 bg-amber-500 text-slate-900 font-bold text-sm px-4 py-2 rounded-md hover:bg-amber-400">Sair e escolher o perfil</button>
+        </Card>
+      </div>
+    );
+  }
 
   // perfilRecemCriado tem prioridade sobre perfilCarregado: além de servir de
   // "ponte" logo após o primeiro acesso, também reflete correções feitas
@@ -13757,8 +13879,11 @@ export default function App() {
 
   if (perfil.papel === "aluno") {
     return <AlunoRoteador perfil={perfil} onSair={efetuarSaidaComLog} onVirarProfessor={async (mudancas) => {
-      const atualizado = await atualizarUsuario(perfil.uid, mudancas);
-      if (atualizado) setPerfilRecemCriado(atualizado);
+      // usa o cadastro que já está na tela (sem depender de uma nova leitura, que pode falhar) e
+      // grava direto; se a gravação falhar, o erro sobe e a tela mostra a mensagem.
+      const atualizado = { ...perfil, ...mudancas };
+      await salvarUsuario(atualizado);
+      setPerfilRecemCriado(atualizado);
     }} />;
   }
 

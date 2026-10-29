@@ -1,4 +1,4 @@
-// build: 20261028_20h30m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261029_00h15m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -707,6 +707,7 @@ const GESTAO_ITENS = [
   { id: "correcoes", label: "Correções pendentes", icon: Inbox },
   { id: "liberarAjustes", label: "Liberar análise e ajustes", icon: RotateCcw },
   { id: "parecer", label: "Parecer do projeto", icon: ScrollText },
+  { id: "ajusteGeral", label: "Ajuste geral", icon: Wrench },
   { id: "itensSegmento", label: "Itens esperados por segmento", icon: ClipboardList },
   { id: "cronograma", label: "Cronograma", icon: Calendar },
   { id: "integrantes", label: "Integrantes por Empresa", icon: Users2 },
@@ -1330,6 +1331,11 @@ function chamadoPassaFiltro(c, filtro) {
 // Lista do mais recente para o mais antigo — o primeiro item é a versão vigente.
 // ============================================================================
 const VERSOES = [
+  { versao: "3.5", data: "29/10/2026", itens: [
+    "Novo item de menu em Gestão: \"Ajuste geral\". O professor BLOQUEIA as equipes para avaliação (todas, ou só as escolhidas): os alunos continuam vendo seus dados e uma mensagem de que o projeto está em avaliação, mas não editam nem enviam módulos. Ao terminar, libera todas ou só as que quiser.",
+    "Com a equipe bloqueada, o sistema corrige os lançamentos dos Módulos 1 a 11 (os Módulos 12 e 13 apenas recalculam): erros de digitação já vêm marcados (espaços, milhar sem zeros, linhas vazias) e pontos prováveis (unidades, Módulo 8 diferente do 6, vida útil, piso) ficam para o professor conferir. Mostra o impacto no resultado e no retorno antes de aplicar.",
+    "Ajuste manual: o professor abre o mesmo formulário do módulo da equipe, edita (preço, quantidade, pró-labore etc.), vê o impacto na hora e grava. Cada ajuste fica registrado (antes e depois), vira um aviso na aba Feedback da equipe e pode ser desfeito.",
+  ] },
   { versao: "3.4", data: "22/10/2026", itens: [
     "Em Gestão → Liberar análise e ajustes, novo bloco \"Reta final\": libera TODOS os módulos (1 a 13) de TODAS as equipes de uma vez, sem exigir o Módulo 11, com o prazo automático no último prazo do cronograma. Corrigidos voltam para ajustes (notas mantidas), bloqueados são liberados e os já abertos ganham o novo prazo. Mostra uma prévia por equipe antes de confirmar e pode ser desfeito.",
     "Correção de segurança no acesso: quando o sistema não consegue ler o cadastro da pessoa (falha de conexão ou limite do banco), ele agora mostra \"Não deu para carregar\" em vez de achar que a conta é nova. O cadastro só é criado quando a pessoa escolhe o perfil na tela de entrada, e nunca por cima de um cadastro existente.",
@@ -5030,7 +5036,11 @@ function PainelExemploSegmento({ segmento, exemplo }) {
 function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades, onAtualizarEquipe, somenteLeitura }) {
   const [dados, setDadosReal] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
   // Modo Coordenação (somente leitura): TODA gravação em dados da equipe é descartada aqui, na origem.
-  const setDados = somenteLeitura ? () => {} : setDadosReal;
+  // Bloqueio de avaliação (Gestão → Ajuste geral): enquanto o professor avalia/ajusta, a equipe só visualiza.
+  const [avalBloq] = useSharedObject(turmaId && equipe?.id && !somenteLeitura && equipe?.teste !== true ? chaveAvaliacao(turmaId) : null, { equipes: {} });
+  const bloqEntrada = avalBloq?.equipes?.[equipe?.id];
+  const bloqueadoAval = !!(bloqEntrada && bloqEntrada.ativo) && !somenteLeitura && equipe?.teste !== true;
+  const setDados = (somenteLeitura || bloqueadoAval) ? () => {} : setDadosReal;
   const [aba, setAba] = useState("inicio");
   const [menuAberto, setMenuAberto] = useState(false);
   const [gerandoPpt, setGerandoPpt] = useState(false);
@@ -5129,7 +5139,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   const gestor = dados.gestor || null;
   const gestorAtivo = !!(gestor && Date.now() - (gestor.ultimoPing || 0) < GESTOR_TIMEOUT_MS);
   const souGestor = gestorAtivo && gestor.uid === user.uid;
-  const souVisualizador = !!somenteLeitura || (gestorAtivo && !souGestor);
+  const souVisualizador = !!somenteLeitura || bloqueadoAval || (gestorAtivo && !souGestor);
   const gestaoLivre = !gestorAtivo;
 
   const assumirGestao = () => {
@@ -5216,7 +5226,13 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
             <span>📋</span><span><b>Dados fictícios de exemplo</b> — {dados.exemploAplicado}. Você pode editar qualquer valor para demonstrar; para voltar ao original, use "Restaurar exemplo" em Segmento do negócio.</span>
           </div>
         )}
-        {souVisualizador && (
+        {bloqueadoAval && (
+          <div className="mb-4 bg-amber-950/40 border border-amber-700/60 rounded-md px-4 py-3 flex items-start gap-2.5 text-sm text-amber-200">
+            <Lock size={16} className="shrink-0 mt-0.5" />
+            <span><b>Projeto em avaliação pelo professor.</b> {bloqEntrada.mensagem || MSG_AVALIACAO_PADRAO}</span>
+          </div>
+        )}
+        {souVisualizador && !bloqueadoAval && (
           <div className="mb-4 bg-slate-900 border border-sky-800/60 rounded-md px-4 py-2.5 flex items-center gap-2.5 text-sm text-sky-300">
             <Eye size={16} className="shrink-0" />
             <span>{somenteLeitura ? <><b>Modo Coordenação — somente leitura.</b> Você acompanha exatamente o que a equipe lançou; nada aqui pode ser alterado.</> : <><b>{gestor.nome}</b> está gerindo os lançamentos agora. Você está no modo visualização.</>}</span>
@@ -5248,7 +5264,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   );
   const modalGestor = (
     <>
-      {gestaoLivre && !decisaoGestorTomada && (
+      {gestaoLivre && !decisaoGestorTomada && !bloqueadoAval && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-5">
           <div className="bg-slate-900 border border-amber-500/50 rounded-xl max-w-sm w-full p-6 text-center">
             <UserCog size={30} className="mx-auto text-amber-500 mb-3" />
@@ -8260,6 +8276,607 @@ function GestaoParecerView({ turmas, professorNome }) {
   return (
     <div>
       <SectionTitle icon={ScrollText} sub="Análise geral do negócio de uma empresa, com parecer: projeto finalizado ou inconsistências (onde e o que fazer). Escolha a turma.">Parecer do projeto</SectionTitle>
+      {turmas.length === 0 ? <Card className="p-10 text-center text-slate-500">Você ainda não criou nenhuma turma.</Card> : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {turmas.map((t) => (
+            <button key={t.id} onClick={() => setTurmaSelId(t.id)} className="text-left bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-amber-500 transition">
+              <div className="flex items-center gap-2"><School size={16} className="text-sky-400 shrink-0" /><span className="font-bold text-slate-100 truncate">{t.nome}</span></div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===== Ajuste geral (menu Gestão → Ajuste geral) =====
+// Corrige LANÇAMENTOS dos módulos 1 a 11 (os módulos 12 e 13 só recalculam). Três níveis:
+// N1 mecânico (marcado por padrão) · N2 provável (desmarcado, o professor confere) · N3 decisão do
+// negócio (nunca é automático: o professor edita o módulo no "Ajuste manual").
+// Segurança: só funciona com a equipe BLOQUEADA para avaliação; relê os dados na hora de gravar,
+// grava só os módulos tocados, guarda antes/depois (`ajustes_prof_{turmaId}`) e permite desfazer.
+const AJ = (() => {
+  const norm = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+  const limpa = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
+  const SM = 1621;
+  const DIC_UN = [
+    [/\b(farinha|acucar|sal|manteiga|margarina|fermento|cacau|amido|polvilho|trigo|aveia|queijo|presunto|carne|frango|cafe|arroz|feijao|tempero|gel|esmalte)\b/, ["g", "kg"]],
+    [/\b(leite|oleo|agua|suco|calda|essencia|polpa|refrigerante|vinagre|shampoo|condicionador|acetona)\b/, ["ml", "L"]],
+    [/\b(ovos?|embalagens?|copos?|tampas?|canudos?|guardanapos?|sacos?|sacolas?|caixas?|casquinhas?|potes?|etiquetas?|moldes?|lixas?)\b/, ["un", "un"]],
+  ];
+  const VIDA = { "Máquinas": 10, "Móveis": 10, "Equipamentos de Informática": 5, "Utensílios": 5, "Veículos": 5, "Edificações": 25 };
+  const mediana = (a) => { const s = [...a].sort((x, y) => x - y); const n = s.length; return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : 0; };
+  const FU = { g: 1, kg: 1000, ml: 1, L: 1000, un: 1, dz: 12 };
+  const grp = { g: "m", kg: "m", ml: "v", L: "v", un: "c", dz: "c" };
+  const fator = (a, b) => (a && b && grp[a] === grp[b] ? FU[a] / FU[b] : null);
+  const totLinha = (it) => { const q = Number(it.qtd) || 0, c = Number(it.custoUnit) || 0; if (it.unQtd && it.unPreco) { const f = fator(it.unQtd, it.unPreco); return f == null ? 0 : q * f * c; } return q * c; };
+  const chave = (p) => [p.regra, p.alvo.m, p.alvo.id, p.alvo.campo || (p.alvo.campos ? Object.keys(p.alvo.campos).join("+") : ""), p.alvo.remover ? "rm" : ""].join("|");
+function proporAjustes(l) {
+  const P = []; let n = 0;
+  const add = (p) => P.push({ id: "p" + (++n), ...p });
+  const txtCampos = [["m1", "desc"], ["m3", "desc"], ["m9", "funcao"], ["m11", "desc"]]; // M5 nome / M6 produto e material servem de chave entre módulos: não são mexidos
+  // N1 · espaços sobrando
+  txtCampos.forEach(([m, c]) => (l[m]?.itens || []).forEach((it) => {
+    if (typeof it[c] === "string" && it[c] !== limpa(it[c]) && limpa(it[c])) add({ nivel: 1, regra: "espacos", mod: +m.slice(1), alvo: { m, id: it.id, campo: c }, antes: it[c], depois: limpa(it[c]), motivo: "Espaços sobrando no início/fim ou duplicados" });
+  }));
+  (l.m9?.prolabore || []).forEach((it) => { if (typeof it.funcao === "string" && it.funcao !== limpa(it.funcao) && limpa(it.funcao)) add({ nivel: 1, regra: "espacos", mod: 9, alvo: { m: "m9p", id: it.id, campo: "funcao" }, antes: it.funcao, depois: limpa(it.funcao), motivo: "Espaços sobrando" }); });
+  // N1 · milhar digitado sem os zeros (salário/pró-labore)
+  const milhar = (m, lista, nome) => (lista || []).forEach((it) => {
+    const campo = m === "m9p" ? "valor" : "salario"; const v = Number(it[campo]);
+    if (v > 0 && v < 20 && v * 1000 >= SM && v * 1000 <= 15000) add({ nivel: 1, regra: "milhar", mod: 9, alvo: { m, id: it.id, campo }, antes: v, depois: Math.round(v * 1000 * 100) / 100, motivo: `“${limpa(it.funcao) || "função"}”: o valor ${v.toLocaleString("pt-BR")} parece ter sido digitado em milhares (ex.: 2 = R$ 2.000)` });
+  });
+  milhar("m9", l.m9?.itens); milhar("m9p", l.m9?.prolabore);
+  // N1 · linhas totalmente vazias
+  [["m9", l.m9?.itens, ["funcao"], ["salario", "qtd"]], ["m11", l.m11?.itens, ["desc"], ["valor"]], ["m3", l.m3?.itens, ["desc"], ["valor"]], ["m1", l.m1?.itens, ["desc"], ["valorUnit"]]].forEach(([m, arr, tc, vc]) => (arr || []).forEach((it) => {
+    if (tc.every((c) => !limpa(it[c])) && vc.every((c) => !(Number(it[c]) > 0) || c === "qtd")) add({ nivel: 1, regra: "linha_vazia", mod: +m.slice(1), alvo: { m, id: it.id, remover: true }, antes: "(linha sem nome e sem valor)", depois: "remover linha", motivo: "Linha vazia" });
+  }));
+  // N1 · M8 diferente do que o próprio M6 calcula (só quando o M6 está completo p/ o produto)
+  const m5 = l.m5?.itens || [];
+  const rend = l.m6?.rendimentos || {}; const prods = {};
+  (l.m6?.itens || []).forEach((it) => { const k = norm(it.produto); if (!k) return; (prods[k] = prods[k] || { it: [], tot: 0, comUn: true }); prods[k].it.push(it); prods[k].tot += totLinha(it); if (!(it.unQtd && it.unPreco)) prods[k].comUn = false; });
+  m5.forEach((p) => {
+    const k = norm(p.nome); const g = prods[k]; if (!g) return;
+    const r = Number(rend[(g.it[0].produto || "").trim()]) || 0; if (!(r > 0) || !g.comUn) return;
+    const calc = Math.round((g.tot / r) * 100) / 100; const atual = Number(l.m8?.custosUnit?.[p.id]) || 0;
+    if (calc > 0 && Math.abs(calc - atual) / Math.max(calc, atual) > 0.05) add({ nivel: 2, regra: "m8_derivado", mod: 8, alvo: { m: "m8", id: p.id }, antes: atual, depois: calc, motivo: `O Módulo 6 calcula R$ ${calc.toFixed(2)} por unidade de “${limpa(p.nome)}”; o Módulo 8 tem R$ ${atual.toFixed(2)}` });
+  });
+  // N2 · unidades ausentes no M6 (inferidas pelo nome do insumo)
+  (l.m6?.itens || []).forEach((it) => {
+    if (it.unQtd && it.unPreco) return; const k = norm(it.material); if (!k) return;
+    const hit = DIC_UN.find(([re]) => re.test(k)); if (!hit) return;
+    const peq = (hit[1][0] === "g" || hit[1][0] === "ml") && Number(it.qtd) > 0 && Number(it.qtd) <= 5;   // 0,3 "ml" quase certamente é 0,3 L
+    const uq = peq ? hit[1][1] : hit[1][0];
+    add({ nivel: 2, regra: "unidade_inferida", mod: 6, alvo: { m: "m6", id: it.id, campos: { unQtd: uq, unPreco: hit[1][1] } }, antes: "sem unidade", depois: `qtd em ${uq}, preço por ${hit[1][1]}`, motivo: `“${limpa(it.material)}” costuma ser comprado por ${hit[1][1]}${peq ? `; quantidade ${it.qtd} é pequena, então provavelmente já está em ${uq}` : ` e usado em ${uq}`}` });
+  });
+  // N2 · quantidade / custo fora do padrão em fator ≈ 1000 (erro clássico de unidade) — mediana do mesmo insumo
+  const porMat = {}; (l.m6?.itens || []).forEach((it) => { const k = norm(it.material); if (k) (porMat[k] = porMat[k] || []).push(it); });
+  Object.values(porMat).forEach((arr) => {
+    if (arr.length < 3) return;
+    const mq = mediana(arr.map((a) => Number(a.qtd)).filter((x) => x > 0)); const mc = mediana(arr.map((a) => Number(a.custoUnit)).filter((x) => x > 0));
+    arr.forEach((it) => {
+      const q = Number(it.qtd), c = Number(it.custoUnit);
+      if (q > 0 && mq > 0) { const r = q / mq; if (r > 800 && r < 1250) add({ nivel: 2, regra: "qtd_fator", mod: 6, alvo: { m: "m6", id: it.id, campo: "qtd" }, antes: q, depois: Math.round(q / 1000 * 1000) / 1000, motivo: `Quantidade ~1000× a dos demais usos de “${limpa(it.material)}” (mediana ${mq}): provável confusão g/kg` }); else if (r < 1 / 800 && r > 1 / 1250) add({ nivel: 2, regra: "qtd_fator", mod: 6, alvo: { m: "m6", id: it.id, campo: "qtd" }, antes: q, depois: Math.round(q * 1000 * 1000) / 1000, motivo: `Quantidade ~1/1000 da dos demais usos de “${limpa(it.material)}” (mediana ${mq})` }); }
+      if (c > 0 && mc > 0) { const r = c / mc; if (r > 800 && r < 1250) add({ nivel: 2, regra: "custo_fator", mod: 6, alvo: { m: "m6", id: it.id, campo: "custoUnit" }, antes: c, depois: Math.round(c / 1000 * 100) / 100, motivo: `Custo ~1000× o dos demais usos de “${limpa(it.material)}” (mediana R$ ${mc.toFixed(2)})` }); }
+    });
+  });
+  // N2 · vida útil zerada/absurda no M10 (padrão por categoria)
+  (l.m1?.itens || []).forEach((it) => { const v = l.m10?.vidasUteis?.[it.id]; const d = VIDA[it.categoria]; if (d && (v === 0 || v > 40)) add({ nivel: 2, regra: "vida_util", mod: 10, alvo: { m: "m10", id: it.id }, antes: v, depois: d, motivo: `Vida útil ${v} é incoerente para “${limpa(it.desc)}” (${it.categoria}); referência: ${d} anos` }); });
+  // N2 · salário abaixo do piso de referência (≥ 20 para não confundir com milhar)
+  (l.m9?.itens || []).forEach((it) => { const v = Number(it.salario); if (v >= 20 && v < SM) add({ nivel: 2, regra: "piso", mod: 9, alvo: { m: "m9", id: it.id, campo: "salario" }, antes: v, depois: SM, motivo: `“${limpa(it.funcao) || "função"}”: salário abaixo do mínimo de referência (R$ ${SM})` }); });
+  return P;
+}
+
+function aplicar(l, props) {
+  const c = JSON.parse(JSON.stringify(l));
+  props.forEach((p) => {
+    const a = p.alvo;
+    if (a.m === "m8") { (c.m8.custosUnit = c.m8.custosUnit || {})[a.id] = p.depois; return; }
+    if (a.m === "m10") { (c.m10.vidasUteis = c.m10.vidasUteis || {})[a.id] = p.depois; return; }
+    const lista = a.m === "m9p" ? c.m9.prolabore : c[a.m].itens;
+    if (!lista) return;
+    const idx = lista.findIndex((x) => x.id === a.id); if (idx < 0) return;
+    if (a.remover) { lista.splice(idx, 1); return; }
+    if (a.campos) Object.assign(lista[idx], a.campos); else lista[idx][a.campo] = p.depois;
+  });
+  return c;
+}
+
+  return { proporAjustes, aplicar, chave, norm };
+})();
+
+const chaveAvaliacao = (turmaId) => `avaliacao_${turmaId}`;
+const chaveAjustesProf = (turmaId) => `ajustes_prof_${turmaId}`;
+const AVALIACAO_ESPERA_MS = 20000;
+const MSG_AVALIACAO_PADRAO = "O professor está avaliando o projeto da sua empresa. Aguarde o feedback: enquanto isso você pode consultar os dados, mas não pode editar nem enviar módulos.";
+const MODS_LANC = MODULOS.filter((m) => /^m(\d+)$/.test(m.id) && Number(m.id.slice(1)) <= 11);
+
+// Leitura que LANÇA erro se falhar (nunca devolve "vazio" no lugar de uma falha).
+async function lerAvaliacao(turmaId) {
+  const r = await window.storage.get(chaveAvaliacao(turmaId), true);
+  return r ? JSON.parse(r.value) : { equipes: {} };
+}
+async function lerAjustesProf(turmaId) {
+  try { const r = await window.storage.get(chaveAjustesProf(turmaId), true); return r ? JSON.parse(r.value) : []; } catch { return []; }
+}
+async function definirBloqueioAvaliacao(turmaId, ids, ligar, por, mensagem) {
+  const a = await lerAvaliacao(turmaId);
+  const eqs = { ...(a.equipes || {}) };
+  ids.forEach((id) => { if (ligar) eqs[id] = { ativo: true, desde: Date.now(), por, mensagem: mensagem || MSG_AVALIACAO_PADRAO }; else delete eqs[id]; });
+  await window.storage.set(chaveAvaliacao(turmaId), JSON.stringify({ ...a, equipes: eqs }), true);
+  return eqs;
+}
+const equipeEmAvaliacao = (aval, id) => !!aval?.equipes?.[id]?.ativo;
+const equipePronta = (aval, id, agora) => { const b = aval?.equipes?.[id]; return !!(b && b.ativo && agora - (b.desde || 0) >= AVALIACAO_ESPERA_MS); };
+
+async function lerDadosEstrito(equipeId) {
+  const r = await window.storage.get(`dados_equipe_${equipeId}`, true);
+  if (!r) throw new Error("dados da equipe não encontrados");
+  return JSON.parse(r.value);
+}
+const jsonModulo = (lanc, modId) => JSON.stringify(mergeLancamentos(lanc)[modId]);
+
+// Resumo "antes → depois" dos lançamentos (para o aviso à equipe e o registro).
+function rotuloItemAj(it) { return String(it?.desc || it?.nome || it?.produto || it?.funcao || it?.material || "item").replace(/\s+/g, " ").trim(); }
+const REGRAS_REAIS = ["milhar", "piso", "custo_fator", "m8_derivado"];
+function fmtPropVal(p, v) {
+  if (typeof v === "number" && REGRAS_REAIS.includes(p.regra)) return fmtBRL(v);
+  if (typeof v === "number" && p.regra === "vida_util") return `${fmtValAj(v)} anos`;
+  return fmtValAj(v);
+}
+function fmtValAj(v) { if (v == null || v === "") return "vazio"; if (typeof v === "number") return v.toLocaleString("pt-BR", { maximumFractionDigits: 4 }); if (typeof v === "boolean") return v ? "sim" : "não"; return String(v); }
+function diffAjuste(a, b, rot, out) {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    const A = Array.isArray(a) ? a : [], B = Array.isArray(b) ? b : [];
+    const temId = (x) => x && typeof x === "object" && x.id != null;
+    if (![...A, ...B].every(temId) && [...A, ...B].some((x) => x && typeof x === "object")) { if (JSON.stringify(A) !== JSON.stringify(B)) out.push({ rot, antes: `${A.length} linha(s)`, depois: `${B.length} linha(s)` }); return; }
+    B.forEach((it) => { const o = A.find((x) => x.id === it.id); if (!o) out.push({ rot: `${rot} › ${rotuloItemAj(it)}`, antes: "—", depois: "item novo" }); else diffAjuste(o, it, `${rot} › ${rotuloItemAj(it)}`, out); });
+    A.forEach((it) => { if (!B.some((x) => x.id === it.id)) out.push({ rot: `${rot} › ${rotuloItemAj(it)}`, antes: "item", depois: "removido" }); });
+    return;
+  }
+  if (a && b && typeof a === "object" && typeof b === "object") {
+    Array.from(new Set([...Object.keys(a), ...Object.keys(b)])).forEach((k) => diffAjuste(a[k], b[k], k === "itens" ? rot : `${rot} › ${k}`, out));
+    return;
+  }
+  if (JSON.stringify(a) !== JSON.stringify(b)) out.push({ rot, antes: fmtValAj(a), depois: fmtValAj(b) });
+}
+function linhasDiffModulo(nMod, antes, depois) {
+  const out = []; diffAjuste(antes, depois, `Módulo ${nMod}`, out);
+  return out.map((x) => `${x.rot}: ${x.antes} → ${x.depois}`);
+}
+function resumoImpacto(lA, lB) {
+  const k = (c) => ({ res: c.resultadoOperacional, fat: c.faturamento, mdo: c.maoDeObra, pr: c.prazoRetorno });
+  return { a: k(calcular(lA)), b: k(calcular(lB)) };
+}
+const prTxt = (v) => (v == null ? "não se paga" : prazoRetornoCurto(v));
+
+function ImpactoAjuste({ a, b }) {
+  const mudou = (x, y) => Math.abs((x ?? 0) - (y ?? 0)) > 0.005 || ((x == null) !== (y == null));
+  const virou = a.res >= 0 && b.res < 0;
+  const caixa = (rot, va, vb, fmt) => (
+    <div className="bg-slate-900 border border-slate-700 rounded-lg p-2.5">
+      <div className="text-[11px] text-slate-500 mb-0.5">{rot}</div>
+      <div className="text-sm text-slate-200">{mudou(va, vb) ? <><span className="text-rose-300 line-through whitespace-nowrap">{fmt(va)}</span> <span className="text-slate-500">→</span> <b className="text-emerald-300 whitespace-nowrap">{fmt(vb)}</b></> : fmt(va)}</div>
+    </div>
+  );
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {caixa("Faturamento mensal", a.fat, b.fat, fmtBRL)}
+        {caixa("Resultado mensal", a.res, b.res, fmtBRL)}
+        {caixa("Mão de obra", a.mdo, b.mdo, fmtBRL)}
+        {caixa("Retorno do investimento", a.pr, b.pr, prTxt)}
+      </div>
+      {virou && <div className="text-xs text-rose-200 bg-rose-950/40 border border-rose-800/60 rounded-md px-3 py-2"><b>Atenção:</b> este ajuste muda a conclusão do projeto (de resultado positivo para prejuízo). Converse com a equipe antes de confirmar.</div>}
+    </div>
+  );
+}
+
+function FormModuloProf({ modId, lanc, calc, update, segmento }) {
+  const L = lanc;
+  return (
+    <div>
+      {modId === "m1" && <M1Form data={L.m1} update={(v) => update("m1", v)} segmento={segmento} />}
+      {modId === "m2" && <M2Form data={L.m2} update={(v) => update("m2", v)} calc={calc} />}
+      {modId === "m3" && <M3Form data={L.m3} update={(v) => update("m3", v)} segmento={segmento} />}
+      {modId === "m4" && <M4Form data={L.m4} update={(v) => update("m4", v)} calc={calc} />}
+      {modId === "m5" && <M5Form data={L.m5} update={(v) => update("m5", v)} segmento={segmento} />}
+      {modId === "m6" && <M6Form data={L.m6} update={(v) => update("m6", v)} m5itens={L.m5.itens} />}
+      {modId === "m7" && <M7Form data={L.m7} update={(v) => update("m7", v)} faturamento={calc.faturamento} />}
+      {modId === "m8" && <M8Form data={L.m8} update={(v) => update("m8", v)} m5itens={L.m5.itens} />}
+      {modId === "m9" && <M9Form data={L.m9} update={(v) => update("m9", v)} />}
+      {modId === "m10" && <M10Form data={L.m10} update={(v) => update("m10", v)} m1itens={L.m1.itens} depreciacaoLinhas={calc.depreciacaoLinhas} depreciacaoMensal={calc.depreciacaoMensal} />}
+      {modId === "m11" && <M11Form data={L.m11} update={(v) => update("m11", v)} maoDeObra={calc.maoDeObra} depreciacaoMensal={calc.depreciacaoMensal} segmento={segmento} />}
+    </div>
+  );
+}
+
+// Grava, numa equipe, SÓ os módulos informados (lancamentos[modId]) + o aviso — relendo os dados na hora
+// e conferindo que a equipe continua bloqueada. `esperado[modId]` = JSON do módulo que o professor viu.
+async function gravarModulosEquipe(turmaId, equipeId, novos, esperado, comentario) {
+  const aval = await lerAvaliacao(turmaId);
+  if (!equipeEmAvaliacao(aval, equipeId)) throw new Error("a equipe não está mais bloqueada para avaliação");
+  const d = await lerDadosEstrito(equipeId);
+  for (const modId of Object.keys(novos)) {
+    if (esperado && esperado[modId] !== undefined && jsonModulo(d.lancamentos, modId) !== esperado[modId]) throw new Error(`a equipe alterou o ${modId.toUpperCase().replace("M", "Módulo ")} depois que você abriu — recarregue e refaça`);
+  }
+  const lanc = { ...(d.lancamentos || {}) };
+  Object.keys(novos).forEach((modId) => { lanc[modId] = novos[modId]; });
+  const coments = comentario ? [...(d.comentarios || []), comentario] : (d.comentarios || []);
+  await window.storage.set(`dados_equipe_${equipeId}`, JSON.stringify({ ...d, lancamentos: lanc, comentarios: coments }), true);
+}
+
+function textoAvisoAjuste(professorNome, linhas, motivo) {
+  const lista = linhas.slice(0, 40).map((l) => `• ${l}`).join("\n") + (linhas.length > 40 ? `\n• … e mais ${linhas.length - 40} alteração(ões)` : "");
+  return `AJUSTES FEITOS PELO PROFESSOR NO SEU PLANO FINANCEIRO\n${motivo ? motivo + "\n" : ""}\nConfira o que foi alterado nos lançamentos (os Módulos 12 e 13 foram recalculados):\n${lista}\n\nSe algo não fizer sentido para o seu negócio, converse com o professor. Reenvie os módulos conforme o prazo.`;
+}
+
+// Se a gravação nos dados falhou, tira do registro o que NÃO foi aplicado (evita "Desfazer" de algo que não aconteceu).
+async function limparRegistroAjuste(turmaId, id, equipesFalhas) {
+  try {
+    const lista = await lerAjustesProf(turmaId);
+    const nova = lista.map((r) => {
+      if (r.id !== id) return r;
+      const falhou = (m) => !equipesFalhas || equipesFalhas.includes(m.equipeId);
+      return { ...r, mudancas: r.mudancas.filter((m) => !falhou(m)) };
+    }).filter((r) => r.id !== id || r.mudancas.length > 0);
+    await window.storage.set(chaveAjustesProf(turmaId), JSON.stringify(nova), true);
+  } catch { /* melhor esforço */ }
+}
+
+async function registrarAjusteProf(turmaId, registro) {
+  const lista = await lerAjustesProf(turmaId);
+  await window.storage.set(chaveAjustesProf(turmaId), JSON.stringify([registro, ...lista]), true);
+}
+
+function AjusteGeralTurma({ turma, equipes, professorNome }) {
+  const [aval, setAval] = useState(null);
+  const [dadosMap, setDadosMap] = useState({});
+  const [hist, setHist] = useState([]);
+  const [agora, setAgora] = useState(Date.now());
+  const [msgBloq, setMsgBloq] = useState(MSG_AVALIACAO_PADRAO);
+  const [selBloq, setSelBloq] = useState(new Set());
+  const [selAuto, setSelAuto] = useState(new Set());
+  const [prop, setProp] = useState(null);       // { [equipeId]: { props, marc:Set } }
+  const [editor, setEditor] = useState(null);   // { equipeId, modId, base, draft, motivo }
+  const [ocupado, setOcupado] = useState(false);
+  const [aviso, setAviso] = useState(null);     // { tipo:"ok"|"erro", texto }
+  const [erroLeitura, setErroLeitura] = useState("");
+
+  const carregar = async () => {
+    setErroLeitura("");
+    try {
+      setAval(await lerAvaliacao(turma.id));
+    } catch { setErroLeitura("Não deu para ler o estado de bloqueio das equipes. Tente atualizar. Nada foi alterado."); return; }
+    const mapa = {};
+    await Promise.all(equipes.map(async (e) => { try { mapa[e.id] = await lerDadosEstrito(e.id); } catch { mapa[e.id] = null; } }));
+    setDadosMap(mapa);
+    setHist(await lerAjustesProf(turma.id));
+  };
+  useEffect(() => { carregar(); /* eslint-disable-next-line */ }, [turma.id]);
+  useEffect(() => { const t = setInterval(() => setAgora(Date.now()), 1000); return () => clearInterval(t); }, []);
+
+  const nomeEq = (id) => equipes.find((e) => e.id === id)?.nomeNegocio || id;
+  const bloqueadas = equipes.filter((e) => equipeEmAvaliacao(aval, e.id));
+  const prontas = equipes.filter((e) => equipePronta(aval, e.id, agora));
+  const toggle = (set, setSet, id) => { const n = new Set(set); n.has(id) ? n.delete(id) : n.add(id); setSet(n); };
+  const falhar = (e) => setAviso({ tipo: "erro", texto: `Não foi possível concluir: ${e?.message || "erro"}. Nada foi gravado além do que está indicado.` });
+
+  const bloquear = async (ids) => {
+    if (!ids.length) return;
+    setOcupado(true); setAviso(null);
+    try {
+      const eqs = await definirBloqueioAvaliacao(turma.id, ids, true, professorNome, msgBloq.trim());
+      setAval({ equipes: eqs }); setSelBloq(new Set());
+      setAviso({ tipo: "ok", texto: `${ids.length} equipe(s) bloqueada(s) para avaliação. Aguarde ${AVALIACAO_ESPERA_MS / 1000} segundos para os alunos terminarem de salvar; depois os ajustes são liberados.` });
+    } catch (e) { falhar(e); }
+    setOcupado(false);
+  };
+  const liberar = async (ids) => {
+    if (!ids.length) return;
+    if (!window.confirm(`Liberar ${ids.length} equipe(s) para os alunos voltarem a editar?`)) return;
+    setOcupado(true); setAviso(null);
+    try {
+      const eqs = await definirBloqueioAvaliacao(turma.id, ids, false, professorNome);
+      setAval({ equipes: eqs }); setSelBloq(new Set());
+      if (editor && ids.includes(editor.equipeId)) setEditor(null);
+      setProp((p) => { if (!p) return p; const n = { ...p }; ids.forEach((i) => delete n[i]); return Object.keys(n).length ? n : null; });
+      setAviso({ tipo: "ok", texto: `${ids.length} equipe(s) liberada(s). Os alunos já podem editar de novo.` });
+    } catch (e) { falhar(e); }
+    setOcupado(false);
+  };
+
+  // ---------- Ajuste automático ----------
+  const gerarProposta = async () => {
+    const ids = [...selAuto].filter((id) => equipePronta(aval, id, Date.now()));
+    if (!ids.length) { setAviso({ tipo: "erro", texto: "Marque ao menos uma equipe bloqueada e pronta (passaram os 20 segundos)." }); return; }
+    setOcupado(true); setAviso(null);
+    try {
+      const novo = {}; const novosDados = { ...dadosMap };
+      for (const id of ids) {
+        const d = await lerDadosEstrito(id); novosDados[id] = d;
+        const props = AJ.proporAjustes(mergeLancamentos(d.lancamentos));
+        novo[id] = { props, marc: new Set(props.filter((p) => p.nivel === 1).map((p) => AJ.chave(p))) };
+      }
+      setDadosMap(novosDados); setProp(novo);
+    } catch (e) { falhar(e); }
+    setOcupado(false);
+  };
+  const marcar = (eqId, key) => setProp((p) => { const m = new Set(p[eqId].marc); m.has(key) ? m.delete(key) : m.add(key); return { ...p, [eqId]: { ...p[eqId], marc: m } }; });
+  const totalMarcado = prop ? Object.values(prop).reduce((s, x) => s + x.marc.size, 0) : 0;
+
+  const aplicarAutomatico = async () => {
+    if (!prop || !totalMarcado) return;
+    if (!window.confirm(`Aplicar ${totalMarcado} ajuste(s) nos lançamentos? É recomendável ter feito o Backup geral. Cada alteração fica registrada e pode ser desfeita.`)) return;
+    setOcupado(true); setAviso(null);
+    const id = `aj_${Date.now()}`; const mudancas = []; const pulados = [];
+    try {
+      const planos = [];
+      for (const eqId of Object.keys(prop)) {
+        const marc = prop[eqId].marc; if (!marc.size) continue;
+        if (!equipePronta(await lerAvaliacao(turma.id), eqId, Date.now())) { pulados.push(`${nomeEq(eqId)}: equipe não está bloqueada/pronta`); continue; }
+        const d = await lerDadosEstrito(eqId);
+        const lanc = mergeLancamentos(d.lancamentos);
+        const propsFrescas = AJ.proporAjustes(lanc).filter((p) => marc.has(AJ.chave(p)));
+        if (!propsFrescas.length) { pulados.push(`${nomeEq(eqId)}: os pontos escolhidos já não existem (a equipe mexeu?)`); continue; }
+        const depois = AJ.aplicar(lanc, propsFrescas);
+        const mods = {}; const esperado = {}; const linhas = [];
+        Array.from(new Set(propsFrescas.map((p) => p.alvo.m === "m9p" ? "m9" : p.alvo.m))).forEach((m) => {
+          if (JSON.stringify(lanc[m]) === JSON.stringify(depois[m])) return;
+          mods[m] = depois[m]; esperado[m] = jsonModulo(d.lancamentos, m);
+          linhas.push(...linhasDiffModulo(Number(m.slice(1)), lanc[m], depois[m]));
+          mudancas.push({ equipeId: eqId, equipeNome: nomeEq(eqId), modId: m, antes: lanc[m], depois: depois[m] });
+        });
+        planos.push({ eqId, mods, esperado, linhas });
+      }
+      if (!planos.length) { setAviso({ tipo: "erro", texto: `Nada aplicado. ${pulados.join(" · ")}` }); setOcupado(false); return; }
+      // registro ANTES de gravar (assim sempre há como desfazer)
+      await registrarAjusteProf(turma.id, { id, em: Date.now(), por: professorNome, tipo: "automatico", motivo: "Ajuste automático", mudancas, desfeito: false });
+      const feitos = []; const falhas = [];
+      for (const pl of planos) {
+        try {
+          const coment = { modulo: "Geral", texto: textoAvisoAjuste(professorNome, pl.linhas, "Correções automáticas (erros de digitação e inconsistências)."), autor: professorNome, timestamp: Date.now(), tipo: "ajuste", lote: id };
+          await gravarModulosEquipe(turma.id, pl.eqId, pl.mods, pl.esperado, coment);
+          feitos.push(nomeEq(pl.eqId));
+        } catch (e) { pulados.push(`${nomeEq(pl.eqId)}: ${e.message}`); falhas.push(pl.eqId); }
+      }
+      if (falhas.length) await limparRegistroAjuste(turma.id, id, falhas);
+      setProp(null); await carregar();
+      setAviso({ tipo: feitos.length ? "ok" : "erro", texto: `${feitos.length ? `Ajustes aplicados em: ${feitos.join(", ")}. ` : "Nada foi gravado. "}${pulados.length ? `Pulados: ${pulados.join(" · ")}.` : ""} Os módulos 12 e 13 já refletem os novos lançamentos.` });
+    } catch (e) { falhar(e); }
+    setOcupado(false);
+  };
+
+  // ---------- Ajuste manual ----------
+  const abrirEditor = async (equipeId, modId) => {
+    setOcupado(true); setAviso(null);
+    try {
+      const d = await lerDadosEstrito(equipeId);
+      const base = mergeLancamentos(d.lancamentos);
+      setEditor({ equipeId, modId, base, draft: JSON.parse(JSON.stringify(base)), motivo: "", baseJson: jsonModulo(d.lancamentos, modId) });
+    } catch (e) { falhar(e); }
+    setOcupado(false);
+  };
+  const calcDraft = useMemo(() => (editor ? calcular(editor.draft) : null), [editor]);
+  const mudouEditor = editor ? JSON.stringify(editor.draft[editor.modId]) !== JSON.stringify(editor.base[editor.modId]) : false;
+  const aplicarManual = async () => {
+    if (!editor || !mudouEditor) return;
+    if (!equipePronta(aval, editor.equipeId, Date.now())) { setAviso({ tipo: "erro", texto: "A equipe precisa estar bloqueada para avaliação (e pronta) para gravar o ajuste." }); return; }
+    const n = Number(editor.modId.slice(1));
+    const linhas = linhasDiffModulo(n, editor.base[editor.modId], editor.draft[editor.modId]);
+    if (!window.confirm(`Gravar ${linhas.length} alteração(ões) no Módulo ${n} de ${nomeEq(editor.equipeId)}? Fica registrado e pode ser desfeito.`)) return;
+    setOcupado(true); setAviso(null);
+    const id = `aj_${Date.now()}`; let registrado = false;
+    try {
+      await registrarAjusteProf(turma.id, { id, em: Date.now(), por: professorNome, tipo: "manual", motivo: editor.motivo.trim(), mudancas: [{ equipeId: editor.equipeId, equipeNome: nomeEq(editor.equipeId), modId: editor.modId, antes: editor.base[editor.modId], depois: editor.draft[editor.modId] }], desfeito: false });
+      registrado = true;
+      const coment = { modulo: "Geral", texto: textoAvisoAjuste(professorNome, linhas, editor.motivo.trim() ? `Motivo: ${editor.motivo.trim()}` : ""), autor: professorNome, timestamp: Date.now(), tipo: "ajuste", lote: id };
+      await gravarModulosEquipe(turma.id, editor.equipeId, { [editor.modId]: editor.draft[editor.modId] }, { [editor.modId]: editor.baseJson }, coment);
+      setEditor(null); await carregar();
+      setAviso({ tipo: "ok", texto: `Ajuste gravado no Módulo ${n} de ${nomeEq(editor.equipeId)}. A equipe recebe o aviso na aba Feedback.` });
+    } catch (e) { if (registrado) await limparRegistroAjuste(turma.id, id, null); falhar(e); await carregar(); }
+    setOcupado(false);
+  };
+
+  // ---------- Desfazer ----------
+  const desfazer = async (reg) => {
+    if (!window.confirm("Desfazer este ajuste? Só volta o que a equipe ainda não alterou depois (o restante é mantido).")) return;
+    setOcupado(true); setAviso(null);
+    const ok = []; const nao = [];
+    try {
+      for (const m of reg.mudancas) {
+        try {
+          const d = await lerDadosEstrito(m.equipeId);
+          if (jsonModulo(d.lancamentos, m.modId) !== JSON.stringify(m.depois)) { nao.push(`${m.equipeNome} (Módulo ${m.modId.slice(1)}: a equipe alterou depois)`); continue; }
+          const lanc = { ...(d.lancamentos || {}), [m.modId]: m.antes };
+          const coments = (d.comentarios || []).filter((c) => c.lote !== reg.id);
+          await window.storage.set(`dados_equipe_${m.equipeId}`, JSON.stringify({ ...d, lancamentos: lanc, comentarios: coments }), true);
+          ok.push(`${m.equipeNome} (Módulo ${m.modId.slice(1)})`);
+        } catch (e) { nao.push(`${m.equipeNome}: ${e.message}`); }
+      }
+      if (ok.length) {
+        const lista = await lerAjustesProf(turma.id);
+        await window.storage.set(chaveAjustesProf(turma.id), JSON.stringify(lista.map((r) => r.id === reg.id ? { ...r, desfeito: !nao.length, desfeitoParcial: !!nao.length, desfeitoEm: Date.now() } : r)), true);
+      }
+      await carregar();
+      setAviso({ tipo: ok.length ? "ok" : "erro", texto: `${ok.length ? `Desfeito: ${ok.join(", ")}. ` : "Nada foi desfeito. "}${nao.length ? `Mantido: ${nao.join(" · ")}.` : ""}` });
+    } catch (e) { falhar(e); }
+    setOcupado(false);
+  };
+
+  const statusEq = (e) => {
+    const b = aval?.equipes?.[e.id];
+    if (!b || !b.ativo) return <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">aberta para a equipe</span>;
+    const falta = Math.max(0, Math.ceil((AVALIACAO_ESPERA_MS - (agora - (b.desde || 0))) / 1000));
+    return falta > 0
+      ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300">bloqueada · aguardando {falta}s</span>
+      : <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300">em avaliação desde {new Date(b.desde).toLocaleString("pt-BR")}</span>;
+  };
+
+  if (erroLeitura) return <Card className="p-6 text-center text-rose-300 text-sm">{erroLeitura} <button onClick={carregar} className="ml-2 underline">Tentar de novo</button></Card>;
+  if (!aval) return <div className="text-sm text-slate-500">Carregando…</div>;
+
+  if (editor) {
+    const nMod = Number(editor.modId.slice(1));
+    const eq = equipes.find((e) => e.id === editor.equipeId);
+    const imp = resumoImpacto(editor.base, editor.draft);
+    return (
+      <div className="space-y-4">
+        <button onClick={() => { if (!mudouEditor || window.confirm("Descartar as alterações deste ajuste (nada foi gravado)?")) setEditor(null); }} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Voltar ao Ajuste geral</button>
+        <SectionTitle icon={Wrench} sub={`${eq?.nomeNegocio || ""} · edite como se fosse a equipe. Nada é gravado até você clicar em "Gravar ajuste".`}>Ajuste manual · Módulo {nMod}</SectionTitle>
+        {aviso && <div className={`text-sm rounded-md px-3 py-2 border ${aviso.tipo === "ok" ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-200" : "bg-rose-950/40 border-rose-800/60 text-rose-200"}`}>{aviso.texto}</div>}
+        <Card className="p-4"><div className="text-xs font-bold text-slate-300 mb-2">Impacto no resultado (Módulos 12 e 13 recalculados)</div><ImpactoAjuste a={imp.a} b={imp.b} /></Card>
+        <Card className="p-5"><FormModuloProf modId={editor.modId} lanc={editor.draft} calc={calcDraft} segmento={eq?.segmento} update={(m, v) => setEditor((ed) => ({ ...ed, draft: { ...ed.draft, [m]: v } }))} /></Card>
+        <Card className="p-4 space-y-3">
+          <label className="block text-xs font-bold text-slate-300">Motivo do ajuste (aparece no aviso à equipe)
+            <textarea value={editor.motivo} onChange={(e) => setEditor({ ...editor, motivo: e.target.value })} rows={2} placeholder="Ex.: corrigido o preço do produto para fechar o ponto de equilíbrio." className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-sm font-normal text-slate-100" />
+          </label>
+          {mudouEditor && <details className="text-xs text-slate-400"><summary className="cursor-pointer text-sky-300">Ver o que será alterado ({linhasDiffModulo(nMod, editor.base[editor.modId], editor.draft[editor.modId]).length})</summary><ul className="mt-1 space-y-0.5">{linhasDiffModulo(nMod, editor.base[editor.modId], editor.draft[editor.modId]).map((l, i) => <li key={i}>• {l}</li>)}</ul></details>}
+          <div className="flex gap-2 flex-wrap">
+            <button disabled={!mudouEditor || ocupado || !equipePronta(aval, editor.equipeId, agora)} onClick={aplicarManual} className="bg-amber-500 disabled:opacity-40 text-slate-900 text-sm font-bold px-4 py-2 rounded-md">Gravar ajuste</button>
+            <button onClick={() => setEditor((ed) => ({ ...ed, draft: JSON.parse(JSON.stringify(ed.base)) }))} className="border border-slate-600 text-slate-200 text-sm px-3 py-2 rounded-md">Descartar alterações</button>
+            {!equipePronta(aval, editor.equipeId, agora) && <span className="text-xs text-amber-300 self-center">A equipe precisa estar bloqueada e pronta para gravar.</span>}
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      {aviso && <div className={`text-sm rounded-md px-3 py-2 border ${aviso.tipo === "ok" ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-200" : "bg-rose-950/40 border-rose-800/60 text-rose-200"}`}>{aviso.texto}</div>}
+
+      <Card className="p-4">
+        <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2 mb-1"><Lock size={15} className="text-amber-400" /> 1. Avaliação em andamento (bloqueio das equipes)</h3>
+        <p className="text-xs text-slate-400 mb-3">Bloqueada, a equipe vê os dados e a mensagem abaixo, mas não edita nem envia módulos. Os ajustes só valem para equipes bloqueadas. Libere quando terminar.</p>
+        <label className="block text-xs font-bold text-slate-300 mb-3">Mensagem para os alunos
+          <textarea value={msgBloq} onChange={(e) => setMsgBloq(e.target.value)} rows={2} className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-sm font-normal text-slate-100" />
+        </label>
+        <div className="space-y-1.5">
+          {equipes.map((e) => (
+            <label key={e.id} className="flex items-center gap-3 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2">
+              <input type="checkbox" checked={selBloq.has(e.id)} onChange={() => toggle(selBloq, setSelBloq, e.id)} />
+              <span className="flex-1 text-sm font-semibold text-slate-100 truncate">{e.nomeNegocio}</span>
+              {statusEq(e)}
+            </label>
+          ))}
+        </div>
+        <div className="flex gap-2 flex-wrap mt-3">
+          <button disabled={ocupado} onClick={() => setSelBloq(new Set(equipes.map((e) => e.id)))} className="border border-slate-600 text-slate-200 text-xs px-3 py-1.5 rounded-md">Marcar todas</button>
+          <button disabled={ocupado || !selBloq.size} onClick={() => bloquear([...selBloq].filter((id) => !equipeEmAvaliacao(aval, id)))} className="bg-amber-500 disabled:opacity-40 text-slate-900 text-xs font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5"><Lock size={13} /> Bloquear marcadas</button>
+          <button disabled={ocupado || !selBloq.size} onClick={() => liberar([...selBloq].filter((id) => equipeEmAvaliacao(aval, id)))} className="bg-emerald-600 disabled:opacity-40 text-white text-xs font-bold px-3 py-1.5 rounded-md">Liberar marcadas</button>
+          <button disabled={ocupado || !bloqueadas.length} onClick={() => liberar(bloqueadas.map((e) => e.id))} className="border border-emerald-700 text-emerald-300 disabled:opacity-40 text-xs px-3 py-1.5 rounded-md">Liberar todas as bloqueadas</button>
+          <button disabled={ocupado} onClick={carregar} className="border border-slate-600 text-slate-300 text-xs px-3 py-1.5 rounded-md flex items-center gap-1.5"><RefreshCw size={12} /> Atualizar</button>
+        </div>
+      </Card>
+
+      <Card className="p-4">
+        <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2 mb-1"><Sparkles size={15} className="text-amber-400" /> 2. Ajuste automático dos lançamentos (Módulos 1 a 11)</h3>
+        <p className="text-xs text-slate-400 mb-3">O sistema procura erros de digitação (espaços, milhar sem zeros, linhas vazias — <b>Nível 1</b>, já marcados) e pontos prováveis (unidades, Módulo 8 diferente do 6, vida útil, piso — <b>Nível 2</b>, desmarcados para você conferir). Decisões do negócio (preço, quantidade, pró-labore) você faz no ajuste manual. O Módulo 12 e o 13 só recalculam.</p>
+        {!prontas.length ? <p className="text-sm text-slate-500">Bloqueie ao menos uma equipe e aguarde os {AVALIACAO_ESPERA_MS / 1000} segundos para gerar a proposta.</p> : (
+          <div className="space-y-1.5 mb-3">
+            {prontas.map((e) => (
+              <label key={e.id} className="flex items-center gap-3 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2">
+                <input type="checkbox" checked={selAuto.has(e.id)} onChange={() => toggle(selAuto, setSelAuto, e.id)} />
+                <span className="flex-1 text-sm font-semibold text-slate-100 truncate">{e.nomeNegocio}</span>
+              </label>
+            ))}
+          </div>
+        )}
+        <button disabled={ocupado || !prontas.length || !selAuto.size} onClick={gerarProposta} className="bg-amber-500 disabled:opacity-40 text-slate-900 text-sm font-bold px-4 py-2 rounded-md">Gerar proposta (não grava nada)</button>
+
+        {prop && (
+          <div className="mt-4 space-y-3">
+            {Object.keys(prop).map((eqId) => {
+              const d = dadosMap[eqId]; const lanc = mergeLancamentos(d?.lancamentos);
+              const P = prop[eqId]; const marcadas = P.props.filter((p) => P.marc.has(AJ.chave(p)));
+              const imp = resumoImpacto(lanc, AJ.aplicar(lanc, marcadas));
+              return (
+                <div key={eqId} className="border border-slate-700 rounded-xl p-3">
+                  <div className="font-bold text-slate-100 mb-2">{nomeEq(eqId)} <span className="text-xs font-normal text-slate-500">· {P.props.length} proposta(s), {marcadas.length} marcada(s)</span></div>
+                  {P.props.length === 0 ? <p className="text-sm text-slate-500">Nenhuma correção automática encontrada nos lançamentos desta equipe.</p> : (
+                    <div className="space-y-1">
+                      {P.props.map((p) => (
+                        <label key={AJ.chave(p)} className="flex items-start gap-2 text-xs bg-slate-900 border border-slate-700 rounded-md px-2.5 py-2">
+                          <input type="checkbox" className="mt-0.5" checked={P.marc.has(AJ.chave(p))} onChange={() => marcar(eqId, AJ.chave(p))} />
+                          <span className={`shrink-0 font-bold px-1.5 rounded ${p.nivel === 1 ? "bg-emerald-900 text-emerald-300" : "bg-amber-900 text-amber-300"}`}>N{p.nivel}</span>
+                          <span className="shrink-0 text-slate-500">M{p.mod}</span>
+                          <span className="flex-1 text-slate-300"><span className="text-rose-300 line-through">{fmtPropVal(p, p.antes)}</span> <span className="text-slate-500">→</span> <b className="text-emerald-300">{fmtPropVal(p, p.depois)}</b> <span className="text-slate-500">· {p.motivo}</span></span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-2"><ImpactoAjuste a={imp.a} b={imp.b} /></div>
+                </div>
+              );
+            })}
+            <div className="flex gap-2 flex-wrap items-center">
+              <button disabled={ocupado || !totalMarcado} onClick={aplicarAutomatico} className="bg-emerald-600 disabled:opacity-40 text-white text-sm font-bold px-4 py-2 rounded-md">Aplicar {totalMarcado} ajuste(s) marcado(s)</button>
+              <button onClick={() => setProp(null)} className="border border-slate-600 text-slate-200 text-sm px-3 py-2 rounded-md">Descartar proposta</button>
+              <span className="text-xs text-slate-500">Antes de aplicar, faça o Backup geral. O aviso vai para a aba Feedback da equipe.</span>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      <Card className="p-4">
+        <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2 mb-1"><Wrench size={15} className="text-amber-400" /> 3. Ajuste manual (você edita o módulo no lugar da equipe)</h3>
+        <p className="text-xs text-slate-400 mb-3">Para decisões do negócio e para o que o sistema só sugere. Você vê o mesmo formulário da equipe e o impacto no resultado antes de gravar.</p>
+        {!prontas.length ? <p className="text-sm text-slate-500">Bloqueie uma equipe e aguarde os {AVALIACAO_ESPERA_MS / 1000} segundos.</p> : (
+          <div className="space-y-2">
+            {prontas.map((e) => (
+              <div key={e.id} className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2">
+                <div className="text-sm font-semibold text-slate-100 mb-1.5">{e.nomeNegocio}</div>
+                <div className="flex gap-1.5 flex-wrap">
+                  {MODS_LANC.map((m) => <button key={m.id} disabled={ocupado} onClick={() => abrirEditor(e.id, m.id)} className="text-xs border border-slate-600 hover:border-amber-500 text-slate-200 px-2.5 py-1 rounded-md">M{m.n}</button>)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card className="p-4">
+        <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2 mb-2"><History size={15} className="text-amber-400" /> 4. Ajustes feitos (com desfazer)</h3>
+        {hist.length === 0 ? <p className="text-sm text-slate-500">Nenhum ajuste feito ainda.</p> : (
+          <div className="space-y-2">
+            {hist.map((r) => (
+              <div key={r.id} className="border border-slate-700 rounded-lg p-3 text-sm">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${r.tipo === "manual" ? "bg-violet-500/15 text-violet-300" : "bg-emerald-500/15 text-emerald-300"}`}>{r.tipo === "manual" ? "manual" : "automático"}</span>
+                  <span className="text-slate-300">{new Date(r.em).toLocaleString("pt-BR")} · {r.por}</span>
+                  {r.desfeito && <span className="text-[11px] text-slate-500">desfeito</span>}
+                  {r.desfeitoParcial && <span className="text-[11px] text-amber-400">desfeito em parte</span>}
+                  {!r.desfeito && <button disabled={ocupado} onClick={() => desfazer(r)} className="ml-auto flex items-center gap-1 text-xs border border-slate-600 text-slate-200 px-2.5 py-1 rounded-md hover:border-rose-500"><Undo2 size={12} /> Desfazer</button>}
+                </div>
+                <div className="text-xs text-slate-400 mt-1">{r.mudancas.map((m) => `${m.equipeNome} · Módulo ${m.modId.slice(1)}`).join(" · ")}{r.motivo ? ` — ${r.motivo}` : ""}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function GestaoAjusteGeralView({ turmas, professorNome }) {
+  const [turmaSelId, setTurmaSelId] = useState(turmas.length === 1 ? turmas[0].id : null);
+  const turmaSel = turmas.find((t) => t.id === turmaSelId) || null;
+  const [equipes] = useSharedList(turmaSel ? "equipes_" + turmaSel.id : "equipes_sem_turma");
+  const reais = (equipes || []).filter((e) => !e.teste);
+  if (turmaSel) {
+    return (
+      <div className="space-y-4">
+        {turmas.length > 1 && <button onClick={() => setTurmaSelId(null)} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Escolher outra turma</button>}
+        <SectionTitle icon={Wrench} sub={`Turma: ${turmaSel.nome} · bloqueie as equipes para avaliação, corrija os lançamentos (Módulos 1 a 11) e libere.`}>Ajuste geral</SectionTitle>
+        {equipes === null ? <div className="text-sm text-slate-500">Carregando empresas…</div>
+          : reais.length === 0 ? <Card className="p-8 text-center text-slate-500">Esta turma ainda não tem empresas.</Card>
+          : <AjusteGeralTurma key={turmaSel.id} turma={turmaSel} equipes={reais} professorNome={professorNome} />}
+      </div>
+    );
+  }
+  return (
+    <div>
+      <SectionTitle icon={Wrench} sub="Bloqueio de avaliação das equipes e correção automática/manual dos lançamentos (Módulos 1 a 11). Escolha a turma.">Ajuste geral</SectionTitle>
       {turmas.length === 0 ? <Card className="p-10 text-center text-slate-500">Você ainda não criou nenhuma turma.</Card> : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {turmas.map((t) => (
@@ -12482,6 +13099,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
         {aba === "cronograma" && <GestaoCronogramaView turmas={turmas} />}
         {aba === "itensSegmento" && <GestaoItensSegmentoView user={user} />}
         {aba === "parecer" && <GestaoParecerView turmas={turmas} professorNome={user.nome} />}
+        {aba === "ajusteGeral" && <GestaoAjusteGeralView turmas={turmas} professorNome={user.nome} />}
         {aba === "liberarAjustes" && <GestaoLiberarAjustesView turmas={turmas} professorNome={user.nome} />}
         {aba === "integrantes" && <GestaoIntegrantesView turmas={turmas} user={user} />}
         {aba === "acessos" && <GestaoAcessosView turmas={turmas} user={user} />}

@@ -1,4 +1,4 @@
-// build: 20261029_00h50m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261029_01h10m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -8492,6 +8492,38 @@ function FormModuloProf({ modId, lanc, calc, update, segmento }) {
   );
 }
 
+// "Como ficará": os Módulos 12 e 13 e as demais análises, recalculados com o ajuste em edição (nada é gravado).
+function PreviaAjusteAnalises({ calcAntes, calcDepois, dadosEq }) {
+  const [ver, setVer] = useState("depois");
+  const [aba, setAba] = useState("m12");
+  const calc = ver === "depois" ? calcDepois : calcAntes;
+  const abas = [["m12", "Módulo 12 · Demonstrativo"], ["m13", "Módulo 13 · Viabilidade"], ["analise", "Análise do negócio"], ["cenarios", "Cenários"], ["fluxo", "Fluxo de caixa anual"]];
+  const fluxo = dadosEq?.fluxoModulos || {};
+  return (
+    <div className="space-y-3">
+      <Card className="p-3 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-bold text-slate-300 mr-1">Mostrar:</span>
+        <button onClick={() => setVer("antes")} className={`text-xs px-3 py-1.5 rounded-md border ${ver === "antes" ? "bg-slate-200 text-slate-900 border-slate-200 font-bold" : "border-slate-600 text-slate-300"}`}>Antes (como está hoje)</button>
+        <button onClick={() => setVer("depois")} className={`text-xs px-3 py-1.5 rounded-md border ${ver === "depois" ? "bg-amber-500 text-slate-900 border-amber-500 font-bold" : "border-slate-600 text-slate-300"}`}>Depois (com o seu ajuste)</button>
+        <span className="text-[11px] text-slate-500">Tudo recalculado na hora. Nada é gravado até você clicar em "Gravar ajuste".</span>
+      </Card>
+      <div className="flex gap-1.5 flex-wrap">
+        {abas.map(([id, rot]) => <button key={id} onClick={() => setAba(id)} className={`text-xs px-3 py-1.5 rounded-md border ${aba === id ? "border-amber-500 text-amber-300 bg-slate-800 font-bold" : "border-slate-700 text-slate-300"}`}>{rot}</button>)}
+      </div>
+      <div className={`rounded-xl border-2 p-1 ${ver === "depois" ? "border-amber-500/60" : "border-slate-600"}`}>
+        <div className={`text-[11px] font-bold px-3 py-1 ${ver === "depois" ? "text-amber-300" : "text-slate-400"}`}>{ver === "depois" ? "COMO FICARÁ (com o ajuste)" : "COMO ESTÁ HOJE"}</div>
+        <div className="p-2 text-slate-100">
+          {aba === "m12" && <M12View calc={calc} />}
+          {aba === "m13" && <M13View calc={calc} />}
+          {aba === "analise" && <AnaliseNegocio calc={calc} historico={dadosEq?.historico} readOnly progressoAprovado={calcularProgressoAprovado(fluxo)} />}
+          {aba === "cenarios" && <AnaliseCenarios calc={calc} cenarios={dadosEq?.cenarios} onSetCenarios={() => {}} readOnly />}
+          {aba === "fluxo" && <FluxoCaixaAnual calc={calc} taxaCrescimento={dadosEq?.taxaCrescimentoFluxo ?? 0} onSetTaxaCrescimento={() => {}} tmaAnual={dadosEq?.tmaAnualFluxo ?? 12} onSetTmaAnual={() => {}} readOnly />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Grava, numa equipe, SÓ os módulos informados (lancamentos[modId]) + o aviso — relendo os dados na hora
 // e conferindo que a equipe continua bloqueada. `esperado[modId]` = JSON do módulo que o professor viu.
 async function gravarModulosEquipe(turmaId, equipeId, novos, esperado, comentario) {
@@ -8667,11 +8699,12 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
     try {
       const d = await lerDadosEstrito(equipeId);
       const base = mergeLancamentos(d.lancamentos);
-      setEditor({ equipeId, modId, base, draft: JSON.parse(JSON.stringify(base)), motivo: "", baseJson: jsonModulo(d.lancamentos, modId) });
+      setEditor({ equipeId, modId, base, draft: JSON.parse(JSON.stringify(base)), motivo: "", baseJson: jsonModulo(d.lancamentos, modId), dadosEq: d, visao: "editar" });
     } catch (e) { falhar(e); }
     setOcupado(false);
   };
   const calcDraft = useMemo(() => (editor ? calcular(editor.draft) : null), [editor]);
+  const calcBase = useMemo(() => (editor ? calcular(editor.base) : null), [editor && editor.base]);
   const mudouEditor = editor ? JSON.stringify(editor.draft[editor.modId]) !== JSON.stringify(editor.base[editor.modId]) : false;
   const aplicarManual = async () => {
     if (!editor || !mudouEditor) return;
@@ -8740,7 +8773,13 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
         <SectionTitle icon={Wrench} sub={`${eq?.nomeNegocio || ""} · edite como se fosse a equipe. Nada é gravado até você clicar em "Gravar ajuste".`}>Ajuste manual · Módulo {nMod}</SectionTitle>
         {aviso && <div className={`text-sm rounded-md px-3 py-2 border ${aviso.tipo === "ok" ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-200" : "bg-rose-950/40 border-rose-800/60 text-rose-200"}`}>{aviso.texto}</div>}
         <Card className="p-4"><div className="text-xs font-bold text-slate-300 mb-2">Impacto no resultado (Módulos 12 e 13 recalculados)</div><ImpactoAjuste a={imp.a} b={imp.b} /></Card>
-        <Card className="p-5"><FormModuloProf modId={editor.modId} lanc={editor.draft} calc={calcDraft} segmento={eq?.segmento} update={(m, v) => setEditor((ed) => ({ ...ed, draft: { ...ed.draft, [m]: v } }))} /></Card>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => setEditor({ ...editor, visao: "editar" })} className={`text-sm px-4 py-2 rounded-md border font-semibold ${editor.visao !== "prever" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-200"}`}>✏️ Editar o Módulo {nMod}</button>
+          <button onClick={() => setEditor({ ...editor, visao: "prever" })} className={`text-sm px-4 py-2 rounded-md border font-semibold ${editor.visao === "prever" ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-200"}`}>📊 Ver como ficará (Módulos 12, 13 e análises){mudouEditor ? " ●" : ""}</button>
+        </div>
+        {editor.visao === "prever"
+          ? <PreviaAjusteAnalises calcAntes={calcBase} calcDepois={calcDraft} dadosEq={editor.dadosEq} />
+          : <Card className="p-5"><FormModuloProf modId={editor.modId} lanc={editor.draft} calc={calcDraft} segmento={eq?.segmento} update={(m, v) => setEditor((ed) => ({ ...ed, draft: { ...ed.draft, [m]: v } }))} /></Card>}
         <Card className="p-4 space-y-3">
           <label className="block text-xs font-bold text-slate-300">Motivo do ajuste (aparece no aviso à equipe)
             <textarea value={editor.motivo} onChange={(e) => setEditor({ ...editor, motivo: e.target.value })} rows={2} placeholder="Ex.: corrigido o preço do produto para fechar o ponto de equilíbrio." className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-sm font-normal text-slate-100" />
@@ -8866,7 +8905,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
                   {r.desfeitoParcial && <span className="text-[11px] text-amber-400">desfeito em parte</span>}
                   {!r.desfeito && <button disabled={ocupado} onClick={() => desfazer(r)} className="ml-auto flex items-center gap-1 text-xs border border-slate-600 text-slate-200 px-2.5 py-1 rounded-md hover:border-rose-500"><Undo2 size={12} /> Desfazer</button>}
                 </div>
-                <div className="text-xs text-slate-400 mt-1">{r.mudancas.map((m) => `${m.equipeNome} · Módulo ${m.modId.slice(1)}`).join(" · ")}{r.motivo ? ` — ${r.motivo}` : ""}</div>
+                <div className="text-xs text-slate-400 mt-1">{Array.from(new Set(r.mudancas.map((m) => m.equipeNome))).map((nome) => `${nome} — Módulo${r.mudancas.filter((m) => m.equipeNome === nome).length > 1 ? "s" : ""} ${r.mudancas.filter((m) => m.equipeNome === nome).map((m) => m.modId.slice(1)).join(", ")}`).join(" · ")}{r.motivo ? ` — ${r.motivo}` : ""}</div>
               </div>
             ))}
           </div>

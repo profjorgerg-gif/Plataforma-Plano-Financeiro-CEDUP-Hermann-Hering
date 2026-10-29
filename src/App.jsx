@@ -1,4 +1,4 @@
-// build: 20261029_12h14m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261029_20h31m capacidade de producao (apoio, nao avaliativo) + espaco/atendimento
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1356,6 +1356,7 @@ const VERSOES = [
     "Notas automáticas dos módulos de lançamento: cada módulo vale 10 desde a primeira entrega; cada devolução para correção desconta 0,25 e a primeira entrega fora do prazo desconta 2,0. A nota muda sozinha a cada devolução e a equipe é avisada no Feedback, com o motivo e o cálculo. Reabrir um módulo aprovado (sem erro da equipe) não desconta.",
     "Gestão → Notas automáticas: prévia por equipe e módulo (nota atual x automática, com o cálculo), aplicação só do que o professor marcar, registro com Desfazer e envio do comunicado do novo formato de avaliação (texto editável) às equipes.",
     "Os Módulos 12 e 13 não têm nota própria; a \"nota final do plano financeiro\" é digitada pelo professor (mantém o peso de 20% da avaliação). Se o professor digitar uma nota à mão num módulo, ela fica fixada até ele voltar ao automático.",
+    "Novo item no menu do aluno, em \"Apoio ao planejamento\": Capacidade de produção/atendimento. Não é avaliativo (sem envio, nota ou prazo): a equipe informa os recursos do seu segmento (fornos, cadeiras, vendedores, caixas...), o sistema calcula quanto a empresa consegue produzir ou atender por mês, compara com a quantidade do Módulo 5, aponta o gargalo e mostra o que ajustar nos Módulos 1, 5 e 9. Modelos para Padaria, Restaurante, Estética, Moda/brechó, Semijoias e um modelo genérico para os demais segmentos.",
     "PROJETO ABERTO: todos os módulos ficam disponíveis para as equipes até o professor encerrar o projeto da empresa (Gestão → Encerrar projeto, reversível). O módulo só trava enquanto está enviado aguardando avaliação; depois da devolutiva ou da aprovação volta a ficar aberto. O prazo passa a valer só para a nota (primeira entrega depois da data: −2,0).",
     "Alteração sem envio: se a equipe mexer num módulo já aprovado e não reenviar, o sistema registra quem, quando e o que mudou (valor de antes → agora). Aparece no painel do módulo e em Correções pendentes, e a equipe é avisada na própria tela. Se a equipe voltar ao valor original, o registro some.",
     "Novo item em Gestão: \"Ver como aluno (só leitura)\" — o professor entra na tela do aluno de uma empresa (como um dos integrantes) e navega por todo o menu, sem poder alterar nada.",
@@ -5259,6 +5260,8 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
     { id: "cronograma", label: "Cronograma do projeto", icon: Calendar, num: null },
     { id: "__sec_lanc", secao: "Módulos de lançamento (1 a 11)" },
     ...MODULOS.filter((m) => !ehModuloAnalise(m)).map((m) => ({ id: m.id, label: m.nome, icon: m.icon, num: rotNumModulo(m), moduloStatus: estadoModulo(fluxo, m.id).status })),
+    { id: "__sec_apoio", secao: "Apoio ao planejamento (não avaliativo)" },
+    { id: "capacidade", label: "Capacidade de produção", icon: Factory, num: null },
     { id: "__sec_anal", secao: "Análises (calculadas, sem lançamento)" },
     ...MODULOS.filter((m) => ehModuloAnalise(m)).map((m) => ({ id: m.id, label: m.nome, icon: m.icon, num: null, moduloStatus: estadoModulo(fluxo, m.id).status })),
     { id: "analise", label: "Análise do Negócio", icon: TrendingUp, num: null },
@@ -5540,6 +5543,12 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
           </div>
         )}
 
+        {aba === "capacidade" && (
+          <div>
+            <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
+            <CapacidadeView equipe={equipe} lanc={lanc} dados={dados} setDados={setDados} somenteLeitura={souVisualizador} />
+          </div>
+        )}
         {aba === "cenarios" && (
           <div>
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
@@ -5671,6 +5680,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
       { key: "guia", label: "Guia da semana", novo: true },
     ] },
     { label: "Módulos (1 a 11)", itens: MODULOS.filter((m) => !ehModuloAnalise(m)).map((m) => ({ key: m.id, label: `${rotNumModulo(m)} · ${m.nome}`, status: estadoModulo(fluxo, m.id).status })) },
+    { label: "Apoio ao planejamento", itens: [{ key: "capacidade", label: "Capacidade de produção" }] },
     { label: "Análises", itens: [...MODULOS.filter((m) => ehModuloAnalise(m)).map((m) => ({ key: m.id, label: m.nome, status: estadoModulo(fluxo, m.id).status })), { key: "analise", label: "Análise do Negócio" }, { key: "cenarios", label: "Análise de Cenários" }, { key: "fluxocaixa", label: "Fluxo de Caixa Anual" }] },
     { label: "Entregas", itens: [
       { key: "ppt", label: gerandoPpt ? "Gerando apresentação…" : "Baixar Apresentação (dados da equipe)", acao: acaoBaixarPpt },
@@ -9610,6 +9620,181 @@ function GestaoEncerrarProjetoView({ turmas, professorNome }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ================= Capacidade de produção / atendimento (v3.6) — apoio ao planejamento, NÃO avaliativo =================
+// Não tem envio, nota, prazo nem entra no progresso. Não altera nenhum lançamento: o aluno informa os recursos do seu segmento,
+// o sistema compara a capacidade mensal com a demanda do Módulo 5 e mostra o que ajustar (Módulos 1, 5, 9...).
+// Tipos de recurso: "taxa" (unidades por hora de cada recurso), "lote" (unidades por fornada/lote e minutos do ciclo),
+// "servico" (minutos que cada atendimento ocupa o recurso).
+const CAP_MODELOS = {
+  "Padaria / confeitaria": { unidade: "un", demandaDica: "Soma das quantidades dos produtos do Módulo 5 (pães, bolos, doces...).", recursos: [
+    { id: "forno", nome: "Fornos", tipo: "lote", mod: "Módulo 1 (Investimentos fixos)", ph: { qtd: 2, lote: 30, ciclo: 25 }, loteRot: "Unidades por fornada", cicloRot: "Minutos por fornada" },
+    { id: "massa", nome: "Amassadeira / modeladora", tipo: "taxa", mod: "Módulo 1 (Investimentos fixos)", ph: { qtd: 1, taxa: 120 }, taxaRot: "Unidades por hora (cada)" },
+    { id: "pessoas", nome: "Padeiros / confeiteiros", tipo: "taxa", mod: "Módulo 9 (Mão de obra)", ph: { qtd: 2, taxa: 40 }, taxaRot: "Unidades por hora (cada pessoa)" },
+    { id: "balcao", nome: "Balcão / caixa (atendimento ao cliente)", tipo: "servico", mod: "Módulo 9 (Mão de obra)", ph: { qtd: 2, duracao: 3, por: 8 }, duracaoRot: "Minutos por atendimento (cada pessoa)", porRot: "Unidades compradas por cliente (média)" },
+  ] },
+  "Restaurante / lanchonete": { unidade: "refeições", demandaDica: "Soma das quantidades de pratos/lanches do Módulo 5.", recursos: [
+    { id: "fogao", nome: "Estações de cozinha (fogão, chapa, fritadeira)", tipo: "taxa", mod: "Módulo 1 (Investimentos fixos)", ph: { qtd: 2, taxa: 25 }, taxaRot: "Refeições por hora (cada estação)" },
+    { id: "cozinheiros", nome: "Cozinheiros / auxiliares", tipo: "taxa", mod: "Módulo 9 (Mão de obra)", ph: { qtd: 3, taxa: 15 }, taxaRot: "Refeições por hora (cada pessoa)" },
+    { id: "salao", nome: "Lugares no salão", tipo: "servico", mod: "Módulo 1 (Investimentos fixos)", ph: { qtd: 30, duracao: 45 }, duracaoRot: "Minutos que um cliente ocupa o lugar" },
+    { id: "atend", nome: "Garçons / atendentes", tipo: "servico", mod: "Módulo 9 (Mão de obra)", ph: { qtd: 2, duracao: 6 }, duracaoRot: "Minutos por atendimento (cada pessoa)" },
+  ] },
+  "Estética / beleza": { unidade: "atendimentos", demandaDica: "Soma das quantidades de serviços do Módulo 5 (cada serviço = 1 atendimento).", recursos: [
+    { id: "posto", nome: "Cadeiras / macas / cabines", tipo: "servico", mod: "Módulo 1 (Investimentos fixos)", ph: { qtd: 2, duracao: 60 }, duracaoRot: "Minutos médios por atendimento (cada posto)" },
+    { id: "prof", nome: "Profissionais", tipo: "servico", mod: "Módulo 9 (Mão de obra)", ph: { qtd: 2, duracao: 60 }, duracaoRot: "Minutos médios por atendimento (cada profissional)" },
+  ] },
+  "Moda / brechó": { unidade: "clientes atendidos", demandaDica: "Número de vendas/atendimentos por mês (use o campo abaixo se o Módulo 5 estiver em peças).", recursos: [
+    { id: "vend", nome: "Vendedores / atendentes", tipo: "servico", mod: "Módulo 9 (Mão de obra)", ph: { qtd: 2, duracao: 20 }, duracaoRot: "Minutos por cliente (cada pessoa)" },
+    { id: "prov", nome: "Provadores", tipo: "servico", mod: "Módulo 1 (Investimentos fixos)", ph: { qtd: 2, duracao: 12 }, duracaoRot: "Minutos de uso por cliente" },
+    { id: "caixa", nome: "Caixas / pontos de pagamento", tipo: "servico", mod: "Módulo 1 / Módulo 9", ph: { qtd: 1, duracao: 4 }, duracaoRot: "Minutos por venda" },
+  ] },
+  "Semijoias / acessórios": { unidade: "clientes atendidos", demandaDica: "Número de vendas/atendimentos por mês (use o campo abaixo se o Módulo 5 estiver em peças).", recursos: [
+    { id: "vend", nome: "Vendedores / atendentes", tipo: "servico", mod: "Módulo 9 (Mão de obra)", ph: { qtd: 1, duracao: 15 }, duracaoRot: "Minutos por cliente (cada pessoa)" },
+    { id: "caixa", nome: "Caixas / pontos de pagamento", tipo: "servico", mod: "Módulo 1 / Módulo 9", ph: { qtd: 1, duracao: 4 }, duracaoRot: "Minutos por venda" },
+    { id: "montagem", nome: "Montagem / produção própria (se houver)", tipo: "taxa", mod: "Módulo 9 (Mão de obra)", ph: { qtd: 1, taxa: 6 }, taxaRot: "Peças por hora (cada pessoa)" },
+  ] },
+  generico: { unidade: "un", demandaDica: "Soma das quantidades do Módulo 5 (se as unidades forem diferentes, informe a demanda no campo abaixo).", recursos: [
+    { id: "principal", nome: "Equipamento / posto principal", tipo: "taxa", mod: "Módulo 1 (Investimentos fixos)", ph: { qtd: 1, taxa: 20 }, taxaRot: "Unidades por hora (cada)" },
+    { id: "pessoas", nome: "Pessoas na produção / atendimento", tipo: "taxa", mod: "Módulo 9 (Mão de obra)", ph: { qtd: 2, taxa: 10 }, taxaRot: "Unidades por hora (cada pessoa)" },
+    { id: "atend", nome: "Atendimento simultâneo (balcão, caixa)", tipo: "servico", mod: "Módulo 9 (Mão de obra)", ph: { qtd: 1, duracao: 6 }, duracaoRot: "Minutos por atendimento" },
+  ] },
+};
+const CAP_M2PH = { forno: 3, massa: 2, pessoas: 2, fogao: 4, cozinheiros: 2, salao: 1.5, atend: 1, posto: 6, prof: 0, vend: 0, prov: 2, caixa: 2, montagem: 3, principal: 4, balcao: 2 };
+const modeloCapacidade = (segmento) => CAP_MODELOS[segmento] || CAP_MODELOS.generico;
+const capNum = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 0; };
+const capPorHora = (r, v) => {
+  if (r.tipo === "taxa") return capNum(v?.taxa);
+  if (r.tipo === "lote") return capNum(v?.ciclo) > 0 ? capNum(v?.lote) * 60 / capNum(v?.ciclo) : 0;
+  return capNum(v?.duracao) > 0 ? (60 / capNum(v?.duracao)) * (r.porRot ? (capNum(v?.por) || 1) : 1) : 0;
+};
+// Núcleo do cálculo (puro): devolve capacidade mensal de cada recurso, gargalo, utilização e as opções de ajuste.
+function calcularCapacidade(modelo, cap, demandaM5) {
+  const f = cap?.funcionamento || {};
+  const horasDia = capNum(f.horasDia ?? 8), diasMes = capNum(f.diasMes ?? 26), efic = capNum(f.eficiencia ?? 85);
+  const horasEf = horasDia * diasMes * (Math.min(efic, 100) / 100);
+  const demanda = capNum(cap?.demandaManual) > 0 ? capNum(cap.demandaManual) : capNum(demandaM5);
+  const linhas = modelo.recursos.map((r) => {
+    const v = cap?.recursos?.[r.id] || {}; const porHora = capPorHora(r, v); const qtd = capNum(v.qtd);
+    const capHora = qtd * porHora; const capMes = capHora * horasEf;
+    return { r, qtd, porHora, capHora, capMes, preenchido: qtd > 0 && porHora > 0 };
+  });
+  const area = capNum(f.area);
+  linhas.forEach((l) => { l.m2 = capNum(cap?.recursos?.[l.r.id]?.m2); l.m2Total = l.qtd * l.m2; });
+  const m2Usado = linhas.reduce((a, l) => a + l.m2Total, 0);
+  const espaco = { area, usado: m2Usado, uso: area > 0 && m2Usado > 0 ? m2Usado / area : null };
+  const ativos = linhas.filter((l) => l.preenchido);
+  if (!ativos.length || horasEf <= 0) return { horasEf, demanda, linhas, capacidade: null, espaco };
+  const gargalo = ativos.reduce((a, b) => (b.capMes < a.capMes ? b : a));
+  const capacidade = gargalo.capMes;
+  linhas.forEach((l) => { l.uso = l.preenchido && demanda > 0 ? demanda / l.capMes : null; });
+  const falta = Math.max(0, demanda - capacidade);
+  const opcoes = [];
+  if (falta > 0) {
+    // A) acrescentar unidades no gargalo; depois mostra o novo gargalo
+    const un = Math.ceil((demanda - gargalo.capMes) / (gargalo.porHora * horasEf));
+    const nova = ativos.map((l) => (l === gargalo ? l.capMes + un * gargalo.porHora * horasEf : l.capMes));
+    const novoCap = Math.min(...nova); const novoG = ativos[nova.indexOf(novoCap)];
+    const m2Extra = un * gargalo.m2; const cabe = !(area > 0 && gargalo.m2 > 0) || m2Usado + m2Extra <= area;
+    opcoes.push({ tipo: "recurso", texto: `Acrescentar ${un} ${gargalo.r.nome.toLowerCase()} → a capacidade passa a ${fmtNum(novoCap, 0)} ${modelo.unidade}/mês${novoCap >= demanda ? "" : ` (o novo gargalo seria "${novoG.r.nome.toLowerCase()}", que ainda não atende)`}${gargalo.m2 > 0 ? ` · ocupa mais ${fmtNum(m2Extra, 1)} m²${area > 0 ? (cabe ? " (cabe no espaço)" : " — NÃO cabe no espaço disponível: avaliem ampliar a área/aluguel") : ""}` : ""}`, onde: gargalo.r.mod + (cabe ? "" : " e Módulo 1 (instalações/aluguel)") });
+    opcoes.push({ tipo: "demanda", texto: `Reduzir a quantidade planejada para até ${fmtNum(capacidade, 0)} ${modelo.unidade}/mês`, onde: "Módulo 5 (Faturamento mensal)" });
+    const horasNec = demanda / (gargalo.capHora * diasMes * (Math.min(efic, 100) / 100));
+    opcoes.push({ tipo: "horas", texto: `Ou ampliar o funcionamento de ${fmtNum(horasDia, 1)} para ${fmtNum(horasNec, 1)} horas por dia`, onde: "Módulo 9 (turnos/horas extras)" });
+  }
+  const sobra = demanda > 0 && demanda / capacidade < 0.6;
+  return { horasEf, demanda, linhas, gargalo, capacidade, falta, opcoes, espaco, utilizacao: demanda > 0 ? demanda / capacidade : null, sobra };
+}
+
+function CapInput({ value, onChange, placeholder, step }) {
+  return <input type="number" min="0" step={step || "any"} value={value ?? ""} placeholder={placeholder != null ? String(placeholder) : ""} onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))} className="w-24 bg-slate-950 border border-slate-600 rounded-md px-2 py-1.5 text-sm text-slate-100 text-center focus:outline-none focus:border-amber-500" />;
+}
+function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura }) {
+  const segmento = equipe?.segmento;
+  const modelo = modeloCapacidade(segmento);
+  const generico = !CAP_MODELOS[segmento];
+  const cap = dados?.capacidade || {};
+  const itens = lanc?.m5?.itens || [];
+  const demandaM5 = itens.reduce((s, it) => s + (Number(it.qtd) || 0), 0);
+  const set = (novo) => { if (!somenteLeitura) setDados({ ...dados, capacidade: { ...cap, ...novo } }); };
+  const setFunc = (k, v) => set({ funcionamento: { ...(cap.funcionamento || {}), [k]: v } });
+  const setRec = (id, k, v) => set({ recursos: { ...(cap.recursos || {}), [id]: { ...(cap.recursos?.[id] || {}), [k]: v } } });
+  const R = calcularCapacidade(modelo, cap, demandaM5);
+  const f = cap.funcionamento || {};
+  const pct = (u) => `${fmtNum(u * 100, 0)}%`;
+  const corUso = (u) => (u == null ? "" : u > 1 ? "bg-rose-900/40 text-rose-300" : u > 0.85 ? "bg-amber-900/40 text-amber-300" : "bg-emerald-900/40 text-emerald-300");
+  return (
+    <div>
+      <SectionTitle icon={Factory} sub={`Apoio ao planejamento · ${segmento || "segmento não escolhido"} · não é avaliativo: não tem envio, nota nem prazo`}>Capacidade de {["Restaurante / lanchonete", "Padaria / confeitaria"].includes(segmento) ? "produção" : "produção / atendimento"}</SectionTitle>
+      <div className="mb-4 text-xs text-sky-200 bg-sky-950/30 border border-sky-800/50 rounded-lg p-3 flex gap-2"><Info size={14} className="shrink-0 mt-0.5" /><span>Aqui vocês descobrem <b>quanto a empresa consegue produzir ou atender por mês</b> com os recursos que têm, e se isso aguenta a quantidade planejada no Módulo 5. Nada daqui altera os lançamentos: o resultado mostra <b>o que ajustar</b> nos Módulos 1, 5 e 9. Os números em cinza são só exemplos de referência — troquem pelos da sua empresa.</span></div>
+      {!segmento && <div className="mb-4 text-xs text-amber-300 bg-amber-950/30 border border-amber-800/50 rounded-lg p-3">Vocês ainda não escolheram o segmento (menu "Segmento do negócio"). Enquanto isso, o modelo é genérico.</div>}
+      {segmento && generico && <div className="mb-4 text-xs text-slate-300 bg-slate-900 border border-slate-700 rounded-lg p-3">Para o segmento "{segmento}" ainda não há um modelo específico; use o modelo genérico, adaptando os nomes e valores à realidade da empresa.</div>}
+      <div className={somenteLeitura ? "opacity-70 pointer-events-none select-none" : ""}>
+        <div className="grid md:grid-cols-2 gap-3 mb-3">
+          <Card className="p-4">
+            <h3 className="text-sm font-bold text-slate-100 mb-2">1 · Funcionamento</h3>
+            <table className="w-full text-sm"><tbody>
+              <tr><td className="py-1.5 text-slate-300">Horas de funcionamento por dia</td><td className="text-right"><CapInput value={f.horasDia} placeholder={8} onChange={(v) => setFunc("horasDia", v)} /></td></tr>
+              <tr><td className="py-1.5 text-slate-300">Dias de funcionamento por mês</td><td className="text-right"><CapInput value={f.diasMes} placeholder={26} onChange={(v) => setFunc("diasMes", v)} /></td></tr>
+              <tr><td className="py-1.5 text-slate-300">Eficiência real (%) <span className="text-[11px] text-slate-500">paradas, limpeza, perdas</span></td><td className="text-right"><CapInput value={f.eficiencia} placeholder={85} onChange={(v) => setFunc("eficiencia", v)} /></td></tr>
+              <tr><td className="py-1.5 text-slate-300">Área útil de produção/atendimento (m²) <span className="text-[11px] text-slate-500">sem banheiro, depósito</span></td><td className="text-right"><CapInput value={f.area} placeholder={60} onChange={(v) => setFunc("area", v)} /></td></tr>
+            </tbody></table>
+            <div className="text-xs text-slate-400 mt-2">Horas efetivas no mês: <b className="text-slate-200">{fmtNum(R.horasEf, 1)} h</b></div>
+          </Card>
+          <Card className="p-4">
+            <h3 className="text-sm font-bold text-slate-100 mb-2">2 · Demanda planejada <span className="text-[11px] font-normal text-slate-500">(vem do Módulo 5)</span></h3>
+            {itens.filter((it) => Number(it.qtd) > 0).length === 0 ? <div className="text-xs text-slate-500">O Módulo 5 ainda não tem quantidades. Preencham lá, ou informem abaixo.</div> : (
+              <table className="w-full text-sm"><tbody>
+                {itens.filter((it) => Number(it.qtd) > 0).slice(0, 8).map((it) => <tr key={it.id}><td className="py-0.5 text-slate-300">{it.nome || "(sem nome)"}</td><td className="text-right text-slate-200">{fmtNum(it.qtd, 0)}</td></tr>)}
+                <tr className="border-t border-slate-700"><td className="py-1 font-bold text-slate-100">Total no Módulo 5</td><td className="text-right font-bold text-slate-100">{fmtNum(demandaM5, 0)}</td></tr>
+              </tbody></table>
+            )}
+            <div className="text-[11px] text-slate-500 mt-1">{modelo.demandaDica}</div>
+            <div className="flex items-center gap-2 mt-2 text-xs text-slate-300">Usar outra demanda mensal ({modelo.unidade}): <CapInput value={cap.demandaManual} placeholder="opcional" onChange={(v) => set({ demandaManual: v })} /></div>
+          </Card>
+        </div>
+        <Card className="p-4 mb-3">
+          <h3 className="text-sm font-bold text-slate-100 mb-2">3 · Recursos que limitam a capacidade <span className="text-[11px] font-normal text-slate-500">(vocês informam)</span></h3>
+          <div className="overflow-x-auto"><table className="w-full text-sm">
+            <thead><tr className="text-left text-[11px] uppercase text-slate-500"><th className="py-1 pr-2">Recurso</th><th className="pr-2">Quantidade</th><th className="pr-2">Como ele trabalha</th><th className="pr-2">Espaço (m² por unidade)</th><th className="pr-2 text-right">Capacidade/mês</th><th className="text-right">Uso da demanda</th></tr></thead>
+            <tbody>
+              {R.linhas.map((l) => { const r = l.r; const v = cap.recursos?.[r.id] || {}; return (
+                <tr key={r.id} className="border-t border-slate-700 align-top">
+                  <td className="py-2 pr-2 text-slate-200">{r.nome}<div className="text-[10px] text-slate-500">ajusta em: {r.mod}</div></td>
+                  <td className="pr-2 py-2"><CapInput value={v.qtd} placeholder={r.ph.qtd} onChange={(x) => setRec(r.id, "qtd", x)} /></td>
+                  <td className="pr-2 py-2 text-xs text-slate-400 space-y-1">
+                    {r.tipo === "taxa" && <div className="flex items-center gap-2"><CapInput value={v.taxa} placeholder={r.ph.taxa} onChange={(x) => setRec(r.id, "taxa", x)} /> {r.taxaRot}</div>}
+                    {r.tipo === "lote" && <><div className="flex items-center gap-2"><CapInput value={v.lote} placeholder={r.ph.lote} onChange={(x) => setRec(r.id, "lote", x)} /> {r.loteRot}</div><div className="flex items-center gap-2"><CapInput value={v.ciclo} placeholder={r.ph.ciclo} onChange={(x) => setRec(r.id, "ciclo", x)} /> {r.cicloRot}</div></>}
+                    {r.tipo === "servico" && <><div className="flex items-center gap-2"><CapInput value={v.duracao} placeholder={r.ph.duracao} onChange={(x) => setRec(r.id, "duracao", x)} /> {r.duracaoRot}</div>{r.porRot && <div className="flex items-center gap-2"><CapInput value={v.por} placeholder={r.ph.por} onChange={(x) => setRec(r.id, "por", x)} /> {r.porRot}</div>}</>}
+                  </td>
+                  <td className="pr-2 py-2"><CapInput value={v.m2} placeholder={r.ph.m2 ?? CAP_M2PH[r.id] ?? 2} onChange={(x) => setRec(r.id, "m2", x)} /></td>
+                  <td className="py-2 pr-2 text-right text-slate-200">{l.preenchido ? `${fmtNum(l.capMes, 0)} ${modelo.unidade}` : "—"}</td>
+                  <td className="py-2 text-right">{l.preenchido && l.uso != null ? <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${corUso(l.uso)}`}>{pct(l.uso)}</span> : <span className="text-slate-600">—</span>}</td>
+                </tr>
+              ); })}
+            </tbody>
+          </table></div>
+        </Card>
+      </div>
+      <Card className={`p-4 ${R.capacidade != null && R.falta > 0 ? "border-amber-600/70" : ""}`}>
+        <h3 className="text-sm font-bold text-slate-100 mb-2">4 · Resultado</h3>
+        {R.capacidade == null ? <div className="text-sm text-slate-500">Preencham pelo menos um recurso (quantidade e como ele trabalha) para ver a capacidade da empresa.</div> : (
+          <div className="text-sm text-slate-200 space-y-2">
+            <div>Capacidade da empresa (o recurso que mais limita é <b>{R.gargalo.r.nome.toLowerCase()}</b>): <b>{fmtNum(R.capacidade, 0)} {modelo.unidade}/mês</b>{R.demanda > 0 ? <> · demanda planejada: <b>{fmtNum(R.demanda, 0)}</b> · utilização <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${corUso(R.utilizacao)}`}>{pct(R.utilizacao)}{R.utilizacao > 1 ? " — acima da capacidade" : ""}</span></> : <span className="text-slate-500"> · sem demanda informada ainda</span>}</div>
+            {R.falta > 0 && (
+              <div>
+                <b className="text-amber-300">Faltam {fmtNum(R.falta, 0)} {modelo.unidade}/mês de capacidade.</b> Caminhos para ajustar o plano financeiro:
+                <table className="w-full text-xs mt-1.5"><tbody>{R.opcoes.map((o, i) => <tr key={i} className="border-t border-slate-700"><td className="py-1.5 pr-2">{String.fromCharCode(65 + i)}) {o.texto}</td><td className="py-1.5 text-right text-slate-400">ajustar <b className="text-slate-200">{o.onde}</b></td></tr>)}</tbody></table>
+                <div className="text-[11px] text-slate-500 mt-1">Cada caminho muda custos e/ou receita: depois de decidir, ajustem os módulos indicados e voltem aqui para conferir.</div>
+              </div>
+            )}
+            {R.espaco.uso != null && <div>Espaço: os recursos informados ocupam <b>{fmtNum(R.espaco.usado, 1)} m²</b> de {fmtNum(R.espaco.area, 0)} m² úteis (<span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${R.espaco.uso > 1 ? "bg-rose-900/40 text-rose-300" : R.espaco.uso > 0.85 ? "bg-amber-900/40 text-amber-300" : "bg-emerald-900/40 text-emerald-300"}`}>{pct(R.espaco.uso)}</span>){R.espaco.uso > 1 ? " — não cabe: reduzam recursos ou ampliem a área (aluguel no Módulo 1/custos fixos)." : R.espaco.uso > 0.85 ? " — pouco espaço de sobra para circulação e crescimento." : "."}</div>}
+            {R.falta === 0 && R.demanda > 0 && !R.sobra && <div className="text-emerald-300">A capacidade atende à demanda planejada{R.utilizacao > 0.85 ? ", mas com pouca folga: qualquer imprevisto pode virar atraso ou perda de vendas." : " com folga."}</div>}
+            {R.sobra && <div className="text-sky-300">A empresa está usando só {pct(R.utilizacao)} da capacidade. Vale conferir se o investimento (Módulo 1) e a equipe (Módulo 9) não estão grandes demais para a quantidade que vão vender.</div>}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-// build: 20261029_00h15m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261029_00h40m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1334,6 +1334,7 @@ const VERSOES = [
   { versao: "3.5", data: "29/10/2026", itens: [
     "Novo item de menu em Gestão: \"Ajuste geral\". O professor BLOQUEIA as equipes para avaliação (todas, ou só as escolhidas): os alunos continuam vendo seus dados e uma mensagem de que o projeto está em avaliação, mas não editam nem enviam módulos. Ao terminar, libera todas ou só as que quiser.",
     "Com a equipe bloqueada, o sistema corrige os lançamentos dos Módulos 1 a 11 (os Módulos 12 e 13 apenas recalculam): erros de digitação já vêm marcados (espaços, milhar sem zeros, linhas vazias) e pontos prováveis (unidades, Módulo 8 diferente do 6, vida útil, piso) ficam para o professor conferir. Mostra o impacto no resultado e no retorno antes de aplicar.",
+    "Ao escolher as equipes para bloquear, a tela mostra quem está editando agora (nome e último sinal de vida) e pede confirmação antes de bloquear quem estiver com alguém lançando dados.",
     "Ajuste manual: o professor abre o mesmo formulário do módulo da equipe, edita (preço, quantidade, pró-labore etc.), vê o impacto na hora e grava. Cada ajuste fica registrado (antes e depois), vira um aviso na aba Feedback da equipe e pode ser desfeito.",
   ] },
   { versao: "3.4", data: "22/10/2026", itens: [
@@ -8387,6 +8388,7 @@ function aplicar(l, props) {
 const chaveAvaliacao = (turmaId) => `avaliacao_${turmaId}`;
 const chaveAjustesProf = (turmaId) => `ajustes_prof_${turmaId}`;
 const AVALIACAO_ESPERA_MS = 20000;
+const GESTOR_EDITANDO_MS = 3 * 60 * 1000;   // mesmo limite que a plataforma usa para encerrar a gestão por falta de sinal
 const MSG_AVALIACAO_PADRAO = "O professor está avaliando o projeto da sua empresa. Aguarde o feedback: enquanto isso você pode consultar os dados, mas não pode editar nem enviar módulos.";
 const MODS_LANC = MODULOS.filter((m) => /^m(\d+)$/.test(m.id) && Number(m.id.slice(1)) <= 11);
 
@@ -8541,6 +8543,17 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
   const [ocupado, setOcupado] = useState(false);
   const [aviso, setAviso] = useState(null);     // { tipo:"ok"|"erro", texto }
   const [erroLeitura, setErroLeitura] = useState("");
+  const [gestores, setGestores] = useState({});   // { [equipeId]: { nome, ultimoPing } } — quem está com a gestão dos lançamentos
+
+  // Quem está editando agora: só quem assumiu a gestão consegue alterar dados, e esse sinal é gravado a cada 60 s.
+  const lerGestores = async () => {
+    const m = {};
+    await Promise.all(equipes.map(async (e) => {
+      try { const d = await lerDadosEstrito(e.id); const g = d.gestor; if (g && g.nome && Date.now() - (g.ultimoPing || 0) < GESTOR_EDITANDO_MS) m[e.id] = { nome: g.nome, ultimoPing: g.ultimoPing || 0 }; } catch { /* sem leitura: não afirma nada */ }
+    }));
+    setGestores(m);
+  };
+  useEffect(() => { lerGestores(); const t = setInterval(lerGestores, 10000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [turma.id]);
 
   const carregar = async () => {
     setErroLeitura("");
@@ -8563,6 +8576,8 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
 
   const bloquear = async (ids) => {
     if (!ids.length) return;
+    const editando = ids.filter((id) => gestores[id]);
+    if (editando.length && !window.confirm(`Há aluno(s) editando agora:\n\n${editando.map((id) => `• ${nomeEq(id)}: ${gestores[id].nome}`).join("\n")}\n\nO bloqueio passa a valer na tela deles em poucos segundos (o que estiverem digitando é salvo antes). Bloquear mesmo assim?`)) return;
     setOcupado(true); setAviso(null);
     try {
       const eqs = await definirBloqueioAvaliacao(turma.id, ids, true, professorNome, msgBloq.trim());
@@ -8756,6 +8771,9 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
             <label key={e.id} className="flex items-center gap-3 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2">
               <input type="checkbox" checked={selBloq.has(e.id)} onChange={() => toggle(selBloq, setSelBloq, e.id)} />
               <span className="flex-1 text-sm font-semibold text-slate-100 truncate">{e.nomeNegocio}</span>
+              {gestores[e.id]
+                ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300" title="Quem assumiu a gestão dos lançamentos e enviou sinal de vida nos últimos 3 minutos">● {gestores[e.id].nome} editando · sinal há {Math.max(0, Math.round((agora - gestores[e.id].ultimoPing) / 60000))} min</span>
+                : <span className="text-[11px] text-slate-500">ninguém editando</span>}
               {statusEq(e)}
             </label>
           ))}

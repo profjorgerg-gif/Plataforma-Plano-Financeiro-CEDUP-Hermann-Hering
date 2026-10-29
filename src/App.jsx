@@ -1,4 +1,4 @@
-// build: 20261029_06h57m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261029_08h54m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -8571,7 +8571,7 @@ function PreviaAjusteAnalises({ calcAntes, calcDepois, dadosEq }) {
   const [ver, setVer] = useState("depois");
   const [aba, setAba] = useState("m12");
   const calc = ver === "depois" ? calcDepois : calcAntes;
-  const abas = [["m12", "Módulo 12 · Demonstrativo"], ["m13", "Módulo 13 · Viabilidade"], ["analise", "Análise do negócio"], ["cenarios", "Cenários"], ["fluxo", "Fluxo de caixa anual"]];
+  const abas = [["m12", "Análise da DRE"], ["m13", "Análise de Indicadores"], ["analise", "Análise do negócio"], ["cenarios", "Cenários"], ["fluxo", "Fluxo de caixa anual"]];
   const fluxo = dadosEq?.fluxoModulos || {};
   return (
     <div className="space-y-3">
@@ -11054,13 +11054,13 @@ function RelatorioNotas({ turma, dadosEquipes }) {
   if (dadosEquipes === null) return <LoadingScreen />;
   if (dadosEquipes.length === 0) return <Card className="p-8 text-center text-slate-500">Nenhuma empresa nesta turma ainda.</Card>;
 
-  const modulosColuna = MODULOS.filter((m) => NOTA_MODULOS_AVALIAVEIS.includes(m.id) || m.id === NOTA_MODULO_FINAL);
+  const modulosColuna = MODULOS.filter((m) => NOTA_MODULOS_AVALIAVEIS.includes(m.id));
   // Agrupa as colunas de módulo por Bloco do cronograma (mesmo mapa já usado
   // no cronograma e no "Progresso das empresas"), para o cabeçalho em duas
   // linhas — é só uma camada visual a mais sobre as mesmas colunas de hoje.
   const gruposNotas = [
     ...agruparModulosPorBloco(modulosColuna).map((g) => ({ bloco: g.etapa, colSpan: g.modulos.length })),
-    { bloco: null, colSpan: 3 },
+    { bloco: null, colSpan: 5 },
   ];
 
   const linhas = [];
@@ -11074,16 +11074,18 @@ function RelatorioNotas({ turma, dadosEquipes }) {
     const notaPonderada = calcularNotaPonderada({ media, notaFinal, notaCenariosFluxo, notaApresentacao, totalModulos: NOTA_MODULOS_AVALIAVEIS.length, notasDadasLength: notasDadas.length });
     const integrantes = (equipe.integrantes && equipe.integrantes.length > 0) ? equipe.integrantes : ["(sem integrantes ainda)"];
     integrantes.forEach((nomeAluno) => {
-      linhas.push({ nomeAluno, empresa: equipe.nomeNegocio, notas, notaCenariosFluxo, notaApresentacao, notaPonderada, fluxo: dados.fluxoModulos });
+      linhas.push({ nomeAluno, empresa: equipe.nomeNegocio, notas, media, notaFinal, auto: !!dados.notasAuto?.ativo, notaCenariosFluxo, notaApresentacao, notaPonderada, fluxo: dados.fluxoModulos });
     });
   });
   linhas.sort((a, b) => a.nomeAluno.localeCompare(b.nomeAluno, "pt-BR"));
 
   const baixarCSV = () => {
-    const cabecalho = ["Aluno", "Empresa", ...modulosColuna.map((m) => `Módulo ${m.n}`), "Cenários/Fluxo de Caixa", "Apresentação", "Nota Final Ponderada"];
+    const cabecalho = ["Aluno", "Empresa", ...modulosColuna.map((m) => `Módulo ${m.n}`), "Média dos módulos (40%)", "Nota final do plano financeiro (20%)", "Cenários/Fluxo de Caixa (20%)", "Apresentação (20%)", "Nota Final Ponderada"];
     const linhasCsv = linhas.map((l) => [
       l.nomeAluno, l.empresa,
       ...modulosColuna.map((m) => (vazio(l.notas[m.id]) ? "" : l.notas[m.id])),
+      l.media !== null ? l.media.toFixed(2) : "",
+      vazio(l.notaFinal) ? "" : l.notaFinal,
       vazio(l.notaCenariosFluxo) ? "" : l.notaCenariosFluxo,
       vazio(l.notaApresentacao) ? "" : l.notaApresentacao,
       l.notaPonderada !== null ? l.notaPonderada.toFixed(1) : "",
@@ -11095,7 +11097,7 @@ function RelatorioNotas({ turma, dadosEquipes }) {
   return (
     <div>
       <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
-        <p className="text-xs text-slate-500 max-w-md">A nota de cada módulo é a mesma da empresa, replicada para cada aluno vinculado a ela. A coluna Final só aparece quando todos os componentes da equipe já foram lançados (40% módulos + 20% Módulo 13 + 20% Cenários/Fluxo + 20% Apresentação).</p>
+        <p className="text-xs text-slate-500 max-w-md">A nota é da empresa e se repete para cada aluno vinculado a ela. Módulos 1 a 11 (lançamentos): cada um parte de 10, com −0,25 por devolução para correção e −2,0 se a primeira entrega passou do prazo (calculado automaticamente nas equipes com o modo automático ativo). Os módulos 12 e 13 são análises e não têm nota. A coluna Final só aparece quando todos os componentes foram lançados: 40% média dos módulos + 20% nota final do plano financeiro + 20% Cenários/Fluxo + 20% Apresentação.</p>
         <div className="no-print flex items-center gap-2 shrink-0">
           <button onClick={() => imprimirComTitulo(`Relatorio de Notas${turma ? ` - ${turma.nome}` : ""} - ${sufixoDataHoraArquivo()}`, true)} className="flex items-center gap-2 text-xs font-semibold border border-slate-600 text-slate-100 px-3 py-2 rounded-md hover:bg-slate-800">
             <Printer size={14} /> Baixar PDF
@@ -11114,12 +11116,14 @@ function RelatorioNotas({ turma, dadosEquipes }) {
                 <th className="py-2 px-3 align-bottom" rowSpan={2}>Empresa</th>
                 {gruposNotas.map((g, gi) => (
                   <th key={gi} colSpan={g.colSpan} className={`py-1 px-2 text-center text-[10px] font-semibold border-b border-slate-700 normal-case ${g.bloco ? "text-emerald-500" : "text-slate-600"}`}>
-                    {g.bloco || "Etapas finais"}
+                    {g.bloco || "Conclusão do plano"}
                   </th>
                 ))}
               </tr>
               <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40">
                 {modulosColuna.map((m) => <th key={m.id} className="py-2 px-2 text-center" title={m.nome}>M{m.n}</th>)}
+                <th className="py-2 px-2 text-center" title="Média das notas dos módulos de lançamento">Média módulos</th>
+                <th className="py-2 px-2 text-center" title="Digitada pelo professor ao concluir o plano financeiro">Nota final do plano</th>
                 <th className="py-2 px-2 text-center">Cen./Fluxo</th>
                 <th className="py-2 px-2 text-center">App-PPF</th>
                 <th className="py-2 px-3 text-center">Final</th>
@@ -11131,8 +11135,10 @@ function RelatorioNotas({ turma, dadosEquipes }) {
                   <td className="py-2 px-3 text-slate-100 font-medium">{l.nomeAluno}</td>
                   <td className="py-2 px-3 text-slate-400">{l.empresa}</td>
                   {modulosColuna.map((m) => (
-                    <td key={m.id} className="py-2 px-2 text-center text-slate-300">{!vazio(l.notas[m.id]) ? l.notas[m.id] : "—"}</td>
+                    <td key={m.id} className="py-2 px-2 text-center text-slate-300">{!vazio(l.notas[m.id]) ? fmtNota(l.notas[m.id]) : "—"}</td>
                   ))}
+                  <td className="py-2 px-2 text-center text-sky-300 font-semibold">{l.media !== null ? fmtNota(Math.round(l.media * 100) / 100) : "—"}</td>
+                  <td className="py-2 px-2 text-center text-amber-300">{!vazio(l.notaFinal) ? fmtNota(l.notaFinal) : "—"}</td>
                   <td className="py-2 px-2 text-center text-slate-300">{!vazio(l.notaCenariosFluxo) ? l.notaCenariosFluxo : "—"}</td>
                   <td className="py-2 px-2 text-center text-slate-300">{!vazio(l.notaApresentacao) ? l.notaApresentacao : "—"}</td>
                   <td className="py-2 px-3 text-center font-bold text-amber-400">{l.notaPonderada !== null ? l.notaPonderada.toFixed(1) : "—"}</td>

@@ -1,4 +1,4 @@
-// build: 20261029_01h10m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261029_06h57m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -37,9 +37,14 @@ const MODULOS = [
   { id: "m9", n: 9, nome: "Mão de Obra", icon: UserCog },
   { id: "m10", n: 10, nome: "Depreciação", icon: Gauge },
   { id: "m11", n: 11, nome: "Custos Fixos Mensais", icon: FileBarChart },
-  { id: "m12", n: 12, nome: "Demonstrativo de Resultados", icon: FileBarChart },
-  { id: "m13", n: 13, nome: "Indicadores de Viabilidade", icon: Target },
+  { id: "m12", n: 12, nome: "Análise da DRE", icon: FileBarChart },
+  { id: "m13", n: 13, nome: "Análise de Indicadores", icon: Target },
 ];
+
+// Do 1 ao 11 a equipe LANÇA dados; o 12 (Análise da DRE) e o 13 (Análise de
+// Indicadores) são análises calculadas com o que foi lançado — não há digitação.
+const ehModuloAnalise = (m) => m.n >= 12;
+const rotNumModulo = (m) => (m.n <= 11 ? String(m.n).padStart(2, "0") : `A${m.n - 11}`);
 
 // Módulos onde faz sentido o professor dar uma nota de 0 a 10: são os que
 // exigem pesquisa/decisão real da equipe (o que comprar, que preço cobrar,
@@ -708,12 +713,14 @@ const GESTAO_ITENS = [
   { id: "liberarAjustes", label: "Liberar análise e ajustes", icon: RotateCcw },
   { id: "parecer", label: "Parecer do projeto", icon: ScrollText },
   { id: "ajusteGeral", label: "Ajuste geral", icon: Wrench },
+  { id: "notasAuto", label: "Notas automáticas", icon: Target },
   { id: "itensSegmento", label: "Itens esperados por segmento", icon: ClipboardList },
   { id: "cronograma", label: "Cronograma", icon: Calendar },
   { id: "integrantes", label: "Integrantes por Empresa", icon: Users2 },
   { id: "usuarios", label: "Usuários", icon: Users },
   { id: "acessos", label: "Acessos de usuários", icon: LogIn },
   { id: "relatorios", label: "Relatórios", icon: FileBarChart },
+  { id: "verComoAluno", label: "Ver como aluno (só leitura)", icon: Eye },
   { id: "empresaTeste", label: "Empresa Teste", icon: FlaskConical },
   { id: "backup", label: "Backup", icon: Save },
   { id: "auditoria", label: "Auditoria", icon: History },
@@ -1331,6 +1338,13 @@ function chamadoPassaFiltro(c, filtro) {
 // Lista do mais recente para o mais antigo — o primeiro item é a versão vigente.
 // ============================================================================
 const VERSOES = [
+  { versao: "3.6", data: "29/10/2026", itens: [
+    "Menu do aluno reorganizado: os Módulos 1 a 11 são os de lançamento. O antigo Módulo 12 passa a \"Análise da DRE\" e o 13 a \"Análise de Indicadores\", junto com Análise do Negócio, Cenários e Fluxo de Caixa — são análises calculadas, sem digitação.",
+    "Notas automáticas dos módulos de lançamento: cada módulo vale 10 desde a primeira entrega; cada devolução para correção desconta 0,25 e a primeira entrega fora do prazo desconta 2,0. A nota muda sozinha a cada devolução e a equipe é avisada no Feedback, com o motivo e o cálculo. Reabrir um módulo aprovado (sem erro da equipe) não desconta.",
+    "Gestão → Notas automáticas: prévia por equipe e módulo (nota atual x automática, com o cálculo), aplicação só do que o professor marcar, registro com Desfazer e envio do comunicado do novo formato de avaliação (texto editável) às equipes.",
+    "Os Módulos 12 e 13 não têm nota própria; a \"nota final do plano financeiro\" é digitada pelo professor (mantém o peso de 20% da avaliação). Se o professor digitar uma nota à mão num módulo, ela fica fixada até ele voltar ao automático.",
+    "Novo item em Gestão: \"Ver como aluno (só leitura)\" — o professor entra na tela do aluno de uma empresa (como um dos integrantes) e navega por todo o menu, sem poder alterar nada.",
+  ] },
   { versao: "3.5", data: "29/10/2026", itens: [
     "Novo item de menu em Gestão: \"Ajuste geral\". O professor BLOQUEIA as equipes para avaliação (todas, ou só as escolhidas): os alunos continuam vendo seus dados e uma mensagem de que o projeto está em avaliação, mas não editam nem enviam módulos. Ao terminar, libera todas ou só as que quiser.",
     "Com a equipe bloqueada, o sistema corrige os lançamentos dos Módulos 1 a 11 (os Módulos 12 e 13 apenas recalculam): erros de digitação já vêm marcados (espaços, milhar sem zeros, linhas vazias) e pontos prováveis (unidades, Módulo 8 diferente do 6, vida útil, piso) ficam para o professor conferir. Mostra o impacto no resultado e no retorno antes de aplicar.",
@@ -2370,8 +2384,8 @@ function CampoSenha({ value, onChange, placeholder }) {
   );
 }
 
-function Card({ children, className = "" }) {
-  return <div className={`bg-slate-800 rounded-xl border border-slate-700 shadow-sm ${className}`}>{children}</div>;
+function Card({ children, className = "", id }) {
+  return <div id={id} className={`bg-slate-800 rounded-xl border border-slate-700 shadow-sm ${className}`}>{children}</div>;
 }
 
 function SectionTitle({ icon: Icon, children, sub }) {
@@ -5074,8 +5088,9 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
     const estadoAtual = estadoModulo(fluxo, modId);
     const jaAtrasado = moduloAtrasadoSemEnvio(estadoAtual);
     const primeiraVez = !(estadoAtual.historico || []).length;
-    const evento = { tipo: primeiraVez ? "envio" : "reenvio", data: Date.now() };
-    setDados({
+    // v3.6: o envio guarda o prazo vigente e se já estava em atraso — é com isso que a nota automática sabe se a 1ª entrega foi no prazo.
+    const evento = { tipo: primeiraVez ? "envio" : "reenvio", data: Date.now(), prazo: estadoAtual.prazo || null, atrasoNoEnvio: !!(estadoAtual.atraso || jaAtrasado) };
+    const novo = {
       ...dados,
       fluxoModulos: {
         ...fluxo,
@@ -5087,7 +5102,8 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
           historico: [...(estadoAtual.historico || []), evento],
         },
       },
-    });
+    };
+    setDados(aplicarNotaAutoDados(novo, modId, null, "primeira entrega do módulo registrada."));
   };
 
   // Contador de feedback novo: compara a data de cada comentário com a última
@@ -5198,7 +5214,10 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
     { id: "inicio", label: "Início", icon: LayoutDashboard, num: null },
     { id: "segmento", label: "Segmento do negócio", icon: Tag, num: null },
     { id: "cronograma", label: "Cronograma do projeto", icon: Calendar, num: null },
-    ...MODULOS.map((m) => ({ id: m.id, label: m.nome, icon: m.icon, num: String(m.n).padStart(2, "0"), moduloStatus: estadoModulo(fluxo, m.id).status })),
+    { id: "__sec_lanc", secao: "Módulos de lançamento (1 a 11)" },
+    ...MODULOS.filter((m) => !ehModuloAnalise(m)).map((m) => ({ id: m.id, label: m.nome, icon: m.icon, num: rotNumModulo(m), moduloStatus: estadoModulo(fluxo, m.id).status })),
+    { id: "__sec_anal", secao: "Análises (calculadas, sem lançamento)" },
+    ...MODULOS.filter((m) => ehModuloAnalise(m)).map((m) => ({ id: m.id, label: m.nome, icon: m.icon, num: null, moduloStatus: estadoModulo(fluxo, m.id).status })),
     { id: "analise", label: "Análise do Negócio", icon: TrendingUp, num: null },
     { id: "cenarios", label: "Análise de Cenários", icon: GitCompareArrows, num: null },
     { id: "fluxocaixa", label: "Fluxo de Caixa Anual", icon: Wallet, num: null },
@@ -5236,7 +5255,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
         {souVisualizador && !bloqueadoAval && (
           <div className="mb-4 bg-slate-900 border border-sky-800/60 rounded-md px-4 py-2.5 flex items-center gap-2.5 text-sm text-sky-300">
             <Eye size={16} className="shrink-0" />
-            <span>{somenteLeitura ? <><b>Modo Coordenação — somente leitura.</b> Você acompanha exatamente o que a equipe lançou; nada aqui pode ser alterado.</> : <><b>{gestor.nome}</b> está gerindo os lançamentos agora. Você está no modo visualização.</>}</span>
+            <span>{somenteLeitura ? <><b>Modo somente leitura.</b> Você acompanha exatamente o que a equipe lançou; nada aqui pode ser alterado.</> : <><b>{gestor.nome}</b> está gerindo os lançamentos agora. Você está no modo visualização.</>}</span>
           </div>
         )}
         {souGestor && (
@@ -5300,7 +5319,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
             </div>
 
             <div className="grid sm:grid-cols-4 gap-3 mb-6">
-              <StatCard label="Módulos cadastrados" value="13" tone="blue" small />
+              <StatCard label="Módulos de lançamento" value="11" tone="blue" small />
               <StatCard label="Investimento Total" value={fmtBRL(calc.investimentoTotal)} tone="slate" small />
               <StatCard label="Resultado/mês" value={fmtBRL(calc.resultadoOperacional)} tone={calc.resultadoOperacional >= 0 ? "emerald" : "rose"} small />
               <StatCard label="Progresso (aprovados)" value={`${progressoAprovado}%`} tone="gold" small />
@@ -5328,7 +5347,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
                   return (
                     <button key={m.id} onClick={() => setAba(m.id)} className="flex items-center gap-3 border border-slate-700 rounded-lg p-3 text-left hover:border-amber-500 hover:bg-slate-800 transition">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${estado.status === "pendente" ? "bg-slate-900 border border-slate-700 text-slate-500" : "bg-slate-900 border border-amber-500/40 text-amber-500"}`}>
-                        {estado.status === "pendente" ? <Lock size={13} /> : String(m.n).padStart(2, "0")}
+                        {estado.status === "pendente" ? <Lock size={13} /> : rotNumModulo(m)}
                       </div>
                       <Icon size={16} className="text-sky-400 shrink-0" />
                       <span className="text-sm font-medium text-slate-200 flex-1">{m.nome}</span>
@@ -5349,7 +5368,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
           return (
           <div key={m.id}>
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
-            <SectionTitle icon={m.icon} sub={`Módulo ${m.n} de 13`}>{m.nome}</SectionTitle>
+            <SectionTitle icon={m.icon} sub={ehModuloAnalise(m) ? "Análise calculada automaticamente com o que vocês lançaram nos Módulos 1 a 11 — aqui não há digitação" : `Módulo ${m.n} de 11 · lançamentos`}>{m.nome}</SectionTitle>
             {estado.status === "liberado" && (TEORIA[m.id] || GUIA_MODULOS_EXTRA[m.id]) && (
               <div className="mb-4 rounded-lg border border-emerald-700/60 bg-emerald-950/30 p-4">
                 <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm mb-1">
@@ -5369,7 +5388,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
 
             {estado.status === "pendente" && (
               <div className="mb-3 text-sm text-slate-400 flex items-start gap-2 bg-slate-900 border border-slate-700 rounded-lg p-3">
-                <Lock size={16} className="text-slate-500 mt-0.5 shrink-0" /> Este módulo ainda não foi liberado. Concluam e enviem o Módulo {m.n - 1} para o(a) professor(a) corrigir e liberar este aqui.
+                <Lock size={16} className="text-slate-500 mt-0.5 shrink-0" /> Este módulo ainda não foi liberado. Concluam e enviem {m.n - 1 <= 11 ? `o Módulo ${m.n - 1}` : `a ${MODULOS[m.n - 2].nome}`} para o(a) professor(a) corrigir e liberar este aqui.
               </div>
             )}
             {(estado.status === "liberado" || estado.status === "ajustes") && atrasadoSemEnvio && (
@@ -5379,7 +5398,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
             )}
             {estado.status === "liberado" && !atrasadoSemEnvio && estado.prazo && (
               <div className="mb-3 text-sm text-amber-400 flex items-start gap-2 bg-amber-950/30 border border-amber-800/50 rounded-lg p-3">
-                <Clock size={16} className="mt-0.5 shrink-0" /> Prazo de entrega: <b className="ml-1">{fmtDataCurta(estado.prazo)}</b>. Atividades entregues fora do prazo estarão sujeitas ao desconto de 2,0 pontos por pontualidade — entrega em atraso.
+                <Clock size={16} className="mt-0.5 shrink-0" /> Prazo de entrega: <b className="ml-1">{fmtDataCurta(estado.prazo)}</b>. Atividades entregues fora do prazo sofrem desconto de 2,0 pontos, e cada devolução para correção desconta 0,25.
               </div>
             )}
             {estado.status === "ajustes" && (
@@ -5426,7 +5445,9 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
               {m.id === "m12" && <M12View calc={calc} />}
               {m.id === "m13" && <M13View calc={calc} />}
             </Card>
-            <NotaModulo nota={dados.notas?.[m.id]} ehFinal={m.id === NOTA_MODULO_FINAL} readOnly />
+            {notaAutoAtiva(dados, m.id)
+              ? <NotaAutoAluno nota={dados.notas?.[m.id]} estado={estado} travada={!!dados.notasAuto?.travadas?.[m.id]} />
+              : <NotaModulo nota={dados.notas?.[m.id]} ehFinal={m.id === NOTA_MODULO_FINAL} readOnly />}
 
             {podeEditar && (
               <div className="mt-4 flex justify-end">
@@ -5442,12 +5463,12 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
               <button
                 onClick={() => setAba(m.n > 1 ? MODULOS[m.n - 2].id : "inicio")}
                 className="flex items-center gap-2 text-sm border border-slate-600 text-slate-100 px-4 py-2 rounded-md hover:bg-slate-800 font-semibold"
-              ><ArrowLeft size={15} /> {m.n > 1 ? `Módulo ${m.n - 1}` : "Início"}</button>
+              ><ArrowLeft size={15} /> {m.n > 1 ? (m.n - 1 <= 11 ? `Módulo ${m.n - 1}` : MODULOS[m.n - 2].nome) : "Início"}</button>
               {m.n < MODULOS.length && (
                 <button
                   onClick={() => setAba(MODULOS[m.n].id)}
                   className="flex items-center gap-2 text-sm bg-amber-500 text-slate-900 px-4 py-2 rounded-md hover:bg-amber-400 font-bold"
-                >Módulo {m.n + 1} <ChevronRight size={15} /></button>
+                >{m.n + 1 <= 11 ? `Módulo ${m.n + 1}` : MODULOS[m.n].nome} <ChevronRight size={15} /></button>
               )}
             </div>
           </div>
@@ -5525,7 +5546,12 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
             })()}
 
             <Card className="p-4">
-              <SectionTitle icon={ClipboardList} sub="Cada módulo avaliável recebe uma nota de 0 a 10, assim que o(a) professor(a) aprova. Clique para revisitar o módulo.">Notas por módulo</SectionTitle>
+              <SectionTitle icon={ClipboardList} sub={dados.notasAuto?.ativo ? "Cada módulo vale 10 pontos, contados desde a primeira entrega. A nota muda sozinha a cada devolução — e vocês são avisados no Feedback. Clique para revisitar o módulo." : "Cada módulo avaliável recebe uma nota de 0 a 10, assim que o(a) professor(a) aprova. Clique para revisitar o módulo."}>Notas por módulo</SectionTitle>
+              {dados.notasAuto?.ativo && (
+                <div className="text-xs text-slate-300 bg-violet-950/20 border border-violet-700/40 rounded-lg p-3 mb-3 leading-relaxed">
+                  <b className="text-violet-200">Como a nota do módulo é calculada:</b> entregou no prazo e sem nenhuma devolução = <b>10</b>. Cada vez que o professor devolve para correção = <b>−0,25</b>, até não haver mais correção a fazer. Primeira entrega depois do prazo = <b>−2,0</b> (somado aos −0,25 de cada devolução). Os módulos 12 e 13 são análises e não têm nota própria; a nota final do plano é digitada pelo professor.
+                </div>
+              )}
               <div className="space-y-2">
                 {NOTA_MODULOS_AVALIAVEIS.map((modId) => {
                   const m = MODULOS.find((mm) => mm.id === modId);
@@ -5539,8 +5565,8 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
                       </div>
                       <Icon size={16} className="text-sky-400 shrink-0" />
                       <span className="text-sm font-medium text-slate-200 flex-1">{m.nome}</span>
-                      {estadoM.status === "corrigido" ? (
-                        <span className="text-lg font-bold text-emerald-400">{!vazio(nota) ? nota : "—"}</span>
+                      {(estadoM.status === "corrigido" || (dados.notasAuto?.ativo && !vazio(nota))) ? (
+                        <span className="text-right"><span className={`text-lg font-bold ${estadoM.status === "corrigido" ? "text-emerald-400" : "text-violet-300"}`}>{!vazio(nota) ? fmtNota(nota) : "—"}</span>{estadoM.status !== "corrigido" && <span className="block text-[10px] text-slate-500">provisória</span>}</span>
                       ) : (
                         <span className="text-[10px] font-bold text-slate-500 bg-slate-800 border border-slate-700 rounded-full px-2 py-0.5">Ainda não corrigido</span>
                       )}
@@ -5587,8 +5613,8 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
       { key: "segmento", label: "Segmento do negócio" }, { key: "cronograma", label: "Cronograma do projeto" },
       { key: "guia", label: "Guia da semana", novo: true },
     ] },
-    { label: "Módulos", itens: MODULOS.map((m) => ({ key: m.id, label: `${String(m.n).padStart(2, "0")} · ${m.nome}`, status: estadoModulo(fluxo, m.id).status })) },
-    { label: "Análises", itens: [{ key: "analise", label: "Análise do Negócio" }, { key: "cenarios", label: "Análise de Cenários" }, { key: "fluxocaixa", label: "Fluxo de Caixa Anual" }] },
+    { label: "Módulos (1 a 11)", itens: MODULOS.filter((m) => !ehModuloAnalise(m)).map((m) => ({ key: m.id, label: `${rotNumModulo(m)} · ${m.nome}`, status: estadoModulo(fluxo, m.id).status })) },
+    { label: "Análises", itens: [...MODULOS.filter((m) => ehModuloAnalise(m)).map((m) => ({ key: m.id, label: m.nome, status: estadoModulo(fluxo, m.id).status })), { key: "analise", label: "Análise do Negócio" }, { key: "cenarios", label: "Análise de Cenários" }, { key: "fluxocaixa", label: "Fluxo de Caixa Anual" }] },
     { label: "Entregas", itens: [
       { key: "ppt", label: gerandoPpt ? "Gerando apresentação…" : "Baixar Apresentação (dados da equipe)", acao: acaoBaixarPpt },
       { key: "doc", label: gerandoDoc ? "Gerando documento…" : "Baixar Plano Financeiro (Word)", acao: acaoBaixarDoc },
@@ -5604,7 +5630,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   ];
   const tituloMesaAluno = (k) => {
     const m = MODULOS.find((x) => x.id === k);
-    if (m) return `${String(m.n).padStart(2, "0")} · ${m.nome}`;
+    if (m) return ehModuloAnalise(m) ? m.nome : `${rotNumModulo(m)} · ${m.nome}`;
     for (const mm of menuMesaAluno) { if (mm.key === k) return mm.label; for (const it of (mm.itens || [])) if (it.key === k) return it.label; }
     return k;
   };
@@ -5653,6 +5679,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
         </div>
         <nav className="flex-1 overflow-y-auto py-3">
           {menuItems.map((it) => {
+            if (it.secao) return <div key={it.id} className="px-5 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-white/35">{it.secao}</div>;
             const Icon = it.icon;
             const active = aba === it.id;
             if (it.id === "modeloApresentacao") {
@@ -5847,7 +5874,7 @@ function PainelAvaliacao({ media, notasDadasLength, totalModulos, notaFinal, not
   const editavel = !readOnly;
   return (
     <Card className="p-4">
-      <SectionTitle icon={Target} sub="Modelo de avaliação: 40% média dos módulos + 20% Módulo 13 + 20% Cenários/Fluxo de Caixa + 20% Apresentação da empresa.">Avaliação da equipe</SectionTitle>
+      <SectionTitle icon={Target} sub="Modelo de avaliação: 40% média dos módulos + 20% nota final do plano + 20% Cenários/Fluxo de Caixa + 20% Apresentação da empresa.">Avaliação da equipe</SectionTitle>
       <div className="grid sm:grid-cols-2 gap-3 mb-3">
         <div className="bg-slate-900 border border-sky-800/60 rounded-lg p-4 flex items-center justify-between">
           <div>
@@ -5858,8 +5885,8 @@ function PainelAvaliacao({ media, notasDadasLength, totalModulos, notaFinal, not
         </div>
         <div className="bg-slate-900 border border-amber-800/60 rounded-lg p-4 flex items-center justify-between">
           <div>
-            <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wide">Módulo 13 (20%)</div>
-            <div className="text-xs text-slate-500 mt-0.5">Conclusão sobre a viabilidade do negócio</div>
+            <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wide">Nota final do plano (20%)</div>
+            <div className="text-xs text-slate-500 mt-0.5">Digitada pelo professor ao concluir o plano financeiro</div>
           </div>
           <div className="text-2xl font-bold text-amber-400">{!vazio(notaFinal) ? notaFinal : "—"}</div>
         </div>
@@ -5885,11 +5912,35 @@ function PainelAvaliacao({ media, notasDadasLength, totalModulos, notaFinal, not
       <div className="bg-slate-950 border-2 border-amber-500/60 rounded-lg p-4 flex items-center justify-between">
         <div>
           <div className="text-xs font-bold text-amber-400 uppercase tracking-wide">Nota final ponderada</div>
-          <div className="text-xs text-slate-500 mt-0.5">{notaPonderada !== null ? "40% módulos + 20% Módulo 13 + 20% Cenários/Fluxo + 20% Apresentação" : "Aguardando todas as notas para calcular"}</div>
+          <div className="text-xs text-slate-500 mt-0.5">{notaPonderada !== null ? "40% módulos + 20% nota final do plano + 20% Cenários/Fluxo + 20% Apresentação" : "Aguardando todas as notas para calcular"}</div>
         </div>
         <div className="text-3xl font-bold text-amber-400">{notaPonderada !== null ? notaPonderada.toFixed(1) : "—"}</div>
       </div>
     </Card>
+  );
+}
+
+// Nota automática vista pelo aluno: mostra a nota gravada e explica de onde ela veio (a explicação é deduzida da própria nota gravada, para nunca divergir dela).
+function explicarNotaAluno(nota, estado) {
+  const dev = ((estado && estado.historico) || []).filter((e) => e.tipo === "devolucao").length;
+  const base = NOTA_AUTO_REGRA.base - dev * NOTA_AUTO_REGRA.devolucao;
+  const n = Number(nota);
+  const atrasou = Math.abs(base - NOTA_AUTO_REGRA.atraso - n) < 0.001 || (n === 0 && base - NOTA_AUTO_REGRA.atraso <= 0 && base > 0);
+  const ok = atrasou || Math.abs(base - n) < 0.001;
+  return { dev, atrasou, ok };
+}
+function NotaAutoAluno({ nota, estado, travada }) {
+  if (vazio(nota)) {
+    return <div className="mt-3 text-xs rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-slate-400"><Target size={13} className="inline mr-1.5 text-sky-400" />A nota deste módulo nasce na <b>primeira entrega</b>: no prazo e sem devoluções vale 10.</div>;
+  }
+  const x = explicarNotaAluno(nota, estado);
+  return (
+    <div className="mt-3 rounded-md border border-violet-700/50 bg-violet-950/20 px-3 py-2.5">
+      <div className="flex items-center gap-2 text-sm"><Target size={14} className="text-violet-300" /><span className="text-slate-300">Nota do módulo{estado?.status === "corrigido" ? "" : " (provisória — muda se houver devolução)"}:</span><b className="text-lg text-violet-200">{fmtNota(nota)}/10</b></div>
+      {travada
+        ? <div className="text-[11px] text-amber-300 mt-1">Nota definida pelo professor.</div>
+        : x.ok && <div className="text-[11px] text-slate-400 mt-1">10 pontos · {x.atrasou ? "1ª entrega depois do prazo (−2,0)" : "1ª entrega no prazo (sem desconto)"} · {x.dev} devolução(ões) × 0,25 = −{fmtNota(x.dev * NOTA_AUTO_REGRA.devolucao)}</div>}
+    </div>
   );
 }
 
@@ -5902,7 +5953,7 @@ function NotaModulo({ nota, onSetNota, ehFinal, readOnly, sugestao }) {
     return (
       <div className={`mt-3 flex items-center gap-2 rounded-md px-3 py-2 border ${ehFinal ? "bg-amber-950/30 border-amber-700/60" : "bg-slate-900 border-slate-700"}`}>
         <Target size={14} className={ehFinal ? "text-amber-400" : "text-sky-400"} />
-        <span className="text-xs text-slate-300">{ehFinal ? "Nota final (síntese)" : "Nota do professor"}:</span>
+        <span className="text-xs text-slate-300">{ehFinal ? "Nota final do plano financeiro" : "Nota do módulo"}:</span>
         <span className={`text-sm font-bold ${ehFinal ? "text-amber-400" : "text-sky-400"}`}>{nota}/10</span>
       </div>
     );
@@ -5917,10 +5968,10 @@ function NotaModulo({ nota, onSetNota, ehFinal, readOnly, sugestao }) {
     <div className="mt-3 flex items-center gap-2">
       <label className="text-xs text-slate-400 flex items-center gap-1.5">
         <Target size={13} className={ehFinal ? "text-amber-400" : "text-sky-400"} />
-        {ehFinal ? "Nota final (síntese) — 0 a 10:" : "Nota deste módulo — 0 a 10:"}
+        {ehFinal ? "Nota final do plano financeiro (digitada por você) — 0 a 10:" : "Nota deste módulo — 0 a 10:"}
       </label>
       <input
-        type="number" min="0" max="10" step="0.5" value={valor}
+        type="number" min="0" max="10" step="0.25" value={valor}
         onChange={(e) => setValor(e.target.value)}
         onBlur={salvar}
         placeholder="—"
@@ -6386,7 +6437,7 @@ function OrientacaoAlunoParaProfessor({ modId, segmento }) {
   );
 }
 
-function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes, onReabrirPosCorrecao, prazoCronograma, segmento }) {
+function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes, onReabrirPosCorrecao, prazoCronograma, segmento, autoAtiva, autoTravada, autoInfo, onVoltarAuto }) {
   const Icon = m.icon;
   const comentariosModulo = (comentarios || []).filter((c) => c.modulo === `Módulo ${m.n}`);
   const avaliavel = NOTA_MODULOS_AVALIAVEIS.includes(m.id);
@@ -6416,7 +6467,15 @@ function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentario
           <PainelFluxoModulo modId={m.id} nomeModulo={`Módulo ${m.n} (${m.nome})`} lanc={lanc} calc={calc} estado={estado} ultimoModulo={ultimoModulo} onSetPrazo={onSetPrazo} onConfirmarCorrecao={onConfirmarCorrecao} onReabrir={onReabrir} onRestaurarPrazoAutomatico={onRestaurarPrazoAutomatico} onDevolverAjustes={onDevolverAjustes} onReabrirPosCorrecao={onReabrirPosCorrecao} nota={nota} prazoCronograma={prazoCronograma} />
           <OrientacaoAlunoParaProfessor modId={m.id} segmento={segmento} />
           <div className="pt-4"><ModuloLeitura mId={m.id} lanc={lanc} calc={calc} /></div>
-          {(avaliavel || ehFinal) && <NotaModulo nota={nota} onSetNota={onSetNota} ehFinal={ehFinal} sugestao={sugerirNotaModulo(estado)} />}
+          {avaliavel && autoAtiva && (
+            <div className="mt-3 text-xs rounded-md border border-violet-700/50 bg-violet-950/20 px-3 py-2 text-violet-200">
+              <b>Nota automática:</b> {autoInfo ? <>{fmtNota(autoInfo.nota)} <span className="text-violet-300/70">— {textoCalculoNota(autoInfo)}</span></> : "ainda sem envio — a nota nasce na primeira entrega."}
+              {autoTravada
+                ? <div className="mt-1 text-amber-300">Nota fixada por você ({fmtNota(nota)}): o sistema não altera mais este módulo. <button type="button" onClick={onVoltarAuto} className="underline ml-1">Voltar ao automático</button></div>
+                : <div className="mt-1 text-violet-300/70">Muda sozinha a cada devolução. Se digitar outra nota abaixo, ela fica fixada.</div>}
+            </div>
+          )}
+          {(avaliavel || ehFinal) && <NotaModulo nota={nota} onSetNota={onSetNota} ehFinal={ehFinal} sugestao={null} />}
           <ComentariosPanel
             comentarios={comentariosModulo}
             onAdd={onAddComentario}
@@ -6461,7 +6520,17 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
   const calc = calcular(lanc);
 
   const addComentario = (c) => setDados({ ...dados, comentarios: [...(dados.comentarios || []), c] });
-  const setNota = (modId, valor) => setDados({ ...dados, notas: { ...(dados.notas || {}), [modId]: valor } });
+  // Nota digitada à mão: se a equipe está no modo automático, a nota deste módulo fica "fixada" (o sistema não mexe mais nela até o professor voltar ao automático).
+  const setNota = (modId, valor) => {
+    const base = { ...dados, notas: { ...(dados.notas || {}), [modId]: valor } };
+    if (notaAutoAtiva(dados, modId)) base.notasAuto = { ...dados.notasAuto, travadas: { ...(dados.notasAuto.travadas || {}), [modId]: { em: Date.now(), por: professorNome } } };
+    setDados(base);
+  };
+  const voltarNotaAutomatica = (modId) => {
+    const na = { ...dados.notasAuto, travadas: { ...(dados.notasAuto?.travadas || {}) } };
+    delete na.travadas[modId];
+    setDados(aplicarNotaAutoDados({ ...dados, notasAuto: na }, modId, prazoCronogramaDoModulo(modId), "o professor voltou esta nota para o cálculo automático."));
+  };
 
   const fluxo = dados.fluxoModulos || fluxoModulosPadrao();
   const progressoAprovado = calcularProgressoAprovado(fluxo);
@@ -6503,7 +6572,7 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
   };
   const devolverParaAjustes = (modId, textoFeedback) => {
     const atual = estadoModulo(fluxo, modId);
-    setDados({
+    const novo = {
       ...dados,
       fluxoModulos: {
         ...fluxo,
@@ -6515,7 +6584,8 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
           historico: [...(atual.historico || []), { tipo: "devolucao", data: Date.now(), feedback: textoFeedback }],
         },
       },
-    });
+    };
+    setDados(aplicarNotaAutoDados(novo, modId, prazoCronogramaDoModulo(modId), "módulo devolvido para correção (−0,25)."));
   };
   // Reabre um módulo JÁ CONCLUÍDO (status "corrigido") para a equipe fazer
   // ajustes — necessário porque o plano financeiro é interligado (mudar um
@@ -6659,6 +6729,10 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
               professorNome={professorNome}
               nota={dados.notas?.[m.id]}
               onSetNota={(valor) => setNota(m.id, valor)}
+              autoAtiva={notaAutoAtiva(dados, m.id)}
+              autoTravada={!!dados.notasAuto?.travadas?.[m.id]}
+              autoInfo={notaAutoModulo(estadoModulo(fluxo, m.id), prazoCronogramaDoModulo(m.id))}
+              onVoltarAuto={() => voltarNotaAutomatica(m.id)}
               estado={estadoModulo(fluxo, m.id)}
               ultimoModulo={m.n === MODULOS.length}
               onSetPrazo={(v) => setPrazoModulo(m.id, v)}
@@ -8934,6 +9008,324 @@ function GestaoAjusteGeralView({ turmas, professorNome }) {
   return (
     <div>
       <SectionTitle icon={Wrench} sub="Bloqueio de avaliação das equipes e correção automática/manual dos lançamentos (Módulos 1 a 11). Escolha a turma.">Ajuste geral</SectionTitle>
+      {turmas.length === 0 ? <Card className="p-10 text-center text-slate-500">Você ainda não criou nenhuma turma.</Card> : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {turmas.map((t) => (
+            <button key={t.id} onClick={() => setTurmaSelId(t.id)} className="text-left bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-amber-500 transition">
+              <div className="flex items-center gap-2"><School size={16} className="text-sky-400 shrink-0" /><span className="font-bold text-slate-100 truncate">{t.nome}</span></div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ================= Gestão → Notas automáticas (v3.6) =================
+const chaveNotasAutoReg = (turmaId) => `notas_auto_reg_${turmaId}`;
+async function lerNotasAutoReg(turmaId) {
+  try { const r = await window.storage.get(chaveNotasAutoReg(turmaId), true); return r ? JSON.parse(r.value) : []; } catch { return []; }
+}
+const MSG_AVALIACAO_NOTAS = "O professor está atualizando as notas do seu projeto. Aguarde alguns instantes: você pode consultar os dados, mas não editar nem enviar módulos agora.";
+const COMUNICADO_NOVO_FORMATO = `NOVO FORMATO DE AVALIAÇÃO — LEIAM COM ATENÇÃO
+
+Atendendo ao pedido de vocês, todos os módulos estão liberados para acesso. Por isso, a avaliação passa a ser automática e acompanha a movimentação de cada módulo:
+
+• Módulos 1 a 11 (os que têm lançamentos): cada módulo vale 10 pontos, contados desde a primeira entrega.
+• Entregou no prazo do módulo e sem nenhuma devolução: nota 10.
+• Cada vez que o professor devolver o módulo para correção: −0,25 ponto, até que não haja mais nenhuma correção a fazer.
+• Primeira entrega depois do prazo: −2,0 pontos, somados aos −0,25 de cada devolução.
+• Módulos 12 e 13 (Análise da DRE e Análise de Indicadores): são análises calculadas pelo sistema com o que vocês lançaram — não têm nota própria.
+• A nota final do plano financeiro, digitada pelo professor ao concluir o plano, entra na avaliação final junto com Cenários/Fluxo de Caixa e a Apresentação.
+
+A cada mudança de nota vocês recebem um aviso aqui, no Feedback do Professor, com o motivo e o cálculo. Acompanhem em "Minhas Notas". As notas dos módulos que já foram enviados foram recalculadas por esse critério, com base no histórico de cada módulo.`;
+
+// Bloqueia (se preciso) as equipes, espera o tempo de segurança, executa e devolve o bloqueio ao estado anterior.
+async function comBloqueioNotas(turmaId, ids, professorNome, aviso, fn) {
+  const aval0 = await lerAvaliacao(turmaId);
+  const minhas = ids.filter((id) => !equipeEmAvaliacao(aval0, id));
+  try {
+    if (minhas.length) await definirBloqueioAvaliacao(turmaId, minhas, true, professorNome, MSG_AVALIACAO_NOTAS);
+    const t0 = Date.now();
+    for (;;) {
+      const a = await lerAvaliacao(turmaId);
+      const falta = ids.filter((id) => !equipePronta(a, id, Date.now()));
+      if (!falta.length) break;
+      const resto = Math.max(0, Math.ceil((AVALIACAO_ESPERA_MS - (Date.now() - t0)) / 1000));
+      aviso(`Protegendo as equipes contra edição simultânea… ${resto}s`);
+      if (Date.now() - t0 > AVALIACAO_ESPERA_MS + 15000) throw new Error("não foi possível bloquear as equipes a tempo");
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    aviso("Gravando…");
+    return await fn();
+  } finally {
+    if (minhas.length) { try { await definirBloqueioAvaliacao(turmaId, minhas, false, professorNome); } catch { /* o professor pode liberar em Ajuste geral */ } }
+  }
+}
+
+function NotasAutomaticasTurma({ turma, equipes, professorNome }) {
+  const [dadosMap, setDadosMap] = useState(null);
+  const [cron, setCron] = useState(null);
+  const [sel, setSel] = useState(new Set());          // `${eqId}|${modId}`
+  const [ativar, setAtivar] = useState(new Set());    // eqIds
+  const [texto, setTexto] = useState(COMUNICADO_NOVO_FORMATO);
+  const [comunicar, setComunicar] = useState(true);
+  const [eqComunicado, setEqComunicado] = useState(new Set());
+  const [hist, setHist] = useState([]);
+  const [ocupado, setOcupado] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [aviso, setAviso] = useState(null);
+  const nomeEq = (id) => equipes.find((e) => e.id === id)?.nomeNegocio || id;
+  const prazoRef = (modId, cr) => { const c = cr === undefined ? cron : cr; return c?.linhas?.find((l) => l.ordem === CRONOGRAMA_ORDEM_POR_MODULO[modId])?.dataEntrega || null; };
+
+  const carregar = async () => {
+    setOcupado(true); setAviso(null); setMsg("Lendo os dados das equipes…");
+    try {
+      let cr = null;
+      try { const r = await window.storage.get(`cronograma_${turma.id}`, true); cr = r ? JSON.parse(r.value) : null; } catch { cr = null; }
+      const m = {};
+      for (const e of equipes) m[e.id] = await lerDadosEstrito(e.id);
+      setCron(cr); setDadosMap(m);
+      const s = new Set(); const a = new Set();
+      equipes.forEach((e) => {
+        const d = m[e.id];
+        NOTA_AUTO_MODULOS.forEach((mod) => {
+          const r = notaAutoModulo(estadoModulo(d.fluxoModulos, mod), prazoRef(mod, cr));
+          if (r && !d.notasAuto?.travadas?.[mod] && !(vazio(d.notas?.[mod]) ? false : Number(d.notas[mod]) === r.nota)) s.add(`${e.id}|${mod}`);
+        });
+        if (!d.notasAuto?.ativo) a.add(e.id);
+      });
+      setSel(s); setAtivar(a); setEqComunicado(new Set(equipes.map((e) => e.id)));
+      setHist(await lerNotasAutoReg(turma.id));
+    } catch (e) { setAviso({ tipo: "erro", texto: `Não foi possível ler os dados (${e.message}). Nada foi alterado.` }); }
+    setMsg(""); setOcupado(false);
+  };
+  useEffect(() => { carregar(); /* eslint-disable-next-line */ }, [turma.id]);
+
+  const linhasEq = (e) => {
+    const d = dadosMap[e.id];
+    return NOTA_AUTO_MODULOS.map((mod) => {
+      const m = MODULOS.find((x) => x.id === mod);
+      const estado = estadoModulo(d.fluxoModulos, mod);
+      const r = notaAutoModulo(estado, prazoRef(mod));
+      const atual = d.notas?.[mod];
+      const travada = !!d.notasAuto?.travadas?.[mod];
+      const igual = r && !vazio(atual) && Number(atual) === r.nota;
+      return { mod, m, estado, r, atual, travada, igual, key: `${e.id}|${mod}` };
+    });
+  };
+  const alternar = (set, setFn, k) => { const n = new Set(set); n.has(k) ? n.delete(k) : n.add(k); setFn(n); };
+  const totalSel = sel.size;
+
+  const aplicar = async (soComunicado) => {
+    const idsComunicado = [...eqComunicado];
+    const porEq = {};
+    if (!soComunicado) sel.forEach((k) => { const [eq, mod] = k.split("|"); (porEq[eq] = porEq[eq] || []).push(mod); });
+    const ativarEqs = soComunicado ? [] : [...ativar];
+    const ids = Array.from(new Set([...Object.keys(porEq), ...ativarEqs, ...(comunicar || soComunicado ? idsComunicado : [])]));
+    if (!ids.length) return;
+    const resumo = soComunicado ? `Enviar o comunicado a ${ids.length} equipe(s)?` : `Aplicar as notas automáticas?\n\n• ${totalSel} nota(s) serão gravadas\n• ${ativarEqs.length} equipe(s) passam ao modo automático\n• Comunicado: ${comunicar ? `enviado a ${idsComunicado.length} equipe(s)` : "não será enviado"}\n\nCada equipe fica bloqueada por ~20 s enquanto grava. É recomendável ter feito o Backup geral. Tudo fica registrado e pode ser desfeito.`;
+    if (!window.confirm(resumo)) return;
+    setOcupado(true); setAviso(null);
+    const id = `na_${Date.now()}`; const mudancas = []; const falhas = []; const ok = [];
+    try {
+      await comBloqueioNotas(turma.id, ids, professorNome, setMsg, async () => {
+        const plano = [];
+        for (const eqId of ids) {
+          const d = await lerDadosEstrito(eqId);
+          const notas = { ...(d.notas || {}) }; const mud = {}; const linhas = [];
+          (porEq[eqId] || []).forEach((mod) => {
+            if (d.notasAuto?.travadas?.[mod]) return;
+            const r = notaAutoModulo(estadoModulo(d.fluxoModulos, mod), prazoRef(mod));
+            if (!r) return;
+            const antes = notas[mod];
+            if (!vazio(antes) && Number(antes) === r.nota) return;
+            const m = MODULOS.find((x) => x.id === mod);
+            notas[mod] = r.nota; mud[mod] = { antes: vazio(antes) ? null : antes, depois: r.nota };
+            linhas.push(`• Módulo ${m.n} (${m.nome}): ${vazio(antes) ? "sem nota" : fmtNota(antes)} → ${fmtNota(r.nota)}  [${textoCalculoNota(r)}]`);
+          });
+          const novoAtivo = ativarEqs.includes(eqId) || !!d.notasAuto?.ativo;
+          const comentarios = [...(d.comentarios || [])];
+          if (linhas.length) comentarios.push({ modulo: "Geral", texto: `NOTAS DOS MÓDULOS ATUALIZADAS PELO NOVO CRITÉRIO\n${linhas.join("\n")}\n\nRegra: 10 pontos por módulo; −2,0 se a primeira entrega passou do prazo; −0,25 a cada devolução. Acompanhe em "Minhas Notas".`, autor: professorNome, timestamp: Date.now(), tipo: "nota", lote: id });
+          if (comunicar || soComunicado) { if (idsComunicado.includes(eqId)) comentarios.push({ modulo: "Geral", texto, autor: professorNome, timestamp: Date.now() + 1, tipo: "comunicado", lote: id }); }
+          const notasAuto = novoAtivo ? { ...(d.notasAuto || {}), ativo: true, desde: d.notasAuto?.desde || Date.now(), por: d.notasAuto?.por || professorNome, travadas: d.notasAuto?.travadas || {} } : d.notasAuto;
+          plano.push({ eqId, d, novo: { ...d, notas, notasAuto, comentarios }, mud, ativouAgora: !d.notasAuto?.ativo && novoAtivo });
+        }
+        // registro ANTES de gravar (sempre há como desfazer)
+        const regMud = plano.filter((p) => Object.keys(p.mud).length || p.ativouAgora).map((p) => ({ equipeId: p.eqId, equipeNome: nomeEq(p.eqId), notas: p.mud, ativouAgora: p.ativouAgora }));
+        if (regMud.length) { const lista = await lerNotasAutoReg(turma.id); await window.storage.set(chaveNotasAutoReg(turma.id), JSON.stringify([{ id, em: Date.now(), por: professorNome, mudancas: regMud, desfeito: false }, ...lista]), true); }
+        for (const p of plano) {
+          try {
+            await window.storage.set(`dados_equipe_${p.eqId}`, JSON.stringify(p.novo), true);
+            const conf = await lerDadosEstrito(p.eqId);
+            const bate = Object.keys(p.mud).every((mod) => Number(conf.notas?.[mod]) === p.mud[mod].depois) && (!p.novo.notasAuto?.ativo || conf.notasAuto?.ativo === true);
+            if (!bate) throw new Error("a gravação não foi confirmada na leitura de conferência");
+            ok.push(nomeEq(p.eqId));
+            mudancas.push(...Object.keys(p.mud).map((mod) => ({ eq: p.eqId, mod })));
+          } catch (e) { falhas.push(`${nomeEq(p.eqId)}: ${e.message}`); }
+        }
+        if (falhas.length) {
+          // tira do registro o que NÃO foi aplicado
+          try {
+            const lista = await lerNotasAutoReg(turma.id);
+            const falhouIds = plano.filter((p) => !ok.includes(nomeEq(p.eqId))).map((p) => p.eqId);
+            const nova = lista.map((r) => r.id !== id ? r : { ...r, mudancas: r.mudancas.filter((m) => !falhouIds.includes(m.equipeId)) }).filter((r) => r.id !== id || r.mudancas.length > 0);
+            await window.storage.set(chaveNotasAutoReg(turma.id), JSON.stringify(nova), true);
+          } catch { /* melhor esforço */ }
+        }
+      });
+      setAviso({ tipo: falhas.length && !ok.length ? "erro" : "ok", texto: `${ok.length ? `Concluído em: ${ok.join(", ")}. ` : "Nada foi gravado. "}${falhas.length ? `Falhas: ${falhas.join(" · ")}.` : ""} Os alunos já veem o aviso no Feedback.` });
+    } catch (e) { setAviso({ tipo: "erro", texto: `Interrompido: ${e.message}. Confira com "Atualizar" o que foi gravado.` }); }
+    await carregar();
+    setOcupado(false);
+  };
+
+  const desfazer = async (reg) => {
+    if (!window.confirm(`Desfazer a atualização de notas de ${new Date(reg.em).toLocaleString("pt-BR")}?\n\nSó voltam as notas que continuam iguais às gravadas por ela; o que mudou depois fica como está.`)) return;
+    setOcupado(true); setAviso(null);
+    const feitos = []; const pulados = [];
+    try {
+      await comBloqueioNotas(turma.id, reg.mudancas.map((m) => m.equipeId), professorNome, setMsg, async () => {
+        for (const mu of reg.mudancas) {
+          try {
+            const d = await lerDadosEstrito(mu.equipeId);
+            const notas = { ...(d.notas || {}) }; const volt = [];
+            Object.keys(mu.notas).forEach((mod) => {
+              if (Number(notas[mod]) !== mu.notas[mod].depois) { pulados.push(`${mu.equipeNome} ${mod.toUpperCase()}: mudou depois`); return; }
+              if (mu.notas[mod].antes === null) delete notas[mod]; else notas[mod] = mu.notas[mod].antes;
+              volt.push(mod);
+            });
+            const notasAuto = mu.ativouAgora && d.notasAuto ? { ...d.notasAuto, ativo: false } : d.notasAuto;
+            const coment = { modulo: "Geral", texto: `ATUALIZAÇÃO DE NOTAS DESFEITA PELO PROFESSOR\n${volt.length ? `Voltaram ao valor anterior: ${volt.map((x) => x.toUpperCase()).join(", ")}.` : "Nenhuma nota precisou voltar."}${mu.ativouAgora ? "\nO cálculo automático foi desativado para a equipe." : ""}`, autor: professorNome, timestamp: Date.now(), tipo: "nota", lote: reg.id };
+            await window.storage.set(`dados_equipe_${mu.equipeId}`, JSON.stringify({ ...d, notas, notasAuto, comentarios: [...(d.comentarios || []), coment] }), true);
+            const conf = await lerDadosEstrito(mu.equipeId);
+            if (volt.some((mod) => mu.notas[mod].antes === null ? !vazio(conf.notas?.[mod]) : Number(conf.notas?.[mod]) !== mu.notas[mod].antes)) throw new Error("não confirmou na leitura de conferência");
+            feitos.push(mu.equipeNome);
+          } catch (e) { pulados.push(`${mu.equipeNome}: ${e.message}`); }
+        }
+        const lista = await lerNotasAutoReg(turma.id);
+        await window.storage.set(chaveNotasAutoReg(turma.id), JSON.stringify(lista.map((r) => r.id === reg.id ? { ...r, desfeito: true, desfeitoEm: Date.now() } : r)), true);
+      });
+      setAviso({ tipo: feitos.length ? "ok" : "erro", texto: `${feitos.length ? `Desfeito em: ${feitos.join(", ")}. ` : "Nada foi desfeito. "}${pulados.length ? `Pulados: ${pulados.join(" · ")}.` : ""}` });
+    } catch (e) { setAviso({ tipo: "erro", texto: `Interrompido: ${e.message}.` }); }
+    await carregar();
+    setOcupado(false);
+  };
+
+  return (
+    <div className="space-y-4">
+      {aviso && <div className={`text-sm rounded-md px-3 py-2 border ${aviso.tipo === "ok" ? "bg-emerald-950/40 border-emerald-700/60 text-emerald-200" : "bg-rose-950/40 border-rose-700/60 text-rose-200"}`}>{aviso.texto}</div>}
+      {ocupado && msg && <div className="text-xs text-amber-300 flex items-center gap-2"><RefreshCw size={12} className="animate-spin" /> {msg}</div>}
+
+      <Card className="p-4">
+        <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2 mb-1"><Target size={15} className="text-violet-300" /> Regra das notas dos módulos de lançamento</h3>
+        <ul className="text-xs text-slate-300 space-y-0.5 list-disc pl-5">
+          <li>Cada módulo vale <b>10</b>, contado desde a <b>primeira entrega</b>; a nota é atualizada a cada devolução.</li>
+          <li>Cada devolução para correção: <b>−0,25</b> (reabrir um módulo já aprovado, sem erro da equipe, <b>não</b> desconta).</li>
+          <li>Primeira entrega depois do prazo: <b>−2,0</b> (uma vez só).</li>
+          <li>Módulos com nota: {NOTA_AUTO_MODULOS.map((id) => MODULOS.find((m) => m.id === id).n).join(", ")}. Módulos 12 e 13 (análises) não têm nota; a nota final do plano é digitada por você (campo no Módulo 13).</li>
+          <li>Para envios antigos, o prazo vem do <b>cronograma da turma</b>{cron ? "" : " (cronograma não encontrado — ⚠ o prazo atual do módulo será usado)"}; envios novos guardam o prazo no próprio registro.</li>
+        </ul>
+      </Card>
+
+      {dadosMap === null ? <div className="text-sm text-slate-500">Carregando prévia…</div> : (
+        <Card className="p-4">
+          <h3 className="text-sm font-bold text-slate-100 mb-1">Prévia — nada foi gravado ainda</h3>
+          <p className="text-xs text-slate-400 mb-3">Confira equipe por equipe. Linhas marcadas serão gravadas; desmarque o que quiser manter como está. Notas fixadas por você (digitadas à mão depois de ativar) nunca são trocadas.</p>
+          <div className="space-y-3">
+            {equipes.map((e) => {
+              const L = linhasEq(e); const d = dadosMap[e.id];
+              return (
+                <div key={e.id} className="border border-slate-700 rounded-xl p-3">
+                  <div className="flex items-center gap-3 flex-wrap mb-2">
+                    <span className="font-bold text-slate-100">{e.nomeNegocio}</span>
+                    {d.notasAuto?.ativo
+                      ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300">modo automático ativo</span>
+                      : <label className="text-[11px] text-slate-300 flex items-center gap-1.5"><input type="checkbox" checked={ativar.has(e.id)} onChange={() => alternar(ativar, setAtivar, e.id)} /> ativar o modo automático nesta equipe</label>}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead><tr className="text-slate-500 text-left"><th className="py-1 pr-2 w-6"></th><th className="pr-2">Módulo</th><th className="pr-2">Atual</th><th className="pr-2">Automática</th><th>Como foi calculada</th></tr></thead>
+                      <tbody>
+                        {L.map((x) => (
+                          <tr key={x.key} className="border-t border-slate-800 align-top">
+                            <td className="py-1.5 pr-2">{x.r && !x.igual && !x.travada ? <input type="checkbox" checked={sel.has(x.key)} onChange={() => alternar(sel, setSel, x.key)} /> : null}</td>
+                            <td className="pr-2 text-slate-200">{String(x.m.n).padStart(2, "0")} · {x.m.nome}</td>
+                            <td className="pr-2 text-slate-300">{fmtNota(x.atual)}</td>
+                            <td className={`pr-2 font-bold ${x.r ? (x.igual ? "text-slate-400" : "text-violet-300") : "text-slate-600"}`}>{x.r ? fmtNota(x.r.nota) : "—"}</td>
+                            <td className="text-slate-400">{x.travada ? "nota fixada por você — não será alterada" : x.r ? <>{textoCalculoNota(x.r)}{x.igual ? " · já igual" : ""}{x.r.incerto ? <span className="text-amber-400"> · ⚠ prazo estimado ({x.r.origem})</span> : <span className="text-slate-600"> · prazo: {x.r.origem}</span>}</> : "nunca enviado — sem nota"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      <Card className="p-4">
+        <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2 mb-1"><Megaphone size={15} className="text-amber-400" /> Comunicado do novo formato de avaliação</h3>
+        <p className="text-xs text-slate-400 mb-2">Mensagem que aparece no Feedback do Professor de cada equipe (com o aviso de novidade). Você pode editar o texto antes de enviar.</p>
+        <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={12} className="w-full bg-slate-900 border border-slate-700 rounded-md p-3 text-xs text-slate-100 whitespace-pre-wrap" />
+        <div className="flex flex-wrap gap-3 mt-2 items-center">
+          <label className="text-xs text-slate-300 flex items-center gap-1.5"><input type="checkbox" checked={comunicar} onChange={(e) => setComunicar(e.target.checked)} /> enviar junto com a aplicação das notas</label>
+          <button disabled={ocupado} onClick={() => setTexto(COMUNICADO_NOVO_FORMATO)} className="text-xs border border-slate-600 text-slate-300 rounded-md px-2.5 py-1">Restaurar texto padrão</button>
+        </div>
+        <div className="flex flex-wrap gap-2 mt-2">
+          {equipes.map((e) => (
+            <label key={e.id} className="text-xs text-slate-300 bg-slate-900 border border-slate-700 rounded-md px-2 py-1 flex items-center gap-1.5"><input type="checkbox" checked={eqComunicado.has(e.id)} onChange={() => alternar(eqComunicado, setEqComunicado, e.id)} /> {e.nomeNegocio}</label>
+          ))}
+        </div>
+      </Card>
+
+      <div className="flex flex-wrap gap-2">
+        <button disabled={ocupado || dadosMap === null || (!totalSel && !ativar.size && !(comunicar && eqComunicado.size))} onClick={() => aplicar(false)} className="bg-violet-500 disabled:opacity-40 text-white text-sm font-bold px-4 py-2 rounded-md">Aplicar ({totalSel} nota(s) · {ativar.size} ativação(ões){comunicar ? ` · comunicado a ${eqComunicado.size}` : ""})</button>
+        <button disabled={ocupado || !eqComunicado.size} onClick={() => aplicar(true)} className="border border-amber-600 text-amber-300 disabled:opacity-40 text-sm px-4 py-2 rounded-md">Enviar só o comunicado</button>
+        <button disabled={ocupado} onClick={carregar} className="border border-slate-600 text-slate-300 text-sm px-4 py-2 rounded-md flex items-center gap-1.5"><RefreshCw size={13} /> Atualizar prévia</button>
+      </div>
+
+      <Card className="p-4">
+        <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2 mb-2"><History size={15} className="text-slate-400" /> Histórico (com Desfazer)</h3>
+        {hist.length === 0 ? <p className="text-xs text-slate-500">Nenhuma atualização de notas registrada ainda.</p> : (
+          <div className="space-y-2">
+            {hist.map((r) => (
+              <div key={r.id} className="border border-slate-700 rounded-lg p-2.5 text-xs flex items-start gap-3">
+                <div className="flex-1">
+                  <div className="text-slate-200 font-semibold">{new Date(r.em).toLocaleString("pt-BR")} · {r.por}{r.desfeito && <span className="ml-2 text-amber-400">desfeito</span>}</div>
+                  <div className="text-slate-400">{r.mudancas.map((m) => `${m.equipeNome}: ${Object.keys(m.notas).length} nota(s)${m.ativouAgora ? " + ativação" : ""}`).join(" · ")}</div>
+                </div>
+                {!r.desfeito && <button disabled={ocupado} onClick={() => desfazer(r)} className="shrink-0 border border-amber-600 text-amber-300 rounded-md px-2.5 py-1 flex items-center gap-1"><Undo2 size={12} /> Desfazer</button>}
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function GestaoNotasAutoView({ turmas, professorNome }) {
+  const [turmaSelId, setTurmaSelId] = useState(turmas.length === 1 ? turmas[0].id : null);
+  const turmaSel = turmas.find((t) => t.id === turmaSelId) || null;
+  const [equipes] = useSharedList(turmaSel ? "equipes_" + turmaSel.id : "equipes_sem_turma");
+  const reais = (equipes || []).filter((e) => !e.teste);
+  if (turmaSel) {
+    return (
+      <div className="space-y-4">
+        {turmas.length > 1 && <button onClick={() => setTurmaSelId(null)} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Escolher outra turma</button>}
+        <SectionTitle icon={Target} sub={`Turma: ${turmaSel.nome} · notas por prazo e devoluções, com prévia antes de gravar.`}>Notas automáticas</SectionTitle>
+        {equipes === null ? <div className="text-sm text-slate-500">Carregando empresas…</div>
+          : reais.length === 0 ? <Card className="p-8 text-center text-slate-500">Esta turma ainda não tem empresas.</Card>
+          : <NotasAutomaticasTurma key={turmaSel.id} turma={turmaSel} equipes={reais} professorNome={professorNome} />}
+      </div>
+    );
+  }
+  return (
+    <div>
+      <SectionTitle icon={Target} sub="Notas dos módulos 1 a 11 calculadas pelo prazo da primeira entrega e pelas devoluções. Escolha a turma.">Notas automáticas</SectionTitle>
       {turmas.length === 0 ? <Card className="p-10 text-center text-slate-500">Você ainda não criou nenhuma turma.</Card> : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {turmas.map((t) => (
@@ -12540,13 +12932,66 @@ function useTurmaSelecionada(turmas) {
 
 function hojeISO() { return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
 
-// Sugestão de nota (apenas exibição — o professor decide e lança a nota de sempre):
-// 10, menos 1,0 por devolução, menos 2,0 se entregue com atraso (mesma regra de
-// pontualidade já informada aos alunos). Só aparece em módulo já corrigido.
-function sugerirNotaModulo(estado) {
-  if (!estado || estado.status !== "corrigido") return null;
-  const devolucoes = (estado.historico || []).filter((h) => h.tipo === "devolucao").length;
-  return Math.max(0, 10 - devolucoes - (estado.atraso ? 2 : 0));
+// ================= Notas automáticas dos módulos (v3.6) =================
+// Cada módulo de lançamento vale 10 pontos, contados desde a PRIMEIRA entrega:
+//   • primeira entrega depois do prazo ........ −2,00 (uma vez só)
+//   • cada devolução para correção ............. −0,25
+// A nota é sempre CALCULADA a partir do histórico do módulo (envio/devolução) —
+// nunca de um número guardado à parte — e só é gravada em `dados.notas` quando
+// a equipe tem `dados.notasAuto.ativo` (ativado pelo professor, com prévia).
+// "Reaberto pelo professor" (reaberto_pos_correcao) NÃO desconta: não é erro da equipe.
+const NOTA_AUTO_MODULOS = NOTA_MODULOS_AVALIAVEIS;
+const NOTA_AUTO_REGRA = { base: 10, atraso: 2, devolucao: 0.25 };
+const fmtNota = (n) => (n === null || n === undefined || n === "" || Number.isNaN(Number(n))) ? "—" : Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+function fimDoDiaMs(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 23, 59, 59, 999).getTime() : null;
+}
+// Devolve null se o módulo nunca foi enviado (sem nota). `prazoRef` = data da etapa no cronograma da turma
+// (usada só para envios antigos, gravados antes de a plataforma registrar o prazo no próprio envio).
+function notaAutoModulo(estado, prazoRef) {
+  const h = (estado && estado.historico) || [];
+  const iEnv = h.findIndex((e) => e.tipo === "envio" || e.tipo === "reenvio");
+  if (iEnv < 0) return null;
+  const ev = h[iEnv];
+  let atrasou; let origem; let prazo = null;
+  if (typeof ev.atrasoNoEnvio === "boolean") { atrasou = ev.atrasoNoEnvio; prazo = ev.prazo || null; origem = "registro do envio"; }
+  else {
+    const reabertoAntes = h.slice(0, iEnv).some((e) => e.tipo === "reabertura");
+    if (ev.prazo) { prazo = ev.prazo; origem = "registro do envio"; }
+    else if (prazoRef) { prazo = prazoRef; origem = "cronograma da turma"; }
+    else if (estado && estado.prazo) { prazo = estado.prazo; origem = "prazo atual do módulo (pode ter sido alterado)"; }
+    else origem = "sem prazo";
+    const fim = fimDoDiaMs(prazo);
+    atrasou = reabertoAntes || (fim !== null && ev.data > fim);
+  }
+  const devolucoes = h.filter((e) => e.tipo === "devolucao").length;
+  const nota = Math.max(0, NOTA_AUTO_REGRA.base - (atrasou ? NOTA_AUTO_REGRA.atraso : 0) - devolucoes * NOTA_AUTO_REGRA.devolucao);
+  return { nota, atrasou, devolucoes, enviadoEm: ev.data, prazo, origem, incerto: origem === "prazo atual do módulo (pode ter sido alterado)" || origem === "sem prazo" };
+}
+function textoCalculoNota(r) {
+  const partes = [`${r.atrasou ? "1ª entrega com atraso (−2)" : "1ª entrega no prazo"}`, `${r.devolucoes} devolução(ões) × 0,25 = −${fmtNota(r.devolucoes * NOTA_AUTO_REGRA.devolucao)}`];
+  return `10 · ${partes.join(" · ")} = ${fmtNota(r.nota)}`;
+}
+const notaAutoAtiva = (dados, modId) => !!dados?.notasAuto?.ativo && NOTA_AUTO_MODULOS.includes(modId);
+function comentarioNotaAuto(m, de, r, motivo) {
+  const ini = vazio(de);
+  return {
+    modulo: `Módulo ${m.n}`,
+    texto: `${ini ? "NOTA DO MÓDULO" : "NOTA ATUALIZADA — MÓDULO"} ${m.n} (${m.nome})\n${ini ? `Nota: ${fmtNota(r.nota)}` : `Nota anterior: ${fmtNota(de)} → nova nota: ${fmtNota(r.nota)}`}\n${motivo ? `Motivo: ${motivo}\n` : ""}Cálculo: ${textoCalculoNota(r)}\nRegra: 10 pontos por módulo; −2,0 se a primeira entrega passou do prazo; −0,25 a cada devolução para correção. Acompanhe em "Minhas Notas".`,
+    autor: "Sistema de notas", timestamp: Date.now(), tipo: "nota",
+  };
+}
+// Recalcula a nota do módulo (se a equipe estiver no modo automático e o professor não tiver fixado a nota à mão).
+// Função pura: devolve o próprio `dados` se nada mudou.
+function aplicarNotaAutoDados(dados, modId, prazoRef, motivo) {
+  if (!notaAutoAtiva(dados, modId) || dados.notasAuto.travadas?.[modId]) return dados;
+  const r = notaAutoModulo(estadoModulo(dados.fluxoModulos, modId), prazoRef);
+  if (!r) return dados;
+  const atual = dados.notas?.[modId];
+  if (!vazio(atual) && Number(atual) === r.nota) return dados;
+  const m = MODULOS.find((x) => x.id === modId);
+  return { ...dados, notas: { ...(dados.notas || {}), [modId]: r.nota }, comentarios: [...(dados.comentarios || []), comentarioNotaAuto(m, atual, r, motivo)] };
 }
 
 const COR_STATUS_SVG = { corrigido: "#10b981", ajustes: "#f59e0b", liberado: "#3b82f6", enviado: "#8b5cf6", pendente: "#334155" };
@@ -13065,6 +13510,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
   const [pdfAberto, setPdfAberto] = useState(null);
   const [alvoCorrecao, setAlvoCorrecao] = useState(null); // { equipeId, moduloId, trigger }
   const [testeAtivo, setTesteAtivo] = useState(null); // { turmaId, equipeId, turmaNome } | null — modo "Empresa Teste"
+  const [verAluno, setVerAluno] = useState(null); // { turma, equipe, nomeAluno } | null — "Ver como aluno (só leitura)"
 
   const pendentesCorrecao = usePendentesCorrecao(turmas);
   const [modoMesa, setModoMesa] = useModoMesa("ppf_modo_mesa_prof");
@@ -13105,6 +13551,26 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
             onVerNovidades={undefined}
           />
         </div>
+      </div>
+    );
+  }
+
+  // VER COMO ALUNO (só leitura): mesma área do aluno, sem poder gravar nada.
+  if (verAluno) {
+    const sairDaVisao = () => setVerAluno(null);
+    return (
+      <div>
+        <div className="sticky top-0 z-[60] h-10 flex items-center justify-between gap-3 px-4 bg-sky-950 border-b border-sky-700/70 text-sky-200 text-xs font-semibold">
+          <span className="truncate">👁 Ver como aluno — SOMENTE LEITURA · {verAluno.equipe.nomeNegocio}{verAluno.nomeAluno ? ` · como ${verAluno.nomeAluno}` : ""} · {verAluno.turma.nome}</span>
+          <button onClick={sairDaVisao} className="shrink-0 bg-sky-400 text-slate-900 font-bold rounded-md px-3 py-1 hover:bg-sky-300">Sair da visualização</button>
+        </div>
+        <AlunoWorkspaceCarregado
+          userSessao={{ uid: user.uid, nome: verAluno.nomeAluno || user.nome, email: user.email, papel: "aluno" }}
+          turmaId={verAluno.turma.id} equipeId={verAluno.equipe.id} somenteLeitura
+          onSair={sairDaVisao} onTrocarEmpresa={sairDaVisao}
+          professorUid={verAluno.turma.professorUid || user.uid} professorNome={verAluno.turma.professor || user.nome} turmaNome={verAluno.turma.nome}
+          ultimaVersaoVista={APP_VERSION} onVerNovidades={undefined}
+        />
       </div>
     );
   }
@@ -13161,6 +13627,8 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
         {aba === "integrantes" && <GestaoIntegrantesView turmas={turmas} user={user} />}
         {aba === "acessos" && <GestaoAcessosView turmas={turmas} user={user} />}
         {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}
+        {aba === "verComoAluno" && <GestaoVerComoAlunoView turmas={turmas} onEntrar={(t, eq, n) => setVerAluno({ turma: t, equipe: eq, nomeAluno: n })} />}
+        {aba === "notasAuto" && <GestaoNotasAutoView turmas={turmas} professorNome={user.nome} />}
         {aba === "empresaTeste" && <GestaoEmpresaTesteView turmas={turmas} onEntrar={(t, eq) => setTesteAtivo({ turmaId: t.id, equipeId: eq.id, turmaNome: t.nome })} onAbrirCorrecao={abrirCorrecao} />}
         {aba === "backup" && <GestaoBackupView turmas={turmas} onExcluir={removerTurmaDaLista} />}
         {aba === "auditoria" && <GestaoAuditoriaView turmas={turmas} />}
@@ -13481,6 +13949,40 @@ const ABAS_COORD = [
 ];
 
 // Lista as empresas das turmas liberadas e abre a área da empresa SOMENTE LEITURA.
+// Gestão → "Ver como aluno (só leitura)": o professor entra na área do aluno de uma empresa e navega por TODO o menu,
+// exatamente como o aluno vê. Nada pode ser alterado (mesmo mecanismo `somenteLeitura` da Coordenação: toda gravação é descartada).
+function GestaoVerComoAlunoView({ turmas, onEntrar }) {
+  const [turmaId, setTurmaId] = useState(turmas.length === 1 ? turmas[0].id : "");
+  const [equipes] = useSharedList(turmaId ? `equipes_${turmaId}` : null);
+  const turma = turmas.find((t) => t.id === turmaId);
+  const reais = (equipes || []).filter((e) => e.teste !== true);
+  const nomes = (e) => (e.integrantes || []).map((i) => (typeof i === "string" ? i : i.nome)).filter(Boolean);
+  return (
+    <div>
+      <SectionTitle icon={Eye} sub="Veja a tela do aluno e navegue por todo o menu dele, só para consultar: nada do que você abrir ou clicar é gravado.">Ver como aluno (só leitura)</SectionTitle>
+      <div className="mb-4"><SeletorTurma turmas={turmas} value={turmaId} onChange={setTurmaId} /></div>
+      {!turmaId && <Card className="p-8 text-center text-slate-500">Selecione uma turma.</Card>}
+      {turmaId && equipes === null && <LoadingScreen />}
+      {turmaId && equipes !== null && reais.length === 0 && <Card className="p-8 text-center text-slate-500">Nenhuma empresa cadastrada nesta turma.</Card>}
+      <div className="grid md:grid-cols-2 gap-3">
+        {reais.map((e) => (
+          <Card key={e.id} className="p-4">
+            <div className="font-bold text-slate-100">{e.nomeNegocio || "(sem nome)"}</div>
+            <div className="text-xs text-slate-500 mb-2">{e.segmento ? `Segmento: ${e.segmento}` : "Segmento não definido"}</div>
+            <div className="text-[11px] text-slate-500 mb-1.5">Ver como:</div>
+            <div className="flex flex-wrap gap-1.5">
+              {nomes(e).map((n) => (
+                <button key={n} onClick={() => onEntrar(turma, e, n)} className="text-xs border border-sky-700/60 text-sky-200 bg-sky-950/30 rounded-md px-2.5 py-1.5 hover:bg-sky-900/40 text-left">👁 {n}</button>
+              ))}
+              {nomes(e).length === 0 && <button onClick={() => onEntrar(turma, e, "")} className="text-xs border border-sky-700/60 text-sky-200 bg-sky-950/30 rounded-md px-2.5 py-1.5">👁 Abrir a tela da equipe</button>}
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CoordEmpresasView({ turmas, onAbrir }) {
   const [turmaId, setTurmaId] = useState(turmas[0]?.id || "");
   const [equipes] = useSharedList(turmaId ? `equipes_${turmaId}` : null);

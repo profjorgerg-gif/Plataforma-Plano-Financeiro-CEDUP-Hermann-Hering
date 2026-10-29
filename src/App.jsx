@@ -1,4 +1,4 @@
-// build: 20261029_00h40m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261029_00h50m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -8844,8 +8844,8 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
             {prontas.map((e) => (
               <div key={e.id} className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2">
                 <div className="text-sm font-semibold text-slate-100 mb-1.5">{e.nomeNegocio}</div>
-                <div className="flex gap-1.5 flex-wrap">
-                  {MODS_LANC.map((m) => <button key={m.id} disabled={ocupado} onClick={() => abrirEditor(e.id, m.id)} className="text-xs border border-slate-600 hover:border-amber-500 text-slate-200 px-2.5 py-1 rounded-md">M{m.n}</button>)}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
+                  {MODS_LANC.map((m) => <button key={m.id} disabled={ocupado} onClick={() => abrirEditor(e.id, m.id)} title={`Módulo ${m.n} · ${m.nome}`} className="text-xs border border-slate-600 hover:border-amber-500 text-slate-200 px-2.5 py-1.5 rounded-md text-left"><b className="text-amber-400">M{m.n}</b> <span className="text-slate-300">· {m.nome}</span></button>)}
                 </div>
               </div>
             ))}

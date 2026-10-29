@@ -1,4 +1,4 @@
-// build: 20261029_08h54m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
+// build: 20261029_12h14m (marca de publicação — garante que o GitHub reconheça esta versão como diferente da anterior)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -589,6 +589,16 @@ function liberarModulosDaEmpresaTeste(fluxo) {
   return resultado;
 }
 
+// v3.6 — projeto ABERTO: todos os módulos ficam disponíveis para edição até o professor encerrar o projeto da empresa.
+// Só exibição (não grava nada): o que estava "pendente" aparece como liberado.
+function liberarPendentesAluno(fluxo) {
+  const resultado = { ...(fluxo || {}) };
+  MODULOS.forEach((m) => { const est = estadoModulo(fluxo, m.id); if (est.status === "pendente") resultado[m.id] = { ...est, status: "liberado" }; });
+  return resultado;
+}
+const chaveEncerramento = (turmaId) => `encerramento_${turmaId}`;
+const MSG_ENCERRAMENTO_PADRAO = "O professor encerrou o projeto financeiro da sua empresa. Os dados continuam disponíveis para consulta, mas não podem mais ser editados.";
+
 function estadoModulo(fluxo, modId) {
   return (fluxo && fluxo[modId]) || ESTADO_MODULO_PADRAO;
 }
@@ -627,6 +637,8 @@ const HISTORICO_EVENTO_INFO = {
   aprovacao: { label: "Aprovado e concluído", Icon: CheckCircle2, cor: "text-emerald-400" },
   reabertura: { label: "Reaberto pelo professor (prazo esgotado)", Icon: RotateCcw, cor: "text-rose-400" },
   reaberto_pos_correcao: { label: "Reaberto para ajustes pelo professor (nota mantida)", Icon: Undo2, cor: "text-amber-400" },
+  solicitacao_reabertura: { label: "Equipe pediu reabertura para melhorias", Icon: RotateCcw, cor: "text-violet-400" },
+  reabertura_negada: { label: "Pedido de reabertura não atendido pelo professor", Icon: Lock, cor: "text-slate-400" },
 };
 
 function HistoricoCorrecaoModulo({ historico }) {
@@ -714,6 +726,7 @@ const GESTAO_ITENS = [
   { id: "parecer", label: "Parecer do projeto", icon: ScrollText },
   { id: "ajusteGeral", label: "Ajuste geral", icon: Wrench },
   { id: "notasAuto", label: "Notas automáticas", icon: Target },
+  { id: "encerrar", label: "Encerrar projeto", icon: Lock },
   { id: "itensSegmento", label: "Itens esperados por segmento", icon: ClipboardList },
   { id: "cronograma", label: "Cronograma", icon: Calendar },
   { id: "integrantes", label: "Integrantes por Empresa", icon: Users2 },
@@ -1343,6 +1356,8 @@ const VERSOES = [
     "Notas automáticas dos módulos de lançamento: cada módulo vale 10 desde a primeira entrega; cada devolução para correção desconta 0,25 e a primeira entrega fora do prazo desconta 2,0. A nota muda sozinha a cada devolução e a equipe é avisada no Feedback, com o motivo e o cálculo. Reabrir um módulo aprovado (sem erro da equipe) não desconta.",
     "Gestão → Notas automáticas: prévia por equipe e módulo (nota atual x automática, com o cálculo), aplicação só do que o professor marcar, registro com Desfazer e envio do comunicado do novo formato de avaliação (texto editável) às equipes.",
     "Os Módulos 12 e 13 não têm nota própria; a \"nota final do plano financeiro\" é digitada pelo professor (mantém o peso de 20% da avaliação). Se o professor digitar uma nota à mão num módulo, ela fica fixada até ele voltar ao automático.",
+    "PROJETO ABERTO: todos os módulos ficam disponíveis para as equipes até o professor encerrar o projeto da empresa (Gestão → Encerrar projeto, reversível). O módulo só trava enquanto está enviado aguardando avaliação; depois da devolutiva ou da aprovação volta a ficar aberto. O prazo passa a valer só para a nota (primeira entrega depois da data: −2,0).",
+    "Alteração sem envio: se a equipe mexer num módulo já aprovado e não reenviar, o sistema registra quem, quando e o que mudou (valor de antes → agora). Aparece no painel do módulo e em Correções pendentes, e a equipe é avisada na própria tela. Se a equipe voltar ao valor original, o registro some.",
     "Novo item em Gestão: \"Ver como aluno (só leitura)\" — o professor entra na tela do aluno de uma empresa (como um dos integrantes) e navega por todo o menu, sem poder alterar nada.",
   ] },
   { versao: "3.5", data: "29/10/2026", itens: [
@@ -5055,7 +5070,10 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   const [avalBloq] = useSharedObject(turmaId && equipe?.id && !somenteLeitura && equipe?.teste !== true ? chaveAvaliacao(turmaId) : null, { equipes: {} });
   const bloqEntrada = avalBloq?.equipes?.[equipe?.id];
   const bloqueadoAval = !!(bloqEntrada && bloqEntrada.ativo) && !somenteLeitura && equipe?.teste !== true;
-  const setDados = (somenteLeitura || bloqueadoAval) ? () => {} : setDadosReal;
+  const [encKey] = useSharedObject(turmaId && equipe?.id && !somenteLeitura && equipe?.teste !== true ? chaveEncerramento(turmaId) : null, { equipes: {} });
+  const encEntrada = encKey?.equipes?.[equipe?.id];
+  const encerrado = !!(encEntrada && encEntrada.ativo) && !somenteLeitura && equipe?.teste !== true;
+  const setDados = (somenteLeitura || bloqueadoAval || encerrado) ? () => {} : setDadosReal;
   const [aba, setAba] = useState("inicio");
   const [menuAberto, setMenuAberto] = useState(false);
   const [gerandoPpt, setGerandoPpt] = useState(false);
@@ -5082,7 +5100,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   // o sistema, então todos os módulos ficam liberados e sem prazo — só
   // exibição, nada é gravado a mais. Empresas reais seguem o fluxo normal.
   const fluxoGravado = dados?.fluxoModulos || fluxoModulosPadrao();
-  const fluxo = equipe?.teste === true ? liberarModulosDaEmpresaTeste(fluxoGravado) : fluxoGravado;
+  const fluxo = equipe?.teste === true ? liberarModulosDaEmpresaTeste(fluxoGravado) : liberarPendentesAluno(fluxoGravado);
   const progressoAprovado = calcularProgressoAprovado(fluxo);
   const enviarModulo = (modId) => {
     const estadoAtual = estadoModulo(fluxo, modId);
@@ -5090,10 +5108,12 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
     const primeiraVez = !(estadoAtual.historico || []).length;
     // v3.6: o envio guarda o prazo vigente e se já estava em atraso — é com isso que a nota automática sabe se a 1ª entrega foi no prazo.
     const evento = { tipo: primeiraVez ? "envio" : "reenvio", data: Date.now(), prazo: estadoAtual.prazo || null, atrasoNoEnvio: !!(estadoAtual.atraso || jaAtrasado) };
+    const pendAltRest = { ...(dados.pendAlt || {}) }; delete pendAltRest[modId];   // ao enviar, deixa de haver "alteração sem envio" neste módulo
     const novo = {
       ...dados,
+      pendAlt: pendAltRest,
       fluxoModulos: {
-        ...fluxo,
+        ...(equipe?.teste === true ? fluxo : fluxoGravado),
         [modId]: {
           ...estadoAtual,
           status: "enviado",
@@ -5104,6 +5124,19 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
       },
     };
     setDados(aplicarNotaAutoDados(novo, modId, null, "primeira entrega do módulo registrada."));
+  };
+
+  // Pedido de reabertura de módulo JÁ APROVADO (o aluno quer melhorar). Não reabre nada sozinho e não gera desconto:
+  // só registra o pedido; o professor decide (Correções pendentes).
+  const solicitarReabertura = (modId, motivo) => {
+    const estadoAtual = estadoModulo(fluxo, modId);
+    const m = MODULOS.find((x) => x.id === modId);
+    const agora = Date.now();
+    setDados({
+      ...dados,
+      fluxoModulos: { ...fluxo, [modId]: { ...estadoAtual, solicitacaoReabertura: { em: agora, motivo, por: user.nome }, historico: [...(estadoAtual.historico || []), { tipo: "solicitacao_reabertura", data: agora, feedback: motivo }] } },
+      comentarios: [...(dados.comentarios || []), { modulo: `Módulo ${m.n}`, texto: `PEDIDO DE REABERTURA — ${m.nome}\n${motivo}`, autor: user.nome, timestamp: agora, tipo: "pedido" }],
+    });
   };
 
   // Contador de feedback novo: compara a data de cada comentário com a última
@@ -5156,7 +5189,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   const gestor = dados.gestor || null;
   const gestorAtivo = !!(gestor && Date.now() - (gestor.ultimoPing || 0) < GESTOR_TIMEOUT_MS);
   const souGestor = gestorAtivo && gestor.uid === user.uid;
-  const souVisualizador = !!somenteLeitura || bloqueadoAval || (gestorAtivo && !souGestor);
+  const souVisualizador = !!somenteLeitura || bloqueadoAval || encerrado || (gestorAtivo && !souGestor);
   const gestaoLivre = !gestorAtivo;
 
   const assumirGestao = () => {
@@ -5171,6 +5204,16 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
     // Lixeira de segurança: guarda uma CÓPIA do que foi excluído (chave própria); nunca altera os lançamentos.
     if (equipe?.teste !== true) { const removidos = itensRemovidos(lanc[modId], val); if (removidos.length) registrarNaLixeira(equipe.id, user.nome, modId, removidos); }
     const novo = { ...dados, lancamentos: { ...lanc, [modId]: val } };
+    // v3.6 — registro de alteração SEM envio: se o módulo já foi aprovado e a equipe mexe nele, guarda quem, quando e o estado
+    // de antes (base) — o professor vê o que mudou. Se a equipe voltar ao valor original, o registro some sozinho.
+    if (equipe?.teste !== true && estadoModulo(fluxo, modId).status === "corrigido" && /^m\d+$/.test(modId) && Number(modId.slice(1)) <= 11) {
+      const atual = dados.pendAlt?.[modId]; const agora = Date.now();
+      const base = atual ? atual.base : JSON.parse(JSON.stringify(lanc[modId]));
+      const pend = { ...(dados.pendAlt || {}) };
+      if (JSON.stringify(val) === JSON.stringify(base)) delete pend[modId];
+      else pend[modId] = { base, primeiraEm: atual?.primeiraEm || agora, ultimaEm: agora, por: { ...(atual?.por || {}), [user.nome]: agora } };
+      novo.pendAlt = pend;
+    }
     setDados(novo);
   };
 
@@ -5180,7 +5223,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
     const mod = lanc[e.modId];
     if (!mod || !Array.isArray(mod[e.campo])) return false;
     if (mod[e.campo].some((x) => x && x.id === e.item.id)) return true;
-    setDados({ ...dados, lancamentos: { ...lanc, [e.modId]: { ...mod, [e.campo]: [...mod[e.campo], e.item] } } });
+    updateModulo(e.modId, { ...mod, [e.campo]: [...mod[e.campo], e.item] });
     return true;
   };
 
@@ -5246,13 +5289,19 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
             <span>📋</span><span><b>Dados fictícios de exemplo</b> — {dados.exemploAplicado}. Você pode editar qualquer valor para demonstrar; para voltar ao original, use "Restaurar exemplo" em Segmento do negócio.</span>
           </div>
         )}
+        {encerrado && (
+          <div className="mb-4 bg-slate-900 border border-slate-600 rounded-md px-4 py-3 flex items-start gap-2.5 text-sm text-slate-200">
+            <Lock size={16} className="shrink-0 mt-0.5" />
+            <span><b>Projeto encerrado.</b> {encEntrada.mensagem || MSG_ENCERRAMENTO_PADRAO}</span>
+          </div>
+        )}
         {bloqueadoAval && (
           <div className="mb-4 bg-amber-950/40 border border-amber-700/60 rounded-md px-4 py-3 flex items-start gap-2.5 text-sm text-amber-200">
             <Lock size={16} className="shrink-0 mt-0.5" />
             <span><b>Projeto em avaliação pelo professor.</b> {bloqEntrada.mensagem || MSG_AVALIACAO_PADRAO}</span>
           </div>
         )}
-        {souVisualizador && !bloqueadoAval && (
+        {souVisualizador && !bloqueadoAval && !encerrado && (
           <div className="mb-4 bg-slate-900 border border-sky-800/60 rounded-md px-4 py-2.5 flex items-center gap-2.5 text-sm text-sky-300">
             <Eye size={16} className="shrink-0" />
             <span>{somenteLeitura ? <><b>Modo somente leitura.</b> Você acompanha exatamente o que a equipe lançou; nada aqui pode ser alterado.</> : <><b>{gestor.nome}</b> está gerindo os lançamentos agora. Você está no modo visualização.</>}</span>
@@ -5284,7 +5333,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   );
   const modalGestor = (
     <>
-      {gestaoLivre && !decisaoGestorTomada && !bloqueadoAval && (
+      {gestaoLivre && !decisaoGestorTomada && !bloqueadoAval && !encerrado && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-5">
           <div className="bg-slate-900 border border-amber-500/50 rounded-xl max-w-sm w-full p-6 text-center">
             <UserCog size={30} className="mx-auto text-amber-500 mb-3" />
@@ -5364,7 +5413,8 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
         {MODULOS.map((m) => aba === m.id && (() => {
           const estado = estadoModulo(fluxo, m.id);
           const atrasadoSemEnvio = moduloAtrasadoSemEnvio(estado);
-          const podeEditar = !souVisualizador && (estado.status === "liberado" || estado.status === "ajustes") && !atrasadoSemEnvio;
+          const podeEditar = !souVisualizador && estado.status !== "enviado";   // projeto aberto: só trava enquanto aguarda a avaliação
+          const pendAltM = dados.pendAlt?.[m.id];
           return (
           <div key={m.id}>
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
@@ -5383,7 +5433,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
             <ExemploLancamentoBox modId={m.id} aberta={estado.status === "liberado"} segmento={equipe?.segmento} />
             <DisciplinasRelacionadasBox modId={m.id} />
             {souVisualizador && (
-              <div className="mb-3 text-xs text-sky-400 flex items-center gap-1.5"><Eye size={13} /> Modo visualização — os campos abaixo estão travados enquanto {gestor.nome} estiver gerindo.</div>
+              <div className="mb-3 text-xs text-sky-400 flex items-center gap-1.5"><Eye size={13} /> Modo visualização — {(gestor && gestor.nome && !somenteLeitura && !bloqueadoAval && !encerrado) ? `os campos abaixo estão travados enquanto ${gestor.nome} estiver gerindo.` : "os campos abaixo estão somente para leitura."}</div>
             )}
 
             {estado.status === "pendente" && (
@@ -5391,9 +5441,9 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
                 <Lock size={16} className="text-slate-500 mt-0.5 shrink-0" /> Este módulo ainda não foi liberado. Concluam e enviem {m.n - 1 <= 11 ? `o Módulo ${m.n - 1}` : `a ${MODULOS[m.n - 2].nome}`} para o(a) professor(a) corrigir e liberar este aqui.
               </div>
             )}
-            {(estado.status === "liberado" || estado.status === "ajustes") && atrasadoSemEnvio && (
-              <div className="mb-3 text-sm text-rose-400 flex items-start gap-2 bg-rose-950/30 border border-rose-800/50 rounded-lg p-3">
-                <Clock size={16} className="mt-0.5 shrink-0" /> O prazo de entrega deste módulo ({fmtDataCurta(estado.prazo)}) terminou sem envio. Falem com o(a) professor(a) para reabrir o módulo — a entrega ficará registrada como em atraso (desconto de 2,0 pontos por pontualidade).
+            {estado.status === "liberado" && atrasadoSemEnvio && (
+              <div className="mb-3 text-sm text-amber-400 flex items-start gap-2 bg-amber-950/30 border border-amber-800/50 rounded-lg p-3">
+                <Clock size={16} className="mt-0.5 shrink-0" /> O prazo de entrega deste módulo ({fmtDataCurta(estado.prazo)}) já passou. Vocês podem continuar lançando e enviar normalmente — como a primeira entrega será depois do prazo, há desconto de 2,0 pontos, e cada devolução para correção desconta 0,25.
               </div>
             )}
             {estado.status === "liberado" && !atrasadoSemEnvio && estado.prazo && (
@@ -5426,7 +5476,14 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
             )}
             {estado.status === "corrigido" && (
               <div className="mb-3 text-sm text-emerald-400 flex items-start gap-2 bg-emerald-950/30 border border-emerald-800/50 rounded-lg p-3">
-                <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> Corrigido pelo(a) professor(a){estado.corrigidoEm ? ` em ${fmtData(estado.corrigidoEm)}` : ""}.{estado.atraso ? " Entregue com atraso — desconto de 2,0 pontos por pontualidade aplicável." : ""}
+                <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> Corrigido pelo(a) professor(a){estado.corrigidoEm ? ` em ${fmtData(estado.corrigidoEm)}` : ""}.{estado.atraso ? " Entregue com atraso — desconto de 2,0 pontos por pontualidade aplicável." : ""} O projeto continua aberto: se melhorarem este módulo, reenviem para avaliação.
+              </div>
+            )}
+
+            {pendAltM && (
+              <div className="mb-3 text-sm text-amber-300 flex items-start gap-2 bg-amber-950/30 border border-amber-700/60 rounded-lg p-3">
+                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                <span><b>Este módulo foi alterado depois de aprovado e ainda não foi enviado para avaliação.</b> A alteração (quem e quando) fica registrada para o(a) professor(a). Quando terminarem de melhorar, cliquem em "Reenviar para correção".</span>
               </div>
             )}
 
@@ -5451,8 +5508,8 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
 
             {podeEditar && (
               <div className="mt-4 flex justify-end">
-                <button onClick={() => { if (confirm(`${estado.status === "ajustes" ? "Reenviar" : "Enviar"} este módulo para correção? Ele ficará travado para edição até o professor(a) avaliar.`)) enviarModulo(m.id); }} className="flex items-center gap-2 bg-emerald-600 text-white text-sm font-bold px-4 py-2 rounded-md hover:bg-emerald-500">
-                  <Send size={15} /> {estado.status === "ajustes" ? "Reenviar para correção" : "Enviar para correção"}
+                <button onClick={() => { if (confirm(`${estado.status === "ajustes" || estado.status === "corrigido" ? "Reenviar" : "Enviar"} este módulo para correção? Ele ficará travado para edição até o professor(a) avaliar.`)) enviarModulo(m.id); }} className="flex items-center gap-2 bg-emerald-600 text-white text-sm font-bold px-4 py-2 rounded-md hover:bg-emerald-500">
+                  <Send size={15} /> {estado.status === "ajustes" || estado.status === "corrigido" ? "Reenviar para correção" : "Enviar para correção"}
                 </button>
               </div>
             )}
@@ -5929,6 +5986,35 @@ function explicarNotaAluno(nota, estado) {
   const ok = atrasou || Math.abs(base - n) < 0.001;
   return { dev, atrasou, ok };
 }
+function PedidoReabertura({ estado, podePedir, onPedir }) {
+  const [aberto, setAberto] = useState(false);
+  const [motivo, setMotivo] = useState("");
+  const sol = estado.solicitacaoReabertura;
+  if (sol) {
+    return <div className="mb-3 text-sm text-violet-200 flex items-start gap-2 bg-violet-950/30 border border-violet-700/50 rounded-lg p-3"><Clock size={16} className="mt-0.5 shrink-0" /> <span><b>Pedido de reabertura enviado</b> em {fmtData(sol.em)}. Aguardem o(a) professor(a): se ele(a) reabrir, o módulo volta para edição e vocês serão avisados. Enquanto isso, o módulo continua como está.</span></div>;
+  }
+  if (!podePedir) return null;
+  return (
+    <div className="mb-3 rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+      {!aberto ? (
+        <div className="flex items-center gap-3 flex-wrap text-xs text-slate-400">
+          <span className="flex-1 min-w-[200px]">Quer melhorar este módulo, mesmo já aprovado? Peça a reabertura ao(à) professor(a). Pedir não desconta nota — o desconto de 0,25 só vale quando o professor devolve para correção.</span>
+          <button onClick={() => setAberto(true)} className="border border-violet-500/60 text-violet-200 rounded-md px-3 py-1.5 font-semibold hover:bg-violet-500/10">Solicitar reabertura para melhorias</button>
+        </div>
+      ) : (
+        <div>
+          <div className="text-xs text-slate-300 mb-1.5">O que vocês querem melhorar? (o professor lê isto antes de reabrir)</div>
+          <textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={3} placeholder="Ex.: revisar o preço de venda dos produtos após a pesquisa de mercado" className="w-full bg-slate-950 border border-slate-700 rounded-md p-2 text-sm text-slate-100" />
+          <div className="flex gap-2 mt-2">
+            <button disabled={motivo.trim().length < 5} onClick={() => { onPedir(motivo.trim()); setAberto(false); setMotivo(""); }} className="bg-violet-500 disabled:opacity-40 text-white text-xs font-bold px-3 py-1.5 rounded-md">Enviar pedido</button>
+            <button onClick={() => { setAberto(false); setMotivo(""); }} className="border border-slate-600 text-slate-300 text-xs px-3 py-1.5 rounded-md">Cancelar</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NotaAutoAluno({ nota, estado, travada }) {
   if (vazio(nota)) {
     return <div className="mt-3 text-xs rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-slate-400"><Target size={13} className="inline mr-1.5 text-sky-400" />A nota deste módulo nasce na <b>primeira entrega</b>: no prazo e sem devoluções vale 10.</div>;
@@ -6437,7 +6523,50 @@ function OrientacaoAlunoParaProfessor({ modId, segmento }) {
   );
 }
 
-function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes, onReabrirPosCorrecao, prazoCronograma, segmento, autoAtiva, autoTravada, autoInfo, onVoltarAuto }) {
+// Alterações feitas pela equipe num módulo JÁ APROVADO e ainda não enviadas para avaliação: quem, quando e o que mudou (base → agora).
+function AlteracaoSemEnvioProf({ pend, m, atual, onDispensar }) {
+  const linhas = linhasDiffModulo(m.n, pend.base, atual);
+  const quem = Object.entries(pend.por || {}).map(([n, ts]) => `${n} (${fmtData(ts)})`).join(", ");
+  return (
+    <div className="mb-3 rounded-lg border border-amber-700/60 bg-amber-950/30 p-3 text-sm text-amber-100">
+      <div className="font-bold flex items-center gap-2"><AlertTriangle size={14} /> Alterado depois de aprovado e NÃO enviado para avaliação</div>
+      <div className="text-[11px] text-amber-200/80 mt-1">Primeira alteração: {fmtData(pend.primeiraEm)} · última: {fmtData(pend.ultimaEm)} · por: {quem || "—"}</div>
+      <div className="mt-1.5 bg-slate-900/60 border border-amber-800/40 rounded-md p-2 text-xs space-y-0.5 max-h-48 overflow-y-auto">
+        {linhas.length === 0 ? <div className="text-slate-400">Sem diferença de valores identificada (apenas reorganização).</div> : linhas.slice(0, 60).map((l, i) => <div key={i}>• {l}</div>)}
+        {linhas.length > 60 && <div className="text-slate-400">… e mais {linhas.length - 60} alteração(ões)</div>}
+      </div>
+      <button onClick={onDispensar} className="mt-2 border border-amber-600/60 text-amber-200 text-xs px-3 py-1.5 rounded-md">Marcar como visto (limpa este aviso)</button>
+    </div>
+  );
+}
+
+function PedidoReaberturaProf({ sol, onAtender, onRecusar }) {
+  const [recusando, setRecusando] = useState(false);
+  const [texto, setTexto] = useState("");
+  return (
+    <div className="mb-3 rounded-lg border border-violet-700/60 bg-violet-950/30 p-3 text-sm text-violet-100">
+      <div className="font-bold flex items-center gap-2"><RotateCcw size={14} /> A equipe pediu para reabrir este módulo (já aprovado)</div>
+      <div className="mt-1.5 bg-slate-900/60 border border-violet-800/40 rounded-md p-2 whitespace-pre-line text-violet-50">{sol.motivo}</div>
+      <div className="text-[11px] text-violet-300/70 mt-1">{sol.por ? `${sol.por} · ` : ""}{fmtData(sol.em)} · atender não desconta nota e mantém a nota atual.</div>
+      {!recusando ? (
+        <div className="flex gap-2 mt-2">
+          <button onClick={onAtender} className="bg-violet-500 text-white text-xs font-bold px-3 py-1.5 rounded-md">Atender e reabrir (sem desconto)</button>
+          <button onClick={() => setRecusando(true)} className="border border-slate-600 text-slate-200 text-xs px-3 py-1.5 rounded-md">Não atender agora</button>
+        </div>
+      ) : (
+        <div className="mt-2">
+          <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={2} placeholder="Explique para a equipe (opcional)" className="w-full bg-slate-950 border border-slate-700 rounded-md p-2 text-xs text-slate-100" />
+          <div className="flex gap-2 mt-1.5">
+            <button onClick={() => { onRecusar(texto.trim()); setRecusando(false); setTexto(""); }} className="bg-slate-600 text-white text-xs font-bold px-3 py-1.5 rounded-md">Confirmar</button>
+            <button onClick={() => setRecusando(false)} className="border border-slate-600 text-slate-300 text-xs px-3 py-1.5 rounded-md">Voltar</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentarios, onAddComentario, professorNome, nota, onSetNota, estado, ultimoModulo, onSetPrazo, onConfirmarCorrecao, onReabrir, onRestaurarPrazoAutomatico, onDevolverAjustes, onReabrirPosCorrecao, prazoCronograma, segmento, autoAtiva, autoTravada, autoInfo, onVoltarAuto, onAtenderPedido, onRecusarPedido, pendAlt, lancAtualMod, onDispensarAlteracao }) {
   const Icon = m.icon;
   const comentariosModulo = (comentarios || []).filter((c) => c.modulo === `Módulo ${m.n}`);
   const avaliavel = NOTA_MODULOS_AVALIAVEIS.includes(m.id);
@@ -6464,6 +6593,12 @@ function ModuloAccordion({ m, aberto, onToggle, lanc, calc, completo, comentario
       </button>
       {aberto && (
         <div className="px-4 pb-4 border-t border-slate-800">
+          {pendAlt && (
+            <AlteracaoSemEnvioProf pend={pendAlt} m={m} atual={lancAtualMod} onDispensar={onDispensarAlteracao} />
+          )}
+          {estado.solicitacaoReabertura && (
+            <PedidoReaberturaProf sol={estado.solicitacaoReabertura} onAtender={onAtenderPedido} onRecusar={onRecusarPedido} />
+          )}
           <PainelFluxoModulo modId={m.id} nomeModulo={`Módulo ${m.n} (${m.nome})`} lanc={lanc} calc={calc} estado={estado} ultimoModulo={ultimoModulo} onSetPrazo={onSetPrazo} onConfirmarCorrecao={onConfirmarCorrecao} onReabrir={onReabrir} onRestaurarPrazoAutomatico={onRestaurarPrazoAutomatico} onDevolverAjustes={onDevolverAjustes} onReabrirPosCorrecao={onReabrirPosCorrecao} nota={nota} prazoCronograma={prazoCronograma} />
           <OrientacaoAlunoParaProfessor modId={m.id} segmento={segmento} />
           <div className="pt-4"><ModuloLeitura mId={m.id} lanc={lanc} calc={calc} /></div>
@@ -6603,11 +6738,27 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
         [modId]: {
           ...atual,
           status: "ajustes",
+          solicitacaoReabertura: null,
           feedback: motivo || "Reaberto pelo professor para ajustes — a nota já atribuída foi mantida.",
           ciclo: (atual.ciclo || 1) + 1,
           historico: [...(atual.historico || []), { tipo: "reaberto_pos_correcao", data: Date.now(), feedback: motivo || null }],
         },
       },
+    });
+  };
+  // Pedido da equipe para melhorar módulo já aprovado: atender = reabrir SEM desconto; recusar = fecha o pedido e avisa a equipe.
+  const atenderPedidoReabertura = (modId) => {
+    const sol = estadoModulo(fluxo, modId).solicitacaoReabertura;
+    reabrirParaAjustesPosCorrecao(modId, `Reaberto a pedido da equipe — a nota já atribuída foi mantida e não há desconto.${sol?.motivo ? `\nMotivo do pedido: ${sol.motivo}` : ""}`);
+  };
+  const recusarPedidoReabertura = (modId, texto) => {
+    const atual = estadoModulo(fluxo, modId);
+    const m = MODULOS.find((x) => x.id === modId);
+    const agora = Date.now();
+    setDados({
+      ...dados,
+      fluxoModulos: { ...fluxo, [modId]: { ...atual, solicitacaoReabertura: null, historico: [...(atual.historico || []), { tipo: "reabertura_negada", data: agora, feedback: texto || null }] } },
+      comentarios: [...(dados.comentarios || []), { modulo: `Módulo ${m.n}`, texto: `Seu pedido de reabertura do Módulo ${m.n} não foi atendido por enquanto.${texto ? `\n${texto}` : ""}\nO módulo continua aprovado; se precisar, converse com o(a) professor(a).`, autor: professorNome, timestamp: agora, tipo: "pedido" }],
     });
   };
   const reabrirModulo = (modId, novoPrazo) => {
@@ -6733,6 +6884,11 @@ function EquipeReview({ turma, equipe, onVoltar, professorNome, moduloAlvo }) {
               autoTravada={!!dados.notasAuto?.travadas?.[m.id]}
               autoInfo={notaAutoModulo(estadoModulo(fluxo, m.id), prazoCronogramaDoModulo(m.id))}
               onVoltarAuto={() => voltarNotaAutomatica(m.id)}
+              pendAlt={dados.pendAlt?.[m.id]}
+              lancAtualMod={lanc[m.id]}
+              onDispensarAlteracao={() => { const pa = { ...(dados.pendAlt || {}) }; delete pa[m.id]; setDados({ ...dados, pendAlt: pa }); }}
+              onAtenderPedido={() => atenderPedidoReabertura(m.id)}
+              onRecusarPedido={(t) => recusarPedidoReabertura(m.id, t)}
               estado={estadoModulo(fluxo, m.id)}
               ultimoModulo={m.n === MODULOS.length}
               onSetPrazo={(v) => setPrazoModulo(m.id, v)}
@@ -7677,6 +7833,12 @@ function usePendentesCorrecao(turmas) {
           const fluxo = dados.fluxoModulos || {};
           MODULOS.forEach((m) => {
             const estado = estadoModulo(fluxo, m.id);
+            if (estado.status === "corrigido" && dados.pendAlt?.[m.id]) {
+              lista.push({ turmaId: turma.id, turmaNome: turma.nome, equipeId: equipe.id, equipeNome: equipe.nomeNegocio, teste: !!equipe.teste, moduloId: m.id, moduloNome: m.nome, moduloN: m.n, enviadoEm: dados.pendAlt[m.id].ultimaEm, pedido: true, motivo: "Alterado depois de aprovado e ainda NÃO enviado para avaliação" });
+            }
+            if (estado.status === "corrigido" && estado.solicitacaoReabertura) {
+              lista.push({ turmaId: turma.id, turmaNome: turma.nome, equipeId: equipe.id, equipeNome: equipe.nomeNegocio, teste: !!equipe.teste, moduloId: m.id, moduloNome: m.nome, moduloN: m.n, enviadoEm: estado.solicitacaoReabertura.em, pedido: true, motivo: `Pedido de reabertura: ${estado.solicitacaoReabertura.motivo}` });
+            }
             if (estado.status === "enviado") {
               lista.push({
                 turmaId: turma.id,
@@ -7719,7 +7881,7 @@ function CorrecoesPendentesView({ pendentes, onAbrir }) {
 
   return (
     <div>
-      <SectionTitle icon={Inbox} sub="Módulos enviados pelas equipes, de todas as turmas, aguardando sua análise — clique para corrigir.">
+      <SectionTitle icon={Inbox} sub="Módulos enviados pelas equipes, de todas as turmas, aguardando sua análise — e pedidos de reabertura de módulos já aprovados. Clique para abrir.">
         Correções pendentes
       </SectionTitle>
       {pendentes.length === 0 ? (
@@ -7738,10 +7900,13 @@ function CorrecoesPendentesView({ pendentes, onAbrir }) {
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold text-slate-100 truncate">{p.teste && <span className="text-[10px] font-bold text-violet-300 bg-violet-950/40 border border-violet-500/40 rounded-full px-1.5 py-0.5 mr-1.5 align-middle">🧪 TESTE</span>}{p.equipeNome} <span className="text-slate-500 font-normal">· {p.turmaNome}</span></div>
                 <div className="text-xs text-slate-400 truncate">Módulo {p.moduloN} — {p.moduloNome}</div>
+                {p.pedido && <div className="text-[11px] text-violet-300 truncate mt-0.5">{p.motivo}</div>}
               </div>
               <div className="text-right shrink-0">
                 <div className="text-[11px] text-slate-500 flex items-center gap-1 justify-end"><Clock size={11} /> {p.enviadoEm ? fmtData(p.enviadoEm) : "—"}</div>
-                <div className="text-[10px] font-bold text-sky-400 bg-sky-950/40 border border-sky-500/30 rounded-full px-2 py-0.5 mt-1 inline-block">Corrigir agora</div>
+                {p.pedido
+                  ? <div className="text-[10px] font-bold text-violet-300 bg-violet-950/40 border border-violet-500/30 rounded-full px-2 py-0.5 mt-1 inline-block">Ver alteração</div>
+                  : <div className="text-[10px] font-bold text-sky-400 bg-sky-950/40 border border-sky-500/30 rounded-full px-2 py-0.5 mt-1 inline-block">Corrigir agora</div>}
               </div>
               <ChevronRight size={16} className="text-slate-600 shrink-0" />
             </button>
@@ -9326,6 +9491,116 @@ function GestaoNotasAutoView({ turmas, professorNome }) {
   return (
     <div>
       <SectionTitle icon={Target} sub="Notas dos módulos 1 a 11 calculadas pelo prazo da primeira entrega e pelas devoluções. Escolha a turma.">Notas automáticas</SectionTitle>
+      {turmas.length === 0 ? <Card className="p-10 text-center text-slate-500">Você ainda não criou nenhuma turma.</Card> : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {turmas.map((t) => (
+            <button key={t.id} onClick={() => setTurmaSelId(t.id)} className="text-left bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-amber-500 transition">
+              <div className="flex items-center gap-2"><School size={16} className="text-sky-400 shrink-0" /><span className="font-bold text-slate-100 truncate">{t.nome}</span></div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ================= Gestão → Encerrar projeto (v3.6) =================
+// Os módulos ficam abertos para as equipes até o professor encerrar. Encerrar = tudo só leitura, reversível a qualquer momento.
+// Guardado em chave própria (encerramento_{turma}) — não dentro dos dados da equipe — para a gravação de um aluno nunca apagar o encerramento.
+async function lerEncerramento(turmaId) {
+  const r = await window.storage.get(chaveEncerramento(turmaId), true);
+  return r ? JSON.parse(r.value) : { equipes: {} };
+}
+async function definirEncerramento(turmaId, ids, ligar, por, mensagem) {
+  const a = await lerEncerramento(turmaId);
+  const eqs = { ...(a.equipes || {}) };
+  ids.forEach((id) => { if (ligar) eqs[id] = { ativo: true, desde: Date.now(), por, mensagem: mensagem || MSG_ENCERRAMENTO_PADRAO }; else delete eqs[id]; });
+  await window.storage.set(chaveEncerramento(turmaId), JSON.stringify({ ...a, equipes: eqs }), true);
+  const conf = await lerEncerramento(turmaId);
+  ids.forEach((id) => { if (!!conf.equipes?.[id]?.ativo !== !!ligar) throw new Error("a gravação não foi confirmada na leitura de conferência"); });
+  return conf.equipes;
+}
+
+function EncerrarProjetoTurma({ turma, equipes, professorNome }) {
+  const [enc, setEnc] = useState(null);
+  const [info, setInfo] = useState({});
+  const [sel, setSel] = useState(new Set());
+  const [msg, setMsg] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const [aviso, setAviso] = useState(null);
+  const carregar = async () => {
+    try {
+      const e = await lerEncerramento(turma.id);
+      const inf = {};
+      for (const eq of equipes) {
+        try {
+          const d = await lerDadosEstrito(eq.id); const fl = d.fluxoModulos || {};
+          inf[eq.id] = { aprovados: MODULOS.filter((m) => !ehModuloAnalise(m) && estadoModulo(fl, m.id).status === "corrigido").length, enviados: MODULOS.filter((m) => estadoModulo(fl, m.id).status === "enviado").length, semEnvio: Object.keys(d.pendAlt || {}).length };
+        } catch { inf[eq.id] = null; }
+      }
+      setInfo(inf); setEnc(e);
+    } catch (e) { setAviso({ tipo: "erro", texto: `Não foi possível ler (${e.message}). Nada foi alterado.` }); }
+  };
+  useEffect(() => { carregar(); /* eslint-disable-next-line */ }, [turma.id]);
+  const alternar = (id) => { const n = new Set(sel); n.has(id) ? n.delete(id) : n.add(id); setSel(n); };
+  const aplicar = async (ids, ligar) => {
+    if (!ids.length) return;
+    const pend = ids.filter((id) => (info[id]?.enviados || 0) > 0 || (info[id]?.semEnvio || 0) > 0);
+    const txt = `${ligar ? "ENCERRAR" : "REABRIR"} ${ids.length} empresa(s)?\n\n${ligar ? "Os alunos passam a ver tudo só para leitura, com a mensagem de projeto encerrado. Você pode reabrir quando quiser." : "Os alunos voltam a poder editar e enviar módulos."}${ligar && pend.length ? `\n\nAtenção: ${pend.length} dessas empresas ainda têm módulo enviado aguardando avaliação ou alteração não enviada.` : ""}`;
+    if (!window.confirm(txt)) return;
+    setOcupado(true); setAviso(null);
+    try { await definirEncerramento(turma.id, ids, ligar, professorNome, msg.trim()); setAviso({ tipo: "ok", texto: `${ligar ? "Projeto encerrado" : "Projeto reaberto"} em ${ids.length} empresa(s).` }); setSel(new Set()); }
+    catch (e) { setAviso({ tipo: "erro", texto: `Não foi possível gravar: ${e.message}.` }); }
+    await carregar(); setOcupado(false);
+  };
+  if (enc === null) return <div className="text-sm text-slate-500">Carregando…</div>;
+  const encerrada = (id) => !!enc.equipes?.[id]?.ativo;
+  return (
+    <div className="space-y-4">
+      {aviso && <div className={`text-sm rounded-md px-3 py-2 border ${aviso.tipo === "ok" ? "bg-emerald-950/40 border-emerald-700/60 text-emerald-200" : "bg-rose-950/40 border-rose-700/60 text-rose-200"}`}>{aviso.texto}</div>}
+      <Card className="p-4">
+        <p className="text-xs text-slate-400 mb-3">Enquanto o projeto está <b>aberto</b>, todos os módulos ficam disponíveis para a equipe: só travam enquanto aguardam sua avaliação. Ao <b>encerrar</b>, a empresa passa a ver tudo somente para leitura. Dá para reabrir a qualquer momento.</p>
+        <div className="space-y-1.5">
+          {equipes.map((e) => (
+            <label key={e.id} className="flex items-center gap-3 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 flex-wrap">
+              <input type="checkbox" checked={sel.has(e.id)} onChange={() => alternar(e.id)} />
+              <span className="flex-1 min-w-[160px] text-sm font-semibold text-slate-100">{e.nomeNegocio}</span>
+              <span className="text-[11px] text-slate-400">{info[e.id] ? `${info[e.id].aprovados}/11 aprovados${info[e.id].enviados ? ` · ${info[e.id].enviados} aguardando você` : ""}${info[e.id].semEnvio ? ` · ${info[e.id].semEnvio} alterado(s) sem envio` : ""}` : "—"}</span>
+              {encerrada(e.id) ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-600/40 text-slate-200">🔒 encerrado</span> : <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">aberto</span>}
+            </label>
+          ))}
+        </div>
+        <textarea value={msg} onChange={(e) => setMsg(e.target.value)} rows={2} placeholder="Mensagem para os alunos (opcional). Se vazio, usa o texto padrão de projeto encerrado." className="w-full mt-3 bg-slate-900 border border-slate-700 rounded-md p-2 text-xs text-slate-100" />
+        <div className="flex flex-wrap gap-2 mt-3">
+          <button disabled={ocupado} onClick={() => setSel(new Set(equipes.map((e) => e.id)))} className="border border-slate-600 text-slate-200 text-xs px-3 py-1.5 rounded-md">Marcar todas</button>
+          <button disabled={ocupado || !sel.size} onClick={() => aplicar([...sel].filter((id) => !encerrada(id)), true)} className="bg-slate-600 disabled:opacity-40 text-white text-xs font-bold px-3 py-1.5 rounded-md">Encerrar marcadas</button>
+          <button disabled={ocupado || !sel.size} onClick={() => aplicar([...sel].filter((id) => encerrada(id)), false)} className="bg-emerald-600 disabled:opacity-40 text-white text-xs font-bold px-3 py-1.5 rounded-md">Reabrir marcadas</button>
+          <button disabled={ocupado} onClick={carregar} className="border border-slate-600 text-slate-300 text-xs px-3 py-1.5 rounded-md flex items-center gap-1.5"><RefreshCw size={12} /> Atualizar</button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function GestaoEncerrarProjetoView({ turmas, professorNome }) {
+  const [turmaSelId, setTurmaSelId] = useState(turmas.length === 1 ? turmas[0].id : null);
+  const turmaSel = turmas.find((t) => t.id === turmaSelId) || null;
+  const [equipes] = useSharedList(turmaSel ? "equipes_" + turmaSel.id : "equipes_sem_turma");
+  const reais = (equipes || []).filter((e) => !e.teste);
+  if (turmaSel) {
+    return (
+      <div className="space-y-4">
+        {turmas.length > 1 && <button onClick={() => setTurmaSelId(null)} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Escolher outra turma</button>}
+        <SectionTitle icon={Lock} sub={`Turma: ${turmaSel.nome} · módulos abertos até você encerrar o projeto de cada empresa.`}>Encerrar projeto</SectionTitle>
+        {equipes === null ? <div className="text-sm text-slate-500">Carregando empresas…</div>
+          : reais.length === 0 ? <Card className="p-8 text-center text-slate-500">Esta turma ainda não tem empresas.</Card>
+          : <EncerrarProjetoTurma key={turmaSel.id} turma={turmaSel} equipes={reais} professorNome={professorNome} />}
+      </div>
+    );
+  }
+  return (
+    <div>
+      <SectionTitle icon={Lock} sub="Os módulos ficam abertos para as equipes até você encerrar o projeto. Escolha a turma.">Encerrar projeto</SectionTitle>
       {turmas.length === 0 ? <Card className="p-10 text-center text-slate-500">Você ainda não criou nenhuma turma.</Card> : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {turmas.map((t) => (
@@ -13634,6 +13909,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
         {aba === "acessos" && <GestaoAcessosView turmas={turmas} user={user} />}
         {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}
         {aba === "verComoAluno" && <GestaoVerComoAlunoView turmas={turmas} onEntrar={(t, eq, n) => setVerAluno({ turma: t, equipe: eq, nomeAluno: n })} />}
+        {aba === "encerrar" && <GestaoEncerrarProjetoView turmas={turmas} professorNome={user.nome} />}
         {aba === "notasAuto" && <GestaoNotasAutoView turmas={turmas} professorNome={user.nome} />}
         {aba === "empresaTeste" && <GestaoEmpresaTesteView turmas={turmas} onEntrar={(t, eq) => setTesteAtivo({ turmaId: t.id, equipeId: eq.id, turmaNome: t.nome })} onAbrirCorrecao={abrirCorrecao} />}
         {aba === "backup" && <GestaoBackupView turmas={turmas} onExcluir={removerTurmaDaLista} />}

@@ -1,4 +1,4 @@
-// build: 20261030_11h10m Capacidade: demanda x equilibrio, clientes por dia, faturamento maximo teorico
+// build: 20261030_12h42m Realismo de mercado no Ajuste geral
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -8583,9 +8583,38 @@ const REFS_ROTULOS = [
   ["cmvMax", "CMV máximo (% do faturamento) — referência", "Só comparação na tabela; não gera correção."],
   ["moMax", "Mão de obra máxima (% do faturamento) — referência", "Só comparação na tabela; não gera correção."],
 ];
+// Faixas de mercado (didáticas) por segmento, usadas no "Realismo de mercado" do Ajuste geral. O professor pode editar cada valor
+// em Gestão → Referências por segmento. lucMin/lucMax: lucratividade %, rentMin/rentMax: rentabilidade % ao ano (payback = 100 ÷ rentabilidade),
+// cmvMin: CMV mínimo % do faturamento, moMin: mão de obra mínima % do faturamento.
+const MERC_GERAL = { lucMin: 4, lucMax: 12, rentMin: 15, rentMax: 40, cmvMin: 25, moMin: 10 };
+const MERC_SEG = {
+  "Restaurante / lanchonete": { lucMin: 4, lucMax: 12, rentMin: 15, rentMax: 45, cmvMin: 28, moMin: 15 },
+  "Padaria / confeitaria": { lucMin: 5, lucMax: 12, rentMin: 15, rentMax: 45, cmvMin: 30, moMin: 15 },
+  "Estética / beleza": { lucMin: 8, lucMax: 20, rentMin: 20, rentMax: 60, cmvMin: 10, moMin: 20 },
+  "Moda / brechó": { lucMin: 4, lucMax: 10, rentMin: 15, rentMax: 40, cmvMin: 40, moMin: 10 },
+  "Semijoias / acessórios": { lucMin: 6, lucMax: 15, rentMin: 15, rentMax: 45, cmvMin: 30, moMin: 8 },
+  "Sorveteria": { lucMin: 5, lucMax: 14, rentMin: 15, rentMax: 45, cmvMin: 30, moMin: 12 },
+  "Papelaria / livraria": { lucMin: 3, lucMax: 8, rentMin: 12, rentMax: 35, cmvMin: 50, moMin: 8 },
+  "Pet shop": { lucMin: 5, lucMax: 15, rentMin: 15, rentMax: 50, cmvMin: 30, moMin: 15 },
+  "Academia / estúdio fitness": { lucMin: 8, lucMax: 20, rentMin: 20, rentMax: 60, cmvMin: 5, moMin: 25 },
+  "Loja de conveniência / mercadinho": { lucMin: 2, lucMax: 6, rentMin: 10, rentMax: 30, cmvMin: 55, moMin: 8 },
+  "Oficina mecânica / autopeças": { lucMin: 6, lucMax: 15, rentMin: 15, rentMax: 50, cmvMin: 35, moMin: 20 },
+  "Salão de festas / eventos": { lucMin: 8, lucMax: 20, rentMin: 15, rentMax: 50, cmvMin: 15, moMin: 20 },
+  "Lavanderia": { lucMin: 8, lucMax: 20, rentMin: 20, rentMax: 60, cmvMin: 10, moMin: 20 },
+  "Floricultura": { lucMin: 4, lucMax: 12, rentMin: 15, rentMax: 45, cmvMin: 35, moMin: 12 },
+};
+const MERC_ROTULOS = [
+  ["lucMax", "Lucratividade máxima realista (%)", "Acima disso a empresa é tratada como otimista demais."],
+  ["lucMin", "Lucratividade mínima do segmento (%)", "Usada para definir o cenário sugerido."],
+  ["rentMax", "Rentabilidade máxima realista (% ao ano)", "Acima disso o retorno é otimista demais (payback = 100 ÷ rentabilidade)."],
+  ["rentMin", "Rentabilidade mínima do segmento (% ao ano)", "Usada para definir o cenário sugerido."],
+  ["cmvMin", "CMV mínimo do segmento (% do faturamento)", "Abaixo disso o custo da mercadoria é considerado subestimado."],
+  ["moMin", "Mão de obra mínima do segmento (% do faturamento)", "Abaixo disso a equipe é considerada subdimensionada."],
+];
+const mercPadraoSeg = (segmento) => ({ ...MERC_GERAL, ...(MERC_SEG[segmento] || {}) });
 function refsDoSegmento(cfg, segmento) {
-  const mine = (cfg && cfg[segmento]) || {}; const out = { ...REFS_PADRAO };
-  Object.keys(REFS_PADRAO).forEach((k) => { const v = Number(mine[k]); if (mine[k] !== undefined && mine[k] !== "" && Number.isFinite(v) && v >= 0) out[k] = v; });
+  const mine = (cfg && cfg[segmento]) || {}; const out = { ...REFS_PADRAO, ...mercPadraoSeg(segmento) };
+  Object.keys(out).forEach((k) => { const v = Number(mine[k]); if (mine[k] !== undefined && mine[k] !== "" && Number.isFinite(v) && v >= 0) out[k] = v; });
   return out;
 }
 const mediana = (arr) => { const a = arr.filter((x) => Number.isFinite(x)).sort((x, y) => x - y); if (!a.length) return null; const m = Math.floor(a.length / 2); return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
@@ -8844,6 +8873,76 @@ const PA = (() => {
       } };
   }
 
+  // ---- Realismo de mercado: aproxima a empresa das faixas típicas do segmento (só corrige o que está "bom demais") ----
+  const MERC_MAX = { cmv: 150, mo: 1e9, div: 1e9, preco: 40, qtd: 50 };
+  function mercadoSim(L, m) {
+    const X = clone(L);
+    if (m.cmv > 0) { const f = 1 + m.cmv / 100; const cu = {}; Object.keys(X.m8.custosUnit || {}).forEach((k) => { cu[k] = r2((Number(X.m8.custosUnit[k]) || 0) * f); }); X.m8.custosUnit = cu; X.m6.itens = X.m6.itens.map((x) => ({ ...x, custoUnit: Math.round((Number(x.custoUnit) || 0) * f * 10000) / 10000 })); }
+    if (m.mo > 0) { const dm = detalheMaoDeObra(X.m9); const pc = dm.modo === "grupos" ? dm.pctGrupos : 0; X.m9.itens = [...X.m9.itens, { id: uid(), funcao: "Reforço de equipe (realismo de mercado)", qtd: 1, salario: r2(m.mo / (1 + pc / 100)), vt: 0, vr: 0, ...(dm.modo === "grupos" ? {} : { pctEncargos: 0 }) }]; }
+    if (m.div > 0) X.m11.itens = [...X.m11.itens, { id: uid(), desc: "Divulgação e marketing (realismo de mercado)", valor: r2(m.div) }];
+    if (m.preco > 0) X.m5.itens = X.m5.itens.map((x) => ({ ...x, precoUnit: r2((Number(x.precoUnit) || 0) * (1 - m.preco / 100)) }));
+    if (m.qtd > 0) X.m5.itens = X.m5.itens.map((x) => (Number(x.qtd) > 0 ? { ...x, qtd: Math.max(1, Math.round(Number(x.qtd) * (1 - m.qtd / 100))) } : x));
+    return X;
+  }
+  function mercado(L, ctx) {
+    ctx = ctx || {}; const R = { ...MERC_GERAL, ...REFS_PADRAO, ...(ctx.refs || {}) };
+    const c = calcular(L);
+    if (!(c.faturamento > 0) || !(c.investimentoTotal > 0)) return null;
+    const F = c.faturamento; const cmvP = (c.cmv / F) * 100; const moP = (c.maoDeObra / F) * 100;
+    const cmvMax = Math.max(R.cmvMax, R.cmvMin + 10); const moMax = Math.max(R.moMax, R.moMin + 10);
+    const fl = { cmv: c.cmv > 0 && cmvP < R.cmvMin, mo: moP < R.moMin, luc: c.lucratividade > R.lucMax, rent: c.rentabilidade > R.rentMax };
+    if (!Object.values(fl).some(Boolean)) return null;
+    const pl = { cmv: 0, mo: 0, div: 0, preco: 0, qtd: 0 };
+    if (fl.cmv) { const t = R.cmvMin + 0.25 * (cmvMax - R.cmvMin); pl.cmv = Math.min(MERC_MAX.cmv, Math.ceil((t / cmvP - 1) * 1000) / 10); }
+    if (fl.mo) { const c1 = calcular(mercadoSim(L, pl)); const t = R.moMin + 0.25 * (moMax - R.moMin); const extra = (t / 100) * c1.faturamento - c1.maoDeObra; if (extra > 0) pl.mo = Math.ceil(extra); }
+    const tL = R.lucMin + 0.65 * (R.lucMax - R.lucMin); const tR = R.rentMin + 0.65 * (R.rentMax - R.rentMin);
+    const c2 = calcular(mercadoSim(L, pl));
+    if (c2.lucratividade > R.lucMax || c2.rentabilidade > R.rentMax) {
+      const tC = R.cmvMin + 0.25 * (cmvMax - R.cmvMin);
+      // o custo acompanha o preço: com preço menor o CMV% sobe, então o aumento de custo necessário para chegar ao alvo diminui
+      const mk = (chave, x) => { const m = { ...pl, [chave]: x }; if (fl.cmv && chave === "preco") m.cmv = Math.max(0, Math.min(MERC_MAX.cmv, Math.ceil(((tC * (1 - x / 100)) / cmvP - 1) * 1000) / 10)); return m; };
+      const ok = (m) => { const k = calcular(mercadoSim(L, m)); return k.lucratividade <= tL && k.rentabilidade <= tR; };
+      const bis = (chave, max) => { if (!ok(mk(chave, max))) return null; let lo = 0, hi = max; for (let i = 0; i < 24; i++) { const mid = (lo + hi) / 2; if (ok(mk(chave, mid))) hi = mid; else lo = mid; } return Math.min(max, Math.ceil(hi * 2) / 2); };
+      const LIMP = 25, LIMQ = 30;
+      const pp = bis("preco", LIMP);
+      if (pp != null) Object.assign(pl, mk("preco", pp));
+      else { Object.assign(pl, mk("preco", LIMP)); const qq = bis("qtd", LIMQ); pl.qtd = qq != null ? qq : LIMQ; }
+    }
+    const depois = calcular(mercadoSim(L, pl));
+    const fx = (a, b, sf) => `${fmtNum(a, 0)}${sf} a ${fmtNum(b, 0)}${sf}`;
+    const sit = (v, mn, mx) => (v > mx ? "acima" : v < mn ? "abaixo" : "ok");
+    const pay = (k) => (k.prazoRetorno == null ? "não se paga" : `${fmtNum(k.prazoRetorno, 1)} anos`);
+    const tabela = [
+      { rot: "Lucratividade", hoje: `${fmtNum(c.lucratividade, 1)}%`, faixa: fx(R.lucMin, R.lucMax, "%"), sit: sit(c.lucratividade, R.lucMin, R.lucMax), depois: `${fmtNum(depois.lucratividade, 1)}%` },
+      { rot: "Rentabilidade ao ano", hoje: `${fmtNum(c.rentabilidade, 1)}%`, faixa: fx(R.rentMin, R.rentMax, "%"), sit: sit(c.rentabilidade, R.rentMin, R.rentMax), depois: `${fmtNum(depois.rentabilidade, 1)}%` },
+      { rot: "Prazo de retorno (payback)", hoje: pay(c), faixa: `${fmtNum(100 / R.rentMax, 1)} a ${fmtNum(100 / R.rentMin, 1)} anos`, sit: c.prazoRetorno == null ? "—" : c.rentabilidade > R.rentMax ? "curto demais" : c.rentabilidade < R.rentMin ? "longo" : "ok", depois: pay(depois) },
+      { rot: "CMV (custo da mercadoria)", hoje: `${fmtNum(cmvP, 0)}%`, faixa: fx(R.cmvMin, cmvMax, "%"), sit: c.cmv > 0 ? sit(cmvP, R.cmvMin, cmvMax) : "—", depois: `${fmtNum((depois.cmv / depois.faturamento) * 100, 0)}%` },
+      { rot: "Mão de obra", hoje: `${fmtNum(moP, 0)}%`, faixa: fx(R.moMin, moMax, "%"), sit: sit(moP, R.moMin, moMax), depois: `${fmtNum((depois.maoDeObra / depois.faturamento) * 100, 0)}%` },
+    ];
+    const sugDiv = r2(F * 0.02);
+    const temDiv = (L.m11.itens || []).some((x) => /divulg|marketing|propaganda|publicidade|an[uú]ncio|tr[aá]fego|impulsion/.test(normTxt(x.desc || "")));
+    const params = [
+      { k: "cmv", rotulo: "custo dos produtos +%", padrao: pl.cmv, max: MERC_MAX.cmv, dica: "Módulo 8 (e 6): subir o custo unitário para a faixa do segmento" },
+      { k: "mo", rotulo: "mão de obra +R$/mês", padrao: pl.mo, max: MERC_MAX.mo, dica: "Módulo 9: inclui um reforço de equipe com encargos" },
+      { k: "div", rotulo: "divulgação R$/mês", padrao: pl.div, max: MERC_MAX.div, dica: temDiv ? "Módulo 11: já há item de divulgação" : `Módulo 11: sem verba de divulgação; sugestão de 2% = ${fmtBRL(sugDiv)}` },
+      { k: "preco", rotulo: "preços −%", padrao: pl.preco, max: MERC_MAX.preco, dica: "Módulo 5: aproxima o preço do praticado no segmento" },
+      { k: "qtd", rotulo: "quantidades −%", padrao: pl.qtd, max: MERC_MAX.qtd, dica: "Módulo 5: volume mais realista para o início da empresa" },
+    ];
+    const inviavel = depois.resultadoOperacional <= 0 || depois.prazoRetorno == null || depois.prazoRetorno > (R.retornoMax ?? 5);
+    const resumo = `Realismo de mercado (${ctx.segmento || "segmento"}): lucratividade ${fmtNum(c.lucratividade, 1)}% → ${fmtNum(depois.lucratividade, 1)}%, rentabilidade ${fmtNum(c.rentabilidade, 1)}% → ${fmtNum(depois.rentabilidade, 1)}% ao ano, retorno ${pay(c)} → ${pay(depois)}.`;
+    return { chave: "R|mer", grupo: "Mercado", mods: ["m5", "m6", "m8", "m9", "m11"], rotulo: "Realismo de mercado", tabela, params, inviavel, resumo, padrao: "manter",
+      opcoes: [{ id: "manter", rotulo: "Deixar como está" }, { id: "realista", rotulo: "Cenário realista sugerido (editável)", recomendado: true, params }],
+      aplicar: (Lx, opt, v, Xx) => {
+        if (opt !== "realista") return;
+        const m = {}; let alguma = false;
+        params.forEach((pr) => { const n = Math.min(pr.max, Number(v?.[pr.k] ?? pr.padrao)); if (n > 0) { m[pr.k] = n; alguma = true; } });
+        if (!alguma) return;
+        const nova = mercadoSim(Lx, m); ["m5", "m6", "m8", "m9", "m11"].forEach((k) => { Lx[k] = nova[k]; });
+        const txt = { cmv: "custo dos produtos +", mo: "mão de obra +R$ ", div: "divulgação R$ ", preco: "preços −", qtd: "quantidades −" };
+        Xx.linhas.push(`Realismo de mercado — ${Object.keys(m).map((k) => `${txt[k]}${fmtNum(m[k], 1)}${["mo", "div"].includes(k) ? "/mês" : "%"}`).join(" · ")}`);
+      } };
+  }
+
   // escolhas = { [chave]: { opt, v } } → { lancDepois, aplicados:[chave], taxaDepois, capacidadeDepois, linhasExtras }
   function aplicar(lancIn, escolhas, ctx) {
     const base = mergeLancamentos(lancIn); const L = clone(base); const aplicados = []; ctx = ctx || {};
@@ -8863,6 +8962,16 @@ const PA = (() => {
         if (JSON.stringify(L) !== aL || JSON.stringify(X.capacidade) !== aC) { aplicados.push("H|cap"); X.linhas.splice(n0, 0, cp.resumo); }
       }
     }
+    // Realismo de mercado: sobre o cenário já corrigido e com a capacidade decidida; a viabilidade vem depois
+    const em = escolhas["R|mer"];
+    if (em && em.opt && em.opt !== "manter") {
+      const mp = mercado(L, { ...ctx, capacidade: X.capacidade || ctx.capacidade });
+      if (mp && mp.opcoes.some((o) => o.id === em.opt)) {
+        const aL = JSON.stringify(L); const n0 = X.linhas.length;
+        mp.aplicar(L, em.opt, em.v, X);
+        if (JSON.stringify(L) !== aL) { aplicados.push("R|mer"); X.linhas.splice(n0, 0, mp.resumo); }
+      }
+    }
     // Viabilidade: por último, sobre o cenário já corrigido (e com a capacidade já decidida)
     const ev = escolhas["V|via"];
     if (ev && ev.opt && ev.opt !== "manter") {
@@ -8877,7 +8986,7 @@ const PA = (() => {
     const capMudou = JSON.stringify(X.capacidade ?? null) !== JSON.stringify(ctx.capacidade ?? null);
     return { lancDepois: L, aplicados, taxaDepois: taxaMudou ? X.taxaCrescimentoFluxo : undefined, capacidadeDepois: capMudou ? X.capacidade : undefined, linhasExtras: X.linhas };
   }
-  return { analisar, aplicar, capacidade, viabilidade };
+  return { analisar, aplicar, capacidade, viabilidade, mercado, mercadoSim };
 })();
 
 // ===== Ajuste geral (menu Gestão → Ajuste geral) =====
@@ -9331,12 +9440,17 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
     const capPt = PA.capacidade(cen.lancDepois, paPontos.ctx);
     const escC = { ...esc }; if (capPt) escC["H|cap"] = val(capPt, paEsc["H|cap"]);
     const rc = PA.aplicar(paPontos.lanc, escC, paPontos.ctx);
-    // 4) viabilidade (retorno do investimento) do cenário já corrigido e com a capacidade decidida
+    // 4) realismo de mercado do cenário já corrigido e com a capacidade decidida
+    const eM = paEsc["R|mer"] || {};
+    const merPt = PA.mercado(rc.lancDepois, { ...paPontos.ctx, capacidade: rc.capacidadeDepois ?? paPontos.ctx.capacidade });
+    const escM = { ...escC }; if (merPt) escM["R|mer"] = { opt: eM.opt || "manter", v: eM.v || {} };
+    const rm = PA.aplicar(paPontos.lanc, escM, paPontos.ctx);
+    // 5) viabilidade (retorno do investimento) do cenário já corrigido, com o mercado e a capacidade decididos
     const eV = paEsc["V|via"] || {}; const alvo = Number(eV.alvo) > 0 ? Number(eV.alvo) : (paPontos.ctx.refs?.retornoMax ?? 5);
-    const viaPt = PA.viabilidade(rc.lancDepois, { ...paPontos.ctx, capacidade: rc.capacidadeDepois ?? paPontos.ctx.capacidade }, undefined, alvo);
-    const escAll = { ...escC }; if (viaPt) escAll["V|via"] = { opt: eV.opt || "manter", v: eV.v || {}, alvo };
+    const viaPt = PA.viabilidade(rm.lancDepois, { ...paPontos.ctx, capacidade: rm.capacidadeDepois ?? paPontos.ctx.capacidade }, undefined, alvo);
+    const escAll = { ...escM }; if (viaPt) escAll["V|via"] = { opt: eV.opt || "manter", v: eV.v || {}, alvo };
     const fim = PA.aplicar(paPontos.lanc, escAll, paPontos.ctx);
-    return { esc: escAll, capPt, viaPt, ...fim };
+    return { esc: escAll, capPt, merPt, viaPt, ...fim };
   }, [paPontos, paEsc]);
   const paAplicar = async () => {
     if (!paPontos || !paResultado || !paResultado.aplicados.length) return;
@@ -9349,11 +9463,11 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
       const d = await lerDadosEstrito(eqId); const lanc = mergeLancamentos(d.lancamentos);
       const ctxF = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [], refs: paPontos.ctx.refs, capacidade: d.capacidade || null, segmento: paPontos.ctx.segmento };
       const chavesFrescas = new Set(PA.analisar(lanc, null, ctxF).map((p) => p.chave));
-      const escFresco = {}; Object.keys(paResultado.esc).forEach((k) => { if ((chavesFrescas.has(k) || k === "H|cap" || k === "V|via") && paResultado.aplicados.includes(k)) escFresco[k] = paResultado.esc[k]; });
+      const escFresco = {}; Object.keys(paResultado.esc).forEach((k) => { if ((chavesFrescas.has(k) || k === "H|cap" || k === "R|mer" || k === "V|via") && paResultado.aplicados.includes(k)) escFresco[k] = paResultado.esc[k]; });
       if (!Object.keys(escFresco).length) throw new Error("os pontos escolhidos já não existem (a equipe alterou os lançamentos?)");
       const { lancDepois, taxaDepois, capacidadeDepois, linhasExtras } = PA.aplicar(lanc, escFresco, ctxF);
       const mods = {}; const esperado = {}; const linhas = []; const mudancas = [];
-      if (escFresco["H|cap"] || escFresco["V|via"]) linhas.push(...linhasExtras);
+      if (escFresco["H|cap"] || escFresco["R|mer"] || escFresco["V|via"]) linhas.push(...linhasExtras);
       MODS_PONTOS.forEach((m) => {
         if (JSON.stringify(lanc[m]) === JSON.stringify(lancDepois[m])) return;
         mods[m] = lancDepois[m]; esperado[m] = jsonModulo(d.lancamentos, m);
@@ -9636,6 +9750,36 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
                       ))}
                     </div>
                   )}
+                </div>
+              );
+            })()}
+            {paResultado && paResultado.merPt && (() => {
+              const mp = paResultado.merPt; const e = paEsc["R|mer"] || { opt: "manter", v: {} };
+              const setV = (k, val) => paEscolher("R|mer", { v: { ...(e.v || {}), [k]: val } });
+              const cor = (s) => (s === "ok" ? "bg-emerald-900/40 text-emerald-300" : s === "—" ? "bg-slate-800 text-slate-400" : "bg-rose-900/40 text-rose-300");
+              return (
+                <div className="border-2 border-violet-500/60 rounded-xl p-3 bg-slate-900/60">
+                  <div className="text-sm font-bold text-slate-100 mb-1">🌎 Realismo de mercado <span className="text-[11px] font-normal text-slate-400">· {paPontos.ctx.segmento || "segmento não escolhido"}</span></div>
+                  <div className="text-xs text-slate-400 mb-2">O sistema comparou a empresa com as faixas típicas do segmento (referência didática, editável em Referências por segmento) e propõe o cenário mais próximo da realidade. Você marca o que quer aplicar.</div>
+                  <div className="overflow-x-auto"><table className="w-full text-xs mb-2"><thead><tr className="text-slate-500 text-left"><th className="py-1 pr-2">Indicador</th><th className="pr-2">Hoje</th><th className="pr-2">Faixa do segmento</th><th className="pr-2">Situação</th><th>Cenário sugerido</th></tr></thead>
+                    <tbody>{mp.tabela.map((r) => <tr key={r.rot} className="border-t border-slate-700 text-slate-200"><td className="py-1 pr-2">{r.rot}</td><td className="pr-2">{r.hoje}</td><td className="pr-2 text-slate-400">{r.faixa}</td><td className="pr-2"><span className={`text-[10.5px] font-bold rounded-full px-2 py-0.5 ${cor(r.sit)}`}>{r.sit}</span></td><td className="font-bold">{r.depois}</td></tr>)}</tbody></table></div>
+                  {mp.inviavel && <div className="text-xs text-amber-300 bg-amber-950/30 border border-amber-800/50 rounded-lg p-2 mb-2">⚠ Com este cenário realista o resultado fica fraco ou o retorno passa do prazo: o plano de viabilidade (abaixo) mostra como equilibrar.</div>}
+                  <div className="space-y-1.5">
+                    {mp.opcoes.map((op) => (
+                      <label key={op.id} className={`flex items-start gap-2 text-xs rounded-md px-2 py-1.5 border ${op.recomendado ? "border-emerald-600/60 bg-emerald-950/20" : "border-slate-700"}`}>
+                        <input type="radio" className="mt-0.5" name="R|mer" checked={e.opt === op.id} onChange={() => paEscolher("R|mer", { opt: op.id, v: {} })} />
+                        <span className="flex-1 text-slate-300"><b>{op.rotulo}</b>
+                          {op.id === "realista" && e.opt === "realista" && (
+                            <span className="mt-1 block space-y-1">{op.params.map((pr) => (
+                              <span key={pr.k} className="flex flex-wrap items-center gap-2"><span className="w-44 inline-block">{pr.rotulo}:</span>
+                                <input type="number" step="0.5" min="0" max={pr.max < 1e8 ? pr.max : undefined} value={(e.v || {})[pr.k] ?? pr.padrao} onChange={(ev) => setV(pr.k, ev.target.value)} className="w-24 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100" />
+                                <span className="text-[11px] text-slate-500">{pr.dica}</span></span>))}
+                              <span className="block text-[11px] text-slate-500">Deixe 0 no que não quiser aplicar.</span>
+                            </span>)}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               );
             })()}
@@ -10782,6 +10926,17 @@ function GestaoReferenciasSegmentoView({ user, turmas }) {
               <input type="number" min="0" step="0.5" className={inp} value={salvos[seg]?.[k] ?? ""} placeholder={String(REFS_PADRAO[k])} onChange={(e) => gravar(k, e.target.value)} />
             </div>
           ))}
+        </div>
+        <div className="pt-2 border-t border-slate-700">
+          <div className="text-sm font-bold text-slate-100">Faixas de mercado do segmento <span className="text-[11px] font-normal text-slate-500">(usadas no "Realismo de mercado" do Ajuste geral)</span></div>
+          <div className="space-y-2 mt-2">
+            {MERC_ROTULOS.map(([k, rot, dica]) => (
+              <div key={k} className="grid sm:grid-cols-[1fr_auto] gap-2 items-center">
+                <div><div className="text-sm text-slate-200">{rot}</div><div className="text-[11px] text-slate-500">{dica} Padrão do segmento: {mercPadraoSeg(seg)[k]}%</div></div>
+                <input type="number" min="0" step="0.5" className={inp} value={salvos[seg]?.[k] ?? ""} placeholder={String(mercPadraoSeg(seg)[k])} onChange={(e) => gravar(k, e.target.value)} />
+              </div>
+            ))}
+          </div>
         </div>
         <p className="text-[11px] text-slate-500">Valor em uso agora neste segmento: margem mínima {fmtNum(atual.margemMin)}% · crescimento máx. {fmtNum(atual.crescMax)}% ao mês · salto de faturamento {fmtNum(atual.saltoFat)}%.</p>
       </Card>

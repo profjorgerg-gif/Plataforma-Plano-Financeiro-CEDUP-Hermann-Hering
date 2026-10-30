@@ -1,4 +1,4 @@
-// build: 20261030_07h06m Referências por segmento; relatório de ajustes; pontos de crescimento e faturamento
+// build: 20261030_10h05m Capacidade de produção dentro do Ajuste geral (pontos de atenção)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1356,6 +1356,7 @@ function chamadoPassaFiltro(c, filtro) {
 // ============================================================================
 const VERSOES = [
   { versao: "3.6", data: "29/10/2026", itens: [
+    "Pontos de atenção + Capacidade de produção: depois das correções escolhidas, o sistema refaz a análise de capacidade/atendimento da empresa com o NOVO cenário (demanda do Módulo 5 × capacidade que a equipe preencheu, gargalo, utilização e espaço) e propõe: reduzir as quantidades do Módulo 5, acrescentar unidades do gargalo no Módulo 1 (você informa o valor), ampliar horas com horas extras no Módulo 9 (você informa o custo) ou, se houver folga grande, aproveitar a folga. A capacidade da equipe também é atualizada, tudo entra no Relatório de ajustes e pode ser desfeito. Sem dados de capacidade, o sistema só avisa.",
     "Professor: novo item Gestão → Referências por segmento. Você define, para cada um dos 15 segmentos, a margem mínima por produto, o crescimento mensal máximo e o salto de faturamento aceitos; os Pontos de atenção passam a usar esses limites. A tela compara com a mediana da turma (CMV, mão de obra e margem) e lista as empresas fora do limite.",
     "Relatório de ajustes: todo ajuste que o professor faz (automático, manual ou pontos de atenção) fica gravado na própria empresa, com antes → depois, motivo, data e efeito no resultado, e continua visível mesmo se for desfeito. O aluno vê em Apoio ao planejamento → Ajustes do professor; o professor vê de todas as empresas em Gestão → Relatório de ajustes. Os dois podem imprimir ou salvar em PDF.",
     "Pontos de atenção agora também apontam faturamento que saltou em relação à última versão salva (reduzir quantidades) e crescimento mensal alto no Fluxo de caixa (zerar ou usar outra taxa). Mais palavras reconhecidas em Marketing (Instagram, Meta Ads…) e Software PDV (Omie, Bling, ERP…).",
@@ -8701,19 +8702,84 @@ const PA = (() => {
     return pontos;
   }
 
-  // escolhas = { [chave]: { opt, v } } → { lancDepois, aplicados:[chave] }
+  // Capacidade de produção/atendimento do CENÁRIO (depois das demais escolhas) × demanda do Módulo 5.
+  // Usa os dados de capacidade que a própria equipe preencheu; sem eles, só avisa (não inventa números).
+  function capacidade(L, ctx, X) {
+    ctx = ctx || {}; const cap = (X && X.capacidade) || ctx.capacidade || {};
+    const usou = !!Object.values(cap.recursos || {}).some((v) => capNum(v?.qtd) > 0);
+    const semDados = (texto) => ({ chave: "H|cap", grupo: "Capacidade", semDados: true, texto, opcoes: [{ id: "manter", rotulo: "Deixar como está" }], padrao: "manter", aplicar: () => {} });
+    if (!usou) return semDados("A equipe ainda não preencheu a Capacidade de produção/atendimento: sem dados de capacidade, nada é proposto.");
+    const { modelo, demanda } = capDemandaEquipe(modeloCapacidade(ctx.segmento), cap, L.m5.itens);
+    const R = calcularCapacidade(modelo, cap, demanda);
+    if (R.capacidade == null) return semDados("Os recursos da Capacidade estão incompletos (faltam quantidades ou tempos): nada é proposto.");
+    const uso = R.demanda > 0 ? R.demanda / R.capacidade : null; const un = modelo.unidade;
+    const resumo = `Análise de capacidade do novo cenário: demanda ${fmtNum(R.demanda, 0)} ${un}/mês, capacidade ${fmtNum(R.capacidade, 0)} (utilização ${uso == null ? "—" : fmtNum(uso * 100, 0) + "%"}), gargalo: ${R.gargalo.r.nome}.`;
+    const info = { demanda: R.demanda, capacidade: R.capacidade, gargalo: R.gargalo.r.nome, utilizacao: uso, espaco: R.espaco?.uso ?? null, unidade: un, falta: R.falta };
+    const excl = cap.excluidos || {};
+    const escalar = (Lx, f) => { Lx.m5.itens = Lx.m5.itens.map((x) => (Number(x.qtd) > 0 && !excl[x.id] ? { ...x, qtd: Math.max(1, Math.floor(Number(x.qtd) * f)) } : x)); };
+    const base = { chave: "H|cap", grupo: "Capacidade", mods: ["m1", "m5", "m9"], rotulo: "Capacidade do novo cenário", info, resumo, padrao: "manter" };
+    const espTxt = R.espaco?.uso > 1 ? " ⚠ O espaço (m²) não comporta os recursos informados." : "";
+    if (R.demanda > 0 && R.falta > 0) {
+      const g = R.gargalo; const f = R.capacidade / R.demanda; const pct = Math.round((1 - f) * 100);
+      const nUn = Math.max(1, Math.ceil(R.falta / (g.porHora * R.horasEf)));
+      const horasDia = capNum(cap.funcionamento?.horasDia) || 8; const horasNec = Math.round((horasDia * R.demanda / R.capacidade) * 10) / 10;
+      const opcoes = [{ id: "manter", rotulo: "Deixar como está" },
+        { id: "reduzir", rotulo: `Faturamento: reduzir as quantidades do Módulo 5 em ${pct}% para caber na capacidade` },
+        { id: "recurso", rotulo: `Investimento: acrescentar ${nUn} ${g.r.nome.toLowerCase()} no Módulo 1 (a capacidade sobe e o gargalo é reavaliado)`, param: { rotulo: "Valor unitário (R$)", padrao: 0 } }];
+      if (horasNec <= 16) opcoes.push({ id: "horas", rotulo: `Equipe/horas: ampliar o funcionamento de ${fmtNum(horasDia, 1)} para ${fmtNum(horasNec, 1)} h/dia, com horas extras no Módulo 9`, param: { rotulo: "Custo mensal (R$)", padrao: 0 } });
+      return { ...base, texto: `Não atende: demanda de ${fmtNum(R.demanda, 0)} ${un}/mês contra capacidade de ${fmtNum(R.capacidade, 0)} (gargalo: ${g.r.nome}).${espTxt}`, opcoes,
+        aplicar: (Lx, opt, v, Xx) => {
+          if (opt === "reduzir") { escalar(Lx, f); Xx.linhas.push(`Capacidade — quantidades do Módulo 5 reduzidas em ${pct}% para caber em ${fmtNum(R.capacidade, 0)} ${un}/mês`); }
+          if (opt === "recurso") {
+            const val = Number(v) || 0; if (!(val > 0)) return;
+            Lx.m1.itens = [...Lx.m1.itens, { id: uid(), desc: `${g.r.nome} (ampliação de capacidade)`, categoria: "Equipamentos", qtd: nUn, valorUnit: r2(val) }];
+            const c = clone(Xx.capacidade || {}); c.recursos = { ...(c.recursos || {}), [g.r.id]: { ...(c.recursos?.[g.r.id] || {}), qtd: g.qtd + nUn } }; Xx.capacidade = c;
+            Xx.linhas.push(`Capacidade de produção — ${g.r.nome}: ${g.qtd} → ${g.qtd + nUn} unidade(s)`);
+          }
+          if (opt === "horas") {
+            const val = Number(v) || 0; if (!(val > 0)) return;
+            Lx.m9.itens = [...Lx.m9.itens, { id: uid(), funcao: "Horas extras / turno adicional (capacidade)", qtd: 1, salario: r2(val), vt: 0, vr: 0 }];
+            const c = clone(Xx.capacidade || {}); c.funcionamento = { ...(c.funcionamento || {}), horasDia: horasNec }; Xx.capacidade = c;
+            Xx.linhas.push(`Capacidade de produção — horas por dia: ${fmtNum(horasDia, 1)} → ${fmtNum(horasNec, 1)}`);
+          }
+        } };
+    }
+    if (R.sobra) {
+      return { ...base, texto: `Folga grande: demanda de ${fmtNum(R.demanda, 0)} ${un}/mês para capacidade de ${fmtNum(R.capacidade, 0)} (utilização ${fmtNum(uso * 100, 0)}%). Vale rever o investimento (Módulo 1) e a equipe (Módulo 9), ou a demanda.${espTxt}`,
+        opcoes: [{ id: "manter", rotulo: "Deixar como está" }, { id: "aproveitar", rotulo: "Aproveitar a folga: aumentar as quantidades do Módulo 5 até a utilização alvo", param: { rotulo: "Utilização alvo (%)", padrao: 80 } }],
+        aplicar: (Lx, opt, v, Xx) => {
+          if (opt !== "aproveitar") return; const alvo = Number(v) || 0; if (!(alvo > uso * 100 && alvo <= 100)) return;
+          const f = (alvo / 100) / uso; Lx.m5.itens = Lx.m5.itens.map((x) => (Number(x.qtd) > 0 && !excl[x.id] ? { ...x, qtd: Math.max(1, Math.floor(Number(x.qtd) * f)) } : x));
+          Xx.linhas.push(`Capacidade — quantidades do Módulo 5 aumentadas em ${fmtNum((f - 1) * 100, 0)}% (utilização alvo ${fmtNum(alvo, 0)}%)`);
+        } };
+    }
+    return { ...base, ok: true, texto: R.demanda > 0 ? `Atende: demanda de ${fmtNum(R.demanda, 0)} ${un}/mês para capacidade de ${fmtNum(R.capacidade, 0)} (utilização ${fmtNum(uso * 100, 0)}%).${espTxt}` : "O Módulo 5 está sem quantidades: não há demanda para comparar.", opcoes: [{ id: "manter", rotulo: "Deixar como está" }], aplicar: () => {} };
+  }
+
+  // escolhas = { [chave]: { opt, v } } → { lancDepois, aplicados:[chave], taxaDepois, capacidadeDepois, linhasExtras }
   function aplicar(lancIn, escolhas, ctx) {
     const base = mergeLancamentos(lancIn); const L = clone(base); const aplicados = []; ctx = ctx || {};
-    const X = { taxaCrescimentoFluxo: ctx.taxaCrescimento ?? 0 };
+    const X = { taxaCrescimentoFluxo: ctx.taxaCrescimento ?? 0, capacidade: ctx.capacidade ? clone(ctx.capacidade) : null, linhas: [] };
     analisar(base, null, ctx).forEach((pt) => {
       const e = escolhas[pt.chave]; if (!e || !e.opt || e.opt === "manter") return;
       const antes = JSON.stringify([L, X]); pt.aplicar(L, e.opt, e.v, X);
       if (JSON.stringify([L, X]) !== antes) aplicados.push(pt.chave);
     });
+    // Capacidade: sempre por último, sobre o cenário já corrigido
+    const eh = escolhas["H|cap"];
+    if (eh && eh.opt && eh.opt !== "manter") {
+      const cp = capacidade(L, ctx, X);
+      if (cp && !cp.semDados && cp.opcoes.some((o) => o.id === eh.opt)) {
+        const aL = JSON.stringify(L); const aC = JSON.stringify(X.capacidade); const n0 = X.linhas.length;
+        cp.aplicar(L, eh.opt, eh.v, X);
+        if (JSON.stringify(L) !== aL || JSON.stringify(X.capacidade) !== aC) { aplicados.push("H|cap"); X.linhas.splice(n0, 0, cp.resumo); }
+      }
+    }
     const taxaMudou = String(X.taxaCrescimentoFluxo ?? 0) !== String(ctx.taxaCrescimento ?? 0);
-    return { lancDepois: L, aplicados, taxaDepois: taxaMudou ? X.taxaCrescimentoFluxo : undefined };
+    const capMudou = JSON.stringify(X.capacidade ?? null) !== JSON.stringify(ctx.capacidade ?? null);
+    return { lancDepois: L, aplicados, taxaDepois: taxaMudou ? X.taxaCrescimentoFluxo : undefined, capacidadeDepois: capMudou ? X.capacidade : undefined, linhasExtras: X.linhas };
   }
-  return { analisar, aplicar };
+  return { analisar, aplicar, capacidade };
 })();
 
 // ===== Ajuste geral (menu Gestão → Ajuste geral) =====
@@ -8867,7 +8933,9 @@ function diffAjuste(a, b, rot, out) {
   }
   if (JSON.stringify(a) !== JSON.stringify(b)) out.push({ rot, antes: fmtValAj(a), depois: fmtValAj(b) });
 }
-const rotModAj = (modId) => (modId === "fluxo" ? "Fluxo de caixa" : `Módulo ${String(modId).slice(1)}`);
+const CAMPO_EXTRA_AJ = { fluxo: "taxaCrescimentoFluxo", capacidade: "capacidade" };
+const MODS_PONTOS = ["m1", "m4", "m5", "m6", "m8", "m9", "m10", "m11"];
+const rotModAj = (modId) => (modId === "fluxo" ? "Fluxo de caixa" : modId === "capacidade" ? "Capacidade de produção" : `Módulo ${String(modId).slice(1)}`);
 function linhasDiffModulo(nMod, antes, depois) {
   const out = []; diffAjuste(antes, depois, `Módulo ${nMod}`, out);
   return out.map((x) => `${x.rot}: ${x.antes} → ${x.depois}`);
@@ -8953,7 +9021,7 @@ function PreviaAjusteAnalises({ calcAntes, calcDepois, dadosEq }) {
 
 // Grava, numa equipe, SÓ os módulos informados (lancamentos[modId]) + o aviso — relendo os dados na hora
 // e conferindo que a equipe continua bloqueada. `esperado[modId]` = JSON do módulo que o professor viu.
-async function gravarModulosEquipe(turmaId, equipeId, novos, esperado, comentario, relato, taxa) {
+async function gravarModulosEquipe(turmaId, equipeId, novos, esperado, comentario, relato, extras) {
   const aval = await lerAvaliacao(turmaId);
   if (!equipeEmAvaliacao(aval, equipeId)) throw new Error("a equipe não está mais bloqueada para avaliação");
   const d = await lerDadosEstrito(equipeId);
@@ -8967,7 +9035,11 @@ async function gravarModulosEquipe(turmaId, equipeId, novos, esperado, comentari
   const relat = relato ? [...(d.relatorioAjustes || []), relato] : (d.relatorioAjustes || undefined);
   const novoD = { ...d, lancamentos: lanc, comentarios: coments };
   if (relat) novoD.relatorioAjustes = relat;
-  if (taxa) { if (String(d.taxaCrescimentoFluxo ?? 0) !== String(taxa.esperado ?? 0)) throw new Error("a equipe alterou o crescimento do Fluxo de caixa depois que você abriu — recarregue e refaça"); novoD.taxaCrescimentoFluxo = taxa.novo; }
+  // Campos fora dos módulos de lançamento (crescimento do Fluxo de caixa, capacidade): conferidos e gravados juntos.
+  if (extras) Object.keys(extras).forEach((campo) => {
+    if (JSON.stringify(d[campo] ?? null) !== JSON.stringify(extras[campo].esperado ?? null)) throw new Error(`a equipe alterou ${campo === "capacidade" ? "a Capacidade de produção" : "o crescimento do Fluxo de caixa"} depois que você abriu — recarregue e refaça`);
+    novoD[campo] = extras[campo].novo;
+  });
   await window.storage.set(`dados_equipe_${equipeId}`, JSON.stringify(novoD), true);
 }
 
@@ -9143,7 +9215,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
       const d = await lerDadosEstrito(paEq); const lanc = mergeLancamentos(d.lancamentos);
       const refsCfg = await window.storage.get(`refs_segmento_${turma.professorUid}`, true).then((x) => (x ? JSON.parse(x.value) : null)).catch(() => null);
       const segEq = equipes.find((e) => e.id === paEq)?.segmento;
-      const ctx = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [], refs: refsDoSegmento(refsCfg, segEq) };
+      const ctx = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [], refs: refsDoSegmento(refsCfg, segEq), capacidade: d.capacidade || null, segmento: segEq };
       const pts = PA.analisar(lanc, null, ctx);
       const esc = {}; pts.forEach((pt) => { esc[pt.chave] = { opt: pt.padrao || "manter", v: "" }; });
       setPaPontos({ equipeId: paEq, lanc, pts, dados: d, ctx }); setPaEsc(esc);
@@ -9154,11 +9226,14 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
   const paResultado = useMemo(() => {
     if (!paPontos) return null;
     // parâmetro vazio usa o valor padrão da opção
-    const esc = {}; paPontos.pts.forEach((pt) => {
-      const e = paEsc[pt.chave] || { opt: "manter" }; const op = pt.opcoes.find((o) => o.id === e.opt);
-      esc[pt.chave] = { opt: e.opt, v: e.v === "" || e.v == null ? (op?.param?.padrao ?? "") : e.v };
-    });
-    return { esc, ...PA.aplicar(paPontos.lanc, esc, paPontos.ctx) };
+    const val = (pt, e0) => { const e = e0 || { opt: "manter" }; const op = pt.opcoes.find((o) => o.id === e.opt); return { opt: e.opt, v: e.v === "" || e.v == null ? (op?.param?.padrao ?? "") : e.v }; };
+    const esc = {}; paPontos.pts.forEach((pt) => { esc[pt.chave] = val(pt, paEsc[pt.chave]); });
+    // 1) cenário depois das escolhas dos pontos; 2) capacidade desse cenário; 3) escolha de capacidade por último
+    const cen = PA.aplicar(paPontos.lanc, esc, paPontos.ctx);
+    const capPt = PA.capacidade(cen.lancDepois, paPontos.ctx);
+    const escAll = { ...esc }; if (capPt) escAll["H|cap"] = val(capPt, paEsc["H|cap"]);
+    const fim = PA.aplicar(paPontos.lanc, escAll, paPontos.ctx);
+    return { esc: escAll, capPt, ...fim };
   }, [paPontos, paEsc]);
   const paAplicar = async () => {
     if (!paPontos || !paResultado || !paResultado.aplicados.length) return;
@@ -9169,13 +9244,14 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
     try {
       if (!equipePronta(await lerAvaliacao(turma.id), eqId, Date.now())) throw new Error("a equipe não está mais bloqueada/pronta");
       const d = await lerDadosEstrito(eqId); const lanc = mergeLancamentos(d.lancamentos);
-      const ctxF = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [], refs: paPontos.ctx.refs };
+      const ctxF = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [], refs: paPontos.ctx.refs, capacidade: d.capacidade || null, segmento: paPontos.ctx.segmento };
       const chavesFrescas = new Set(PA.analisar(lanc, null, ctxF).map((p) => p.chave));
-      const escFresco = {}; Object.keys(paResultado.esc).forEach((k) => { if (chavesFrescas.has(k) && paResultado.aplicados.includes(k)) escFresco[k] = paResultado.esc[k]; });
+      const escFresco = {}; Object.keys(paResultado.esc).forEach((k) => { if ((chavesFrescas.has(k) || k === "H|cap") && paResultado.aplicados.includes(k)) escFresco[k] = paResultado.esc[k]; });
       if (!Object.keys(escFresco).length) throw new Error("os pontos escolhidos já não existem (a equipe alterou os lançamentos?)");
-      const { lancDepois, taxaDepois } = PA.aplicar(lanc, escFresco, ctxF);
+      const { lancDepois, taxaDepois, capacidadeDepois, linhasExtras } = PA.aplicar(lanc, escFresco, ctxF);
       const mods = {}; const esperado = {}; const linhas = []; const mudancas = [];
-      ["m1", "m4", "m5", "m6", "m8", "m10", "m11"].forEach((m) => {
+      if (escFresco["H|cap"]) linhas.push(...linhasExtras);
+      MODS_PONTOS.forEach((m) => {
         if (JSON.stringify(lanc[m]) === JSON.stringify(lancDepois[m])) return;
         mods[m] = lancDepois[m]; esperado[m] = jsonModulo(d.lancamentos, m);
         linhas.push(...linhasDiffModulo(Number(m.slice(1)), lanc[m], lancDepois[m]));
@@ -9183,11 +9259,18 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
       });
       const taxaAntes = d.taxaCrescimentoFluxo ?? 0;
       if (taxaDepois !== undefined) { linhas.push(`Fluxo de caixa anual — crescimento mensal: ${fmtNum(Number(taxaAntes) || 0)}% → ${fmtNum(Number(taxaDepois) || 0)}%`); mudancas.push({ equipeId: eqId, equipeNome: nomeEq(eqId), modId: "fluxo", antes: taxaAntes, depois: taxaDepois }); }
+      const extras = {};
+      if (taxaDepois !== undefined) extras.taxaCrescimentoFluxo = { esperado: taxaAntes, novo: taxaDepois };
+      if (capacidadeDepois !== undefined) {
+        extras.capacidade = { esperado: d.capacidade ?? null, novo: capacidadeDepois };
+        mudancas.push({ equipeId: eqId, equipeNome: nomeEq(eqId), modId: "capacidade", antes: d.capacidade ?? null, depois: capacidadeDepois });
+      }
+      const modsRel = { ...mods, ...(taxaDepois !== undefined ? { fluxo: 1 } : {}), ...(capacidadeDepois !== undefined ? { capacidade: 1 } : {}) };
       if (!mudancas.length) throw new Error("nenhuma alteração resultou das escolhas");
       await registrarAjusteProf(turma.id, { id, em: Date.now(), por: professorNome, tipo: "pontos", motivo: "Pontos de atenção (correções escolhidas pelo professor)", mudancas, desfeito: false });
       registrado = true;
       const coment = { modulo: "Geral", texto: textoAvisoAjuste(professorNome, linhas, "Correções feitas pelo professor nos pontos de atenção do seu plano."), autor: professorNome, timestamp: Date.now(), tipo: "ajuste", lote: id };
-      await gravarModulosEquipe(turma.id, eqId, mods, esperado, coment, montarRelato({ id, por: professorNome, tipo: "pontos", motivo: "Pontos de atenção (correções escolhidas pelo professor).", linhas, lancAntes: lanc, lancDepois, mods: taxaDepois !== undefined ? { ...mods, fluxo: 1 } : mods }), taxaDepois !== undefined ? { esperado: taxaAntes, novo: taxaDepois } : undefined);
+      await gravarModulosEquipe(turma.id, eqId, mods, esperado, coment, montarRelato({ id, por: professorNome, tipo: "pontos", motivo: "Pontos de atenção (correções escolhidas pelo professor).", linhas, lancAntes: lanc, lancDepois, mods: modsRel }), Object.keys(extras).length ? extras : undefined);
       setPaPontos(null); setPaEsc({}); await carregar();
       setAviso({ tipo: "ok", texto: `Correções aplicadas em ${nomeEq(eqId)} (${Object.keys(mods).map((m) => "M" + m.slice(1)).join(", ")}). A equipe recebe o aviso na aba Feedback e você pode desfazer no histórico.` });
     } catch (e) { if (registrado) await limparRegistroAjuste(turma.id, id, null); falhar(e); await carregar(); }
@@ -9235,11 +9318,12 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
       for (const m of reg.mudancas) {
         try {
           const d = await lerDadosEstrito(m.equipeId);
-          if (m.modId === "fluxo") {
-            if (String(d.taxaCrescimentoFluxo ?? 0) !== String(m.depois ?? 0)) { nao.push(`${m.equipeNome} (Fluxo de caixa: a equipe alterou depois)`); continue; }
-            const relF = (d.relatorioAjustes || []).map((x) => x.id === reg.id ? { ...x, desfeitoMods: Array.from(new Set([...(x.desfeitoMods || []), "fluxo"])), desfeitoEm: Date.now(), desfeitoPor: professorNome, desfeito: Array.from(new Set([...(x.desfeitoMods || []), "fluxo"])).length >= (x.mods || []).length } : x);
-            await window.storage.set(`dados_equipe_${m.equipeId}`, JSON.stringify({ ...d, taxaCrescimentoFluxo: m.antes, comentarios: (d.comentarios || []).filter((c) => c.lote !== reg.id), ...(relF.length ? { relatorioAjustes: relF } : {}) }), true);
-            ok.push(`${m.equipeNome} (Fluxo de caixa)`); continue;
+          if (CAMPO_EXTRA_AJ[m.modId]) {
+            const campo = CAMPO_EXTRA_AJ[m.modId];
+            if (JSON.stringify(d[campo] ?? null) !== JSON.stringify(m.depois ?? null)) { nao.push(`${m.equipeNome} (${rotModAj(m.modId)}: a equipe alterou depois)`); continue; }
+            const relF = (d.relatorioAjustes || []).map((x) => { if (x.id !== reg.id) return x; const dm = Array.from(new Set([...(x.desfeitoMods || []), m.modId])); return { ...x, desfeitoMods: dm, desfeitoEm: Date.now(), desfeitoPor: professorNome, desfeito: dm.length >= (x.mods || []).length }; });
+            await window.storage.set(`dados_equipe_${m.equipeId}`, JSON.stringify({ ...d, [campo]: m.antes, comentarios: (d.comentarios || []).filter((c) => c.lote !== reg.id), ...(relF.length ? { relatorioAjustes: relF } : {}) }), true);
+            ok.push(`${m.equipeNome} (${rotModAj(m.modId)})`); continue;
           }
           if (jsonModulo(d.lancamentos, m.modId) !== JSON.stringify(m.depois)) { nao.push(`${m.equipeNome} (${rotModAj(m.modId)}: a equipe alterou depois)`); continue; }
           const lanc = { ...(d.lancamentos || {}), [m.modId]: m.antes };
@@ -9419,6 +9503,38 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
                 </div>
               );
             })}
+            {paResultado && paResultado.capPt && (() => {
+              const cp = paResultado.capPt; const e = paEsc["H|cap"] || { opt: "manter", v: "" }; const I = cp.info;
+              return (
+                <div className="border-2 border-amber-500/60 rounded-xl p-3 bg-slate-900/60">
+                  <div className="text-sm font-bold text-slate-100 mb-1">🏭 Capacidade de produção/atendimento do novo cenário <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-amber-900 text-amber-300 ml-1">Capacidade</span></div>
+                  <div className={`text-sm mb-2 ${cp.semDados ? "text-slate-400" : cp.ok ? "text-emerald-300" : "text-amber-200"}`}>{cp.texto}</div>
+                  {I && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2 text-xs">
+                      <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Demanda (Módulo 5)</div><b>{fmtNum(I.demanda, 0)} {I.unidade}/mês</b></div>
+                      <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Capacidade (gargalo: {I.gargalo})</div><b>{fmtNum(I.capacidade, 0)} {I.unidade}/mês</b></div>
+                      <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Utilização</div><b className={I.utilizacao > 1 ? "text-rose-300" : ""}>{I.utilizacao == null ? "—" : `${fmtNum(I.utilizacao * 100, 0)}%`}</b></div>
+                      <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Espaço</div><b className={I.espaco > 1 ? "text-rose-300" : ""}>{I.espaco == null ? "não informado" : `${fmtNum(I.espaco * 100, 0)}% do útil`}</b></div>
+                    </div>
+                  )}
+                  {!cp.semDados && !cp.ok && (
+                    <div className="space-y-1">
+                      {cp.opcoes.map((op) => (
+                        <label key={op.id} className="flex items-start gap-2 text-xs text-slate-300">
+                          <input type="radio" className="mt-0.5" name="H|cap" checked={e.opt === op.id} onChange={() => paEscolher("H|cap", { opt: op.id, v: "" })} />
+                          <span className="flex-1">{op.rotulo}
+                            {op.param && e.opt === op.id && (
+                              <span className="ml-2 inline-flex items-center gap-1">{op.param.rotulo}:
+                                <input type="number" step="0.01" min="0" value={e.v === "" ? op.param.padrao : e.v} onChange={(ev) => paEscolher("H|cap", { v: ev.target.value })} className="w-28 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100" />
+                              </span>)}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             {paResultado && paResultado.aplicados.length > 0 && (() => {
               const imp = resumoImpacto(paPontos.lanc, paResultado.lancDepois);
               return (
@@ -9426,7 +9542,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
                   <div className="text-xs font-bold text-slate-300 mb-1">Como ficará com as escolhas atuais</div>
                   <ImpactoAjuste a={imp.a} b={imp.b} />
                   <details className="text-xs text-slate-400 mt-2"><summary className="cursor-pointer text-sky-300">Ver o que será alterado</summary>
-                    <ul className="mt-1 space-y-0.5">{paResultado.taxaDepois !== undefined && <li>• Fluxo de caixa anual — crescimento mensal: {fmtNum(Number(paPontos.ctx.taxaCrescimento) || 0)}% → {fmtNum(Number(paResultado.taxaDepois) || 0)}%</li>}{["m1", "m4", "m5", "m6", "m8", "m10", "m11"].flatMap((m) => linhasDiffModulo(Number(m.slice(1)), paPontos.lanc[m], paResultado.lancDepois[m]).map((l) => `${l}`)).map((l, i) => <li key={i}>• {l}</li>)}</ul>
+                    <ul className="mt-1 space-y-0.5">{paResultado.taxaDepois !== undefined && <li>• Fluxo de caixa anual — crescimento mensal: {fmtNum(Number(paPontos.ctx.taxaCrescimento) || 0)}% → {fmtNum(Number(paResultado.taxaDepois) || 0)}%</li>}{(paResultado.linhasExtras || []).map((l, i) => <li key={"x" + i}>• {l}</li>)}{MODS_PONTOS.flatMap((m) => linhasDiffModulo(Number(m.slice(1)), paPontos.lanc[m], paResultado.lancDepois[m]).map((l) => `${l}`)).map((l, i) => <li key={i}>• {l}</li>)}</ul>
                   </details>
                 </div>
               );

@@ -1,4 +1,4 @@
-// build: 20261029_22h58m painel Capacidade da turma (professor)
+// build: 20261030_06h47m Pontos de atenção e correções no Ajuste geral (professor)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1354,6 +1354,7 @@ function chamadoPassaFiltro(c, filtro) {
 // ============================================================================
 const VERSOES = [
   { versao: "3.6", data: "29/10/2026", itens: [
+    "Professor: Gestão → Ajuste geral → \"2b. Pontos de atenção e correções\". O sistema aponta, empresa por empresa, o que merece atenção e o professor escolhe a correção, vendo o impacto antes de gravar: custo do Módulo 6 diferente do Módulo 8 (qual está certo), embalagem lançada como investimento (consumo do mês ou custo do produto), linhas repetidas, financiamento sem juros e margem muito baixa. Só em equipe bloqueada, sem devolução nem desconto de nota, com aviso à equipe e Desfazer.",
     "Menu do aluno reorganizado: os Módulos 1 a 11 são os de lançamento. O antigo Módulo 12 passa a \"Análise da DRE\" e o 13 a \"Análise de Indicadores\", junto com Análise do Negócio, Cenários e Fluxo de Caixa — são análises calculadas, sem digitação.",
     "Notas automáticas dos módulos de lançamento: cada módulo vale 10 desde a primeira entrega; cada devolução para correção desconta 0,25 e a primeira entrega fora do prazo desconta 2,0. A nota muda sozinha a cada devolução e a equipe é avisada no Feedback, com o motivo e o cálculo. Reabrir um módulo aprovado (sem erro da equipe) não desconta.",
     "Gestão → Notas automáticas: prévia por equipe e módulo (nota atual x automática, com o cálculo), aplicação só do que o professor marcar, registro com Desfazer e envio do comunicado do novo formato de avaliação (texto editável) às equipes.",
@@ -8545,6 +8546,124 @@ function GestaoParecerView({ turmas, professorNome }) {
   );
 }
 
+// ============================================================================
+// PONTOS DE ATENÇÃO (professor corrige): cada ponto traz opções de escolha e
+// aplica a correção só nos módulos lançados (M1 a M11), sem apagar nada além do
+// que o professor escolheu. Passa pelo mesmo caminho seguro do Ajuste geral.
+// ============================================================================
+const PA = (() => {
+  const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+  const clone = (x) => JSON.parse(JSON.stringify(x));
+  const RX_EMBAL = /embalag|sacola|descart|etiqueta|guardanapo|canudo|marmita|\bcopo|\bpote|\bsache/;
+  const RX_JUROS = /juro|financiament|parcela|emprestimo/;
+  const mesmoProd = (a, b) => normTxt(a) === normTxt(b);
+
+  function analisar(lancIn, calcIn) {
+    const l = mergeLancamentos(lancIn); const calc = calcIn || calcular(l);
+    const pontos = [];
+    const resumo = resumoProdutosM6(l.m6, l.m5.itens);
+
+    // A) Custo do Módulo 6 diferente do Módulo 8
+    l.m5.itens.forEach((p) => {
+      const nome = String(p.nome || "").trim(); if (!nome) return;
+      const rs = resumo.find((x) => mesmoProd(x.nome, nome));
+      const c8 = Number(l.m8.custosUnit?.[p.id]) || 0;
+      if (!rs || !(rs.porUnidade > 0)) return;
+      if (c8 > 0 && Math.abs(rs.porUnidade - c8) / Math.max(rs.porUnidade, c8) <= 0.1) return;
+      const opcoes = [{ id: "manter", rotulo: "Deixar como está" }, { id: "m6", rotulo: `O custo do Módulo 6 está certo (${fmtBRL(rs.porUnidade)}) → o Módulo 8 passa a usar esse valor` }];
+      if (c8 > 0 && rs.total > 0) opcoes.push({ id: "m8", rotulo: `O custo do Módulo 8 está certo (${fmtBRL(c8)}) → o rendimento do Módulo 6 é ajustado para ${fmtNum(r2(rs.total / c8))} un.` });
+      pontos.push({ chave: `A|${p.id}`, grupo: "Escolher", mods: ["m6", "m8"], rotulo: nome,
+        texto: `${nome}: custo por unidade de ${fmtBRL(rs.porUnidade)} no Módulo 6 e ${c8 > 0 ? fmtBRL(c8) : "nada"} no Módulo 8.`, opcoes, padrao: "manter",
+        aplicar: (L, opt) => {
+          if (opt === "m6") L.m8.custosUnit = { ...L.m8.custosUnit, [p.id]: r2(rs.porUnidade) };
+          if (opt === "m8") L.m6.rendimentos = { ...(L.m6.rendimentos || {}), [rs.nome]: r2(rs.total / c8) };
+        } });
+    });
+
+    // B) Embalagem/descartável lançado como investimento (Módulo 1)
+    const prods = resumo.map((x) => x.nome);
+    l.m1.itens.forEach((it) => {
+      const alvo = normTxt(`${it.desc} ${it.categoria}`);
+      if (!RX_EMBAL.test(alvo)) return;
+      const total = (Number(it.qtd) || 0) * (Number(it.valorUnit) || 0);
+      const opcoes = [{ id: "manter", rotulo: "É investimento mesmo (deixar no Módulo 1)" },
+        { id: "m11", rotulo: "É consumo do mês → vai para o Módulo 11 (custo fixo mensal)", param: { rotulo: "Valor por mês (R$)", padrao: r2(total) } }];
+      prods.slice(0, 6).forEach((nome) => opcoes.push({ id: `prod:${nome}`, rotulo: `É embalagem do produto “${nome}” → entra no custo por unidade (Módulos 6 e 8)`, param: { rotulo: "Custo por unidade (R$)", padrao: 0 } }));
+      pontos.push({ chave: `B|${it.id}`, grupo: "Escolher", mods: ["m1", "m10", "m11", "m6", "m8"], rotulo: it.desc || "(sem descrição)",
+        texto: `“${it.desc || "(sem descrição)"}” (${fmtBRL(total)}) está como investimento fixo, mas parece material de consumo.`, opcoes, padrao: "manter",
+        aplicar: (L, opt, v) => {
+          const tira = () => { L.m1.itens = L.m1.itens.filter((x) => x.id !== it.id); const vu = { ...(L.m10.vidasUteis || {}) }; delete vu[it.id]; L.m10.vidasUteis = vu; };
+          if (opt === "m11") { if (!(Number(v) > 0)) return; tira(); L.m11.itens = [...L.m11.itens, { id: uid(), desc: it.desc || "Material de consumo", valor: r2(v) }]; }
+          if (opt.startsWith("prod:")) {
+            const nome = opt.slice(5); const cu = Number(v) || 0; if (!(cu > 0)) return;
+            const rs = resumoProdutosM6(L.m6, L.m5.itens).find((x) => mesmoProd(x.nome, nome)); const rend = rs && rs.rendimento > 0 ? rs.rendimento : 1;
+            tira(); L.m6.itens = [...L.m6.itens, { id: uid(), produto: nome, material: it.desc || "Embalagem", qtd: rend, unQtd: "", custoUnit: r2(cu), unPreco: "" }];
+            const p5 = L.m5.itens.find((x) => mesmoProd(x.nome, nome));
+            if (p5 && Number(L.m8.custosUnit?.[p5.id]) > 0) L.m8.custosUnit = { ...L.m8.custosUnit, [p5.id]: r2(Number(L.m8.custosUnit[p5.id]) + cu) };
+          }
+        } });
+    });
+
+    // C) Duplicidade de linhas (mesma descrição e valor)
+    const dups = (itens, valorDe, mod) => {
+      const vistos = {}; const rep = [];
+      itens.forEach((it) => { const k = `${normTxt(it.desc)}|${r2(valorDe(it))}`; if (!normTxt(it.desc)) return; if (vistos[k]) rep.push(it); else vistos[k] = it; });
+      return rep.length ? { mod, rep } : null;
+    };
+    [dups(l.m1.itens, (it) => (Number(it.qtd) || 0) * (Number(it.valorUnit) || 0), "m1"), dups(l.m11.itens, (it) => Number(it.valor) || 0, "m11")].filter(Boolean).forEach((d) => {
+      pontos.push({ chave: `C|${d.mod}`, grupo: "Corrigir", mods: d.mod === "m1" ? ["m1", "m10"] : ["m11"], rotulo: `Itens repetidos no Módulo ${d.mod.slice(1)}`,
+        texto: `Módulo ${d.mod.slice(1)}: ${d.rep.length} linha(s) repetida(s) (mesma descrição e valor): ${d.rep.map((x) => x.desc).join(", ")}.`,
+        opcoes: [{ id: "manter", rotulo: "Deixar como está" }, { id: "remover", rotulo: "Remover as repetidas (fica uma de cada)" }], padrao: "manter",
+        aplicar: (L, opt) => {
+          if (opt !== "remover") return; const ids = new Set(d.rep.map((x) => x.id));
+          L[d.mod].itens = L[d.mod].itens.filter((x) => !ids.has(x.id));
+          if (d.mod === "m1") { const vu = { ...(L.m10.vidasUteis || {}) }; ids.forEach((i) => delete vu[i]); L.m10.vidasUteis = vu; }
+        } });
+    });
+
+    // D) Financiamento (recursos de terceiros) sem juros nos custos
+    const pProp = Number(l.m4.pctProprio); const terc = Number.isFinite(pProp) ? Math.min(100, Math.max(0, 100 - pProp)) : 0;
+    if (terc > 0 && !l.m11.itens.some((x) => RX_JUROS.test(normTxt(x.desc)))) {
+      const base = (calc.investimentoTotal * terc) / 100;
+      pontos.push({ chave: "D|fin", grupo: "Decidir", mods: ["m4", "m11"], rotulo: "Financiamento sem juros",
+        texto: `${fmtNum(terc)}% do investimento (${fmtBRL(base)}) vem de terceiros, mas não há juros/parcela nos custos fixos.`,
+        opcoes: [{ id: "manter", rotulo: "Deixar como está" },
+          { id: "juros", rotulo: "Incluir os juros mensais no Módulo 11", param: { rotulo: "Taxa de juros (% ao mês)", padrao: 1.5 } },
+          { id: "proprio", rotulo: "Considerar 100% recursos próprios (Módulo 4)" }], padrao: "manter",
+        aplicar: (L, opt, v) => {
+          if (opt === "juros") { const t = Number(v) || 0; if (!(t > 0)) return; L.m11.itens = [...L.m11.itens, { id: uid(), desc: "Juros do financiamento", valor: r2((base * t) / 100) }]; }
+          if (opt === "proprio") L.m4.pctProprio = 100;
+        } });
+    }
+
+    // E) Margem muito baixa ou negativa
+    (calc.produtosAnalise || []).forEach((p) => {
+      if (!(p.preco > 0) || !(p.custoUnit > 0) || p.margemPct >= 5) return;
+      const taxas = ((Number(l.m7.pctImpostos) || 0) + (Number(l.m7.pctComissao) || 0)) / 100;
+      pontos.push({ chave: `E|${p.id}`, grupo: "Decidir", mods: ["m5"], rotulo: p.nome,
+        texto: `${p.nome}: margem de contribuição de ${fmtNum(p.margemPct)}% (preço ${fmtBRL(p.preco)}, custo ${fmtBRL(p.custoUnit)}).`,
+        opcoes: [{ id: "manter", rotulo: "Deixar como está" }, { id: "preco", rotulo: "Ajustar o preço de venda para uma margem alvo", param: { rotulo: "Margem alvo (%)", padrao: 30 } }], padrao: "manter",
+        aplicar: (L, opt, v) => {
+          if (opt !== "preco") return; const alvo = Number(v) || 0; const den = 1 - taxas - alvo / 100; if (!(den > 0) || alvo <= 0) return;
+          L.m5.itens = L.m5.itens.map((x) => x.id === p.id ? { ...x, precoUnit: Math.ceil((p.custoUnit / den) * 100) / 100 } : x);
+        } });
+    });
+    return pontos;
+  }
+
+  // escolhas = { [chave]: { opt, v } } → { lancDepois, aplicados:[chave] }
+  function aplicar(lancIn, escolhas) {
+    const base = mergeLancamentos(lancIn); const L = clone(base); const aplicados = [];
+    analisar(base).forEach((pt) => {
+      const e = escolhas[pt.chave]; if (!e || !e.opt || e.opt === "manter") return;
+      const antes = JSON.stringify(L); pt.aplicar(L, e.opt, e.v);
+      if (JSON.stringify(L) !== antes) aplicados.push(pt.chave);
+    });
+    return { lancDepois: L, aplicados };
+  }
+  return { analisar, aplicar };
+})();
+
 // ===== Ajuste geral (menu Gestão → Ajuste geral) =====
 // Corrige LANÇAMENTOS dos módulos 1 a 11 (os módulos 12 e 13 só recalculam). Três níveis:
 // N1 mecânico (marcado por padrão) · N2 provável (desmarcado, o professor confere) · N3 decisão do
@@ -8831,6 +8950,9 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
   const [aviso, setAviso] = useState(null);     // { tipo:"ok"|"erro", texto }
   const [erroLeitura, setErroLeitura] = useState("");
   const [gestores, setGestores] = useState({});   // { [equipeId]: { nome, ultimoPing } } — quem está com a gestão dos lançamentos
+  const [paEq, setPaEq] = useState("");          // equipe escolhida para os Pontos de atenção
+  const [paPontos, setPaPontos] = useState(null);  // pontos encontrados (sem funções) + dados lidos
+  const [paEsc, setPaEsc] = useState({});         // { [chave]: { opt, v } }
 
   // Quem está editando agora: só quem assumiu a gestão consegue alterar dados, e esse sinal é gravado a cada 60 s.
   const lerGestores = async () => {
@@ -8945,6 +9067,60 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
       setProp(null); await carregar();
       setAviso({ tipo: feitos.length ? "ok" : "erro", texto: `${feitos.length ? `Ajustes aplicados em: ${feitos.join(", ")}. ` : "Nada foi gravado. "}${pulados.length ? `Pulados: ${pulados.join(" · ")}.` : ""} Os módulos 12 e 13 já refletem os novos lançamentos.` });
     } catch (e) { falhar(e); }
+    setOcupado(false);
+  };
+
+  // ---------- Pontos de atenção (o professor corrige com escolhas) ----------
+  const paAnalisar = async () => {
+    if (!paEq) return;
+    if (!equipePronta(aval, paEq, Date.now())) { setAviso({ tipo: "erro", texto: "A equipe precisa estar bloqueada para avaliação (e pronta, após os 20 segundos)." }); return; }
+    setOcupado(true); setAviso(null);
+    try {
+      const d = await lerDadosEstrito(paEq); const lanc = mergeLancamentos(d.lancamentos);
+      const pts = PA.analisar(lanc);
+      const esc = {}; pts.forEach((pt) => { esc[pt.chave] = { opt: pt.padrao || "manter", v: "" }; });
+      setPaPontos({ equipeId: paEq, lanc, pts, dados: d }); setPaEsc(esc);
+    } catch (e) { falhar(e); }
+    setOcupado(false);
+  };
+  const paEscolher = (chave, patch) => setPaEsc((o) => ({ ...o, [chave]: { ...(o[chave] || {}), ...patch } }));
+  const paResultado = useMemo(() => {
+    if (!paPontos) return null;
+    // parâmetro vazio usa o valor padrão da opção
+    const esc = {}; paPontos.pts.forEach((pt) => {
+      const e = paEsc[pt.chave] || { opt: "manter" }; const op = pt.opcoes.find((o) => o.id === e.opt);
+      esc[pt.chave] = { opt: e.opt, v: e.v === "" || e.v == null ? (op?.param?.padrao ?? "") : e.v };
+    });
+    return { esc, ...PA.aplicar(paPontos.lanc, esc) };
+  }, [paPontos, paEsc]);
+  const paAplicar = async () => {
+    if (!paPontos || !paResultado || !paResultado.aplicados.length) return;
+    const eqId = paPontos.equipeId;
+    if (!window.confirm(`Aplicar ${paResultado.aplicados.length} correção(ões) em ${nomeEq(eqId)}? É recomendável ter feito o Backup geral. Fica registrado e pode ser desfeito. Não gera devolução nem desconto de nota.`)) return;
+    setOcupado(true); setAviso(null);
+    const id = `aj_${Date.now()}`; let registrado = false;
+    try {
+      if (!equipePronta(await lerAvaliacao(turma.id), eqId, Date.now())) throw new Error("a equipe não está mais bloqueada/pronta");
+      const d = await lerDadosEstrito(eqId); const lanc = mergeLancamentos(d.lancamentos);
+      const chavesFrescas = new Set(PA.analisar(lanc).map((p) => p.chave));
+      const escFresco = {}; Object.keys(paResultado.esc).forEach((k) => { if (chavesFrescas.has(k) && paResultado.aplicados.includes(k)) escFresco[k] = paResultado.esc[k]; });
+      if (!Object.keys(escFresco).length) throw new Error("os pontos escolhidos já não existem (a equipe alterou os lançamentos?)");
+      const { lancDepois } = PA.aplicar(lanc, escFresco);
+      const mods = {}; const esperado = {}; const linhas = []; const mudancas = [];
+      ["m1", "m4", "m5", "m6", "m8", "m10", "m11"].forEach((m) => {
+        if (JSON.stringify(lanc[m]) === JSON.stringify(lancDepois[m])) return;
+        mods[m] = lancDepois[m]; esperado[m] = jsonModulo(d.lancamentos, m);
+        linhas.push(...linhasDiffModulo(Number(m.slice(1)), lanc[m], lancDepois[m]));
+        mudancas.push({ equipeId: eqId, equipeNome: nomeEq(eqId), modId: m, antes: lanc[m], depois: lancDepois[m] });
+      });
+      if (!mudancas.length) throw new Error("nenhuma alteração resultou das escolhas");
+      await registrarAjusteProf(turma.id, { id, em: Date.now(), por: professorNome, tipo: "pontos", motivo: "Pontos de atenção (correções escolhidas pelo professor)", mudancas, desfeito: false });
+      registrado = true;
+      const coment = { modulo: "Geral", texto: textoAvisoAjuste(professorNome, linhas, "Correções feitas pelo professor nos pontos de atenção do seu plano."), autor: professorNome, timestamp: Date.now(), tipo: "ajuste", lote: id };
+      await gravarModulosEquipe(turma.id, eqId, mods, esperado, coment);
+      setPaPontos(null); setPaEsc({}); await carregar();
+      setAviso({ tipo: "ok", texto: `Correções aplicadas em ${nomeEq(eqId)} (${Object.keys(mods).map((m) => "M" + m.slice(1)).join(", ")}). A equipe recebe o aviso na aba Feedback e você pode desfazer no histórico.` });
+    } catch (e) { if (registrado) await limparRegistroAjuste(turma.id, id, null); falhar(e); await carregar(); }
     setOcupado(false);
   };
 
@@ -9131,6 +9307,63 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
       </Card>
 
       <Card className="p-4">
+        <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2 mb-1"><AlertTriangle size={15} className="text-amber-400" /> 2b. Pontos de atenção e correções (uma equipe por vez)</h3>
+        <p className="text-xs text-slate-400 mb-3">O sistema aponta o que merece atenção nos lançamentos. Para cada ponto você escolhe o que fazer (ou deixa como está); o ajuste é calculado e mostrado antes de gravar. Vale só para equipe bloqueada e pronta, não gera devolução nem desconto de nota, e pode ser desfeito.</p>
+        {!prontas.length ? <p className="text-sm text-slate-500">Bloqueie ao menos uma equipe e aguarde os {AVALIACAO_ESPERA_MS / 1000} segundos.</p> : (
+          <div className="flex gap-2 flex-wrap items-center">
+            <select value={paEq} onChange={(e) => { setPaEq(e.target.value); setPaPontos(null); }} className="bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100">
+              <option value="">Escolha a equipe…</option>
+              {prontas.map((e) => <option key={e.id} value={e.id}>{e.nomeNegocio}</option>)}
+            </select>
+            <button disabled={ocupado || !paEq} onClick={paAnalisar} className="bg-amber-500 disabled:opacity-40 text-slate-900 text-sm font-bold px-4 py-2 rounded-md">Analisar (não grava nada)</button>
+          </div>
+        )}
+        {paPontos && (
+          <div className="mt-4 space-y-3">
+            {paPontos.pts.length === 0 && <p className="text-sm text-emerald-300">Nenhum ponto de atenção encontrado nesta equipe pelas regras atuais.</p>}
+            {paPontos.pts.map((pt) => {
+              const e = paEsc[pt.chave] || { opt: "manter", v: "" };
+              return (
+                <div key={pt.chave} className="border border-slate-700 rounded-xl p-3 bg-slate-900/60">
+                  <div className="text-sm text-slate-100 mb-2"><span className={`text-[11px] font-bold px-1.5 py-0.5 rounded mr-2 ${pt.grupo === "Corrigir" ? "bg-emerald-900 text-emerald-300" : pt.grupo === "Escolher" ? "bg-sky-900 text-sky-300" : "bg-amber-900 text-amber-300"}`}>{pt.grupo}</span>{pt.texto}</div>
+                  <div className="space-y-1">
+                    {pt.opcoes.map((op) => (
+                      <label key={op.id} className="flex items-start gap-2 text-xs text-slate-300">
+                        <input type="radio" className="mt-0.5" name={pt.chave} checked={e.opt === op.id} onChange={() => paEscolher(pt.chave, { opt: op.id, v: "" })} />
+                        <span className="flex-1">{op.rotulo}
+                          {op.param && e.opt === op.id && (
+                            <span className="ml-2 inline-flex items-center gap-1">{op.param.rotulo}:
+                              <input type="number" step="0.01" min="0" value={e.v === "" ? op.param.padrao : e.v} onChange={(ev) => paEscolher(pt.chave, { v: ev.target.value })} className="w-24 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100" />
+                            </span>)}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            {paResultado && paResultado.aplicados.length > 0 && (() => {
+              const imp = resumoImpacto(paPontos.lanc, paResultado.lancDepois);
+              return (
+                <div>
+                  <div className="text-xs font-bold text-slate-300 mb-1">Como ficará com as escolhas atuais</div>
+                  <ImpactoAjuste a={imp.a} b={imp.b} />
+                  <details className="text-xs text-slate-400 mt-2"><summary className="cursor-pointer text-sky-300">Ver o que será alterado</summary>
+                    <ul className="mt-1 space-y-0.5">{["m1", "m4", "m5", "m6", "m8", "m10", "m11"].flatMap((m) => linhasDiffModulo(Number(m.slice(1)), paPontos.lanc[m], paResultado.lancDepois[m]).map((l) => `${l}`)).map((l, i) => <li key={i}>• {l}</li>)}</ul>
+                  </details>
+                </div>
+              );
+            })()}
+            <div className="flex gap-2 flex-wrap items-center">
+              <button disabled={ocupado || !paResultado || !paResultado.aplicados.length} onClick={paAplicar} className="bg-emerald-600 disabled:opacity-40 text-white text-sm font-bold px-4 py-2 rounded-md">Aplicar {paResultado ? paResultado.aplicados.length : 0} correção(ões)</button>
+              <button onClick={() => { setPaPontos(null); setPaEsc({}); }} className="border border-slate-600 text-slate-200 text-sm px-3 py-2 rounded-md">Descartar</button>
+              <span className="text-xs text-slate-500">Faça o Backup geral antes. O aviso vai para a aba Feedback da equipe.</span>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      <Card className="p-4">
         <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2 mb-1"><Wrench size={15} className="text-amber-400" /> 3. Ajuste manual (você edita o módulo no lugar da equipe)</h3>
         <p className="text-xs text-slate-400 mb-3">Para decisões do negócio e para o que o sistema só sugere. Você vê o mesmo formulário da equipe e o impacto no resultado antes de gravar.</p>
         {!prontas.length ? <p className="text-sm text-slate-500">Bloqueie uma equipe e aguarde os {AVALIACAO_ESPERA_MS / 1000} segundos.</p> : (
@@ -9154,7 +9387,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
             {hist.map((r) => (
               <div key={r.id} className="border border-slate-700 rounded-lg p-3 text-sm">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${r.tipo === "manual" ? "bg-violet-500/15 text-violet-300" : "bg-emerald-500/15 text-emerald-300"}`}>{r.tipo === "manual" ? "manual" : "automático"}</span>
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${r.tipo === "manual" ? "bg-violet-500/15 text-violet-300" : r.tipo === "pontos" ? "bg-sky-500/15 text-sky-300" : "bg-emerald-500/15 text-emerald-300"}`}>{r.tipo === "manual" ? "manual" : r.tipo === "pontos" ? "pontos de atenção" : "automático"}</span>
                   <span className="text-slate-300">{new Date(r.em).toLocaleString("pt-BR")} · {r.por}</span>
                   {r.desfeito && <span className="text-[11px] text-slate-500">desfeito</span>}
                   {r.desfeitoParcial && <span className="text-[11px] text-amber-400">desfeito em parte</span>}

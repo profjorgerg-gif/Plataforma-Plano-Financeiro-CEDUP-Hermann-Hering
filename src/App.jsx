@@ -1,4 +1,4 @@
-// build: 20261030_17h42m Coerencia: itens ja lancados nao reaparecem
+// build: 20261030_18h03m Teste de estresse: explicacao e conclusao em texto
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -10144,9 +10144,11 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
               return (
                 <details className="border border-slate-700 rounded-xl p-3 bg-slate-900/40">
                   <summary className="cursor-pointer text-sm font-bold text-slate-100">🧪 Teste de estresse <span className="text-[11px] font-normal text-slate-400">(só leitura, no cenário com as escolhas atuais)</span></summary>
+                  <div className="text-[11px] text-slate-400 mt-2">Simula situações ruins para ver se o plano aguenta. <b className="text-slate-300">A primeira linha é o plano atual</b>; as demais são hipóteses e não alteram o plano da equipe. «Não se paga» significa que, naquela hipótese, a empresa daria prejuízo e o investimento não voltaria.</div>
                   <table className="w-full text-xs mt-2"><thead><tr className="text-slate-500 text-left"><th className="py-1 pr-2">Cenário</th><th className="pr-2">Resultado mensal</th><th className="pr-2">Retorno</th><th>Situação</th></tr></thead>
                     <tbody>{es.lin.map((x) => <tr key={x.nome} className="border-t border-slate-700 text-slate-200"><td className="py-1 pr-2">{x.nome}</td><td className="pr-2">{fmtBRL(x.res)}</td><td className="pr-2">{x.pb == null ? "não se paga" : `${fmtNum(x.pb, 1)} anos`}</td><td><span className={`text-[10.5px] font-bold rounded-full px-2 py-0.5 ${cor(x.sit)}`}>{x.sit}</span></td></tr>)}</tbody></table>
-                  <div className="text-[11px] text-slate-400 mt-1">Margem de segurança: a empresa suporta uma queda de cerca de <b className="text-slate-200">{fmtNum(es.seg, 0)}%</b> no faturamento antes de dar prejuízo. Não grava nada; serve de argumento na avaliação.</div>
+                  <div className={`text-[11.5px] mt-2 rounded-lg px-2 py-1.5 border ${es.lin[0].res <= 0 ? "border-red-700 text-red-300" : es.seg >= 20 ? "border-emerald-700 text-emerald-300" : "border-amber-600 text-amber-300"}`}>{es.lin[0].res <= 0 ? "Plano já dá prejuízo no cenário atual." : es.seg >= 20 ? `Plano positivo e com folga: suporta queda de cerca de ${fmtNum(es.seg, 0)}% nas vendas.` : `Plano positivo, mas frágil: suporta queda de apenas cerca de ${fmtNum(es.seg, 0)}% nas vendas; uma queda de 20% já gera prejuízo.`}</div>
+<div className="text-[11px] text-slate-400 mt-1">Margem de segurança: a empresa suporta uma queda de cerca de <b className="text-slate-200">{fmtNum(es.seg, 0)}%</b> no faturamento antes de dar prejuízo. Não grava nada; serve de argumento na avaliação.</div>
                 </details>
               );
             })()}

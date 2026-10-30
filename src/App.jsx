@@ -1,4 +1,4 @@
-// build: 20261030_19h12m Capacidade: passo nao volta mais ao topo da pagina
+// build: 20261030_19h53m Ajuste geral: precos sugeridos (usar ou nao)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -9562,6 +9562,8 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
   const [paEq, setPaEq] = useState("");          // equipe escolhida para os Pontos de atenção
   const [paPontos, setPaPontos] = useState(null);  // pontos encontrados (sem funções) + dados lidos
   const [paEsc, setPaEsc] = useState({});         // { [chave]: { opt, v } }
+  const [prEq, setPrEq] = useState("");          // equipe escolhida para os preços sugeridos
+  const [prEd, setPrEd] = useState(null);         // { equipeId, d, lanc, margem, usar, edit, motivo }
   const [cpEq, setCpEq] = useState("");          // equipe escolhida para preencher a Capacidade
   const [cpEd, setCpEd] = useState(null);         // { equipeId, d, lanc, base, draft, motivo, ajM5 }
 
@@ -9769,6 +9771,62 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
       await gravarModulosEquipe(turma.id, eqId, mods, esperado, coment, montarRelato({ id, por: professorNome, tipo: "pontos", motivo: "Pontos de atenção (correções escolhidas pelo professor).", linhas, lancAntes: lanc, lancDepois, mods: modsRel }), Object.keys(extras).length ? extras : undefined);
       setPaPontos(null); setPaEsc({}); await carregar();
       setAviso({ tipo: "ok", texto: `Correções aplicadas em ${nomeEq(eqId)} (${Object.keys(mods).map((m) => "M" + m.slice(1)).join(", ")}). A equipe recebe o aviso na aba Feedback e você pode desfazer no histórico.` });
+    } catch (e) { if (registrado) await limparRegistroAjuste(turma.id, id, null); falhar(e); await carregar(); }
+    setOcupado(false);
+  };
+
+  // ---------- Preços sugeridos (o professor marca quais usar) ----------
+  const r2p = (v) => Math.round((Number(v) || 0) * 100) / 100;
+  const prCalcLinhas = (lanc, margem) => {
+    const imp = (Number(lanc.m7?.pctImpostos) || 0) / 100, com = (Number(lanc.m7?.pctComissao) || 0) / 100; const den = 1 - imp - com - (Number(margem) || 0) / 100;
+    if (!(den > 0.05)) return { erro: `A margem desejada (${fmtNum(Number(margem) || 0, 1)}%) somada a imposto (${fmtNum(imp * 100, 1)}%) e comissão (${fmtNum(com * 100, 1)}%) passa de 95%: reduza a margem.`, linhas: [] };
+    const c = calcular(lanc);
+    const linhas = (c.produtosAnalise || []).filter((pr) => pr.preco > 0 && pr.custoUnit > 0).map((pr) => ({ id: pr.id, nome: pr.nome, custo: pr.custoUnit, preco: pr.preco, sug: r2p(pr.custoUnit / den) }));
+    return { erro: null, linhas };
+  };
+  const prAbrir = async () => {
+    if (!prEq) return;
+    if (!equipePronta(aval, prEq, Date.now())) { setAviso({ tipo: "erro", texto: "A equipe precisa estar bloqueada para avaliação (e pronta, após os 20 segundos)." }); return; }
+    setOcupado(true); setAviso(null);
+    try {
+      const d = await lerDadosEstrito(prEq); const lanc = mergeLancamentos(d.lancamentos);
+      const refsCfg = await window.storage.get(`refs_segmento_${turma.professorUid}`, true).then((x) => (x ? JSON.parse(x.value) : null)).catch(() => null);
+      const seg = equipes.find((e) => e.id === prEq)?.segmento;
+      const margem = Number(({ ...MERC_GERAL, ...(refsDoSegmento(refsCfg, seg) || {}) }).margemAlvo) || 30;
+      setPrEd({ equipeId: prEq, d, lanc, margem, usar: {}, edit: {}, motivo: "" });
+    } catch (e) { falhar(e); }
+    setOcupado(false);
+  };
+  const prInfo = prEd ? (() => {
+    const { erro, linhas } = prCalcLinhas(prEd.lanc, prEd.margem);
+    const aplicar = (l) => { const e = Number(String(prEd.edit[l.id] ?? "").replace(",", ".")); return prEd.edit[l.id] !== undefined && prEd.edit[l.id] !== "" && Number.isFinite(e) && e > 0 ? r2p(e) : l.sug; };
+    const marcados = linhas.filter((l) => prEd.usar[l.id] && Math.abs(aplicar(l) - l.preco) > 0.004);
+    const map = {}; marcados.forEach((l) => { map[l.id] = aplicar(l); });
+    const depois = marcados.length ? { ...prEd.lanc, m5: { ...prEd.lanc.m5, itens: (prEd.lanc.m5.itens || []).map((it) => (map[it.id] != null ? { ...it, precoUnit: map[it.id] } : it)) } } : prEd.lanc;
+    let c1 = null, c2 = null; try { c1 = calcular(prEd.lanc); c2 = calcular(depois); } catch { /* sem prévia */ }
+    return { erro, linhas, aplicar, marcados, depois, c1, c2 };
+  })() : null;
+  const prMarcar = (modo) => { if (!prInfo) return; const u = {}; prInfo.linhas.forEach((l) => { const a = prInfo.aplicar(l); if (modo === "todos" || (modo === "sobe" && a > l.preco + 0.004) || (modo === "desce" && a < l.preco - 0.004)) u[l.id] = true; }); setPrEd((x) => ({ ...x, usar: u })); };
+  const prSalvar = async () => {
+    if (!prEd || !prInfo || !prInfo.marcados.length) return;
+    const eqId = prEd.equipeId; const marc = prInfo.marcados;
+    if (!equipePronta(aval, eqId, Date.now())) { setAviso({ tipo: "erro", texto: "A equipe precisa estar bloqueada para avaliação (e pronta) para gravar." }); return; }
+    const linhas = marc.map((l) => `Preço de "${l.nome}": ${fmtBRL(l.preco)} → ${fmtBRL(prInfo.aplicar(l))} (Módulo 5)`);
+    if (!window.confirm(`Aplicar ${marc.length} preço(s) em ${nomeEq(eqId)}? Só o preço dos itens marcados muda no Módulo 5; os Módulos 6 a 13 recalculam sozinhos. Faça o Backup geral antes. Fica registrado e pode ser desfeito.`)) return;
+    setOcupado(true); setAviso(null);
+    const id = `aj_${Date.now()}`; let registrado = false; const motivo = prEd.motivo.trim();
+    try {
+      const dFresco = await lerDadosEstrito(eqId);
+      const esperado = { m5: jsonModulo(dFresco.lancamentos, "m5") };
+      if (esperado.m5 !== JSON.stringify(prEd.lanc.m5)) throw new Error("a equipe alterou o Módulo 5 depois que você abriu — recarregue e refaça");
+      const mods = { m5: prInfo.depois.m5 };
+      const mot = motivo || `Preços do Módulo 5 ajustados pelo professor a partir do preço sugerido (margem desejada ${fmtNum(prEd.margem, 1)}%).`;
+      await registrarAjusteProf(turma.id, { id, em: Date.now(), por: professorNome, tipo: "manual", motivo: mot, mudancas: [{ equipeId: eqId, equipeNome: nomeEq(eqId), modId: "m5", antes: prEd.lanc.m5, depois: prInfo.depois.m5 }], desfeito: false });
+      registrado = true;
+      const coment = { modulo: "Geral", texto: textoAvisoAjuste(professorNome, linhas, mot), autor: professorNome, timestamp: Date.now(), tipo: "ajuste", lote: id };
+      await gravarModulosEquipe(turma.id, eqId, mods, esperado, coment, montarRelato({ id, por: professorNome, tipo: "manual", motivo: mot, linhas, lancAntes: prEd.lanc, lancDepois: prInfo.depois, mods }), undefined);
+      setPrEd(null); await carregar();
+      setAviso({ tipo: "ok", texto: `${marc.length} preço(s) aplicado(s) em ${nomeEq(eqId)} (Módulo 5). A equipe recebe o aviso na aba Feedback e você pode desfazer no histórico.` });
     } catch (e) { if (registrado) await limparRegistroAjuste(turma.id, id, null); falhar(e); await carregar(); }
     setOcupado(false);
   };
@@ -10262,6 +10320,47 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
             </div>
           );
         })()}
+      </Card>
+
+      <Card className="p-4">
+        <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2 mb-1"><Tag size={15} className="text-amber-400" /> 2d. Preços sugeridos (usar ou não)</h3>
+        <p className="text-xs text-slate-400 mb-3">Mostra o preço sugerido pela margem de contribuição desejada (custo unitário do Módulo 8, impostos e comissão do Módulo 7). Marque os itens cujo preço será <b>usado</b> no Módulo 5 — só o preço dos marcados muda. O preço a aplicar pode ser editado antes. O preço sugerido é só referência: considere mercado e concorrência. Baixar preços reduz o faturamento. A equipe precisa estar bloqueada para avaliação.</p>
+        {!prontas.length ? <p className="text-sm text-slate-500">Bloqueie ao menos uma equipe e aguarde os {AVALIACAO_ESPERA_MS / 1000} segundos.</p> : (
+          <div className="flex gap-2 flex-wrap items-center">
+            <select value={prEq} onChange={(e) => { setPrEq(e.target.value); setPrEd(null); }} className="bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100">
+              <option value="">Escolha a equipe…</option>
+              {prontas.map((e) => <option key={e.id} value={e.id}>{e.nomeNegocio}</option>)}
+            </select>
+            <button disabled={ocupado || !prEq} onClick={prAbrir} className="bg-amber-500 disabled:opacity-40 text-slate-900 text-sm font-bold px-4 py-2 rounded-md">Calcular preços sugeridos</button>
+          </div>
+        )}
+        {prEd && prInfo && (
+          <div className="mt-4 space-y-3">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">Equipe: <b>{nomeEq(prEd.equipeId)}</b> · Margem de contribuição desejada: <input type="number" min="0" max="90" step="1" value={prEd.margem} onChange={(e) => setPrEd((x) => ({ ...x, margem: e.target.value === "" ? "" : Number(e.target.value), usar: {}, edit: {} }))} className="w-20 bg-slate-950 border border-slate-600 rounded-md px-2 py-1 text-slate-100" /> %
+              <span className="ml-2">Marcar:</span>
+              <button onClick={() => prMarcar("sobe")} className="border border-slate-600 rounded-md px-2 py-1">só os que aumentam</button>
+              <button onClick={() => prMarcar("desce")} className="border border-slate-600 rounded-md px-2 py-1">só os que diminuem</button>
+              <button onClick={() => prMarcar("todos")} className="border border-slate-600 rounded-md px-2 py-1">todos</button>
+              <button onClick={() => setPrEd((x) => ({ ...x, usar: {} }))} className="border border-slate-600 rounded-md px-2 py-1">nenhum</button>
+            </div>
+            {prInfo.erro ? <div className="text-sm text-rose-300">{prInfo.erro}</div> : !prInfo.linhas.length ? <div className="text-sm text-slate-500">Nenhum item com preço e custo unitário (Módulos 5 e 8) para calcular.</div> : (
+              <div className="max-h-96 overflow-y-auto border border-slate-700 rounded-lg"><table className="w-full text-sm"><thead className="sticky top-0 bg-slate-900"><tr className="text-left text-[10.5px] uppercase text-slate-500"><th className="py-1 pl-2 w-12">Usar</th><th>Produto/serviço</th><th className="text-right pr-2">Custo unit.</th><th className="text-right pr-2">Preço atual</th><th className="text-right pr-2">Preço sugerido</th><th className="text-right pr-2">Preço a aplicar</th><th className="text-right pr-2">Diferença</th></tr></thead><tbody>
+                {prInfo.linhas.map((l) => { const a = prInfo.aplicar(l); const dif = a - l.preco; return (
+                  <tr key={l.id} className="border-t border-slate-800"><td className="py-1 pl-2"><input type="checkbox" checked={!!prEd.usar[l.id]} onChange={(e) => setPrEd((x) => ({ ...x, usar: { ...x.usar, [l.id]: e.target.checked } }))} /></td><td className="text-slate-200">{l.nome}</td><td className="text-right pr-2 text-slate-300">{fmtBRL(l.custo)}</td><td className="text-right pr-2 text-slate-300">{fmtBRL(l.preco)}</td><td className="text-right pr-2 font-semibold text-amber-400">{fmtBRL(l.sug)}</td>
+                    <td className="text-right pr-2"><input type="number" min="0" step="0.01" value={prEd.edit[l.id] ?? ""} placeholder={String(l.sug).replace(".", ",")} onChange={(e) => setPrEd((x) => ({ ...x, edit: { ...x.edit, [l.id]: e.target.value } }))} className="w-24 bg-slate-950 border border-slate-600 rounded-md px-2 py-1 text-right text-slate-100" /></td>
+                    <td className={`text-right pr-2 ${Math.abs(dif) < 0.005 ? "text-slate-500" : dif > 0 ? "text-amber-300" : "text-emerald-300"}`}>{dif > 0.004 ? "+" : ""}{fmtBRL(dif)}</td></tr>
+                ); })}
+              </tbody></table></div>
+            )}
+            <div className="text-xs text-slate-300 rounded-lg border border-sky-800/60 bg-sky-950/30 p-2.5">Itens marcados com mudança: <b>{prInfo.marcados.length}</b> de {prInfo.linhas.length}.{prInfo.c1 && prInfo.c2 && prInfo.marcados.length > 0 ? <> Impacto (módulos recalculados): faturamento mensal <b>{fmtBRL(prInfo.c1.faturamento)} → {fmtBRL(prInfo.c2.faturamento)}</b> · resultado mensal <b className={prInfo.c2.resultadoOperacional < 0 ? "text-rose-300" : ""}>{fmtBRL(prInfo.c1.resultadoOperacional)} → {fmtBRL(prInfo.c2.resultadoOperacional)}</b>.</> : " Marque os itens para ver o impacto."}</div>
+            <input value={prEd.motivo} onChange={(e) => setPrEd((x) => ({ ...x, motivo: e.target.value }))} placeholder="Motivo (opcional) — vai no aviso à equipe" className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100" />
+            <div className="flex gap-2 flex-wrap items-center">
+              <button disabled={ocupado || !prInfo.marcados.length} onClick={prSalvar} className="bg-emerald-600 disabled:opacity-40 text-white text-sm font-bold px-4 py-2 rounded-md">Aplicar preços marcados</button>
+              <button onClick={() => setPrEd(null)} className="border border-slate-600 text-slate-200 text-sm px-3 py-2 rounded-md">Descartar</button>
+              <span className="text-xs text-slate-500">Faça o Backup geral antes. Nada é gravado até clicar em "Aplicar preços marcados".</span>
+            </div>
+          </div>
+        )}
       </Card>
 
       <Card className="p-4">

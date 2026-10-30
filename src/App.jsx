@@ -1,4 +1,4 @@
-// build: 20261030_14h18m Coerencia: equipamentos por item com valor proprio
+// build: 20261030_17h42m Coerencia: itens ja lancados nao reaparecem
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -8993,13 +8993,16 @@ const PA = (() => {
       const catDe = (nome) => { const n = normTxt(nome); return /computador|notebook|tablet|sistema|impressora/.test(n) ? "Equipamentos de Informática" : /cadeira|mesa|lugar|bancada|balcao|arara|prateleira|provador|sofa|salao|expositor|vitrine/.test(n) ? "Móveis" : /veiculo|carro|moto|furgao/.test(n) ? "Veículos" : "Máquinas"; };
       (modelo.recursos || []).forEach((r) => {
         const q = capNum(cap.recursos?.[r.id]?.qtd); if (!(q > 0) || r.mod === CAP_M9) return;
-        const raiz = normTxt(r.nome).split(" ").find((w) => w.length > 4); if (!raiz) return;
-        if (!m1txt.includes(raiz.slice(0, 5))) {
-          const cap1 = (t) => t.charAt(0).toUpperCase() + t.slice(1);
-          const mp = r.nome.match(/\(([^)]*,[^)]*)\)/);
-          const lista = mp ? mp[1].split(",").map((x) => x.trim()).filter(Boolean) : null;
+        const cap1 = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+        const mp = r.nome.match(/\(([^)]*,[^)]*)\)/);
+        const lista0 = mp ? mp[1].split(",").map((x) => x.trim()).filter(Boolean) : null;
+        const raizDe = (t) => normTxt(t).split(" ").find((w) => w.length > 3) || normTxt(t);
+        const achou = (t) => m1txt.includes(raizDe(t).slice(0, 5));
+        // com lista entre parênteses (fogão, chapa, fritadeira) cada item é conferido sozinho; sem lista, confere o nome do recurso
+        const lista = lista0 ? lista0.filter((x) => !achou(x)) : null;
+        if (lista0 ? lista.length > 0 : !achou(r.nome)) {
           const partes = lista ? lista.map((nm) => ({ nome: cap1(nm), q: 0 })) : [{ nome: cap1(r.nome), q: q }];
-          itens.push({ id: `eq_${r.id}`, partes, texto: `A Capacidade informa ${q} × "${r.nome.toLowerCase()}", mas não há esse item no Módulo 1.${lista ? ` Como são itens diferentes (${lista.join(", ")}), informe a quantidade e o valor unitário de cada um (o total deve ser ${q}).` : " Digite o valor unitário pesquisado."} Só entra no Módulo 1 o que tiver quantidade e valor.`, linha: (v) => `inclui no Módulo 1: ${partes.map((pt, i) => ({ pt, i })).filter(({ i }) => Number(v?.[`eq_${r.id}_v${i}`]) > 0 && (Number(v?.[`eq_${r.id}_q${i}`]) > 0 || partes[i].q > 0)).map(({ pt, i }) => `${Number(v?.[`eq_${r.id}_q${i}`]) || pt.q} × ${pt.nome} a ${fmtBRL(Number(v[`eq_${r.id}_v${i}`]))}`).join(", ")}`, fn: (X, _Xx, v) => { partes.forEach((pt, i) => { const val = Number(v?.[`eq_${r.id}_v${i}`]); const qt = Number(v?.[`eq_${r.id}_q${i}`]) || pt.q; if (val > 0 && qt > 0) X.m1.itens = [...X.m1.itens, { id: uid(), desc: pt.nome, categoria: catDe(pt.nome), qtd: qt, valorUnit: val }]; }); } });
+          itens.push({ id: `eq_${r.id}`, partes, texto: `A Capacidade informa ${q} × "${r.nome.toLowerCase()}", mas não há esse item no Módulo 1.${lista ? ` Como são itens diferentes (${lista.join(", ")}), informe a quantidade e o valor unitário de cada um (o total do grupo na Capacidade é ${q}).` : " Digite o valor unitário pesquisado."} Só entra no Módulo 1 o que tiver quantidade e valor.`, linha: (v) => `inclui no Módulo 1: ${partes.map((pt, i) => ({ pt, i })).filter(({ i }) => Number(v?.[`eq_${r.id}_v${i}`]) > 0 && (Number(v?.[`eq_${r.id}_q${i}`]) > 0 || partes[i].q > 0)).map(({ pt, i }) => `${Number(v?.[`eq_${r.id}_q${i}`]) || pt.q} × ${pt.nome} a ${fmtBRL(Number(v[`eq_${r.id}_v${i}`]))}`).join(", ")}`, fn: (X, _Xx, v) => { partes.forEach((pt, i) => { const val = Number(v?.[`eq_${r.id}_v${i}`]); const qt = Number(v?.[`eq_${r.id}_q${i}`]) || pt.q; if (val > 0 && qt > 0) X.m1.itens = [...X.m1.itens, { id: uid(), desc: pt.nome, categoria: catDe(pt.nome), qtd: qt, valorUnit: val }]; }); } });
         }
       });
       const RC = calcularCapacidade(modelo, cap, demanda);

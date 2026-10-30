@@ -1,4 +1,4 @@
-// build: 20261030_14h07m Coerencia: equipamentos e area acionaveis
+// build: 20261030_14h18m Coerencia: equipamentos por item com valor proprio
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -8920,7 +8920,7 @@ const PA = (() => {
       opcoes: [{ id: "manter", rotulo: "Deixar como está" }, { id: "aplicar", rotulo: "Aplicar os itens marcados", recomendado: true }],
       aplicar: (Lx, opt, v, Xx) => {
         if (opt !== "aplicar") return; const feitos = [];
-        itens.forEach((it) => { if (it.info || (it.off ? !(v && v[it.id] === true) : (v && v[it.id] === false))) return; if (it.param && !(Number(v?.[it.id + "_v"]) > 0)) return; const a0 = JSON.stringify([Lx, Xx.curva ?? null, Xx.capacidade ?? null]); it.fn(Lx, Xx, v); if (JSON.stringify([Lx, Xx.curva ?? null, Xx.capacidade ?? null]) !== a0) feitos.push(it.param ? it.linha(Number(v[it.id + "_v"])) : it.linha); });
+        itens.forEach((it) => { if (it.info || (it.off ? !(v && v[it.id] === true) : (v && v[it.id] === false))) return; if (it.partes && !it.partes.some((_p, i) => Number(v?.[`${it.id}_v${i}`]) > 0)) return; const a0 = JSON.stringify([Lx, Xx.curva ?? null, Xx.capacidade ?? null]); it.fn(Lx, Xx, v); if (JSON.stringify([Lx, Xx.curva ?? null, Xx.capacidade ?? null]) !== a0) feitos.push(it.partes ? it.linha(v) : it.linha); });
         if (feitos.length) Xx.linhas.push(`${titulo} — ${feitos.join(" · ")}`);
       } };
   };
@@ -8995,8 +8995,11 @@ const PA = (() => {
         const q = capNum(cap.recursos?.[r.id]?.qtd); if (!(q > 0) || r.mod === CAP_M9) return;
         const raiz = normTxt(r.nome).split(" ").find((w) => w.length > 4); if (!raiz) return;
         if (!m1txt.includes(raiz.slice(0, 5))) {
-          const nome = r.nome.charAt(0).toUpperCase() + r.nome.slice(1);
-          itens.push({ id: `eq_${r.id}`, param: { rot: "valor de cada unidade (R$)" }, texto: `A Capacidade informa ${q} × "${r.nome.toLowerCase()}", mas não há esse item no Módulo 1: incluir ${q} unidade(s) no investimento (Módulo 1). Digite o valor unitário pesquisado.`, linha: (val) => `inclui no Módulo 1: ${q} × ${nome} a ${fmtBRL(val)}`, fn: (X, _Xx, v) => { const val = Number(v?.[`eq_${r.id}_v`]); if (val > 0) X.m1.itens = [...X.m1.itens, { id: uid(), desc: nome, categoria: catDe(r.nome), qtd: q, valorUnit: val }]; } });
+          const cap1 = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+          const mp = r.nome.match(/\(([^)]*,[^)]*)\)/);
+          const lista = mp ? mp[1].split(",").map((x) => x.trim()).filter(Boolean) : null;
+          const partes = lista ? lista.map((nm) => ({ nome: cap1(nm), q: 0 })) : [{ nome: cap1(r.nome), q: q }];
+          itens.push({ id: `eq_${r.id}`, partes, texto: `A Capacidade informa ${q} × "${r.nome.toLowerCase()}", mas não há esse item no Módulo 1.${lista ? ` Como são itens diferentes (${lista.join(", ")}), informe a quantidade e o valor unitário de cada um (o total deve ser ${q}).` : " Digite o valor unitário pesquisado."} Só entra no Módulo 1 o que tiver quantidade e valor.`, linha: (v) => `inclui no Módulo 1: ${partes.map((pt, i) => ({ pt, i })).filter(({ i }) => Number(v?.[`eq_${r.id}_v${i}`]) > 0 && (Number(v?.[`eq_${r.id}_q${i}`]) > 0 || partes[i].q > 0)).map(({ pt, i }) => `${Number(v?.[`eq_${r.id}_q${i}`]) || pt.q} × ${pt.nome} a ${fmtBRL(Number(v[`eq_${r.id}_v${i}`]))}`).join(", ")}`, fn: (X, _Xx, v) => { partes.forEach((pt, i) => { const val = Number(v?.[`eq_${r.id}_v${i}`]); const qt = Number(v?.[`eq_${r.id}_q${i}`]) || pt.q; if (val > 0 && qt > 0) X.m1.itens = [...X.m1.itens, { id: uid(), desc: pt.nome, categoria: catDe(pt.nome), qtd: qt, valorUnit: val }]; }); } });
         }
       });
       const RC = calcularCapacidade(modelo, cap, demanda);
@@ -10041,7 +10044,11 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
                     <label key={it.id} className={`flex items-start gap-2 text-xs rounded-md px-2 py-1.5 border ${it.info ? "border-amber-800/50 bg-amber-950/20" : "border-slate-700"}`}>
                       {it.info ? <span>⚠</span> : <input type="checkbox" className="mt-0.5" disabled={e.opt !== "aplicar"} checked={it.off ? (e.v || {})[it.id] === true : (e.v || {})[it.id] !== false} onChange={(ev) => paEscolher(lp.chave, { v: { ...(e.v || {}), [it.id]: ev.target.checked } })} />}
                       <span className="text-slate-300">{it.texto}{it.info ? <span className="text-slate-500"> (só aviso: não altera nada)</span> : null}
-                        {it.param && <span className="mt-1 flex flex-wrap items-center gap-2"><span>{it.param.rot}:</span><input type="number" min="0" step="any" disabled={e.opt !== "aplicar"} value={(e.v || {})[it.id + "_v"] ?? ""} onChange={(ev) => paEscolher(lp.chave, { v: { ...(e.v || {}), [it.id + "_v"]: ev.target.value } })} className="w-28 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100 disabled:opacity-50" /><span className="text-[11px] text-slate-500">{(Number((e.v || {})[it.id + "_v"]) > 0) ? "" : "sem valor, o item não é aplicado"}</span></span>}</span>
+                        {it.partes && <span className="mt-1 block space-y-1">{it.partes.map((pt, i) => (
+                          <span key={i} className="flex flex-wrap items-center gap-2"><b className="w-44 inline-block">{pt.nome}</b>
+                            <span>quantidade:</span><input type="number" min="0" step="1" disabled={e.opt !== "aplicar"} value={(e.v || {})[`${it.id}_q${i}`] ?? ""} placeholder={pt.q > 0 ? String(pt.q) : "0"} onChange={(ev) => paEscolher(lp.chave, { v: { ...(e.v || {}), [`${it.id}_q${i}`]: ev.target.value } })} className="w-20 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100 disabled:opacity-50" />
+                            <span>valor unitário (R$):</span><input type="number" min="0" step="any" disabled={e.opt !== "aplicar"} value={(e.v || {})[`${it.id}_v${i}`] ?? ""} onChange={(ev) => paEscolher(lp.chave, { v: { ...(e.v || {}), [`${it.id}_v${i}`]: ev.target.value } })} className="w-28 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100 disabled:opacity-50" />
+                            <span className="text-[11px] text-slate-500">{Number((e.v || {})[`${it.id}_v${i}`]) > 0 && (Number((e.v || {})[`${it.id}_q${i}`]) > 0 || pt.q > 0) ? "" : "sem quantidade/valor, não entra"}</span></span>))}</span>}</span>
                     </label>))}
                   </div>
                   <div className="space-y-1.5">{lp.opcoes.map((op) => (

@@ -1,4 +1,4 @@
-// build: 20261029_20h31m capacidade de producao (apoio, nao avaliativo) + espaco/atendimento
+// build: 20261029_20h57m capacidade de producao (alunos + simulador do professor)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -734,6 +734,7 @@ const GESTAO_ITENS = [
   { id: "acessos", label: "Acessos de usuários", icon: LogIn },
   { id: "relatorios", label: "Relatórios", icon: FileBarChart },
   { id: "verComoAluno", label: "Ver como aluno (só leitura)", icon: Eye },
+  { id: "capacidade", label: "Simulador de capacidade", icon: Factory },
   { id: "empresaTeste", label: "Empresa Teste", icon: FlaskConical },
   { id: "backup", label: "Backup", icon: Save },
   { id: "auditoria", label: "Auditoria", icon: History },
@@ -1357,6 +1358,7 @@ const VERSOES = [
     "Gestão → Notas automáticas: prévia por equipe e módulo (nota atual x automática, com o cálculo), aplicação só do que o professor marcar, registro com Desfazer e envio do comunicado do novo formato de avaliação (texto editável) às equipes.",
     "Os Módulos 12 e 13 não têm nota própria; a \"nota final do plano financeiro\" é digitada pelo professor (mantém o peso de 20% da avaliação). Se o professor digitar uma nota à mão num módulo, ela fica fixada até ele voltar ao automático.",
     "Novo item no menu do aluno, em \"Apoio ao planejamento\": Capacidade de produção/atendimento. Não é avaliativo (sem envio, nota ou prazo): a equipe informa os recursos do seu segmento (fornos, cadeiras, vendedores, caixas...), o sistema calcula quanto a empresa consegue produzir ou atender por mês, compara com a quantidade do Módulo 5, aponta o gargalo e mostra o que ajustar nos Módulos 1, 5 e 9. Modelos para Padaria, Restaurante, Estética, Moda/brechó, Semijoias e um modelo genérico para os demais segmentos.",
+    "Professor: novo item \"Simulador de capacidade\" na Gestão, para simular cenários de capacidade e orientar os alunos. Pode partir do segmento, da demanda do Módulo 5 e dos recursos de uma empresa (somente leitura); o rascunho fica salvo só para o professor e nada é gravado nas empresas.",
     "PROJETO ABERTO: todos os módulos ficam disponíveis para as equipes até o professor encerrar o projeto da empresa (Gestão → Encerrar projeto, reversível). O módulo só trava enquanto está enviado aguardando avaliação; depois da devolutiva ou da aprovação volta a ficar aberto. O prazo passa a valer só para a nota (primeira entrega depois da data: −2,0).",
     "Alteração sem envio: se a equipe mexer num módulo já aprovado e não reenviar, o sistema registra quem, quando e o que mudou (valor de antes → agora). Aparece no painel do módulo e em Correções pendentes, e a equipe é avisada na própria tela. Se a equipe voltar ao valor original, o registro some.",
     "Novo item em Gestão: \"Ver como aluno (só leitura)\" — o professor entra na tela do aluno de uma empresa (como um dos integrantes) e navega por todo o menu, sem poder alterar nada.",
@@ -9799,6 +9801,65 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura }) {
   );
 }
 
+// Gestão → Simulador de capacidade (professor). Ferramenta de apoio: o professor simula cenários para orientar os alunos.
+// Grava SOMENTE em `cap_prof_{uid}` (chave própria do professor). NUNCA escreve em dados de turma/equipe: ao "usar uma empresa"
+// apenas LÊ o segmento, a demanda do Módulo 5 e (opcional) os recursos que a equipe informou, e copia para o rascunho do professor.
+function GestaoCapacidadeView({ user, turmas }) {
+  const [obj, salvar] = useSharedObject(user?.uid ? `cap_prof_${user.uid}` : null, { segmento: "", cap: {}, origem: null, m5: [] });
+  const [turmaId, setTurmaId] = useState("");
+  const [equipes] = useSharedList(turmaId ? `equipes_${turmaId}` : null);
+  const [msg, setMsg] = useState("");
+  if (obj === undefined) return <LoadingScreen />;
+  const reais = (equipes || []).filter((e) => e.teste !== true);
+  const mudar = (parte) => salvar({ ...obj, ...parte });
+  const usarEmpresa = async (eq, comRecursos) => {
+    setMsg("");
+    try {
+      const r = await window.storage.get(`dados_equipe_${eq.id}`, true);
+      const d = r ? JSON.parse(r.value) : {};
+      const l = mergeLancamentos(d.lancamentos);
+      const itens = (l?.m5?.itens || []).map((it) => ({ id: it.id, nome: it.nome, qtd: it.qtd }));
+      mudar({ segmento: eq.segmento || obj.segmento || "", m5: itens, origem: { nome: eq.nomeNegocio || "(sem nome)", turma: turmas.find((t) => t.id === turmaId)?.nome || "" }, ...(comRecursos ? { cap: d.capacidade || {} } : {}) });
+      setMsg(`Dados lidos de "${eq.nomeNegocio || "(sem nome)"}" (somente leitura): nada foi alterado na empresa.`);
+    } catch { setMsg("Não foi possível ler os dados desta empresa agora. Tente novamente."); }
+  };
+  const limpar = () => { if (window.confirm("Limpar o simulador (só o seu rascunho)? Nenhuma empresa é afetada.")) salvar({ segmento: obj.segmento || "", cap: {}, origem: null, m5: [] }); };
+  return (
+    <div>
+      <SectionTitle icon={Factory} sub="Ferramenta de apoio ao planejamento: simule cenários para orientar os alunos. O seu rascunho fica salvo só para você; nada é gravado nas empresas.">Simulador de capacidade de produção</SectionTitle>
+      <Card className="p-4 mb-4">
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <div className="text-xs text-slate-400 mb-1">Segmento a simular</div>
+            <select value={obj.segmento || ""} onChange={(e) => mudar({ segmento: e.target.value })} className="w-full bg-slate-950 border border-slate-600 rounded-md px-2 py-2 text-sm text-slate-100">
+              <option value="">Modelo genérico</option>
+              {SEGMENTOS_NEGOCIO.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            {obj.origem && <div className="text-[11px] text-sky-300 mt-1.5">Baseado em: {obj.origem.nome}{obj.origem.turma ? ` · ${obj.origem.turma}` : ""} (cópia local)</div>}
+            <button onClick={limpar} className="mt-2 text-xs border border-slate-600 rounded-md px-2.5 py-1.5 text-slate-300 hover:bg-slate-800">Limpar simulador</button>
+          </div>
+          <div>
+            <div className="text-xs text-slate-400 mb-1">Partir de uma empresa (opcional, só leitura)</div>
+            <SeletorTurma turmas={turmas} value={turmaId} onChange={setTurmaId} />
+            {turmaId && equipes === null && <div className="text-xs text-slate-500 mt-1">Carregando…</div>}
+            <div className="mt-2 space-y-1.5 max-h-44 overflow-y-auto">
+              {reais.map((e) => (
+                <div key={e.id} className="flex items-center gap-2 text-xs bg-slate-900 border border-slate-700 rounded-md px-2 py-1.5">
+                  <span className="flex-1 text-slate-200">{e.nomeNegocio || "(sem nome)"} <span className="text-slate-500">· {e.segmento || "sem segmento"}</span></span>
+                  <button onClick={() => usarEmpresa(e, false)} className="border border-sky-700/60 text-sky-200 rounded px-2 py-1">Segmento + demanda</button>
+                  <button onClick={() => usarEmpresa(e, true)} className="border border-amber-700/60 text-amber-200 rounded px-2 py-1">+ recursos da equipe</button>
+                </div>
+              ))}
+            </div>
+            {msg && <div className="text-[11px] text-emerald-300 mt-1.5">{msg}</div>}
+          </div>
+        </div>
+      </Card>
+      <CapacidadeView equipe={{ segmento: obj.segmento || "" }} lanc={{ m5: { itens: obj.m5 || [] } }} dados={{ capacidade: obj.cap || {} }} setDados={(d) => mudar({ cap: d.capacidade })} somenteLeitura={false} />
+    </div>
+  );
+}
+
 // Tela de MENU: Gestão → Liberar análise e ajustes (escolhe a turma e libera).
 function GestaoLiberarAjustesView({ turmas, professorNome }) {
   const [turmaSelId, setTurmaSelId] = useState(turmas.length === 1 ? turmas[0].id : null);
@@ -14094,6 +14155,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
         {aba === "acessos" && <GestaoAcessosView turmas={turmas} user={user} />}
         {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}
         {aba === "verComoAluno" && <GestaoVerComoAlunoView turmas={turmas} onEntrar={(t, eq, n) => setVerAluno({ turma: t, equipe: eq, nomeAluno: n })} />}
+        {aba === "capacidade" && <GestaoCapacidadeView user={user} turmas={turmas} />}
         {aba === "encerrar" && <GestaoEncerrarProjetoView turmas={turmas} professorNome={user.nome} />}
         {aba === "notasAuto" && <GestaoNotasAutoView turmas={turmas} professorNome={user.nome} />}
         {aba === "empresaTeste" && <GestaoEmpresaTesteView turmas={turmas} onEntrar={(t, eq) => setTesteAtivo({ turmaId: t.id, equipeId: eq.id, turmaNome: t.nome })} onAbrirCorrecao={abrirCorrecao} />}

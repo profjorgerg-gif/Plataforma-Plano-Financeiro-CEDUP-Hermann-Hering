@@ -1,4 +1,4 @@
-// build: 20261030_18h49m Capacidade: assistente em passos (atendimento e produção separados, por negócio)
+// build: 20261030_18h53m Capacidade efetiva ligada ao plano (Modulo 5) e ajuste pelo professor
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -9563,7 +9563,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
   const [paPontos, setPaPontos] = useState(null);  // pontos encontrados (sem funções) + dados lidos
   const [paEsc, setPaEsc] = useState({});         // { [chave]: { opt, v } }
   const [cpEq, setCpEq] = useState("");          // equipe escolhida para preencher a Capacidade
-  const [cpEd, setCpEd] = useState(null);         // { equipeId, d, lanc, base, draft, motivo }
+  const [cpEd, setCpEd] = useState(null);         // { equipeId, d, lanc, base, draft, motivo, ajM5 }
 
   // Quem está editando agora: só quem assumiu a gestão consegue alterar dados, e esse sinal é gravado a cada 60 s.
   const lerGestores = async () => {
@@ -9780,25 +9780,41 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
     setOcupado(true); setAviso(null);
     try {
       const d = await lerDadosEstrito(cpEq);
-      setCpEd({ equipeId: cpEq, d, lanc: mergeLancamentos(d.lancamentos), base: d.capacidade ?? null, draft: JSON.parse(JSON.stringify(d.capacidade || {})), motivo: "" });
+      setCpEd({ equipeId: cpEq, d, lanc: mergeLancamentos(d.lancamentos), base: d.capacidade ?? null, draft: JSON.parse(JSON.stringify(d.capacidade || {})), motivo: "", ajM5: false });
     } catch (e) { falhar(e); }
     setOcupado(false);
   };
   const cpMudou = cpEd ? JSON.stringify(cpEd.base ?? {}) !== JSON.stringify(cpEd.draft ?? {}) : false;
+  const cpA = cpEd ? (() => { try { return capAnalise(equipes.find((e) => e.id === cpEd.equipeId)?.segmento, cpEd.draft || {}, cpEd.lanc?.m5?.itens || []); } catch { return null; } })() : null;
+  const cpCorta = !!(cpA && cpA.ef.corte);
+  const cpAjusta = !!(cpEd && cpEd.ajM5 && cpCorta);
   const cpSalvar = async () => {
-    if (!cpEd || !cpMudou) return;
+    if (!cpEd || !(cpMudou || cpAjusta)) return;
     const eqId = cpEd.equipeId; const seg = equipes.find((e) => e.id === eqId)?.segmento;
     if (!equipePronta(aval, eqId, Date.now())) { setAviso({ tipo: "erro", texto: "A equipe precisa estar bloqueada para avaliação (e pronta) para gravar." }); return; }
     const linhas = capLinhasDiff(cpEd.base, cpEd.draft, seg);
-    if (!window.confirm(`Salvar a Capacidade de ${nomeEq(eqId)} (${linhas.length} alteração(ões))? Faça o Backup geral antes. Grava só o bloco Capacidade (os módulos não mudam), fica registrado e pode ser desfeito.`)) return;
+    const lancDepois = cpAjusta ? capLancAjustado(cpEd.lanc, cpA) : cpEd.lanc;
+    const linhasM5 = cpAjusta ? linhasDiffModulo(5, cpEd.lanc.m5, lancDepois.m5) : [];
+    if (!window.confirm(cpAjusta ? `Salvar a Capacidade de ${nomeEq(eqId)} E reduzir o Módulo 5 ao máximo possível (${linhasM5.length} alteração(ões) no módulo)? Os Módulos 6 a 13 recalculam sozinhos. Faça o Backup geral antes. Fica registrado e pode ser desfeito.` : `Salvar a Capacidade de ${nomeEq(eqId)} (${linhas.length} alteração(ões))? Faça o Backup geral antes. Grava só o bloco Capacidade (os módulos não mudam), fica registrado e pode ser desfeito.`)) return;
     setOcupado(true); setAviso(null);
     const id = `aj_${Date.now()}`; let registrado = false; const motivo = cpEd.motivo.trim();
     try {
-      await registrarAjusteProf(turma.id, { id, em: Date.now(), por: professorNome, tipo: "manual", motivo: motivo || "Capacidade de produção/atendimento preenchida pelo professor", mudancas: [{ equipeId: eqId, equipeNome: nomeEq(eqId), modId: "capacidade", antes: cpEd.base ?? null, depois: cpEd.draft }], desfeito: false });
+      if (!equipePronta(await lerAvaliacao(turma.id), eqId, Date.now())) throw new Error("a equipe não está mais bloqueada/pronta");
+      const mudancas = []; const mods = {}; const esperado = {}; const extras = {}; const todasLinhas = [...linhas];
+      if (cpMudou) { mudancas.push({ equipeId: eqId, equipeNome: nomeEq(eqId), modId: "capacidade", antes: cpEd.base ?? null, depois: cpEd.draft }); extras.capacidade = { esperado: cpEd.base ?? null, novo: cpEd.draft }; }
+      if (cpAjusta) {
+        const dFresco = await lerDadosEstrito(eqId);
+        mods.m5 = lancDepois.m5; esperado.m5 = jsonModulo(dFresco.lancamentos, "m5");
+        if (esperado.m5 !== JSON.stringify(cpEd.lanc.m5)) throw new Error("a equipe alterou o Módulo 5 depois que você abriu — recarregue e refaça");
+        mudancas.push({ equipeId: eqId, equipeNome: nomeEq(eqId), modId: "m5", antes: cpEd.lanc.m5, depois: lancDepois.m5 });
+        todasLinhas.push(`Capacidade efetiva de ${fmtNum(cpA.ef.cap || 0, 0)} ${cpA.modelo.unidade}/mês (limite: ${cpA.ef.quem}): quantidades do Módulo 5 reduzidas ao máximo possível`, ...linhasM5);
+      }
+      await registrarAjusteProf(turma.id, { id, em: Date.now(), por: professorNome, tipo: "manual", motivo: motivo || "Capacidade de produção/atendimento preenchida pelo professor", mudancas, desfeito: false });
       registrado = true;
-      const texto = textoAvisoAjuste(professorNome, linhas, motivo ? `Motivo: ${motivo}` : "Capacidade de produção/atendimento preenchida pelo professor com os dados informados pela equipe.").replace("nos lançamentos (os Módulos 12 e 13 foram recalculados)", "na Capacidade de produção/atendimento (os lançamentos dos módulos não foram alterados)").replace(" Reenvie os módulos conforme o prazo.", "");
+      let texto = textoAvisoAjuste(professorNome, todasLinhas, motivo ? `Motivo: ${motivo}` : cpAjusta ? "Capacidade preenchida pelo professor e plano ajustado ao que a empresa consegue atender e produzir." : "Capacidade de produção/atendimento preenchida pelo professor com os dados informados pela equipe.");
+      if (!cpAjusta) texto = texto.replace("nos lançamentos (os Módulos 12 e 13 foram recalculados)", "na Capacidade de produção/atendimento (os lançamentos dos módulos não foram alterados)").replace(" Reenvie os módulos conforme o prazo.", "");
       const coment = { modulo: "Geral", texto, autor: professorNome, timestamp: Date.now(), tipo: "ajuste", lote: id };
-      await gravarModulosEquipe(turma.id, eqId, {}, {}, coment, montarRelato({ id, por: professorNome, tipo: "manual", motivo: motivo || "Capacidade de produção/atendimento preenchida pelo professor.", linhas, lancAntes: cpEd.lanc, lancDepois: cpEd.lanc, mods: { capacidade: 1 } }), { capacidade: { esperado: cpEd.base ?? null, novo: cpEd.draft } });
+      await gravarModulosEquipe(turma.id, eqId, mods, esperado, coment, montarRelato({ id, por: professorNome, tipo: "manual", motivo: motivo || "Capacidade de produção/atendimento preenchida pelo professor.", linhas: todasLinhas, lancAntes: cpEd.lanc, lancDepois, mods: { ...mods, ...(cpMudou ? { capacidade: 1 } : {}) } }), Object.keys(extras).length ? extras : undefined);
       setCpEd(null); await carregar();
       setAviso({ tipo: "ok", texto: `Capacidade salva em ${nomeEq(eqId)}. A equipe vê os dados na tela Capacidade e recebe o aviso na aba Feedback; você pode desfazer no histórico.` });
     } catch (e) { if (registrado) await limparRegistroAjuste(turma.id, id, null); falhar(e); await carregar(); }
@@ -10230,9 +10246,16 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
               <div className="text-xs text-slate-300">Equipe: <b>{eq?.nomeNegocio}</b> · Segmento: {eq?.segmento || "não escolhido"} · {cpEd.base && Object.keys(cpEd.base).length ? <span className="text-sky-300">a equipe já tinha dados de capacidade (serão mostrados antes → depois)</span> : <span className="text-amber-300">capacidade ainda não preenchida</span>}</div>
               <CapacidadeView equipe={eq || {}} lanc={cpEd.lanc} dados={{ capacidade: cpEd.draft }} setDados={(dd) => setCpEd((c) => ({ ...c, draft: dd.capacidade || {} }))} somenteLeitura={false} simulador />
               <input value={cpEd.motivo} onChange={(e) => setCpEd((c) => ({ ...c, motivo: e.target.value }))} placeholder="Motivo/origem dos dados (opcional) — vai no aviso à equipe" className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100" />
+              {cpCorta && (
+                <div className="rounded-lg border border-rose-700/60 bg-rose-950/20 p-3 text-xs text-slate-200 space-y-1">
+                  <div><b className="text-rose-300">O Módulo 5 não cabe na capacidade efetiva</b> ({fmtNum(cpA.ef.cap || 0, 0)} {cpA.modelo.unidade}/mês, limite: {cpA.ef.quem}; o plano prevê {fmtNum(cpA.demA, 0)}). Ao reduzir o Módulo 5, caem junto custo da mercadoria, impostos e comissões, e a DRE/indicadores recalculam; custos fixos não caem.</div>
+                  {(() => { try { const c1 = calcular(cpEd.lanc), c2 = calcular(capLancAjustado(cpEd.lanc, cpA)); return <div>Faturamento: {fmtBRL(c1.faturamento)} → <b>{fmtBRL(c2.faturamento)}</b> · Resultado operacional: {fmtBRL(c1.resultadoOperacional)} → <b>{fmtBRL(c2.resultadoOperacional)}</b></div>; } catch { return null; } })()}
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={!!cpEd.ajM5} onChange={(e) => setCpEd((c) => ({ ...c, ajM5: e.target.checked }))} /> <span>Também reduzir as quantidades do <b>Módulo 5</b> ao máximo possível, ao salvar (registrado e com opção de desfazer)</span></label>
+                </div>
+              )}
               {cpMudou && <details className="text-xs text-slate-400" open><summary className="cursor-pointer text-sky-300">Ver o que será salvo</summary><ul className="mt-1 space-y-0.5">{capLinhasDiff(cpEd.base, cpEd.draft, eq?.segmento).map((l, i) => <li key={i}>• {l}</li>)}</ul></details>}
               <div className="flex gap-2 flex-wrap items-center">
-                <button disabled={ocupado || !cpMudou} onClick={cpSalvar} className="bg-emerald-600 disabled:opacity-40 text-white text-sm font-bold px-4 py-2 rounded-md">Salvar na equipe</button>
+                <button disabled={ocupado || !(cpMudou || cpAjusta)} onClick={cpSalvar} className="bg-emerald-600 disabled:opacity-40 text-white text-sm font-bold px-4 py-2 rounded-md">Salvar na equipe</button>
                 <button onClick={() => { if (!cpMudou || window.confirm("Descartar o que foi digitado (nada foi gravado)?")) setCpEd(null); }} className="border border-slate-600 text-slate-200 text-sm px-3 py-2 rounded-md">Descartar</button>
                 <span className="text-xs text-slate-500">Faça o Backup geral antes. Nada é gravado até clicar em "Salvar na equipe".</span>
               </div>
@@ -10980,6 +11003,12 @@ function capSugModulos(lanc) {
   out.__pessoas = prodFun > 0 ? { qtd: prodFun, fonte: "Módulo 9 (sem caixa, limpeza, garçom e atendente; sócios não incluídos — some-os se trabalham na produção)" } : socios > 0 ? { qtd: socios, fonte: "Módulo 9: sócios (pró-labore)" } : null;
   return out;
 }
+// Lançamentos com o Módulo 5 limitado ao máximo que a capacidade efetiva permite (só reduz; não mexe nos demais módulos).
+function capLancAjustado(lanc, A) {
+  const mapa = {}; (A?.ef?.itens || []).forEach((x) => { if (x.f < 1) mapa[x.id] = x.max; });
+  if (!Object.keys(mapa).length) return lanc;
+  return { ...lanc, m5: { ...lanc.m5, itens: (lanc.m5?.itens || []).map((it) => (mapa[it.id] != null ? { ...it, qtd: mapa[it.id] } : it)) } };
+}
 // Análise completa: atendimento (todos) e produção (só quem produz), cada uma com seu gargalo.
 function capAnalise(segmento, cap, itens) {
   const base = modeloCapacidade(segmento); const modelo = capModeloAtivo(base, cap);
@@ -11000,7 +11029,16 @@ function capAnalise(segmento, cap, itens) {
   const cands = [["Atendimento", RA], ["Produção", temProd ? RP : null]].filter(([, r]) => r && r.capacidade != null);
   const pior = cands.length ? cands.reduce((a, b) => ((b[1].utilizacao ?? -1) > (a[1].utilizacao ?? -1) ? b : a)) : null;
   const R = { ...(pior ? pior[1] : RA), espaco: Rall.espaco };
-  return { base, modelo, its, prodIt, servIt, revIt, principais, atendIt, demA, demP, pecasCli, recA, recP, temProd, RA, RP, Rall, m2Auto, R, rotR: pior ? pior[0] : "Atendimento", tipoDe, tipoNeg: temProd && (revIt.length || servIt.length) ? "misto" : temProd ? "produz" : servIt.length ? "servico" : "revenda" };
+  // Capacidade efetiva: vale a MENOR entre atendimento e produção (produzir 500 não adianta se só dá para atender 300).
+  const fA = RA.capacidade != null && RA.demanda > 0 ? RA.capacidade / RA.demanda : null;
+  const fP = temProd && RP && RP.capacidade != null && RP.demanda > 0 ? RP.capacidade / RP.demanda : null;
+  const fRaw = Math.min(fA ?? Infinity, fP ?? Infinity);
+  const temF = Number.isFinite(fRaw);
+  const fPrinc = Math.min(1, fA ?? 1, fP ?? 1), fAte = Math.min(1, fA ?? 1);
+  const fDe = (it) => { const t = tipoDe(it); return t === "produzo" ? fPrinc : t === "servico" ? fAte : (principais.length ? fPrinc : fAte); };
+  const itensEf = its.map((it) => { const f2 = temF ? fDe(it) : 1; const q = Number(it.qtd) || 0; return { id: it.id, nome: it.nome, tipo: tipoDe(it), qtd: q, preco: Number(it.precoUnit) || 0, f: f2, max: f2 < 1 ? Math.max(1, Math.floor(q * f2)) : q }; });
+  const ef = { fA, fP, fRaw: temF ? fRaw : null, corte: temF && fPrinc < 1, cap: temF && demA > 0 ? Math.round(demA * fRaw) : null, quem: !temF ? null : (fP != null && fP < (fA ?? Infinity) ? "produção" : "atendimento"), itens: itensEf };
+  return { ef, base, modelo, its, prodIt, servIt, revIt, principais, atendIt, demA, demP, pecasCli, recA, recP, temProd, RA, RP, Rall, m2Auto, R, rotR: pior ? pior[0] : "Atendimento", tipoDe, tipoNeg: temProd && (revIt.length || servIt.length) ? "misto" : temProd ? "produz" : servIt.length ? "servico" : "revenda" };
 }
 function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulador, passoInicial }) {
   const segmento = equipe?.segmento;
@@ -11207,10 +11245,42 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulad
             </div>
           );
         };
+        const ef = A.ef; let calcPlan = null, calcAdj = null, lancAdj = null;
+        try { if (ef.corte) { lancAdj = capLancAjustado(lanc, A); calcPlan = calcular(lanc); calcAdj = calcular(lancAdj); } } catch { /* sem efeito calculável */ }
+        const copiarMax = async () => {
+          const linhasTxt = ef.itens.filter((x) => x.f < 1).map((x) => `${x.nome || "item"}: planejado ${fmtNum(x.qtd, 0)} → máximo possível ${fmtNum(x.max, 0)} por mês`);
+          const txt = `QUANTIDADES MÁXIMAS PELA CAPACIDADE (ajustar no Módulo 5)\nCapacidade efetiva: ${fmtNum(ef.cap || 0, 0)} ${modelo.unidade}/mês (limitada pelo ${ef.quem}).\n${linhasTxt.join("\n")}`;
+          try { await navigator.clipboard.writeText(txt); window.alert("Quantidades máximas copiadas."); } catch { window.alert(txt); }
+        };
         const E4 = (
-          <div className="grid md:grid-cols-2 gap-3 mb-3">
-            {cartao("Atendimento", A.RA)}
-            {A.temProd ? cartao("Produção", A.RP) : <div className="rounded-xl border border-slate-700 p-4 bg-slate-900/60"><div className="text-[11px] uppercase tracking-wide text-slate-500">Produção</div><div className="text-xl font-extrabold text-slate-400">Não se aplica</div><div className="text-xs text-slate-400 mt-1">Nenhum item foi marcado como “Produzo”: a empresa {A.tipoNeg === "servico" ? "presta serviços" : "compra pronto e revende"}. Se isto estiver errado, volte ao Passo 1.</div></div>}
+          <div className="mb-3 space-y-3">
+            <div className="grid md:grid-cols-3 gap-3">
+              {cartao("Atendimento", A.RA)}
+              {A.temProd ? cartao("Produção", A.RP) : <div className="rounded-xl border border-slate-700 p-4 bg-slate-900/60"><div className="text-[11px] uppercase tracking-wide text-slate-500">Produção</div><div className="text-xl font-extrabold text-slate-400">Não se aplica</div><div className="text-xs text-slate-400 mt-1">Nenhum item foi marcado como “Produzo”: a empresa {A.tipoNeg === "servico" ? "presta serviços" : "compra pronto e revende"}. Se isto estiver errado, volte ao Passo 1.</div></div>}
+              <div className={`rounded-xl border p-4 bg-slate-900/60 ${ef.fRaw == null ? "border-slate-700" : ef.corte ? "border-rose-600/70" : "border-emerald-600/70"}`}>
+                <div className="text-[11px] uppercase tracking-wide text-slate-500">Capacidade efetiva (a menor das duas)</div>
+                {ef.fRaw == null ? <div className="text-sm text-slate-400 mt-1">Preencham os recursos para ver quanto a empresa realmente consegue vender.</div> : <>
+                  <div className={`text-xl font-extrabold ${ef.corte ? "text-rose-400" : "text-emerald-300"}`}>{fmtNum(ef.cap, 0)} {modelo.unidade}/mês</div>
+                  <div className="text-xs text-slate-300 mt-1">O Módulo 5 prevê <b>{fmtNum(A.demA, 0)}</b>. {ef.corte ? <>Falta <b>{fmtNum(A.demA - ef.cap, 0)} ({fmtNum((1 - ef.fRaw) * 100, 0)}%)</b>: quem limita é o <b>{ef.quem}</b>. Produzir mais não adianta se não dá para atender (e vice-versa).</> : <>O plano cabe na capacidade{ef.quem ? ` (limite: ${ef.quem})` : ""}.</>}</div>
+                </>}
+              </div>
+            </div>
+            {ef.corte && (
+              <Card className="p-4 border-rose-700/50">
+                <h3 className="text-sm font-bold text-slate-100 mb-1">Efeito nos módulos: o que precisa mudar para o plano ser possível</h3>
+                <div className="max-h-64 overflow-y-auto border border-slate-700 rounded-lg"><table className="w-full text-sm"><thead className="sticky top-0 bg-slate-900"><tr className="text-left text-[10.5px] uppercase text-slate-500"><th className="py-1 pl-2">Item (Módulo 5)</th><th className="text-right pr-2">Plano</th><th className="text-right pr-2">Máximo possível</th><th className="text-right pr-2">Faturamento: plano → ajustado</th></tr></thead><tbody>
+                  {ef.itens.filter((x) => x.f < 1).map((x) => <tr key={x.id} className="border-t border-slate-800"><td className="py-0.5 pl-2 text-slate-300">{x.nome || "(sem nome)"}</td><td className="text-right pr-2 text-slate-400">{fmtNum(x.qtd, 0)}</td><td className="text-right pr-2 text-amber-300 font-bold">{fmtNum(x.max, 0)}</td><td className="text-right pr-2 text-slate-300">{fmtBRL(x.qtd * x.preco)} → {fmtBRL(x.max * x.preco)}</td></tr>)}
+                </tbody></table></div>
+                {calcPlan && calcAdj && (
+                  <table className="w-full text-sm mt-2"><thead><tr className="text-left text-[10.5px] uppercase text-slate-500"><th></th><th className="text-right">Plano atual</th><th className="text-right">Ajustado à capacidade</th></tr></thead><tbody>
+                    <tr className="border-t border-slate-800"><td className="py-1 text-slate-300">Faturamento mensal</td><td className="text-right">{fmtBRL(calcPlan.faturamento)}</td><td className="text-right font-bold">{fmtBRL(calcAdj.faturamento)}</td></tr>
+                    <tr className="border-t border-slate-800"><td className="py-1 text-slate-300">Resultado operacional mensal</td><td className={`text-right ${calcPlan.resultadoOperacional < 0 ? "text-rose-300" : "text-emerald-300"}`}>{fmtBRL(calcPlan.resultadoOperacional)}</td><td className={`text-right font-bold ${calcAdj.resultadoOperacional < 0 ? "text-rose-300" : "text-emerald-300"}`}>{fmtBRL(calcAdj.resultadoOperacional)}</td></tr>
+                  </tbody></table>
+                )}
+                <div className="mt-2 text-xs rounded-lg border border-sky-800/60 bg-sky-950/30 p-2.5 text-sky-100">Efeito em cadeia: ao reduzir o <b>Módulo 5</b>, caem junto o <b>custo da mercadoria (M6/M8)</b>, os <b>impostos e comissões (M7)</b> e recalculam a <b>DRE (M12)</b> e os <b>indicadores (M13)</b>. Já os <b>custos fixos (M9 equipe, M11)</b> não caem sozinhos: por isso o resultado pode ficar negativo. Escolham um caminho abaixo (ajustar quantidades, ampliar o gargalo no Módulo 1 ou funcionar mais horas) e depois conferiram os módulos.</div>
+                {!somenteLeitura && !simulador && <div className="mt-2"><button onClick={copiarMax} className="border border-slate-500 text-slate-200 rounded-md px-3 py-1.5 text-xs">📋 Copiar as quantidades máximas sugeridas</button><span className="ml-2 text-[11px] text-slate-500">Nada é alterado sozinho: vocês corrigem o Módulo 5 e conferem os demais.</span></div>}
+              </Card>
+            )}
           </div>
         );
         const nav = (

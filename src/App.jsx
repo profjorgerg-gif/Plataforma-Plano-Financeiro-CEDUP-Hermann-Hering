@@ -1,4 +1,4 @@
-// build: 20261030_07h02m Relatório de ajustes do professor; pontos de atenção de crescimento e faturamento
+// build: 20261030_07h06m Referências por segmento; relatório de ajustes; pontos de crescimento e faturamento
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -726,6 +726,7 @@ const GESTAO_ITENS = [
   { id: "parecer", label: "Parecer do projeto", icon: ScrollText },
   { id: "ajusteGeral", label: "Ajuste geral", icon: Wrench },
   { id: "relatorioAjustes", label: "Relatório de ajustes", icon: FileBarChart },
+  { id: "refsSegmento", label: "Referências por segmento", icon: Target },
   { id: "notasAuto", label: "Notas automáticas", icon: Target },
   { id: "encerrar", label: "Encerrar projeto", icon: Lock },
   { id: "itensSegmento", label: "Itens esperados por segmento", icon: ClipboardList },
@@ -1355,6 +1356,7 @@ function chamadoPassaFiltro(c, filtro) {
 // ============================================================================
 const VERSOES = [
   { versao: "3.6", data: "29/10/2026", itens: [
+    "Professor: novo item Gestão → Referências por segmento. Você define, para cada um dos 15 segmentos, a margem mínima por produto, o crescimento mensal máximo e o salto de faturamento aceitos; os Pontos de atenção passam a usar esses limites. A tela compara com a mediana da turma (CMV, mão de obra e margem) e lista as empresas fora do limite.",
     "Relatório de ajustes: todo ajuste que o professor faz (automático, manual ou pontos de atenção) fica gravado na própria empresa, com antes → depois, motivo, data e efeito no resultado, e continua visível mesmo se for desfeito. O aluno vê em Apoio ao planejamento → Ajustes do professor; o professor vê de todas as empresas em Gestão → Relatório de ajustes. Os dois podem imprimir ou salvar em PDF.",
     "Pontos de atenção agora também apontam faturamento que saltou em relação à última versão salva (reduzir quantidades) e crescimento mensal alto no Fluxo de caixa (zerar ou usar outra taxa). Mais palavras reconhecidas em Marketing (Instagram, Meta Ads…) e Software PDV (Omie, Bling, ERP…).",
     "Professor: Gestão → Ajuste geral → \"2b. Pontos de atenção e correções\". O sistema aponta, empresa por empresa, o que merece atenção e o professor escolhe a correção, vendo o impacto antes de gravar: custo do Módulo 6 diferente do Módulo 8 (qual está certo), embalagem lançada como investimento (consumo do mês ou custo do produto), linhas repetidas, financiamento sem juros e margem muito baixa. Só em equipe bloqueada, sem devolução nem desconto de nota, com aviso à equipe e Desfazer.",
@@ -8557,6 +8559,22 @@ function GestaoParecerView({ turmas, professorNome }) {
 // aplica a correção só nos módulos lançados (M1 a M11), sem apagar nada além do
 // que o professor escolheu. Passa pelo mesmo caminho seguro do Ajuste geral.
 // ============================================================================
+// Limites de referência por segmento (editáveis pelo professor em Gestão → Referências por segmento).
+const REFS_PADRAO = { cmvMax: 55, moMax: 40, margemMin: 5, crescMax: 3, saltoFat: 50 };
+const REFS_ROTULOS = [
+  ["margemMin", "Margem de contribuição mínima por produto (%)", "Abaixo disso o produto vira ponto de atenção."],
+  ["crescMax", "Crescimento mensal máximo no Fluxo de caixa (%)", "Acima disso o crescimento vira ponto de atenção."],
+  ["saltoFat", "Salto máximo do faturamento entre versões salvas (%)", "Aumento maior que isso vira ponto de atenção."],
+  ["cmvMax", "CMV máximo (% do faturamento) — referência", "Só comparação na tabela; não gera correção."],
+  ["moMax", "Mão de obra máxima (% do faturamento) — referência", "Só comparação na tabela; não gera correção."],
+];
+function refsDoSegmento(cfg, segmento) {
+  const mine = (cfg && cfg[segmento]) || {}; const out = { ...REFS_PADRAO };
+  Object.keys(REFS_PADRAO).forEach((k) => { const v = Number(mine[k]); if (mine[k] !== undefined && mine[k] !== "" && Number.isFinite(v) && v >= 0) out[k] = v; });
+  return out;
+}
+const mediana = (arr) => { const a = arr.filter((x) => Number.isFinite(x)).sort((x, y) => x - y); if (!a.length) return null; const m = Math.floor(a.length / 2); return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
+
 const PA = (() => {
   const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
   const clone = (x) => JSON.parse(JSON.stringify(x));
@@ -8644,10 +8662,10 @@ const PA = (() => {
 
     // E) Margem muito baixa ou negativa
     (calc.produtosAnalise || []).forEach((p) => {
-      if (!(p.preco > 0) || !(p.custoUnit > 0) || p.margemPct >= 5) return;
+      if (!(p.preco > 0) || !(p.custoUnit > 0) || p.margemPct >= (ctx.refs?.margemMin ?? 5)) return;
       const taxas = ((Number(l.m7.pctImpostos) || 0) + (Number(l.m7.pctComissao) || 0)) / 100;
       pontos.push({ chave: `E|${p.id}`, grupo: "Decidir", mods: ["m5"], rotulo: p.nome,
-        texto: `${p.nome}: margem de contribuição de ${fmtNum(p.margemPct)}% (preço ${fmtBRL(p.preco)}, custo ${fmtBRL(p.custoUnit)}).`,
+        texto: `${p.nome}: margem de contribuição de ${fmtNum(p.margemPct)}% (mínimo do segmento: ${fmtNum(ctx.refs?.margemMin ?? 5)}%; preço ${fmtBRL(p.preco)}, custo ${fmtBRL(p.custoUnit)}).`,
         opcoes: [{ id: "manter", rotulo: "Deixar como está" }, { id: "preco", rotulo: "Ajustar o preço de venda para uma margem alvo", param: { rotulo: "Margem alvo (%)", padrao: 30 } }], padrao: "manter",
         aplicar: (L, opt, v) => {
           if (opt !== "preco") return; const alvo = Number(v) || 0; const den = 1 - taxas - alvo / 100; if (!(den > 0) || alvo <= 0) return;
@@ -8658,7 +8676,7 @@ const PA = (() => {
     // F) Faturamento que saltou em relação à última versão salva pela equipe (Análise do Negócio)
     const snaps = (ctx.historico || []).filter((h) => h && h.indicadores && Number(h.indicadores.faturamento) > 0);
     const ult = snaps.length ? Number(snaps[snaps.length - 1].indicadores.faturamento) : 0;
-    if (ult > 0 && calc.faturamento > ult * 1.5) {
+    if (ult > 0 && calc.faturamento > ult * (1 + (ctx.refs?.saltoFat ?? 50) / 100)) {
       const sug = Math.round((1 - ult / calc.faturamento) * 100);
       pontos.push({ chave: "F|fat", grupo: "Decidir", mods: ["m5"], rotulo: "Faturamento que saltou",
         texto: `O faturamento mensal passou de ${fmtBRL(ult)} (última versão salva) para ${fmtBRL(calc.faturamento)} (+${fmtNum((calc.faturamento / ult - 1) * 100, 0)}%).`,
@@ -8671,7 +8689,7 @@ const PA = (() => {
 
     // G) Crescimento mensal muito alto no Fluxo de caixa (fora dos módulos de lançamento)
     const tx = Number(ctx.taxaCrescimento) || 0;
-    if (tx > 3) {
+    if (tx > (ctx.refs?.crescMax ?? 3)) {
       pontos.push({ chave: "G|cresc", grupo: "Decidir", mods: [], extra: true, rotulo: "Crescimento mensal alto",
         texto: `Crescimento mensal de ${fmtNum(tx)}% no Fluxo de caixa anual (≈ ${fmtNum((Math.pow(1 + tx / 100, 12) - 1) * 100, 0)}% ao ano).`,
         opcoes: [{ id: "manter", rotulo: "Deixar como está" }, { id: "zero", rotulo: "Sem crescimento (0%)" }, { id: "taxa", rotulo: "Usar outra taxa de crescimento", param: { rotulo: "% ao mês", padrao: 1 } }], padrao: "manter",
@@ -9123,7 +9141,9 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
     setOcupado(true); setAviso(null);
     try {
       const d = await lerDadosEstrito(paEq); const lanc = mergeLancamentos(d.lancamentos);
-      const ctx = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [] };
+      const refsCfg = await window.storage.get(`refs_segmento_${turma.professorUid}`, true).then((x) => (x ? JSON.parse(x.value) : null)).catch(() => null);
+      const segEq = equipes.find((e) => e.id === paEq)?.segmento;
+      const ctx = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [], refs: refsDoSegmento(refsCfg, segEq) };
       const pts = PA.analisar(lanc, null, ctx);
       const esc = {}; pts.forEach((pt) => { esc[pt.chave] = { opt: pt.padrao || "manter", v: "" }; });
       setPaPontos({ equipeId: paEq, lanc, pts, dados: d, ctx }); setPaEsc(esc);
@@ -9149,7 +9169,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
     try {
       if (!equipePronta(await lerAvaliacao(turma.id), eqId, Date.now())) throw new Error("a equipe não está mais bloqueada/pronta");
       const d = await lerDadosEstrito(eqId); const lanc = mergeLancamentos(d.lancamentos);
-      const ctxF = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [] };
+      const ctxF = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [], refs: paPontos.ctx.refs };
       const chavesFrescas = new Set(PA.analisar(lanc, null, ctxF).map((p) => p.chave));
       const escFresco = {}; Object.keys(paResultado.esc).forEach((k) => { if (chavesFrescas.has(k) && paResultado.aplicados.includes(k)) escFresco[k] = paResultado.esc[k]; });
       if (!Object.keys(escFresco).length) throw new Error("os pontos escolhidos já não existem (a equipe alterou os lançamentos?)");
@@ -10394,6 +10414,83 @@ function GestaoRelatorioAjustesView({ turmas }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function GestaoReferenciasSegmentoView({ user, turmas }) {
+  const [cfg, setCfg] = useSharedObject(`refs_segmento_${user.uid}`, null);
+  const [seg, setSeg] = useState(SEGMENTOS_NEGOCIO[0]);
+  const [turmaId, setTurmaId] = useState(turmas.length === 1 ? turmas[0].id : "");
+  const [linhas, setLinhas] = useState(null);
+  useEffect(() => {
+    if (!turmaId) { setLinhas(null); return; }
+    let vivo = true;
+    (async () => {
+      try {
+        const r = await window.storage.get(`equipes_${turmaId}`, true);
+        const eqs = (r ? JSON.parse(r.value) : []).filter((e) => e.teste !== true);
+        const out = [];
+        for (const eq of eqs) {
+          let d = null; try { const x = await window.storage.get(`dados_equipe_${eq.id}`, true); d = x ? JSON.parse(x.value) : null; } catch { d = null; }
+          if (!d) continue; const c = calcular(mergeLancamentos(d.lancamentos)); const F = c.faturamento;
+          if (!(F > 0)) continue;
+          const minMargem = (c.produtosAnalise || []).filter((p) => p.preco > 0 && p.custoUnit > 0).reduce((m, p) => Math.min(m, p.margemPct), Infinity);
+          out.push({ seg: eq.segmento || "", nome: eq.nomeNegocio, cmv: (c.cmv / F) * 100, mo: (c.maoDeObra / F) * 100, mc: (c.margemContribuicao / F) * 100, minMargem: Number.isFinite(minMargem) ? minMargem : null, taxa: Number(d.taxaCrescimentoFluxo) || 0 });
+        }
+        if (vivo) setLinhas(out);
+      } catch { if (vivo) setLinhas([]); }
+    })();
+    return () => { vivo = false; };
+  }, [turmaId]);
+  if (cfg === undefined) return <LoadingScreen />;
+  const salvos = cfg || {};
+  const editado = !!salvos[seg];
+  const atual = refsDoSegmento(salvos, seg);
+  const gravar = (k, v) => setCfg({ ...salvos, [seg]: { ...(salvos[seg] || {}), [k]: v } });
+  const inp = "w-24 bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-100";
+  const segs = Array.from(new Set((linhas || []).map((l) => l.seg))).filter(Boolean);
+  const f = (v) => (v == null ? "—" : `${fmtNum(v, 1)}%`);
+  return (
+    <div className="space-y-4">
+      <SectionTitle icon={Target} sub="Limites usados nos Pontos de atenção do Ajuste geral, definidos por segmento. Em branco vale o padrão. Abaixo, a mediana da turma para você calibrar.">Referências por segmento</SectionTitle>
+      <Card className="p-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="text-xs text-slate-400">Segmento</label>
+          <select value={seg} onChange={(e) => setSeg(e.target.value)} className="bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-100">
+            {SEGMENTOS_NEGOCIO.map((s) => <option key={s} value={s}>{s}{salvos[s] ? " (editado)" : ""}</option>)}
+          </select>
+          {editado && <button onClick={() => { const n = { ...salvos }; delete n[seg]; setCfg(n); }} className="text-xs border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 hover:bg-slate-800">Restaurar padrão</button>}
+        </div>
+        <div className="space-y-2">
+          {REFS_ROTULOS.map(([k, rot, dica]) => (
+            <div key={k} className="grid sm:grid-cols-[1fr_auto] gap-2 items-center">
+              <div><div className="text-sm text-slate-200">{rot}</div><div className="text-[11px] text-slate-500">{dica} Padrão: {REFS_PADRAO[k]}%</div></div>
+              <input type="number" min="0" step="0.5" className={inp} value={salvos[seg]?.[k] ?? ""} placeholder={String(REFS_PADRAO[k])} onChange={(e) => gravar(k, e.target.value)} />
+            </div>
+          ))}
+        </div>
+        <p className="text-[11px] text-slate-500">Valor em uso agora neste segmento: margem mínima {fmtNum(atual.margemMin)}% · crescimento máx. {fmtNum(atual.crescMax)}% ao mês · salto de faturamento {fmtNum(atual.saltoFat)}%.</p>
+      </Card>
+      <Card className="p-4">
+        <div className="flex flex-wrap items-center gap-3 mb-2">
+          <h3 className="text-sm font-bold text-slate-100">Comparação com a turma (mediana por segmento)</h3>
+          <SeletorTurma turmas={turmas} value={turmaId} onChange={setTurmaId} />
+        </div>
+        {!turmaId ? <p className="text-sm text-slate-500">Escolha uma turma.</p> : !linhas ? <p className="text-sm text-slate-500">Carregando…</p> : !segs.length ? <p className="text-sm text-slate-500">Nenhuma empresa com faturamento lançado nesta turma.</p> : (
+          <div className="overflow-x-auto"><table className="w-full text-xs">
+            <thead><tr className="text-slate-500 text-left"><th className="py-1 pr-3">Segmento</th><th className="pr-3">Empresas</th><th className="pr-3">CMV (mediana · limite)</th><th className="pr-3">Mão de obra (mediana · limite)</th><th className="pr-3">Margem de contribuição</th><th className="pr-3">Fora do limite</th></tr></thead>
+            <tbody>{segs.map((sg) => {
+              const ls = linhas.filter((l) => l.seg === sg); const R = refsDoSegmento(salvos, sg);
+              const fora = ls.filter((l) => (l.minMargem != null && l.minMargem < R.margemMin) || l.taxa > R.crescMax || l.cmv > R.cmvMax || l.mo > R.moMax);
+              return (<tr key={sg} className="border-t border-slate-800 text-slate-200">
+                <td className="py-1.5 pr-3">{sg}</td><td className="pr-3">{ls.length}</td>
+                <td className="pr-3">{f(mediana(ls.map((l) => l.cmv)))} · {fmtNum(R.cmvMax)}%</td><td className="pr-3">{f(mediana(ls.map((l) => l.mo)))} · {fmtNum(R.moMax)}%</td>
+                <td className="pr-3">{f(mediana(ls.map((l) => l.mc)))}</td>
+                <td className="pr-3" title={fora.map((l) => l.nome).join(", ")}>{fora.length ? <span className="text-amber-300">{fora.length}: {fora.map((l) => l.nome).join(", ")}</span> : <span className="text-emerald-300">nenhuma</span>}</td></tr>);
+            })}</tbody></table></div>
+        )}
+      </Card>
     </div>
   );
 }
@@ -14840,6 +14937,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
         {aba === "verComoAluno" && <GestaoVerComoAlunoView turmas={turmas} onEntrar={(t, eq, n) => setVerAluno({ turma: t, equipe: eq, nomeAluno: n })} />}
         {aba === "capacidade" && <GestaoCapacidadeView user={user} turmas={turmas} />}
         {aba === "relatorioAjustes" && <GestaoRelatorioAjustesView turmas={turmas} />}
+        {aba === "refsSegmento" && <GestaoReferenciasSegmentoView user={user} turmas={turmas} />}
         {aba === "capacidadeTurma" && <GestaoCapacidadeTurmaView user={user} turmas={turmas} onAbrir={() => irPara("capacidade")} />}
         {aba === "encerrar" && <GestaoEncerrarProjetoView turmas={turmas} professorNome={user.nome} />}
         {aba === "notasAuto" && <GestaoNotasAutoView turmas={turmas} professorNome={user.nome} />}

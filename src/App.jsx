@@ -1,4 +1,4 @@
-// build: 20261030_10h18m Alerta ao aluno e texto do Classroom (Capacidade)
+// build: 20261030_10h25m Plano de viabilidade para retorno que nao se paga
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1356,6 +1356,7 @@ function chamadoPassaFiltro(c, filtro) {
 // ============================================================================
 const VERSOES = [
   { versao: "3.6", data: "29/10/2026", itens: [
+    "Viabilidade (retorno do investimento): quando a empresa \"não se paga\" ou passa do prazo-alvo (padrão 5 anos, editável na tela e em Referências por segmento), o Ajuste geral analisa a empresa inteira (resultado, ponto de equilíbrio, CMV, mão de obra, despesas fixas, capacidade) e mostra quanto cada alavanca precisa mudar — preços, quantidades (limitadas pela capacidade), custo dos produtos, despesas fixas — mais um plano combinado sugerido, com resultado e retorno depois. O professor escolhe, pode editar cada percentual, vê o impacto e aplica; fica no Relatório de ajustes com a análise e pode ser desfeito.",
     "Alerta do professor às equipes: nas empresas que ainda não preencheram a Capacidade de produção, o professor marca as empresas e clica em \"Enviar alerta\" (em Gestão → Capacidade da turma, ou no card de Capacidade do Ajuste geral). Os alunos veem um aviso urgente ao entrar, com botão \"Preencher agora\", que some sozinho quando a Capacidade for preenchida (ou quando o professor retirar). O mesmo painel gera, por empresa, o texto para o Classroom com o nome da empresa e dos integrantes (prazo opcional) e botão Copiar. O alerta fica em área separada e não mexe nos dados das equipes.",
     "Pontos de atenção + Capacidade de produção: depois das correções escolhidas, o sistema refaz a análise de capacidade/atendimento da empresa com o NOVO cenário (demanda do Módulo 5 × capacidade que a equipe preencheu, gargalo, utilização e espaço) e propõe: reduzir as quantidades do Módulo 5, acrescentar unidades do gargalo no Módulo 1 (você informa o valor), ampliar horas com horas extras no Módulo 9 (você informa o custo) ou, se houver folga grande, aproveitar a folga. A capacidade da equipe também é atualizada, tudo entra no Relatório de ajustes e pode ser desfeito. Sem dados de capacidade, o sistema só avisa.",
     "Professor: novo item Gestão → Referências por segmento. Você define, para cada um dos 15 segmentos, a margem mínima por produto, o crescimento mensal máximo e o salto de faturamento aceitos; os Pontos de atenção passam a usar esses limites. A tela compara com a mediana da turma (CMV, mão de obra e margem) e lista as empresas fora do limite.",
@@ -8573,11 +8574,12 @@ function GestaoParecerView({ turmas, professorNome }) {
 // que o professor escolheu. Passa pelo mesmo caminho seguro do Ajuste geral.
 // ============================================================================
 // Limites de referência por segmento (editáveis pelo professor em Gestão → Referências por segmento).
-const REFS_PADRAO = { cmvMax: 55, moMax: 40, margemMin: 5, crescMax: 3, saltoFat: 50 };
+const REFS_PADRAO = { cmvMax: 55, moMax: 40, margemMin: 5, crescMax: 3, saltoFat: 50, retornoMax: 5 };
 const REFS_ROTULOS = [
   ["margemMin", "Margem de contribuição mínima por produto (%)", "Abaixo disso o produto vira ponto de atenção."],
   ["crescMax", "Crescimento mensal máximo no Fluxo de caixa (%)", "Acima disso o crescimento vira ponto de atenção."],
   ["saltoFat", "Salto máximo do faturamento entre versões salvas (%)", "Aumento maior que isso vira ponto de atenção."],
+  ["retornoMax", "Prazo máximo de retorno do investimento (anos)", "Acima disso (ou se não se paga) o Ajuste geral propõe um plano de viabilidade."],
   ["cmvMax", "CMV máximo (% do faturamento) — referência", "Só comparação na tabela; não gera correção."],
   ["moMax", "Mão de obra máxima (% do faturamento) — referência", "Só comparação na tabela; não gera correção."],
 ];
@@ -8768,6 +8770,79 @@ const PA = (() => {
     return { ...base, ok: true, texto: R.demanda > 0 ? `Atende: demanda de ${fmtNum(R.demanda, 0)} ${un}/mês para capacidade de ${fmtNum(R.capacidade, 0)} (utilização ${fmtNum(uso * 100, 0)}%).${espTxt}` : "O Módulo 5 está sem quantidades: não há demanda para comparar.", opcoes: [{ id: "manter", rotulo: "Deixar como está" }], aplicar: () => {} };
   }
 
+
+  // ---- Viabilidade: o investimento "não se paga" (resultado ≤ 0) ou passa do prazo-alvo ----
+  const LIM_VIA = { preco: 30, qtd: 50, cmv: 30, fixas: 40 };       // limite de cada alavanca sozinha
+  const CAP_COMB = { preco: 15, qtd: 20, cmv: 10, fixas: 15 };       // limite de cada alavanca no plano combinado
+  function simular(L, m) {
+    const X = clone(L);
+    if (m.preco) X.m5.itens = X.m5.itens.map((x) => ({ ...x, precoUnit: r2((Number(x.precoUnit) || 0) * (1 + m.preco / 100)) }));
+    if (m.qtd) X.m5.itens = X.m5.itens.map((x) => (Number(x.qtd) > 0 ? { ...x, qtd: Math.max(Number(x.qtd), Math.round(Number(x.qtd) * (1 + m.qtd / 100))) } : x));
+    if (m.cmv) { const f = 1 - m.cmv / 100; const cu = {}; Object.keys(X.m8.custosUnit || {}).forEach((k) => { cu[k] = r2((Number(X.m8.custosUnit[k]) || 0) * f); }); X.m8.custosUnit = cu; X.m6.itens = X.m6.itens.map((x) => ({ ...x, custoUnit: Math.round((Number(x.custoUnit) || 0) * f * 10000) / 10000 })); }
+    if (m.fixas) { const f = 1 - m.fixas / 100; X.m11.itens = X.m11.itens.map((x) => ({ ...x, valor: r2((Number(x.valor) || 0) * f) })); }
+    return X;
+  }
+  const atinge = (Lx, alvo) => { const c = calcular(Lx); return c.prazoRetorno != null && c.prazoRetorno <= alvo; };
+  function viabilidade(L, ctx, X, alvoIn) {
+    ctx = ctx || {}; const alvo = Number(alvoIn) > 0 ? Number(alvoIn) : (ctx.refs?.retornoMax ?? 5);
+    const calc = calcular(L);
+    if (!(calc.faturamento > 0) || !(calc.investimentoTotal > 0)) return null;
+    if (calc.prazoRetorno != null && calc.prazoRetorno <= alvo) return null;
+    // folga de capacidade (limita aumento de quantidade)
+    let roomQtd = 20; let capTxt = "sem dados de capacidade (confirme se cabe)";
+    const cap = (X && X.capacidade) || ctx.capacidade;
+    if (cap && Object.values(cap.recursos || {}).some((v) => capNum(v?.qtd) > 0)) {
+      const { modelo, demanda } = capDemandaEquipe(modeloCapacidade(ctx.segmento), cap, L.m5.itens);
+      const R = calcularCapacidade(modelo, cap, demanda);
+      if (R.capacidade != null && R.demanda > 0) { roomQtd = Math.max(0, Math.floor((R.capacidade / R.demanda - 1) * 100)); capTxt = `${fmtNum(R.demanda / R.capacidade * 100, 0)}% da capacidade`; }
+    }
+    const refs = ctx.refs || REFS_PADRAO; const F = calc.faturamento; const pct = (v) => (v / F) * 100;
+    const outras = (calc.custoFixoManual || 0) + (calc.depreciacaoMensal || 0);
+    const diag = [];
+    const pe = calc.pontoEquilibrio != null ? calc.pontoEquilibrio / 12 : null;
+    if (pe) diag.push(`Ponto de equilíbrio de ${fmtBRL(pe)}/mês contra faturamento de ${fmtBRL(F)} (${fmtNum(F / pe * 100, 0)}%).`);
+    else diag.push("Com a margem de contribuição atual não existe ponto de equilíbrio: o custo variável consome toda a receita.");
+    diag.push(`CMV ${fmtNum(pct(calc.cmv), 0)}% (limite ${fmtNum(refs.cmvMax, 0)}%) · mão de obra ${fmtNum(pct(calc.maoDeObra), 0)}% (limite ${fmtNum(refs.moMax, 0)}%) · outras fixas ${fmtNum(pct(outras), 0)}% (limite ${LIMITES_DIAG.outrasFixasOk}%) · margem de contribuição ${fmtNum(pct(calc.margemContribuicao), 0)}%.`);
+    if (calc.mcPct == null) { /* sem uso */ }
+    const info = { res: calc.resultadoOperacional, fat: F, pe, invest: calc.investimentoTotal, prazo: calc.prazoRetorno, alvo, cap: capTxt, roomQtd };
+    const lim = { ...LIM_VIA, qtd: Math.min(LIM_VIA.qtd, roomQtd) }; const comb = { ...CAP_COMB, qtd: Math.min(CAP_COMB.qtd, roomQtd) };
+    const resolver = (k) => {
+      const max = lim[k]; if (!(max > 0)) return null;
+      if (!atinge(simular(L, { [k]: max }), alvo)) return null;
+      let lo = 0, hi = max; for (let i = 0; i < 24; i++) { const mid = (lo + hi) / 2; if (atinge(simular(L, { [k]: mid }), alvo)) hi = mid; else lo = mid; }
+      return Math.min(max, Math.ceil(hi * 2) / 2);
+    };
+    const rot = { preco: "Preços de venda (Módulo 5)", qtd: "Quantidades vendidas (Módulo 5)", cmv: "Custo dos produtos (Módulos 6 e 8)", fixas: "Outras despesas fixas (Módulo 11)" };
+    const obs = { preco: "reajuste de preço: confira a concorrência", qtd: roomQtd >= 20 ? "confira se cabe na capacidade" : `limitado pela capacidade (folga de ${roomQtd}%)`, cmv: "exige renegociar fornecedores ou revisar receitas", fixas: "revise item a item no Módulo 11" };
+    const prev = (m) => { const c = calcular(simular(L, m)); return { res: c.resultadoOperacional, prazo: c.prazoRetorno }; };
+    const opcoes = [{ id: "manter", rotulo: "Deixar como está" }];
+    ["preco", "qtd", "cmv", "fixas"].forEach((k) => {
+      const v = resolver(k);
+      if (v == null) opcoes.push({ id: k, rotulo: rot[k], naoAplica: true, obs: k === "qtd" && roomQtd <= 0 ? "capacidade esgotada: precisa ampliar a estrutura antes" : `não resolve sozinho (limite de ${lim[k]}%)`, params: [] });
+      else opcoes.push({ id: k, rotulo: rot[k], params: [{ k, rotulo: "mudar em (%)", padrao: v, max: lim[k] }], prev: prev({ [k]: v }), obs: obs[k] });
+    });
+    // plano combinado: menor fração dos limites combinados que atinge o alvo
+    let tFim = null;
+    for (let i = 1; i <= 20; i++) { const t = i / 20; const m = {}; Object.keys(comb).forEach((k) => { m[k] = Math.min(comb[k], Math.ceil(comb[k] * t * 2) / 2); }); if (atinge(simular(L, m), alvo)) { tFim = m; break; } }
+    const mMax = { ...comb };
+    const mUse = tFim || mMax; const pc = prev(mUse);
+    opcoes.push({ id: "combinado", rotulo: tFim ? "Plano combinado (sugerido)" : "Plano combinado no limite (não atinge o alvo)", recomendado: !!tFim, atingeAlvo: !!tFim,
+      params: Object.keys(mUse).filter((k) => mUse[k] > 0).map((k) => ({ k, rotulo: { preco: "preços +%", qtd: "quantidades +%", cmv: "custo −%", fixas: "fixas −%" }[k], padrao: mUse[k], max: lim[k] })), prev: pc,
+      obs: tFim ? "reparte o esforço em partes pequenas; você pode editar cada %" : "mesmo com todas as alavancas no limite o investimento não atinge o alvo: revise o modelo (investimento e mão de obra)" });
+    const resumo = `Análise de viabilidade: resultado mensal ${fmtBRL(calc.resultadoOperacional)}, retorno ${calc.prazoRetorno == null ? "não se paga" : fmtNum(calc.prazoRetorno, 1) + " anos"} (alvo ${fmtNum(alvo, 1)} anos).`;
+    return { chave: "V|via", grupo: "Viabilidade", mods: ["m5", "m6", "m8", "m11"], rotulo: "Retorno do investimento", info, diag, opcoes, resumo, padrao: "manter", alvo,
+      aplicar: (Lx, opt, v, Xx) => {
+        const o = opcoes.find((x) => x.id === opt); if (!o || o.naoAplica || opt === "manter") return;
+        const m = {}; let alguma = false;
+        if (opt === "combinado") o.params.forEach((pr) => { const n = Number(v?.[pr.k] ?? pr.padrao); if (n > 0) { m[pr.k] = Math.min(n, pr.max); alguma = true; } });
+        else { const pr = o.params[0]; const n = Number(v !== null && typeof v === "object" ? (v[pr.k] ?? pr.padrao) : (v ?? pr.padrao)); if (n > 0) { m[opt] = Math.min(n, pr.max); alguma = true; } }
+        if (!alguma) return;
+        const nova = simular(Lx, m); ["m5", "m6", "m8", "m11"].forEach((k) => { Lx[k] = nova[k]; });
+        const txt = { preco: "preços +", qtd: "quantidades +", cmv: "custo dos produtos −", fixas: "outras despesas fixas −" };
+        Xx.linhas.push(`Viabilidade — ${Object.keys(m).map((k) => `${txt[k]}${fmtNum(m[k], 1)}%`).join(" · ")}`);
+      } };
+  }
+
   // escolhas = { [chave]: { opt, v } } → { lancDepois, aplicados:[chave], taxaDepois, capacidadeDepois, linhasExtras }
   function aplicar(lancIn, escolhas, ctx) {
     const base = mergeLancamentos(lancIn); const L = clone(base); const aplicados = []; ctx = ctx || {};
@@ -8787,11 +8862,21 @@ const PA = (() => {
         if (JSON.stringify(L) !== aL || JSON.stringify(X.capacidade) !== aC) { aplicados.push("H|cap"); X.linhas.splice(n0, 0, cp.resumo); }
       }
     }
+    // Viabilidade: por último, sobre o cenário já corrigido (e com a capacidade já decidida)
+    const ev = escolhas["V|via"];
+    if (ev && ev.opt && ev.opt !== "manter") {
+      const vp = viabilidade(L, ctx, X, ev.alvo);
+      if (vp && vp.opcoes.some((o) => o.id === ev.opt && !o.naoAplica)) {
+        const aL = JSON.stringify(L); const n0 = X.linhas.length;
+        vp.aplicar(L, ev.opt, ev.v, X);
+        if (JSON.stringify(L) !== aL) { aplicados.push("V|via"); X.linhas.splice(n0, 0, vp.resumo); }
+      }
+    }
     const taxaMudou = String(X.taxaCrescimentoFluxo ?? 0) !== String(ctx.taxaCrescimento ?? 0);
     const capMudou = JSON.stringify(X.capacidade ?? null) !== JSON.stringify(ctx.capacidade ?? null);
     return { lancDepois: L, aplicados, taxaDepois: taxaMudou ? X.taxaCrescimentoFluxo : undefined, capacidadeDepois: capMudou ? X.capacidade : undefined, linhasExtras: X.linhas };
   }
-  return { analisar, aplicar, capacidade };
+  return { analisar, aplicar, capacidade, viabilidade };
 })();
 
 // ===== Ajuste geral (menu Gestão → Ajuste geral) =====
@@ -9243,9 +9328,14 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
     // 1) cenário depois das escolhas dos pontos; 2) capacidade desse cenário; 3) escolha de capacidade por último
     const cen = PA.aplicar(paPontos.lanc, esc, paPontos.ctx);
     const capPt = PA.capacidade(cen.lancDepois, paPontos.ctx);
-    const escAll = { ...esc }; if (capPt) escAll["H|cap"] = val(capPt, paEsc["H|cap"]);
+    const escC = { ...esc }; if (capPt) escC["H|cap"] = val(capPt, paEsc["H|cap"]);
+    const rc = PA.aplicar(paPontos.lanc, escC, paPontos.ctx);
+    // 4) viabilidade (retorno do investimento) do cenário já corrigido e com a capacidade decidida
+    const eV = paEsc["V|via"] || {}; const alvo = Number(eV.alvo) > 0 ? Number(eV.alvo) : (paPontos.ctx.refs?.retornoMax ?? 5);
+    const viaPt = PA.viabilidade(rc.lancDepois, { ...paPontos.ctx, capacidade: rc.capacidadeDepois ?? paPontos.ctx.capacidade }, undefined, alvo);
+    const escAll = { ...escC }; if (viaPt) escAll["V|via"] = { opt: eV.opt || "manter", v: eV.v || {}, alvo };
     const fim = PA.aplicar(paPontos.lanc, escAll, paPontos.ctx);
-    return { esc: escAll, capPt, ...fim };
+    return { esc: escAll, capPt, viaPt, ...fim };
   }, [paPontos, paEsc]);
   const paAplicar = async () => {
     if (!paPontos || !paResultado || !paResultado.aplicados.length) return;
@@ -9258,11 +9348,11 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
       const d = await lerDadosEstrito(eqId); const lanc = mergeLancamentos(d.lancamentos);
       const ctxF = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [], refs: paPontos.ctx.refs, capacidade: d.capacidade || null, segmento: paPontos.ctx.segmento };
       const chavesFrescas = new Set(PA.analisar(lanc, null, ctxF).map((p) => p.chave));
-      const escFresco = {}; Object.keys(paResultado.esc).forEach((k) => { if ((chavesFrescas.has(k) || k === "H|cap") && paResultado.aplicados.includes(k)) escFresco[k] = paResultado.esc[k]; });
+      const escFresco = {}; Object.keys(paResultado.esc).forEach((k) => { if ((chavesFrescas.has(k) || k === "H|cap" || k === "V|via") && paResultado.aplicados.includes(k)) escFresco[k] = paResultado.esc[k]; });
       if (!Object.keys(escFresco).length) throw new Error("os pontos escolhidos já não existem (a equipe alterou os lançamentos?)");
       const { lancDepois, taxaDepois, capacidadeDepois, linhasExtras } = PA.aplicar(lanc, escFresco, ctxF);
       const mods = {}; const esperado = {}; const linhas = []; const mudancas = [];
-      if (escFresco["H|cap"]) linhas.push(...linhasExtras);
+      if (escFresco["H|cap"] || escFresco["V|via"]) linhas.push(...linhasExtras);
       MODS_PONTOS.forEach((m) => {
         if (JSON.stringify(lanc[m]) === JSON.stringify(lancDepois[m])) return;
         mods[m] = lancDepois[m]; esperado[m] = jsonModulo(d.lancamentos, m);
@@ -9545,6 +9635,41 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
                       ))}
                     </div>
                   )}
+                </div>
+              );
+            })()}
+            {paResultado && paResultado.viaPt && (() => {
+              const vp = paResultado.viaPt; const e = paEsc["V|via"] || { opt: "manter", v: {} }; const I = vp.info;
+              const setV = (k, val) => paEscolher("V|via", { v: { ...(e.v || {}), [k]: val } });
+              return (
+                <div className="border-2 border-rose-500/60 rounded-xl p-3 bg-slate-900/60">
+                  <div className="text-sm font-bold text-slate-100 mb-1">📉 Viabilidade: retorno do investimento <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-rose-900 text-rose-300 ml-1">{I.prazo == null ? "não se paga" : `${fmtNum(I.prazo, 1)} anos`}</span></div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 mb-2">O sistema olhou a empresa inteira e calculou quanto cada alavanca precisa mudar para o investimento se pagar em até
+                    <input type="number" min="0.5" step="0.5" value={paEsc["V|via"]?.alvo ?? I.alvo} onChange={(ev) => paEscolher("V|via", { alvo: ev.target.value })} className="w-16 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100" /> anos.</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-2 text-xs">
+                    <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Resultado mensal</div><b className={I.res <= 0 ? "text-rose-300" : ""}>{fmtBRL(I.res)}</b></div>
+                    <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Faturamento</div><b>{fmtBRL(I.fat)}</b></div>
+                    <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Ponto de equilíbrio</div><b>{I.pe ? fmtBRL(I.pe) : "—"}</b></div>
+                    <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Investimento</div><b>{fmtBRL(I.invest)}</b></div>
+                    <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Capacidade</div><b>{I.cap}</b></div>
+                  </div>
+                  <ul className="text-xs text-slate-300 mb-2 space-y-0.5">{vp.diag.map((d, i) => <li key={i}>• {d}</li>)}</ul>
+                  <div className="space-y-1.5">
+                    {vp.opcoes.map((op) => (
+                      <label key={op.id} className={`flex items-start gap-2 text-xs rounded-md px-2 py-1.5 border ${op.recomendado ? "border-emerald-600/60 bg-emerald-950/20" : "border-slate-700"} ${op.naoAplica ? "opacity-60" : ""}`}>
+                        <input type="radio" className="mt-0.5" name="V|via" disabled={!!op.naoAplica} checked={e.opt === op.id} onChange={() => paEscolher("V|via", { opt: op.id, v: {} })} />
+                        <span className="flex-1 text-slate-300"><b>{op.rotulo}</b>{op.obs ? <span className="text-slate-500"> — {op.obs}</span> : null}
+                          {op.prev && <span className="block text-slate-400">depois: resultado <b className={op.prev.res > 0 ? "text-emerald-300" : "text-rose-300"}>{fmtBRL(op.prev.res)}</b> · retorno <b>{op.prev.prazo == null ? "não se paga" : `${fmtNum(op.prev.prazo, 1)} anos`}</b></span>}
+                          {e.opt === op.id && op.params && op.params.length > 0 && (
+                            <span className="mt-1 flex flex-wrap items-center gap-3">{op.params.map((pr) => (
+                              <span key={pr.k} className="inline-flex items-center gap-1">{pr.rotulo}:
+                                <input type="number" step="0.5" min="0" max={pr.max} value={(e.v || {})[pr.k] ?? pr.padrao} onChange={(ev) => setV(pr.k, ev.target.value)} className="w-20 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100" />
+                              </span>))}
+                            </span>)}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               );
             })()}

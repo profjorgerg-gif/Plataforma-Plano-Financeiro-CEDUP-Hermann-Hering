@@ -1,4 +1,4 @@
-// build: 20261030_18h23m Capacidade: tela completa do aluno, ficha e preenchimento pelo professor
+// build: 20261030_18h49m Capacidade: assistente em passos (atendimento e produção separados, por negócio)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -10860,7 +10860,7 @@ const CAP_MODELOS = {
 };
 const CAP_M2PH = { forno: 3, massa: 2, pessoas: 2, fogao: 4, cozinheiros: 2, salao: 1.5, atend: 1, posto: 6, prof: 2, vend: 1.5, prov: 2, caixa: 2, montagem: 3, principal: 4, balcao: 2, produtora: 3, copias: 2, box: 4, elevador: 12, mecanicos: 3, espaco: 80, equipe: 1, cozinha: 12, lavadora: 2, secadora: 2, passadoria: 3, floristas: 2, bancada: 3, instr: 1, recepcao: 2, lavatorio: 3, expedicao: 1, taxidog: 1, entregas: 1, padaria: 3, camara: 4, fritadeira: 1.5, chapa: 1.5, doces: 2, refrig: 2, lugares: 1.5, armazem: 2, triagem: 2, expedonline: 2 };
 // Recurso criado pelo aluno/professor (nome, tipo e módulo livres)
-const capRecursoCustom = (c) => ({ id: c.id, nome: c.nome || "Outro recurso", tipo: c.tipo || "taxa", mod: "conforme o recurso (Módulo 1 ou 9)", ph: {}, essencial: false, custom: true, taxaRot: "Unidades por hora (cada)", loteRot: "Unidades por ciclo", cicloRot: "Minutos por ciclo", duracaoRot: "Minutos por atendimento (cada)", porRot: c.tipo === "servico" ? "Unidades por atendimento (se não for 1)" : undefined });
+const capRecursoCustom = (c) => ({ id: c.id, nome: c.nome || "Outro recurso", tipo: c.tipo || "taxa", g: c.g, mod: "conforme o recurso (Módulo 1 ou 9)", ph: {}, essencial: false, custom: true, taxaRot: "Unidades por hora (cada)", loteRot: "Unidades por ciclo", cicloRot: "Minutos por ciclo", duracaoRot: "Minutos por atendimento (cada)", porRot: c.tipo === "servico" ? "Unidades por atendimento (se não for 1)" : undefined });
 // Modelo "ativo": só os recursos essenciais + os que a equipe incluiu/usou + os criados por ela; o resto fica no catálogo (oculto)
 function capModeloAtivo(modelo, cap) {
   const ativos = cap?.ativos || [];
@@ -10936,7 +10936,73 @@ function capEmpate(lanc, itens, demanda) {
 function CapInput({ value, onChange, placeholder, step }) {
   return <input type="number" min="0" step={step || "any"} value={value ? value : ""} placeholder={placeholder != null ? String(placeholder) : ""} onChange={(e) => onChange(e.target.value === "" || !(Number(e.target.value) > 0) ? undefined : Number(e.target.value))} className="w-24 bg-slate-950 border border-slate-600 rounded-md px-2 py-1.5 text-sm text-slate-100 text-center focus:outline-none focus:border-amber-500" />;
 }
-function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulador }) {
+// ===== Assistente de Capacidade: tipo de cada item (produzo / só revendo / serviço), atendimento e produção separados =====
+const CAP_SEG_SERVICO = ["Estética / beleza", "Pet shop", "Academia / estúdio fitness", "Oficina mecânica / autopeças", "Salão de festas / eventos"];
+const CAP_SEG_REVENDA = ["Moda / brechó", "Semijoias / acessórios", "Papelaria / livraria", "Loja de conveniência / mercadinho"];
+const capTipoSeg = (seg) => (CAP_SEG_SERVICO.includes(seg) ? "servico" : CAP_SEG_REVENDA.includes(seg) ? "revenda" : "produzo");
+// Recursos de PRODUÇÃO (os demais são de ATENDIMENTO). Recurso criado pelo aluno guarda o grupo em `g`.
+const CAP_PROD_IDS = new Set(["forno", "pessoas", "massa", "camara", "fritadeira", "doces", "refrig", "fogao", "cozinheiros", "chapa", "produtora", "armazem", "montagem", "copias", "triagem", "lavadora", "secadora", "passadoria", "floristas", "bancada", "principal"]);
+const capGrupo = (r) => r.g || (r.custom ? (r.tipo === "servico" ? "a" : "p") : (CAP_PROD_IDS.has(r.id) ? "p" : "a"));
+// Tipo do item do Módulo 5. Escolha explícita vence; dados antigos (excluidos) são respeitados; senão, padrão do segmento (+ sugestão de revenda pelo nome).
+function capTipoItem(cap, it, seg) {
+  const e = cap?.tipoItem?.[it?.id]; if (e === "produzo" || e === "revenda" || e === "servico") return e;
+  const base = capTipoSeg(seg); const x = cap?.excluidos?.[it?.id];
+  if (x === true) return "revenda";
+  if (x === false) return base === "revenda" ? "revenda" : base;
+  return base === "produzo" && capSugRevenda(it?.nome) ? "revenda" : base;
+}
+// Procura, nos Módulos 1 e 9 da própria equipe, o que provavelmente corresponde a cada recurso (só sugestão: a equipe confirma).
+const CAP_SUG_RX = {
+  forno: ["m1", /forno/i], fogao: ["m1", /fog[aã]o|chapa|fritadeira/i], chapa: ["m1", /chapa/i], fritadeira: ["m1", /fritadeira/i], massa: ["m1", /amassadeira|modeladora|batedeira/i],
+  camara: ["m1", /c[aâ]mara|estufa/i], refrig: ["m1", /geladeira|refriger|vitrine|expositor/i], produtora: ["m1", /produtora|m[aá]quina de sorvete|batedeira/i], armazem: ["m1", /freezer|expositor|vitrine/i],
+  salao: ["m1", /lugar/i, /cadeira/i, /mesa/i, /aparelho/i], lugares: ["m1", /lugar/i, /mesa/i, /cadeira/i], balcao: ["m1", /balc[aã]o/i], posto: ["m1", /cadeira|maca|cabine|poltrona/i], box: ["m1", /box|mesa/i],
+  elevador: ["m1", /elevador|box/i], prov: ["m1", /provador/i], lavatorio: ["m1", /lavat[oó]rio/i], lavadora: ["m1", /lavadora/i], secadora: ["m1", /secadora/i], bancada: ["m1", /bancada/i], copias: ["m1", /copiadora|impressora/i],
+  espaco: ["m1", /sal[aã]o|espa[cç]o/i], padaria: ["m1", /balc[aã]o de frios|padaria/i],
+  cozinheiros: ["m9", /cozinh|chef/i], pessoas: ["m9", /padeir|confeiteir|sorvet|produ[cç]|prepar|cozinh/i], atend: ["m9", /atendente|gar[cç]|vendedor|balconista/i], vend: ["m9", /vendedor|atendente|balconista/i],
+  caixa: ["m9", /caixa/i, "m1", /registradora|pdv|caixa/i], prof: ["m9", /profissional|cabeleireir|manicure|trancista|esteticista|tosador|banhista/i], mecanicos: ["m9", /mec[aâ]nico|t[eé]cnico/i], instr: ["m9", /instrutor|professor|personal/i],
+  recepcao: ["m9", /recep|atendente/i], expedicao: ["m9", /entreg|motoboy|motorista/i], entregas: ["m9", /entreg|motoboy|motorista/i], taxidog: ["m9", /entreg|motoboy|motorista|taxi/i], expedonline: ["m9", /expedi|embal/i],
+  floristas: ["m9", /florista/i], doces: ["m9", /confeiteir|doce/i], triagem: ["m9", /triagem|auxiliar|produ[cç]/i], montagem: ["m9", /montag|produ[cç]/i], passadoria: ["m9", /passad|lavander/i], equipe: ["m9", /./],
+};
+function capSugModulos(lanc) {
+  const m1 = (lanc?.m1?.itens || []).map((x) => ({ n: String(x?.desc || ""), q: Number(x?.qtd) || 0 }));
+  const m9 = (lanc?.m9?.itens || []).map((x) => ({ n: String(x?.funcao || ""), q: Number(x?.qtd) || 0 }));
+  const socios = (lanc?.m9?.prolabore || []).reduce((a, x) => a + (Number(x?.qtd) || 1), 0);
+  const out = {};
+  Object.entries(CAP_SUG_RX).forEach(([id, spec]) => {
+    for (let i = 0; i < spec.length && !out[id];) {
+      const mod = spec[i]; const rxs = []; i++; while (i < spec.length && spec[i] instanceof RegExp) { rxs.push(spec[i]); i++; }
+      const base = mod === "m1" ? m1 : m9;
+      for (const rx of rxs) { const hit = base.filter((x) => rx.test(x.n) && x.q > 0); if (hit.length) { out[id] = { qtd: hit.reduce((a, x) => a + x.q, 0), fonte: `${mod === "m1" ? "Módulo 1" : "Módulo 9"}: ${hit.slice(0, 2).map((x) => x.n).join(", ")}` }; break; } }
+    }
+  });
+  if (!out.prof && socios > 0) out.prof = { qtd: socios, fonte: "Módulo 9: sócios (pró-labore)" };
+  const prodFun = m9.filter((x) => !/limpeza|caixa|gar[cç]|atendente|vendedor|entreg|motoboy|recep/i.test(x.n)).reduce((a, x) => a + x.q, 0);
+  out.__pessoas = prodFun > 0 ? { qtd: prodFun, fonte: "Módulo 9 (sem caixa, limpeza, garçom e atendente; sócios não incluídos — some-os se trabalham na produção)" } : socios > 0 ? { qtd: socios, fonte: "Módulo 9: sócios (pró-labore)" } : null;
+  return out;
+}
+// Análise completa: atendimento (todos) e produção (só quem produz), cada uma com seu gargalo.
+function capAnalise(segmento, cap, itens) {
+  const base = modeloCapacidade(segmento); const modelo = capModeloAtivo(base, cap);
+  const its = (itens || []).filter((it) => Number(it.qtd) > 0);
+  const tipoDe = (it) => capTipoItem(cap, it, segmento);
+  const prodIt = its.filter((i) => tipoDe(i) === "produzo"), servIt = its.filter((i) => tipoDe(i) === "servico"), revIt = its.filter((i) => tipoDe(i) === "revenda");
+  const principais = [...prodIt, ...servIt];
+  const atendIt = principais.length ? principais : revIt;
+  const soma = (l) => l.reduce((a, it) => a + (Number(it.qtd) || 0), 0);
+  const pecasCli = base.porCliente ? (capNum(cap?.pecasCliente) || base.porCliente) : 1;
+  const demA = Math.round(soma(atendIt) / pecasCli), demP = soma(prodIt);
+  const recA = modelo.recursos.filter((r) => capGrupo(r) === "a"), recP = modelo.recursos.filter((r) => capGrupo(r) === "p");
+  const temProd = prodIt.length > 0;
+  const RA = calcularCapacidade({ ...modelo, recursos: recA }, cap, demA);
+  const RP = recP.length ? calcularCapacidade({ ...modelo, recursos: recP }, { ...cap, demandaManual: undefined }, demP) : null;
+  const Rall = calcularCapacidade(modelo, cap, demA);
+  const m2Auto = {}; Rall.linhas.forEach((l) => { m2Auto[l.r.id] = l.m2Auto; });
+  const cands = [["Atendimento", RA], ["Produção", temProd ? RP : null]].filter(([, r]) => r && r.capacidade != null);
+  const pior = cands.length ? cands.reduce((a, b) => ((b[1].utilizacao ?? -1) > (a[1].utilizacao ?? -1) ? b : a)) : null;
+  const R = { ...(pior ? pior[1] : RA), espaco: Rall.espaco };
+  return { base, modelo, its, prodIt, servIt, revIt, principais, atendIt, demA, demP, pecasCli, recA, recP, temProd, RA, RP, Rall, m2Auto, R, rotR: pior ? pior[0] : "Atendimento", tipoDe, tipoNeg: temProd && (revIt.length || servIt.length) ? "misto" : temProd ? "produz" : servIt.length ? "servico" : "revenda" };
+}
+function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulador, passoInicial }) {
   const segmento = equipe?.segmento;
   const cap = dados?.capacidade || {};
   const modelo = capModeloAtivo(modeloCapacidade(segmento), cap);
@@ -10944,18 +11010,19 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulad
   const [novoSel, setNovoSel] = useState("");
   const [novoNome, setNovoNome] = useState("");
   const [novoTipo, setNovoTipo] = useState("taxa");
+  const [passo, setPasso] = useState(passoInicial || "tipo");
   const itens = (lanc?.m5?.itens || []).filter((it) => Number(it.qtd) > 0);
   const excl = cap.excluidos || {};
-  const isEx = (it) => capExcl(cap, it);
-  const usados = itens.filter((it) => !isEx(it));
-  const pecasM5 = usados.reduce((s, it) => s + (Number(it.qtd) || 0), 0);
+  const A = capAnalise(segmento, cap, itens);
+  const sugM = capSugModulos(lanc);
+  const segRev = capTipoSeg(segmento) === "revenda";
   const tokUn = (nome) => { const m = String(nome || "").toLowerCase().match(/\b(kg|litros?|1\s?l|2\s?l|unid\.?|fatias?|por[cç][ãa]o|porções)\b/); return m ? m[1].replace(/\s/g, "").replace("litros", "litro").replace("fatias", "fatia") : null; };
-  const unsDif = [...new Set(usados.map((it) => tokUn(it.nome)).filter(Boolean))];
-  const pecasCli = modelo.porCliente ? (capNum(cap.pecasCliente) || modelo.porCliente) : 1;
-  const demandaM5 = Math.round(pecasM5 / pecasCli);
+  const unsDif = [...new Set(A.atendIt.map((it) => tokUn(it.nome)).filter(Boolean))];
+  const pecasM5 = A.atendIt.reduce((s2, it) => s2 + (Number(it.qtd) || 0), 0);
+  const demandaM5 = A.demA;
   const set = (novo) => { if (!somenteLeitura) setDados({ ...dados, capacidade: { ...cap, ...novo } }); };
-  const adicionarRec = () => {
-    if (novoSel === "__novo") { if (!novoNome.trim()) return; const id = `x${Date.now()}`; set({ custom: [...(cap.custom || []), { id, nome: novoNome.trim(), tipo: novoTipo }] }); setNovoNome(""); setNovoSel(""); return; }
+  const adicionarRec = (grupo) => {
+    if (novoSel === "__novo") { if (!novoNome.trim()) return; const id = `x${Date.now()}`; set({ custom: [...(cap.custom || []), { id, nome: novoNome.trim(), tipo: novoTipo, g: grupo || (novoTipo === "servico" ? "a" : "p") }] }); setNovoNome(""); setNovoSel(""); return; }
     if (novoSel) { set({ ativos: [...new Set([...(cap.ativos || []), novoSel])] }); setNovoSel(""); }
   };
   const removerRec = (r) => {
@@ -10965,10 +11032,10 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulad
   };
   const setFunc = (k, v) => set({ funcionamento: { ...(cap.funcionamento || {}), [k]: v } });
   const setRec = (id, k, v) => set({ recursos: { ...(cap.recursos || {}), [id]: { ...(cap.recursos?.[id] || {}), [k]: v } } });
-  const R = calcularCapacidade(modelo, cap, demandaM5);
+  const R = A.R;
   const f = cap.funcionamento || {};
-  const itensCap = usados;
-  const carga = capCarga(cap, usados, R.horasEf);
+  const itensCap = A.principais.length ? A.principais : A.atendIt;
+  const carga = capCarga(cap, A.principais, R.horasEf);
   const E = !simulador && R.capacidade != null && R.demanda > 0 ? capEmpate(lanc, itensCap, R.demanda) : null;
   const diasMesUso = capNum(f.diasMes) || 26;
   const cliDiaPlan = R.demanda > 0 ? R.demanda / diasMesUso : null;
@@ -10980,80 +11047,194 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulad
   const corUso = (u) => (u == null ? "" : u > 1 ? "bg-rose-900/40 text-rose-300" : u > 0.85 ? "bg-amber-900/40 text-amber-300" : "bg-emerald-900/40 text-emerald-300");
   return (
     <div>
-      <SectionTitle icon={Factory} sub={`Apoio ao planejamento · ${segmento || "segmento não escolhido"} · não é avaliativo: não tem envio, nota nem prazo`}>Capacidade de {["Restaurante / lanchonete", "Padaria / confeitaria"].includes(segmento) ? "produção" : "produção / atendimento"}</SectionTitle>
+      <SectionTitle icon={Factory} sub={`Apoio ao planejamento · ${segmento || "segmento não escolhido"} · não é avaliativo: não tem envio, nota nem prazo`}>Capacidade de atendimento{A.temProd ? " e de produção" : ""}</SectionTitle>
       <div className="mb-4 text-xs text-sky-200 bg-sky-950/30 border border-sky-800/50 rounded-lg p-3 flex gap-2"><Info size={14} className="shrink-0 mt-0.5" /><span>Aqui vocês descobrem <b>quanto a empresa consegue produzir ou atender por mês</b> com os recursos que têm, e se isso aguenta a quantidade planejada no Módulo 5. Nada daqui altera os lançamentos: o resultado mostra <b>o que ajustar</b> nos Módulos 1, 5 e 9. Os números em cinza são só exemplos de referência — troquem pelos da sua empresa.</span></div>
       {!segmento && <div className="mb-4 text-xs text-amber-300 bg-amber-950/30 border border-amber-800/50 rounded-lg p-3">Vocês ainda não escolheram o segmento (menu "Segmento do negócio"). Enquanto isso, o modelo é genérico.</div>}
       {segmento && generico && <div className="mb-4 text-xs text-slate-300 bg-slate-900 border border-slate-700 rounded-lg p-3">Para o segmento "{segmento}" o modelo é genérico: incluam e renomeiem os recursos conforme a realidade da empresa ("Incluir outro recurso").</div>}
-      <div className={somenteLeitura ? "opacity-70 pointer-events-none select-none" : ""}>
-        <div className="grid md:grid-cols-2 gap-3 mb-3">
-          <Card className="p-4">
-            <h3 className="text-sm font-bold text-slate-100 mb-2">1 · Funcionamento</h3>
-            <table className="w-full text-sm"><tbody>
-              <tr><td className="py-1.5 text-slate-300">Horas de funcionamento por dia</td><td className="text-right"><CapInput value={f.horasDia} placeholder={8} onChange={(v) => setFunc("horasDia", v)} /></td></tr>
-              <tr><td className="py-1.5 text-slate-300">Dias de funcionamento por mês</td><td className="text-right"><CapInput value={f.diasMes} placeholder={26} onChange={(v) => setFunc("diasMes", v)} /></td></tr>
-              <tr><td className="py-1.5 text-slate-300">Eficiência real (%) <span className="text-[11px] text-slate-500">paradas, limpeza, perdas</span></td><td className="text-right"><CapInput value={f.eficiencia} placeholder={85} onChange={(v) => setFunc("eficiencia", v)} /></td></tr>
-              <tr><td className="py-1.5 text-slate-300">Área útil de produção/atendimento (m²) <span className="text-[11px] text-slate-500">sem banheiro, depósito</span></td><td className="text-right"><CapInput value={f.area} placeholder={60} onChange={(v) => setFunc("area", v)} /></td></tr>
-              <tr><td className="py-1.5 text-slate-300">Fator de pico <span className="text-[11px] text-slate-500">ex.: 1,3 = mês/dia de pico com 30% a mais (datas, almoço, verão); vazio = sem pico</span></td><td className="text-right"><CapInput value={f.pico} placeholder={1} onChange={(v) => setFunc("pico", v)} /></td></tr>
-              <tr><td className="py-1.5 text-slate-300">Pessoas que trabalham na produção/atendimento <span className="text-[11px] text-slate-500">inclua os sócios (usado só na carga de trabalho)</span></td><td className="text-right"><CapInput value={cap.pessoasTrab} placeholder={2} onChange={(v) => set({ pessoasTrab: v })} /></td></tr>
-            </tbody></table>
-            <div className="text-xs text-slate-400 mt-2">Horas efetivas no mês: <b className="text-slate-200">{fmtNum(R.horasEf, 1)} h</b></div>
-          </Card>
-          <Card className="p-4">
-            <h3 className="text-sm font-bold text-slate-100 mb-2">2 · Demanda planejada <span className="text-[11px] font-normal text-slate-500">(vem do Módulo 5)</span></h3>
-            {itens.length === 0 ? <div className="text-xs text-slate-500">O Módulo 5 ainda não tem quantidades. Preencham lá, ou informem abaixo.</div> : (
-              <>
-                <div className="text-[11px] text-slate-500 mb-1">Marquem só os itens que <b>usam esta capacidade</b> (produzidos/atendidos pela empresa). Itens só revendidos (ex.: refrigerante comprado pronto) devem ficar desmarcados.</div>
-                <div className="max-h-72 overflow-y-auto border border-slate-700 rounded-lg"><table className="w-full text-sm"><thead className="sticky top-0 bg-slate-900"><tr className="text-left text-[10.5px] uppercase text-slate-500"><th className="w-6"></th><th className="py-1">Item</th><th className="text-right pr-2">Qtde/mês</th><th className="text-right pr-2">Minutos de trabalho por unidade <span className="normal-case text-slate-600">(opcional)</span></th></tr></thead><tbody>
-                  {itens.map((it) => { const ex = isEx(it); const sug = excl[it.id] === undefined && capSugRevenda(it.nome); return (
-                    <tr key={it.id} className={`border-t border-slate-800 ${ex ? "opacity-50" : ""}`}><td className="py-0.5 w-6 pl-1"><input type="checkbox" checked={!ex} onChange={(e) => set({ excluidos: { ...excl, [it.id]: !e.target.checked } })} /></td><td className="py-0.5 text-slate-300">{it.nome || "(sem nome)"}{sug && <span className="ml-1 text-[10px] text-amber-300">(revenda — sugerido; marque se for produzido)</span>}</td><td className="text-right text-slate-200 pr-2">{fmtNum(it.qtd, 0)}</td><td className="text-right pr-2">{ex ? <span className="text-slate-600">—</span> : <CapInput value={cap.minutos?.[it.id]} placeholder="min" onChange={(v) => set({ minutos: { ...(cap.minutos || {}), [it.id]: v } })} />}</td></tr>); })}
-                  <tr className="border-t border-slate-700 sticky bottom-0 bg-slate-900"><td></td><td className="py-1 font-bold text-slate-100">Total usado na capacidade ({usados.length} de {itens.length} itens)</td><td className="text-right font-bold text-slate-100 pr-2">{fmtNum(pecasM5, 0)}</td><td></td></tr>
-                </tbody></table></div>
-                {unsDif.length > 1 && <div className="text-[11px] text-amber-300 mt-1">⚠ Os itens marcados parecem estar em unidades diferentes ({unsDif.join(" × ")}). Convertam para uma mesma unidade no Módulo 5 ou desmarquem o que não couber, senão a soma fica distorcida.</div>}
-              </>
-            )}
-            {modelo.porCliente && <div className="flex items-center gap-2 mt-2 text-xs text-slate-300">Itens comprados por cliente (média): <CapInput value={cap.pecasCliente} placeholder={modelo.porCliente} onChange={(v) => set({ pecasCliente: v })} /></div>}
-            {modelo.porCliente && pecasM5 > 0 && <div className="text-xs text-emerald-300 mt-1">Cálculo automático: {fmtNum(pecasM5, 0)} itens do Módulo 5 ÷ {fmtNum(pecasCli, 1)} por cliente = <b>{fmtNum(demandaM5, 0)} clientes/mês</b></div>}
-            <div className="text-[11px] text-slate-500 mt-1">{modelo.demandaDica}</div>
-            <div className="flex items-center gap-2 mt-2 text-xs text-slate-300">Demanda usada: automática ({fmtNum(demandaM5, 0)}). Para trocar, digite aqui ({modelo.unidade}): <CapInput value={cap.demandaManual} placeholder="automática" onChange={(v) => set({ demandaManual: v })} /></div>
-          </Card>
-        </div>
-        <Card className="p-4 mb-3">
-          <h3 className="text-sm font-bold text-slate-100 mb-2">3 · Recursos que limitam a capacidade <span className="text-[11px] font-normal text-slate-500">(vocês informam)</span></h3>
-          <div className="overflow-x-auto"><table className="w-full text-sm">
-            <thead><tr className="text-left text-[11px] uppercase text-slate-500"><th className="py-1 pr-2">Recurso</th><th className="pr-2">Quantidade</th><th className="pr-2">Como ele trabalha</th><th className="pr-2">% da demanda que usa <span className="normal-case text-slate-600">(vazio = 100%)</span></th><th className="pr-2">Espaço (m² por unidade) <span className="normal-case text-slate-600">automático pela área</span></th><th className="pr-2 text-right">Capacidade/mês</th><th className="text-right">Uso da demanda</th></tr></thead>
-            <tbody>
-              {R.linhas.map((l) => { const r = l.r; const v = cap.recursos?.[r.id] || {}; return (
-                <tr key={r.id} className="border-t border-slate-700 align-top">
-                  <td className="py-2 pr-2 text-slate-200">{r.nome}{(r.essencial === false || r.custom) && <button onClick={() => removerRec(r)} title="Remover este recurso" className="ml-1.5 text-[10px] text-rose-300 border border-rose-800/60 rounded px-1">✕</button>}<div className="text-[10px] text-slate-500">ajusta em: {r.mod}</div></td>
-                  <td className="pr-2 py-2"><CapInput value={v.qtd} placeholder={r.ph.qtd} onChange={(x) => setRec(r.id, "qtd", x)} /></td>
-                  <td className="pr-2 py-2 text-xs text-slate-400 space-y-1">
-                    {r.tipo === "taxa" && <div className="flex items-center gap-2"><CapInput value={v.taxa} placeholder={r.ph.taxa} onChange={(x) => setRec(r.id, "taxa", x)} /> {r.taxaRot}</div>}
-                    {r.tipo === "lote" && <><div className="flex items-center gap-2"><CapInput value={v.lote} placeholder={r.ph.lote} onChange={(x) => setRec(r.id, "lote", x)} /> {r.loteRot}</div><div className="flex items-center gap-2"><CapInput value={v.ciclo} placeholder={r.ph.ciclo} onChange={(x) => setRec(r.id, "ciclo", x)} /> {r.cicloRot}</div></>}
-                    {r.tipo === "servico" && <><div className="flex items-center gap-2"><CapInput value={v.duracao} placeholder={r.ph.duracao} onChange={(x) => setRec(r.id, "duracao", x)} /> {r.duracaoRot}</div>{r.porRot && <div className="flex items-center gap-2"><CapInput value={v.por} placeholder={r.ph.por} onChange={(x) => setRec(r.id, "por", x)} /> {r.porRot}</div>}{r.visRot && <div className="flex items-center gap-2"><CapInput value={v.vis} placeholder={r.ph.vis} onChange={(x) => setRec(r.id, "vis", x)} /> {r.visRot}</div>}</>}
-                  </td>
-                  <td className="pr-2 py-2"><CapInput value={v.parcela} placeholder={100} onChange={(x) => setRec(r.id, "parcela", x && x > 100 ? 100 : x)} /></td>
-                  <td className="pr-2 py-2"><CapInput value={v.m2} placeholder={l.m2Auto} onChange={(x) => setRec(r.id, "m2", x)} /></td>
-                  <td className="py-2 pr-2 text-right text-slate-200">{l.preenchido ? `${fmtNum(l.capEq, 0)} ${modelo.unidade}` : "—"}</td>
-                  <td className="py-2 text-right">{l.preenchido && l.uso != null ? <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${corUso(l.uso)}`}>{pct(l.uso)}</span> : <span className="text-slate-600">—</span>}</td>
-                </tr>
-              ); })}
-            </tbody>
-          </table></div>
+      {(() => {
+        const temProd = A.temProd;
+        const passos = [{ k: "tipo", t: "O que o negócio faz" }, { k: "atend", t: "Atendimento" }, ...(temProd ? [{ k: "prod", t: "Produção" }] : []), { k: "res", t: "Resultado" }];
+        const pk = passos.some((p) => p.k === passo) ? passo : "tipo";
+        const idx = passos.findIndex((p) => p.k === pk);
+        const vaiPara = (k) => { setPasso(k); try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { /* sem rolagem */ } };
+        const pct = (u) => `${fmtNum(u * 100, 0)}%`;
+        const corUso = (u) => (u == null ? "" : u > 1 ? "bg-rose-900/40 text-rose-300" : u > 0.85 ? "bg-amber-900/40 text-amber-300" : "bg-emerald-900/40 text-emerald-300");
+        const diasMesUso = capNum(f.diasMes) || 26;
+        const preencherSug = () => {
+          const rec = { ...(cap.recursos || {}) }; let n = 0;
+          modelo.recursos.forEach((r) => { const sg = sugM[r.id]; if (sg && !capNum(rec[r.id]?.qtd)) { rec[r.id] = { ...(rec[r.id] || {}), qtd: sg.qtd }; n++; } });
+          const novo = { recursos: rec }; if (!capNum(cap.pessoasTrab) && sugM.__pessoas) { novo.pessoasTrab = sugM.__pessoas.qtd; n++; }
+          set(novo);
+          if (!n) window.alert("Nada para preencher: já há quantidades informadas, ou os Módulos 1 e 9 não têm itens parecidos com os recursos desta tela.");
+        };
+        const tabelaMinutos = (lista, titulo) => !lista.length ? null : (
+          <div className="mt-3">
+            <div className="text-xs font-bold text-slate-200 mb-1">{titulo}</div>
+            <div className="text-[11px] text-slate-500 mb-1">Quantos minutos de trabalho leva para fazer/atender <b>1 unidade</b>? (opcional, mas deixa o resultado mais realista: mostra se as pessoas dão conta do trabalho.)</div>
+            <div className="max-h-56 overflow-y-auto border border-slate-700 rounded-lg"><table className="w-full text-sm"><thead className="sticky top-0 bg-slate-900"><tr className="text-left text-[10.5px] uppercase text-slate-500"><th className="py-1 pl-2">Item</th><th className="text-right pr-2">Qtde/mês</th><th className="text-right pr-2">Minutos por unidade</th></tr></thead><tbody>
+              {lista.map((it) => <tr key={it.id} className="border-t border-slate-800"><td className="py-0.5 pl-2 text-slate-300">{it.nome || "(sem nome)"}</td><td className="text-right pr-2 text-slate-400">{fmtNum(Number(it.qtd) || 0, 0)}</td><td className="text-right pr-2"><CapInput value={cap.minutos?.[it.id]} placeholder="min" onChange={(v) => set({ minutos: { ...(cap.minutos || {}), [it.id]: v } })} /></td></tr>)}
+            </tbody></table></div>
+          </div>
+        );
+        const tabelaRecursos = (grupo, Rx) => {
+          const linhas = Rx ? Rx.linhas : [];
+          return (
+            <div className="overflow-x-auto"><table className="w-full text-sm">
+              <thead><tr className="text-left text-[11px] uppercase text-slate-500"><th className="py-1 pr-2">Recurso</th><th className="pr-2">Quantidade</th><th className="pr-2">Como ele trabalha</th><th className="pr-2">% da demanda que usa <span className="normal-case text-slate-600">(vazio = 100%)</span></th><th className="pr-2">m² por unidade <span className="normal-case text-slate-600">(opcional)</span></th><th className="text-right pr-2">Capacidade/mês</th><th className="text-right">Uso</th></tr></thead>
+              <tbody>
+                {linhas.map((l) => { const r = l.r; const v = cap.recursos?.[r.id] || {}; const sg = sugM[r.id]; return (
+                  <tr key={r.id} className="border-t border-slate-700 align-top">
+                    <td className="py-2 pr-2 text-slate-200">{r.nome}{(r.essencial === false || r.custom) && <button onClick={() => removerRec(r)} title="Remover este recurso" className="ml-1.5 text-[10px] text-rose-300 border border-rose-800/60 rounded px-1">✕</button>}<div className="text-[10px] text-slate-500">ajusta em: {r.mod}</div></td>
+                    <td className="pr-2 py-2"><CapInput value={v.qtd} placeholder={sg ? sg.qtd : r.ph.qtd} onChange={(x) => setRec(r.id, "qtd", x)} />{sg && !capNum(v.qtd) && <div className="text-[10px] text-sky-300 mt-0.5 max-w-[11rem]">sugestão: {sg.qtd} ({sg.fonte})</div>}</td>
+                    <td className="pr-2 py-2 text-xs text-slate-400 space-y-1">
+                      {r.tipo === "taxa" && <div className="flex items-center gap-2"><CapInput value={v.taxa} placeholder={r.ph.taxa} onChange={(x) => setRec(r.id, "taxa", x)} /> {r.taxaRot}</div>}
+                      {r.tipo === "lote" && <><div className="flex items-center gap-2"><CapInput value={v.lote} placeholder={r.ph.lote} onChange={(x) => setRec(r.id, "lote", x)} /> {r.loteRot}</div><div className="flex items-center gap-2"><CapInput value={v.ciclo} placeholder={r.ph.ciclo} onChange={(x) => setRec(r.id, "ciclo", x)} /> {r.cicloRot}</div></>}
+                      {r.tipo === "servico" && <><div className="flex items-center gap-2"><CapInput value={v.duracao} placeholder={r.ph.duracao} onChange={(x) => setRec(r.id, "duracao", x)} /> {r.duracaoRot}</div>{r.porRot && <div className="flex items-center gap-2"><CapInput value={v.por} placeholder={r.ph.por} onChange={(x) => setRec(r.id, "por", x)} /> {r.porRot}</div>}{r.visRot && <div className="flex items-center gap-2"><CapInput value={v.vis} placeholder={r.ph.vis} onChange={(x) => setRec(r.id, "vis", x)} /> {r.visRot}</div>}</>}
+                    </td>
+                    <td className="pr-2 py-2"><CapInput value={v.parcela} placeholder={100} onChange={(x) => setRec(r.id, "parcela", x && x > 100 ? 100 : x)} /></td>
+                    <td className="pr-2 py-2"><CapInput value={v.m2} placeholder={A.m2Auto[r.id] ?? l.m2Auto} onChange={(x) => setRec(r.id, "m2", x)} /></td>
+                    <td className="py-2 pr-2 text-right text-slate-200">{l.preenchido ? `${fmtNum(l.capEq, 0)} ${modelo.unidade}` : "—"}</td>
+                    <td className="py-2 text-right">{l.preenchido && l.uso != null ? <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${corUso(l.uso)}`}>{pct(l.uso)}</span> : <span className="text-slate-600">—</span>}</td>
+                  </tr>
+                ); })}
+                {!linhas.length && <tr><td colSpan={7} className="py-2 text-xs text-slate-500">Nenhum recurso nesta etapa para o segmento. Use "Incluir outro recurso" abaixo.</td></tr>}
+              </tbody>
+            </table></div>
+          );
+        };
+        const incluirRec = (grupo) => (
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-300">
             <span>＋ Incluir outro recurso:</span>
             <select value={novoSel} onChange={(e) => setNovoSel(e.target.value)} className="bg-slate-950 border border-slate-600 rounded-md px-2 py-1.5 text-slate-100">
               <option value="">escolher…</option>
-              {modelo.catalogo.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
+              {modelo.catalogo.filter((r) => capGrupo(r) === grupo).map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
               <option value="__novo">Outro (criar um recurso meu)…</option>
             </select>
             {novoSel === "__novo" && <><input value={novoNome} onChange={(e) => setNovoNome(e.target.value)} placeholder="Nome do recurso" className="bg-slate-950 border border-slate-600 rounded-md px-2 py-1.5 text-slate-100" />
               <select value={novoTipo} onChange={(e) => setNovoTipo(e.target.value)} className="bg-slate-950 border border-slate-600 rounded-md px-2 py-1.5 text-slate-100"><option value="taxa">produz X unidades por hora</option><option value="servico">atende 1 cliente a cada X minutos</option><option value="lote">produz um lote a cada X minutos</option></select></>}
-            <button onClick={adicionarRec} disabled={!novoSel} className="border border-amber-600 text-amber-200 rounded-md px-3 py-1.5 disabled:opacity-40">Incluir</button>
+            <button onClick={() => adicionarRec(grupo)} disabled={!novoSel} className="border border-amber-600 text-amber-200 rounded-md px-3 py-1.5 disabled:opacity-40">Incluir</button>
           </div>
-        </Card>
-      </div>
-      <Card className={`p-4 ${R.capacidade != null && R.falta > 0 ? "border-amber-600/70" : ""}`}>
-        <h3 className="text-sm font-bold text-slate-100 mb-2">4 · Resultado</h3>
+        );
+        const nProd = A.prodIt.length, nRev = A.revIt.length, nServ = A.servIt.length;
+        const descNeg = A.tipoNeg === "misto" ? "PRODUZ e também COMERCIALIZA/ATENDE" : A.tipoNeg === "produz" ? "PRODUZ o que vende" : A.tipoNeg === "servico" ? "PRESTA SERVIÇOS" : "só COMERCIALIZA (compra pronto e revende)";
+        const pillTipo = (it, t, rot) => { const on = A.tipoDe(it) === t; const cor = t === "produzo" ? "bg-blue-900 border-blue-400 text-blue-100" : t === "revenda" ? "bg-emerald-900 border-emerald-400 text-emerald-100" : "bg-purple-900 border-purple-400 text-purple-100"; return <button key={t} onClick={() => setTipo(it, t)} className={`px-2.5 py-1 rounded-full text-xs border mr-1 ${on ? `${cor} font-bold` : "border-slate-600 text-slate-400"}`}>{rot}</button>; };
+        const setTipo = (it, t) => set({ tipoItem: { ...(cap.tipoItem || {}), [it.id]: t }, excluidos: { ...excl, [it.id]: !segRev && t === "revenda" } });
+        const setTodos = (t) => { const ti = { ...(cap.tipoItem || {}) }, ex = { ...excl }; itens.forEach((it) => { ti[it.id] = t; ex[it.id] = !segRev && t === "revenda"; }); set({ tipoItem: ti, excluidos: ex }); };
+        const E1 = (
+          <Card className="p-4">
+            <h3 className="text-sm font-bold text-slate-100 mb-1">Passo 1 · O que cada item do Módulo 5 é para a empresa?</h3>
+            <div className="text-xs text-slate-400 mb-2">Para cada item, escolham: <b className="text-blue-300">Produzo</b> (a empresa faz/prepara o que vende) · <b className="text-emerald-300">Só revendo</b> (compra pronto e vende, ex.: refrigerante) · <b className="text-purple-300">Serviço</b> (o cliente paga pelo trabalho/tempo de alguém, ex.: aplicação de unha). Isso decide quais perguntas vêm depois.</div>
+            {itens.length === 0 ? <div className="text-xs text-slate-500">O Módulo 5 ainda não tem quantidades. Preencham lá primeiro (volte aqui depois).</div> : (
+              <>
+                <div className="text-[11px] text-slate-400 mb-1">Marcar todos como: <button className="underline text-blue-300 mr-2" onClick={() => setTodos("produzo")}>Produzo</button><button className="underline text-emerald-300 mr-2" onClick={() => setTodos("revenda")}>Só revendo</button><button className="underline text-purple-300" onClick={() => setTodos("servico")}>Serviço</button></div>
+                <div className="max-h-80 overflow-y-auto border border-slate-700 rounded-lg"><table className="w-full text-sm"><thead className="sticky top-0 bg-slate-900"><tr className="text-left text-[10.5px] uppercase text-slate-500"><th className="py-1 pl-2">Item (vem do Módulo 5)</th><th className="text-right pr-2">Qtde/mês</th><th className="pl-2">O que é?</th></tr></thead><tbody>
+                  {itens.map((it) => { const sug = !cap.tipoItem?.[it.id] && excl[it.id] === undefined && capTipoSeg(segmento) === "produzo" && capSugRevenda(it.nome); return (
+                    <tr key={it.id} className="border-t border-slate-800"><td className="py-1 pl-2 text-slate-300">{it.nome || "(sem nome)"}{sug && <span className="ml-1 text-[10px] text-amber-300">(sugerido: revenda)</span>}</td><td className="text-right pr-2 text-slate-400">{fmtNum(Number(it.qtd) || 0, 0)}</td><td className="pl-2 py-1 whitespace-nowrap">{pillTipo(it, "produzo", "Produzo")}{pillTipo(it, "revenda", "Só revendo")}{pillTipo(it, "servico", "Serviço")}</td></tr>
+                  ); })}
+                </tbody></table></div>
+                <div className="mt-2 text-xs rounded-lg border border-sky-800/60 bg-sky-950/30 p-2.5 text-sky-100">Resultado deste passo: {nProd} item(ns) produzido(s) · {nServ} serviço(s) · {nRev} de revenda. <b>Esta empresa {descNeg}.</b> {A.temProd ? "Vocês vão preencher Atendimento e Produção." : "Como nada é produzido, vocês só preenchem o Atendimento (a Produção não se aplica)."}</div>
+              </>
+            )}
+          </Card>
+        );
+        const E2 = (
+          <div className="space-y-3">
+            <Card className="p-4">
+              <h3 className="text-sm font-bold text-slate-100 mb-1">Passo 2 · Funcionamento e atendimento</h3>
+              <div className="text-xs text-sky-200 bg-sky-950/30 border border-sky-800/50 rounded-lg p-2 mb-2">Em linguagem simples: <b>em um dia de funcionamento, quantos clientes a empresa consegue atender, e quantos precisa atender para vender o que planejou?</b></div>
+              <table className="w-full text-sm"><tbody>
+                <tr><td className="py-1.5 text-slate-300">Horas de funcionamento por dia</td><td className="text-right"><CapInput value={f.horasDia} placeholder={8} onChange={(v) => setFunc("horasDia", v)} /></td></tr>
+                <tr><td className="py-1.5 text-slate-300">Dias de funcionamento por mês</td><td className="text-right"><CapInput value={f.diasMes} placeholder={26} onChange={(v) => setFunc("diasMes", v)} /></td></tr>
+                <tr><td className="py-1.5 text-slate-300">Eficiência real (%) <span className="text-[11px] text-slate-500">paradas, limpeza, perdas (na dúvida, 85)</span></td><td className="text-right"><CapInput value={f.eficiencia} placeholder={85} onChange={(v) => setFunc("eficiencia", v)} /></td></tr>
+                <tr><td className="py-1.5 text-slate-300">Área útil de produção/atendimento (m²) <span className="text-[11px] text-slate-500">sem banheiro e depósito</span></td><td className="text-right"><CapInput value={f.area} placeholder={60} onChange={(v) => setFunc("area", v)} /></td></tr>
+                <tr><td className="py-1.5 text-slate-300">Fator de pico <span className="text-[11px] text-slate-500">ex.: 1,3 = nos dias/meses de pico vendem 30% a mais (almoço, datas, verão); vazio = sem pico</span></td><td className="text-right"><CapInput value={f.pico} placeholder={1} onChange={(v) => setFunc("pico", v)} /></td></tr>
+              </tbody></table>
+              <div className="text-xs text-slate-400 mt-2">Horas efetivas no mês: <b className="text-slate-200">{fmtNum(R.horasEf, 1)} h</b></div>
+            </Card>
+            <Card className="p-4">
+              <h3 className="text-sm font-bold text-slate-100 mb-1">Quantos clientes precisam ser atendidos <span className="text-[11px] font-normal text-slate-500">(vem do Módulo 5)</span></h3>
+              {A.demA > 0 ? <div className="text-sm text-emerald-300">{fmtNum(pecasM5, 0)} {A.atendIt === A.principais ? "itens produzidos/serviços" : "itens de revenda"}{A.pecasCli > 1 ? <> ÷ {fmtNum(A.pecasCli, 1)} por cliente</> : ""} = <b>{fmtNum(A.demA, 0)} {modelo.unidade}/mês</b> ≈ <b>{fmtNum(A.demA / diasMesUso, 1)} por dia</b></div> : <div className="text-xs text-slate-500">O Módulo 5 ainda não tem quantidades.</div>}
+              {nRev > 0 && A.principais.length > 0 && <div className="text-[11px] text-slate-500 mt-1">Os {nRev} item(ns) de revenda acompanham o pedido principal (ex.: a bebida junto com o almoço) e não contam como um novo cliente.</div>}
+              {modelo.porCliente && <div className="flex items-center gap-2 mt-2 text-xs text-slate-300">Itens comprados por cliente (média): <CapInput value={cap.pecasCliente} placeholder={modelo.porCliente} onChange={(v) => set({ pecasCliente: v })} /></div>}
+              {unsDif.length > 1 && <div className="text-[11px] text-amber-300 mt-1">⚠ Os itens parecem estar em unidades diferentes ({unsDif.join(" × ")}). Convertam para a mesma unidade no Módulo 5, senão a soma fica distorcida.</div>}
+              <div className="text-[11px] text-slate-500 mt-1">{modelo.demandaDica}</div>
+              <div className="flex items-center gap-2 mt-2 text-xs text-slate-300">Se preferir, digite outro valor ({modelo.unidade}/mês): <CapInput value={cap.demandaManual} placeholder="automático" onChange={(v) => set({ demandaManual: v })} /></div>
+            </Card>
+            <Card className="p-4">
+              <div className="flex flex-wrap items-center gap-2 mb-1"><h3 className="text-sm font-bold text-slate-100">Recursos de atendimento da empresa</h3><button onClick={preencherSug} className="ml-auto text-xs border border-sky-600 text-sky-200 rounded-md px-3 py-1.5">✔ Preencher quantidades com o que está nos Módulos 1 e 9</button></div>
+              <div className="text-[11px] text-slate-500 mb-2">Mesas/lugares, caixa, balcão, atendentes, cadeiras, profissionais… Os números em cinza e as “sugestões” vêm dos Módulos 1 e 9 da própria equipe: <b>confiram e corrijam</b>. Se alguns clientes não usam o recurso (ex.: marmita para viagem não usa o salão), informem a <b>% da demanda que usa</b>.</div>
+              {tabelaRecursos("a", A.RA)}
+              {incluirRec("a")}
+              {!A.temProd && <>
+                <div className="mt-3 flex items-center gap-2 text-xs text-slate-300">Pessoas que trabalham no atendimento/serviço (inclua os sócios): <CapInput value={cap.pessoasTrab} placeholder={sugM.__pessoas ? sugM.__pessoas.qtd : 2} onChange={(v) => set({ pessoasTrab: v })} /></div>
+                {tabelaMinutos(A.servIt, "Minutos de cada serviço (duração)")}
+              </>}
+            </Card>
+          </div>
+        );
+        const E3 = (
+          <div className="space-y-3">
+            <Card className="p-4">
+              <h3 className="text-sm font-bold text-slate-100 mb-1">Passo 3 · Produção <span className="text-[11px] font-normal text-slate-500">(só os {nProd} itens marcados “Produzo”)</span></h3>
+              <div className="text-xs text-sky-200 bg-sky-950/30 border border-sky-800/50 rounded-lg p-2 mb-2">Em linguagem simples: <b>para produzir tudo o que prometemos vender, temos pessoas, equipamentos e tempo suficientes?</b> Precisamos produzir <b>{fmtNum(A.demP, 0)} {modelo.unidade}/mês</b> ≈ <b>{fmtNum(A.demP / diasMesUso, 1)} por dia</b>.</div>
+              <div className="flex flex-wrap items-center gap-2 mb-1"><h4 className="text-xs font-bold text-slate-200">Equipamentos e pessoas da produção</h4><button onClick={preencherSug} className="ml-auto text-xs border border-sky-600 text-sky-200 rounded-md px-3 py-1.5">✔ Preencher quantidades com o que está nos Módulos 1 e 9</button></div>
+              {tabelaRecursos("p", A.RP)}
+              {incluirRec("p")}
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-300">Pessoas que trabalham na produção (inclua os sócios, se produzem): <CapInput value={cap.pessoasTrab} placeholder={sugM.__pessoas ? sugM.__pessoas.qtd : 2} onChange={(v) => set({ pessoasTrab: v })} />{sugM.__pessoas && !capNum(cap.pessoasTrab) && <span className="text-[10px] text-sky-300">sugestão: {sugM.__pessoas.qtd} — {sugM.__pessoas.fonte}</span>}</div>
+              {tabelaMinutos(A.prodIt, "Minutos de trabalho por unidade produzida")}
+            </Card>
+          </div>
+        );
+        const cor = (e) => ({ rose: ["border-rose-600/70", "text-rose-400", "#ef4444"], amber: ["border-amber-600/70", "text-amber-300", "#f59e0b"], emerald: ["border-emerald-600/70", "text-emerald-300", "#10b981"], slate: ["border-slate-700", "text-slate-400", "#64748b"] }[e.cor]);
+        const estado = (Rx) => {
+          if (!Rx || Rx.capacidade == null) return { cor: "slate", t: "Faltam dados", d: "Informem a quantidade e como cada recurso trabalha." };
+          if (!(Rx.demanda > 0)) return { cor: "slate", t: "Sem demanda", d: "O Módulo 5 não tem quantidades para este item." };
+          if (Rx.utilizacao > 1) return { cor: "rose", t: "✖ Não atende" };
+          if (Rx.utilizacaoPico > 1) return { cor: "amber", t: "⚠ Atende na média, não no pico" };
+          if (Rx.utilizacao > 0.85) return { cor: "amber", t: "⚠ Atende, com pouca folga" };
+          return { cor: "emerald", t: "✔ Atende" };
+        };
+        const cartao = (titulo, Rx) => {
+          const e = estado(Rx); const [bord, txt, fundo] = cor(e); const ok = Rx && Rx.capacidade != null && Rx.demanda > 0;
+          return (
+            <div className={`rounded-xl border p-4 bg-slate-900/60 ${bord}`}>
+              <div className="text-[11px] uppercase tracking-wide text-slate-500">{titulo}</div>
+              <div className={`text-xl font-extrabold ${txt}`}>{e.t}</div>
+              {ok ? <>
+                <div className="h-3 bg-slate-950 rounded-full overflow-hidden border border-slate-700 my-2"><div className="h-full" style={{ width: `${Math.min(100, Rx.utilizacao * 100)}%`, background: fundo }} /></div>
+                <div className="text-xs text-slate-300">Precisamos: <b>{fmtNum(Rx.demanda / diasMesUso, 1)} {modelo.unidade}/dia</b> · conseguimos: <b>{fmtNum(Rx.capacidade / diasMesUso, 1)}/dia</b> (uso <b>{pct(Rx.utilizacao)}</b>{Rx.pico > 1 ? <> · no pico <b>{pct(Rx.utilizacaoPico)}</b></> : ""}).<br />O que mais limita: <b>{Rx.gargalo.r.nome.toLowerCase()}</b>.</div>
+              </> : <div className="text-xs text-slate-400 mt-1">{e.d}</div>}
+            </div>
+          );
+        };
+        const E4 = (
+          <div className="grid md:grid-cols-2 gap-3 mb-3">
+            {cartao("Atendimento", A.RA)}
+            {A.temProd ? cartao("Produção", A.RP) : <div className="rounded-xl border border-slate-700 p-4 bg-slate-900/60"><div className="text-[11px] uppercase tracking-wide text-slate-500">Produção</div><div className="text-xl font-extrabold text-slate-400">Não se aplica</div><div className="text-xs text-slate-400 mt-1">Nenhum item foi marcado como “Produzo”: a empresa {A.tipoNeg === "servico" ? "presta serviços" : "compra pronto e revende"}. Se isto estiver errado, volte ao Passo 1.</div></div>}
+          </div>
+        );
+        const nav = (
+          <div className="flex items-center gap-2 mt-3">
+            {idx > 0 && <button onClick={() => vaiPara(passos[idx - 1].k)} className="border border-slate-600 text-slate-200 rounded-md px-4 py-2 text-sm">← Voltar</button>}
+            {idx < passos.length - 1 && <button onClick={() => vaiPara(passos[idx + 1].k)} className="ml-auto bg-amber-500 text-slate-900 font-bold rounded-md px-4 py-2 text-sm">Próximo: {passos[idx + 1].t} →</button>}
+          </div>
+        );
+        return (
+          <>
+            <div className="flex flex-wrap gap-1.5 mb-3">{passos.map((p, i) => <button key={p.k} onClick={() => vaiPara(p.k)} className={`flex-1 min-w-[8rem] text-left text-xs rounded-lg px-3 py-2 border ${p.k === pk ? "bg-amber-900/60 border-amber-500 text-amber-100 font-bold" : i < idx ? "border-slate-700 text-emerald-300 bg-slate-900" : "border-slate-700 text-slate-400 bg-slate-900"}`}>{i < idx ? "✔ " : ""}{i + 1}. {p.t}</button>)}</div>
+            <div className={somenteLeitura ? "opacity-70 pointer-events-none select-none" : ""}>
+              {pk === "tipo" && E1}
+              {pk === "atend" && E2}
+              {pk === "prod" && E3}
+            </div>
+            {pk === "res" && E4}
+            {pk !== "res" && nav}
+            {pk === "res" && <div className="mb-3">{nav}</div>}
+          </>
+        );
+      })()}
+      {passo === "res" && (<Card className={`p-4 ${R.capacidade != null && R.falta > 0 ? "border-amber-600/70" : ""}`}>
+        <h3 className="text-sm font-bold text-slate-100 mb-2">Detalhes e o que fazer <span className="text-[11px] font-normal text-slate-500">(ponto mais apertado: {A.rotR.toLowerCase()})</span></h3>
         {R.capacidade == null ? <div className="text-sm text-slate-500">Preencham pelo menos um recurso (quantidade e como ele trabalha) para ver a capacidade da empresa.</div> : (
           <div className="text-sm text-slate-200 space-y-2">
             <div>Capacidade da empresa (o recurso que mais limita é <b>{R.gargalo.r.nome.toLowerCase()}</b>): <b>{fmtNum(R.capacidade, 0)} {modelo.unidade}/mês</b>{R.demanda > 0 ? <> · demanda planejada: <b>{fmtNum(R.demanda, 0)}</b> · utilização <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${corUso(R.utilizacao)}`}>{pct(R.utilizacao)}{R.utilizacao > 1 ? " — acima da capacidade" : ""}</span></> : <span className="text-slate-500"> · sem demanda informada ainda</span>}</div>
@@ -11116,7 +11297,7 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulad
             )}
           </div>
         )}
-      </Card>
+      </Card>)}
     </div>
   );
 }
@@ -11211,18 +11392,17 @@ function capDemandaEquipe(modeloBase, cap, itens) {
 function capLinhaTurma(eq, d) {
   const lanc = mergeLancamentos(d?.lancamentos);
   const cap = d?.capacidade || {};
-  const base = modeloCapacidade(eq.segmento);
-  const { modelo, demanda } = capDemandaEquipe(base, cap, lanc?.m5?.itens);
-  const R = calcularCapacidade(modelo, cap, demanda);
+  const A = capAnalise(eq.segmento, cap, lanc?.m5?.itens);
+  const modelo = A.modelo, R = A.R, demanda = R.demanda;
   const usou = !!(d?.capacidade && Object.values(d.capacidade.recursos || {}).some((v) => capNum(v?.qtd) > 0));
   const alertas = []; let prio = 4;
   if (!usou || R.capacidade == null) return { eq, R, usou: false, demanda, alertas: ["equipe ainda não usou o simulador"], prio: 5, modelo };
-  if (R.demanda > 0 && R.falta > 0) { alertas.push(`⚠ faltam ${fmtNum(R.falta, 0)} ${modelo.unidade}/mês`); prio = 1; }
+  if (R.demanda > 0 && R.falta > 0) { alertas.push(`⚠ ${A.rotR.toLowerCase()}: faltam ${fmtNum(R.falta, 0)} ${modelo.unidade}/mês`); prio = 1; }
   if (R.espaco?.uso > 1) { alertas.push("⚠ não cabe no espaço"); prio = Math.min(prio, 1); }
   else if (R.espaco?.uso > 0.85) { alertas.push("⚠ pouco espaço de sobra"); prio = Math.min(prio, 2); }
   if (R.demanda > 0 && R.falta === 0 && R.utilizacao > 0.85) { alertas.push("atende, com pouca folga"); prio = Math.min(prio, 2); }
   if (R.demanda > 0 && R.falta === 0 && R.utilizacaoPico > 1) { alertas.push(`⚠ não atende no pico (×${fmtNum(R.pico, 1)})`); prio = Math.min(prio, 2); }
-  try { const usadosC = (lanc?.m5?.itens || []).filter((it) => Number(it.qtd) > 0 && !capExcl(cap, it)); const cg = capCarga(cap, usadosC, R.horasEf); if (cg.uso > 1) { alertas.push(`⚠ carga de trabalho ${fmtNum(cg.uso * 100, 0)}% das horas da equipe`); prio = Math.min(prio, 1); } } catch { /* sem carga */ }
+  try { const cg = capCarga(cap, A.principais, R.horasEf); if (cg.uso > 1) { alertas.push(`⚠ carga de trabalho ${fmtNum(cg.uso * 100, 0)}% das horas da equipe`); prio = Math.min(prio, 1); } } catch { /* sem carga */ }
   if (R.sobra) { alertas.push("ℹ muita folga: rever investimento (M1) e equipe (M9)"); prio = Math.min(prio, 3); }
   if (!(R.demanda > 0)) { alertas.push("Módulo 5 sem quantidades"); prio = Math.min(prio, 3); }
   return { eq, R, usou: true, demanda: R.demanda, alertas, prio, modelo };
@@ -11245,42 +11425,54 @@ function capLinhasDiff(a, b, segmento) {
 }
 // Ficha (texto) com os dados que a equipe precisa levantar para a Capacidade do segmento — o professor copia e envia.
 function capFichaTexto(segmento) {
-  const m = modeloCapacidade(segmento); const L = [];
-  L.push(`FICHA DE DADOS PARA A CAPACIDADE DE PRODUÇÃO/ATENDIMENTO — ${segmento || "segmento não escolhido"}`);
-  L.push("Respondam com números reais ou estimativas justificadas (anotem a fonte: pesquisa, receita, visita, fornecedor).", "");
-  L.push("A) FUNCIONAMENTO", "1. Horas de funcionamento por dia (as que realmente produzem/atendem).", "2. Dias de funcionamento por mês.", "3. Eficiência real (%): paradas, limpeza, perdas (se não souber, 85).", "4. Área útil de produção/atendimento em m² (sem banheiro e depósito).", "5. Fator de pico (ex.: 1,3 se no pior período vendem 30% a mais; datas comemorativas, almoço, verão).", "6. Quantas pessoas trabalham na produção/atendimento (incluindo sócios).", "");
-  L.push("B) RECURSOS (quantidade e como cada um trabalha)");
-  m.recursos.forEach((r, i) => {
+  const m = modeloCapacidade(segmento); const L = []; const tipo = capTipoSeg(segmento);
+  const ate = m.recursos.filter((r) => capGrupo(r) === "a"), pro = m.recursos.filter((r) => capGrupo(r) === "p");
+  const lin = (r, i) => {
     const campos = ["quantidade"];
     if (r.tipo === "taxa") campos.push(r.taxaRot || "unidades por hora");
     else if (r.tipo === "lote") campos.push(r.loteRot || "unidades por ciclo", r.cicloRot || "minutos por ciclo");
     else { campos.push(r.duracaoRot || "minutos por atendimento"); if (r.porRot) campos.push(r.porRot); if (r.visRot) campos.push(r.visRot); }
-    L.push(`${i + 1}. ${r.nome}${r.essencial === false ? " (se houver)" : ""}: ${campos.join(" · ")} · % da demanda que usa esse recurso (se nem todos os itens usam).`);
-  });
-  L.push("", "C) ITENS DO MÓDULO 5", "7. Quais itens são só revenda (comprados prontos) e não usam a capacidade.", "8. (Opcional) minutos de trabalho para produzir/atender 1 unidade de cada item (ex.: bolo 90 min, brigadeiro 1,5 min, trança 360 min).", "", `Dica: ${m.demandaDica}`);
+    return `${i + 1}. ${r.nome}${r.essencial === false ? " (se houver)" : ""}: ${campos.join(" · ")} · % da demanda que usa esse recurso (se nem todos os clientes usam).`;
+  };
+  L.push(`FICHA DE DADOS PARA A CAPACIDADE — ${segmento || "segmento não escolhido"}`);
+  L.push("Respondam com números reais ou estimativas justificadas (anotem a fonte: pesquisa, receita, visita, fornecedor).", "");
+  L.push("1) O QUE É CADA ITEM DO MÓDULO 5", "Para cada item: PRODUZO (a empresa faz/prepara) · SÓ REVENDO (compra pronto e vende, ex.: bebidas) · SERVIÇO (o cliente paga pelo tempo/trabalho de alguém).", "");
+  L.push("2) FUNCIONAMENTO", "- Horas de funcionamento por dia · dias por mês · eficiência real (%; na dúvida 85) · área útil em m² (sem banheiro e depósito).", "- Fator de pico (ex.: 1,3 se no pior período vendem 30% a mais: almoço, datas comemorativas, verão).", "");
+  L.push("3) ATENDIMENTO (quantos clientes cabem e conseguimos atender)");
+  ate.forEach((r, i) => L.push(lin(r, i)));
+  if (tipo === "servico") L.push("- Pessoas que atendem (incluindo sócios) e minutos de cada serviço (ex.: unha 120 min, trança 360 min).");
+  if (tipo !== "servico") {
+    L.push("", "4) PRODUÇÃO (só para os itens que a empresa produz)");
+    if (pro.length) pro.forEach((r, i) => L.push(lin(r, i)));
+    L.push("- Pessoas que trabalham na produção (incluindo sócios que produzem).", "- Minutos de trabalho para produzir 1 unidade de cada item (ex.: bolo 90 min, brigadeiro 1,5 min).");
+    if (tipo === "revenda") L.push("(Se a empresa só revende e não produz nada, pule o item 4.)");
+  }
+  L.push("", `Dica: ${m.demandaDica}`);
   return L.join("\n");
 }
-// Texto do bloco "Capacidade" do Relatório Gerencial (markdown, em linhas). Só leitura.
 function capRelatorioLinhas(eq, d) {
   const cap = d?.capacidade; const out = ["## Capacidade de produção/atendimento"];
   const usou = !!(cap && Object.values(cap.recursos || {}).some((v) => capNum(v?.qtd) > 0));
   if (!usou) { out.push("Capacidade ainda não informada (pela equipe ou pelo professor): não foi possível avaliar se a estrutura atende a quantidade do Módulo 5."); return out; }
   const lanc = mergeLancamentos(d.lancamentos); const itens = (lanc?.m5?.itens || []).filter((it) => Number(it.qtd) > 0);
-  const { modelo, demanda } = capDemandaEquipe(modeloCapacidade(eq.segmento), cap, itens);
-  const R = calcularCapacidade(modelo, cap, demanda); const f = cap.funcionamento || {};
+  const A = capAnalise(eq.segmento, cap, itens); const modelo = A.modelo; const f = cap.funcionamento || {};
   const pc = (u) => (u == null ? "—" : `${fmtNum(u * 100, 0)}%`);
-  const usados = itens.filter((it) => !capExcl(cap, it)); const fora = itens.filter((it) => capExcl(cap, it));
+  const nome = (l) => l.slice(0, 8).map((x) => x.nome || "item").join(", ") + (l.length > 8 ? ", …" : "");
   out.push(`- Funcionamento: ${fmtNum(capNum(f.horasDia) || 8, 1)} h/dia · ${fmtNum(capNum(f.diasMes) || 26, 0)} dias/mês · eficiência ${fmtNum(capNum(f.eficiencia) || 85, 0)}% · área ${capNum(f.area) > 0 ? fmtNum(capNum(f.area), 0) + " m²" : "não informada"}${capNum(f.pico) > 1 ? ` · fator de pico ${fmtNum(capNum(f.pico), 1)}` : ""}`);
-  out.push(`- Itens do Módulo 5 considerados: ${usados.length} de ${itens.length}${fora.length ? ` (fora da capacidade, por serem revenda/não produzidos: ${fora.slice(0, 8).map((x) => x.nome || "item").join(", ")}${fora.length > 8 ? ", …" : ""})` : ""}`);
-  if (R.capacidade == null) { out.push("- Recursos incompletos (faltam quantidades ou tempos): capacidade não calculada."); return out; }
-  out.push(`- Demanda planejada: ${fmtNum(R.demanda, 0)} ${modelo.unidade}/mês · capacidade: ${fmtNum(R.capacidade, 0)} ${modelo.unidade}/mês · utilização ${pc(R.utilizacao)} · gargalo: ${R.gargalo.r.nome}`);
-  if (R.pico > 1) out.push(`- No pico (×${fmtNum(R.pico, 1)}): utilização ${pc(R.utilizacaoPico)}${R.utilizacaoPico > 1 ? " — NÃO atende no pico" : ""}`);
-  if (R.espaco?.uso != null) out.push(`- Espaço: ${fmtNum(R.espaco.usado, 0)} de ${fmtNum(R.espaco.areaUtil, 0)} m² aproveitáveis (${pc(R.espaco.uso)})`);
-  const cg = capCarga(cap, usados, R.horasEf);
+  out.push(`- Natureza do negócio (itens do Módulo 5): ${A.tipoNeg === "misto" ? "produz e também comercializa/atende" : A.tipoNeg === "produz" ? "produz o que vende" : A.tipoNeg === "servico" ? "presta serviços" : "só comercializa (revenda)"} — ${A.prodIt.length} produzido(s)${A.prodIt.length ? ` (${nome(A.prodIt)})` : ""}, ${A.servIt.length} serviço(s)${A.servIt.length ? ` (${nome(A.servIt)})` : ""}, ${A.revIt.length} de revenda${A.revIt.length ? ` (${nome(A.revIt)})` : ""}`);
+  const grupo = (tit, Rx) => {
+    if (!Rx || Rx.capacidade == null) { out.push(`- ${tit}: recursos incompletos (faltam quantidades ou tempos): capacidade não calculada.`); return; }
+    out.push(`- ${tit}: demanda ${fmtNum(Rx.demanda, 0)} ${modelo.unidade}/mês × capacidade ${fmtNum(Rx.capacidade, 0)} ${modelo.unidade}/mês · utilização ${pc(Rx.utilizacao)} · gargalo: ${Rx.gargalo.r.nome}`);
+    if (Rx.pico > 1 && Rx.demanda > 0) out.push(`  - No pico (×${fmtNum(Rx.pico, 1)}): utilização ${pc(Rx.utilizacaoPico)}${Rx.utilizacaoPico > 1 ? " — NÃO atende no pico" : ""}`);
+    out.push(`  - Recursos: ${Rx.linhas.filter((l) => l.preenchido).map((l) => `${l.r.nome} (${fmtNum(l.qtd, 0)}${l.fr < 1 ? `, ${fmtNum(l.fr * 100, 0)}% da demanda` : ""}) → ${fmtNum(l.capEq, 0)}/mês`).join("; ")}`);
+    if (Rx.falta > 0) out.push(`  - ALERTA: faltam ${fmtNum(Rx.falta, 0)} ${modelo.unidade}/mês — rever Módulos 1, 5 e 9.`);
+  };
+  grupo("Atendimento", A.RA);
+  if (A.temProd) grupo("Produção", A.RP); else out.push("- Produção: não se aplica (nenhum item marcado como produzido pela empresa).");
+  if (A.R.espaco?.uso != null) out.push(`- Espaço: ${fmtNum(A.R.espaco.usado, 0)} de ${fmtNum(A.R.espaco.areaUtil, 0)} m² aproveitáveis (${pc(A.R.espaco.uso)})`);
+  const cg = capCarga(cap, A.principais, A.R.horasEf);
   if (cg.ativo) out.push(`- Carga de trabalho: ${fmtNum(cg.horas, 0)} h/mês necessárias${cg.disp > 0 ? ` × ${fmtNum(cg.disp, 0)} h disponíveis (${fmtNum(cg.pessoas, 0)} pessoa(s)) = ${pc(cg.uso)}` : " (número de pessoas não informado)"}`);
-  out.push(`- Recursos informados: ${R.linhas.filter((l) => l.preenchido).map((l) => `${l.r.nome} (${fmtNum(l.qtd, 0)}${l.fr < 1 ? `, ${fmtNum(l.fr * 100, 0)}% da demanda` : ""}) → ${fmtNum(l.capEq, 0)} ${modelo.unidade}/mês`).join("; ")}`);
-  if (R.falta > 0) out.push(`- ALERTA: faltam ${fmtNum(R.falta, 0)} ${modelo.unidade}/mês de capacidade — rever Módulos 1, 5 e 9.`);
-  else if (R.sobra) out.push("- Observação: grande folga de capacidade — o desafio é vender; conferir investimento (M1) e equipe (M9).");
+  if (A.R.sobra && !(A.R.falta > 0)) out.push("- Observação: grande folga de capacidade — o desafio é vender; conferir investimento (M1) e equipe (M9).");
   return out;
 }
 // ===== Relatório de ajustes do professor (fica na empresa; aluno e professor visualizam/imprimem) =====

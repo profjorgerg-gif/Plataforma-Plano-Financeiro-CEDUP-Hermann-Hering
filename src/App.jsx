@@ -1,4 +1,4 @@
-// build: 20261030_19h05m Capacidade: horas compartilhadas e recurso compartilhado por item
+// build: 20261030_19h12m Capacidade: passo nao volta mais ao topo da pagina
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -11070,6 +11070,7 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulad
   const [novoNome, setNovoNome] = useState("");
   const [novoTipo, setNovoTipo] = useState("taxa");
   const [passo, setPasso] = useState(passoInicial || "tipo");
+  const topoRef = useRef(null);
   const itens = (lanc?.m5?.itens || []).filter((it) => Number(it.qtd) > 0);
   const excl = cap.excluidos || {};
   const A = capAnalise(segmento, cap, itens);
@@ -11115,7 +11116,7 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulad
         const passos = [{ k: "tipo", t: "O que o negócio faz" }, { k: "atend", t: "Atendimento" }, ...(temProd ? [{ k: "prod", t: "Produção" }] : []), { k: "res", t: "Resultado" }];
         const pk = passos.some((p) => p.k === passo) ? passo : "tipo";
         const idx = passos.findIndex((p) => p.k === pk);
-        const vaiPara = (k) => { setPasso(k); try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { /* sem rolagem */ } };
+        const vaiPara = (k) => { setPasso(k); setTimeout(() => { try { topoRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch { /* sem rolagem */ } }, 30); };
         const pct = (u) => `${fmtNum(u * 100, 0)}%`;
         const corUso = (u) => (u == null ? "" : u > 1 ? "bg-rose-900/40 text-rose-300" : u > 0.85 ? "bg-amber-900/40 text-amber-300" : "bg-emerald-900/40 text-emerald-300");
         const diasMesUso = capNum(f.diasMes) || 26;
@@ -11327,7 +11328,7 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulad
         );
         return (
           <>
-            <div className="flex flex-wrap gap-1.5 mb-3">{passos.map((p, i) => <button key={p.k} onClick={() => vaiPara(p.k)} className={`flex-1 min-w-[8rem] text-left text-xs rounded-lg px-3 py-2 border ${p.k === pk ? "bg-amber-900/60 border-amber-500 text-amber-100 font-bold" : i < idx ? "border-slate-700 text-emerald-300 bg-slate-900" : "border-slate-700 text-slate-400 bg-slate-900"}`}>{i < idx ? "✔ " : ""}{i + 1}. {p.t}</button>)}</div>
+            <div ref={topoRef} className="flex flex-wrap gap-1.5 mb-3 scroll-mt-4">{passos.map((p, i) => <button key={p.k} onClick={() => vaiPara(p.k)} className={`flex-1 min-w-[8rem] text-left text-xs rounded-lg px-3 py-2 border ${p.k === pk ? "bg-amber-900/60 border-amber-500 text-amber-100 font-bold" : i < idx ? "border-slate-700 text-emerald-300 bg-slate-900" : "border-slate-700 text-slate-400 bg-slate-900"}`}>{i < idx ? "✔ " : ""}{i + 1}. {p.t}</button>)}</div>
             <div className={somenteLeitura ? "opacity-70 pointer-events-none select-none" : ""}>
               {pk === "tipo" && E1}
               {pk === "atend" && E2}

@@ -1,4 +1,4 @@
-// build: 20261029_21h16m capacidade: demanda e espaco automaticos, resultado corrigido
+// build: 20261029_21h39m simulador professor: analise e cenarios em colunas
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1358,6 +1358,7 @@ const VERSOES = [
     "Gestão → Notas automáticas: prévia por equipe e módulo (nota atual x automática, com o cálculo), aplicação só do que o professor marcar, registro com Desfazer e envio do comunicado do novo formato de avaliação (texto editável) às equipes.",
     "Os Módulos 12 e 13 não têm nota própria; a \"nota final do plano financeiro\" é digitada pelo professor (mantém o peso de 20% da avaliação). Se o professor digitar uma nota à mão num módulo, ela fica fixada até ele voltar ao automático.",
     "Novo item no menu do aluno, em \"Apoio ao planejamento\": Capacidade de produção/atendimento. Não é avaliativo (sem envio, nota ou prazo): a equipe informa os recursos do seu segmento (fornos, cadeiras, vendedores, caixas...), o sistema calcula quanto a empresa consegue produzir ou atender por mês, compara com a quantidade do Módulo 5, aponta o gargalo e mostra o que ajustar nos Módulos 1, 5 e 9. Modelos para Padaria, Restaurante, Estética, Moda/brechó, Semijoias e um modelo genérico para os demais segmentos.",
+    "Simulador do professor: item 5 \"Análise e cenários\" em colunas — a coluna Sistema analisa automaticamente o que está lançado (gargalo, utilização, espaço, faturamento possível e sugestão) e o professor cria cenários com números e anotações, salvos só no rascunho dele, com botão para copiar ao Classroom.",
     "Professor: novo item \"Simulador de capacidade\" na Gestão, para simular cenários de capacidade e orientar os alunos. Pode partir do segmento, da demanda do Módulo 5 e dos recursos de uma empresa (somente leitura); o rascunho fica salvo só para o professor e nada é gravado nas empresas.",
     "PROJETO ABERTO: todos os módulos ficam disponíveis para as equipes até o professor encerrar o projeto da empresa (Gestão → Encerrar projeto, reversível). O módulo só trava enquanto está enviado aguardando avaliação; depois da devolutiva ou da aprovação volta a ficar aberto. O prazo passa a valer só para a nota (primeira entrega depois da data: −2,0).",
     "Alteração sem envio: se a equipe mexer num módulo já aprovado e não reenviar, o sistema registra quem, quando e o que mudou (valor de antes → agora). Aparece no painel do módulo e em Correções pendentes, e a equipe é avisada na própria tela. Se a equipe voltar ao valor original, o registro some.",
@@ -9816,6 +9817,78 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura }) {
 // Gestão → Simulador de capacidade (professor). Ferramenta de apoio: o professor simula cenários para orientar os alunos.
 // Grava SOMENTE em `cap_prof_{uid}` (chave própria do professor). NUNCA escreve em dados de turma/equipe: ao "usar uma empresa"
 // apenas LÊ o segmento, a demanda do Módulo 5 e (opcional) os recursos que a equipe informou, e copia para o rascunho do professor.
+// ---- Item 5 do Simulador do professor: análise automática + cenários (colunas). Só leitura/cálculo; grava apenas em cap_prof_{uid}. ----
+function capDemandaBase(modelo, cap, itens) {
+  const pecas = (itens || []).reduce((s, it) => s + (Number(it.qtd) || 0), 0);
+  const porCli = modelo.porCliente ? (capNum(cap?.pecasCliente) || modelo.porCliente) : 1;
+  return Math.round(pecas / porCli);
+}
+// aplica as alterações de um cenário sobre a situação-base (o que o aluno/sistema tem)
+function capAplicarCenario(base, cen) {
+  const rec = { ...(base?.recursos || {}) };
+  Object.entries(cen?.qtd || {}).forEach(([id, q]) => { if (q) rec[id] = { ...(rec[id] || {}), qtd: q }; });
+  const func = { ...(base?.funcionamento || {}) };
+  if (cen?.horasDia) func.horasDia = cen.horasDia;
+  return { ...base, recursos: rec, funcionamento: func, ...(cen?.demanda ? { demandaManual: cen.demanda } : {}) };
+}
+function capSugestaoTexto(R, modelo) {
+  if (R.capacidade == null) return "Preencha os recursos para ver a análise.";
+  if (R.falta > 0) return `Faltam ${fmtNum(R.falta, 0)} ${modelo.unidade}/mês. ${R.opcoes[0] ? R.opcoes[0].texto + "." : ""} Alternativa: reduzir o Módulo 5 a ${fmtNum(R.capacidade, 0)}.`;
+  if (R.demanda > 0 && R.utilizacao > 0.85) return `Atende, mas com pouca folga (${fmtNum(R.utilizacao * 100, 0)}%): o gargalo é "${R.gargalo.r.nome.toLowerCase()}". Atenção se a demanda crescer.`;
+  if (R.sobra) return `Atende com muita folga (${fmtNum(R.utilizacao * 100, 0)}%): confira se o investimento (M1) e a equipe (M9) não estão grandes demais.`;
+  return `Atende com folga adequada${R.demanda > 0 ? ` (${fmtNum(R.utilizacao * 100, 0)}%)` : ""}; gargalo: "${R.gargalo.r.nome.toLowerCase()}".`;
+}
+function CenariosCapacidade({ modelo, cap, itens, obj, mudar }) {
+  const cenarios = obj.cenarios || [];
+  const baseDem = capDemandaBase(modelo, cap, itens);
+  const receita = (itens || []).reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.precoUnit) || 0), 0);
+  const calc = (capX) => calcularCapacidade(modelo, capX, baseDem);
+  const pct = (u) => (u == null ? "—" : `${fmtNum(u * 100, 0)}%`);
+  const corU = (u) => (u == null ? "" : u > 1 ? "bg-rose-900/40 text-rose-300" : u > 0.85 ? "bg-amber-900/40 text-amber-300" : "bg-emerald-900/40 text-emerald-300");
+  const fat = (R, dem) => (receita > 0 && R.capacidade != null && baseDem > 0 && dem > 0 ? receita * (dem / baseDem) * Math.min(1, R.capacidade / dem) : null);
+  const Rs = calc(cap);
+  const colunas = [{ id: "__sis", sis: true, titulo: "Sistema", sub: "situação lançada", R: Rs, capX: cap, cen: {} }, ...cenarios.map((c) => { const capX = capAplicarCenario(cap, c); return { id: c.id, sis: false, titulo: c.titulo || "Cenário", c, capX, R: calc(capX), cen: c }; })];
+  const setC = (id, parte) => mudar({ cenarios: cenarios.map((c) => (c.id === id ? { ...c, ...parte } : c)) });
+  const novo = () => mudar({ cenarios: [...cenarios, { id: `c${Date.now()}`, titulo: `Cenário ${cenarios.length + 1}`, texto: "", qtd: {} }] });
+  const excluir = (id) => { if (window.confirm("Excluir este cenário?")) mudar({ cenarios: cenarios.filter((c) => c.id !== id) }); };
+  const copiar = async () => {
+    const L = [`ANÁLISE DE CAPACIDADE — ${modelo.unidade}`];
+    colunas.forEach((k) => { const R = k.R; L.push(`\n${k.sis ? "Situação lançada (sistema)" : k.titulo}: capacidade ${R.capacidade != null ? fmtNum(R.capacidade, 0) : "—"}/mês · demanda ${fmtNum(R.demanda || 0, 0)} · utilização ${pct(R.utilizacao)}`); L.push(`Sugestão: ${capSugestaoTexto(R, modelo)}`); if (!k.sis && k.c.texto) L.push(`Anotações: ${k.c.texto}`); });
+    try { await navigator.clipboard.writeText(L.join("\n")); alert("Copiado. Cole na postagem do Classroom."); } catch { alert(L.join("\n")); }
+  };
+  const num = (v, on, ph, w) => <input type="number" min="0" step="any" value={v ? v : ""} placeholder={ph != null ? String(ph) : ""} onChange={(e) => on(e.target.value === "" || !(Number(e.target.value) > 0) ? undefined : Number(e.target.value))} className={`${w || "w-16"} bg-slate-950 border border-slate-600 rounded-md px-1 py-1 text-sm text-center text-slate-100`} />;
+  const linha = (rot, cel, forte) => <tr key={String(rot)} className="border-t border-slate-700 align-top"><td className={`py-2 pr-2 text-slate-300 ${forte ? "font-bold" : ""}`}>{rot}</td>{colunas.map((k) => <td key={k.id} className={`py-2 px-2 text-center ${k.sis ? "bg-teal-950/30" : ""} ${forte ? "font-bold" : ""}`}>{cel(k)}</td>)}</tr>;
+  return (
+    <Card className="p-4 mt-4">
+      <h3 className="text-sm font-bold text-slate-100 mb-1">5 · Análise e cenários <span className="text-[10px] bg-violet-600 text-white rounded-full px-2 py-0.5 ml-1">só professor</span></h3>
+      <div className="text-[11px] text-slate-500 mb-3">A coluna "Sistema" é automática (vem do que está lançado acima). Em cada cenário, digite apenas o que quer mudar: o resto é herdado e o cálculo atualiza na hora.</div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm" style={{ minWidth: 640 + cenarios.length * 190 }}>
+          <thead><tr className="text-xs text-slate-400"><th className="w-40"></th>{colunas.map((k) => <th key={k.id} className={`px-2 pb-2 text-center ${k.sis ? "bg-teal-950/30" : ""}`}>{k.sis ? <>🤖 Sistema<div className="text-[10px] font-normal text-slate-500">situação lançada</div></> : <input value={k.c.titulo || ""} onChange={(e) => setC(k.id, { titulo: e.target.value })} className="w-full bg-slate-950 border border-slate-600 rounded-md px-1.5 py-1 text-xs text-center text-slate-100" />}</th>)}</tr></thead>
+          <tbody>
+            {modelo.recursos.map((r) => linha(r.nome, (k) => k.sis ? fmtNum(capNum(cap?.recursos?.[r.id]?.qtd), 0) || "—" : num(k.c.qtd?.[r.id], (v) => setC(k.id, { qtd: { ...(k.c.qtd || {}), [r.id]: v } }), capNum(cap?.recursos?.[r.id]?.qtd) || "—")))}
+            {linha("Horas por dia", (k) => k.sis ? fmtNum(capNum(cap?.funcionamento?.horasDia) || 8, 1) : num(k.c.horasDia, (v) => setC(k.id, { horasDia: v }), capNum(cap?.funcionamento?.horasDia) || 8))}
+            {linha(`Demanda (${modelo.unidade}/mês)`, (k) => k.sis ? fmtNum(k.R.demanda || 0, 0) : num(k.c.demanda, (v) => setC(k.id, { demanda: v }), fmtNum(Rs.demanda || 0, 0), "w-20"))}
+            {linha("Capacidade/mês", (k) => k.R.capacidade != null ? fmtNum(k.R.capacidade, 0) : "—", true)}
+            {linha("Gargalo", (k) => k.R.gargalo ? k.R.gargalo.r.nome : "—")}
+            {linha("Utilização", (k) => k.R.utilizacao != null ? <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${corU(k.R.utilizacao)}`}>{pct(k.R.utilizacao)}</span> : "—")}
+            {linha("Faltam / sobram", (k) => k.R.capacidade == null || !(k.R.demanda > 0) ? "—" : k.R.falta > 0 ? <span className="text-rose-300">faltam {fmtNum(k.R.falta, 0)}</span> : <span className="text-emerald-300">sobram {fmtNum(k.R.capacidade - k.R.demanda, 0)}</span>)}
+            {linha("Espaço ocupado", (k) => k.R.espaco && k.R.espaco.uso != null ? <>{fmtNum(k.R.espaco.usado, 0)} de {fmtNum(k.R.espaco.areaUtil, 0)} m² <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${corU(k.R.espaco.uso)}`}>{pct(k.R.espaco.uso)}</span></> : "—")}
+            {linha("Faturamento possível (M5)", (k) => { const v = fat(k.R, k.R.demanda); return v == null ? "—" : <span className={v < receita * 0.999 ? "text-amber-300" : "text-emerald-300"}>R$ {fmtNum(v, 0)}{receita > 0 ? ` (${v >= receita ? "+" : "−"}${fmtNum(Math.abs(v / receita - 1) * 100, 0)}%)` : ""}</span>; })}
+            {linha("💡 Sugestão do sistema", (k) => <div className="text-xs text-teal-200 text-left leading-snug">{capSugestaoTexto(k.R, modelo)}</div>)}
+            {linha("✍️ Anotações do professor", (k) => k.sis ? <div className="text-xs text-slate-500 text-left">Automático (somente leitura)</div> : <textarea value={k.c.texto || ""} onChange={(e) => setC(k.id, { texto: e.target.value })} rows={5} placeholder="Digite o cenário, perguntas para a turma, orientações…" className="w-full bg-slate-950 border border-slate-600 rounded-md px-2 py-1.5 text-xs text-left text-slate-100" />)}
+            <tr className="border-t border-slate-700"><td></td>{colunas.map((k) => <td key={k.id} className="py-2 px-2 text-center">{!k.sis && <button onClick={() => excluir(k.id)} className="text-[11px] border border-rose-800/60 text-rose-300 rounded px-2 py-1">🗑 Excluir</button>}</td>)}</tr>
+          </tbody>
+        </table>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button onClick={novo} className="text-xs font-bold bg-amber-500 text-slate-900 rounded-md px-3 py-1.5">＋ Novo cenário</button>
+        <button onClick={copiar} className="text-xs border border-slate-600 text-slate-200 rounded-md px-3 py-1.5">📋 Copiar para o Classroom</button>
+      </div>
+    </Card>
+  );
+}
+
 function GestaoCapacidadeView({ user, turmas }) {
   const [obj, salvar] = useSharedObject(user?.uid ? `cap_prof_${user.uid}` : null, { segmento: "", cap: {}, origem: null, m5: [] });
   const [turmaId, setTurmaId] = useState("");
@@ -9830,7 +9903,7 @@ function GestaoCapacidadeView({ user, turmas }) {
       const r = await window.storage.get(`dados_equipe_${eq.id}`, true);
       const d = r ? JSON.parse(r.value) : {};
       const l = mergeLancamentos(d.lancamentos);
-      const itens = (l?.m5?.itens || []).map((it) => ({ id: it.id, nome: it.nome, qtd: it.qtd }));
+      const itens = (l?.m5?.itens || []).map((it) => ({ id: it.id, nome: it.nome, qtd: it.qtd, precoUnit: it.precoUnit }));
       mudar({ segmento: eq.segmento || obj.segmento || "", m5: itens, origem: { nome: eq.nomeNegocio || "(sem nome)", turma: turmas.find((t) => t.id === turmaId)?.nome || "" }, ...(comRecursos ? { cap: d.capacidade || {} } : {}) });
       setMsg(`Dados lidos de "${eq.nomeNegocio || "(sem nome)"}" (somente leitura): nada foi alterado na empresa.`);
     } catch { setMsg("Não foi possível ler os dados desta empresa agora. Tente novamente."); }
@@ -9868,6 +9941,7 @@ function GestaoCapacidadeView({ user, turmas }) {
         </div>
       </Card>
       <CapacidadeView equipe={{ segmento: obj.segmento || "" }} lanc={{ m5: { itens: obj.m5 || [] } }} dados={{ capacidade: obj.cap || {} }} setDados={(d) => mudar({ cap: d.capacidade })} somenteLeitura={false} />
+      <CenariosCapacidade modelo={modeloCapacidade(obj.segmento)} cap={obj.cap || {}} itens={obj.m5 || []} obj={obj} mudar={mudar} />
     </div>
   );
 }

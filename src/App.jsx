@@ -1,4 +1,4 @@
-// build: 20261030_06h47m Pontos de atenção e correções no Ajuste geral (professor)
+// build: 20261030_07h02m Relatório de ajustes do professor; pontos de atenção de crescimento e faturamento
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -725,6 +725,7 @@ const GESTAO_ITENS = [
   { id: "liberarAjustes", label: "Liberar análise e ajustes", icon: RotateCcw },
   { id: "parecer", label: "Parecer do projeto", icon: ScrollText },
   { id: "ajusteGeral", label: "Ajuste geral", icon: Wrench },
+  { id: "relatorioAjustes", label: "Relatório de ajustes", icon: FileBarChart },
   { id: "notasAuto", label: "Notas automáticas", icon: Target },
   { id: "encerrar", label: "Encerrar projeto", icon: Lock },
   { id: "itensSegmento", label: "Itens esperados por segmento", icon: ClipboardList },
@@ -1354,6 +1355,8 @@ function chamadoPassaFiltro(c, filtro) {
 // ============================================================================
 const VERSOES = [
   { versao: "3.6", data: "29/10/2026", itens: [
+    "Relatório de ajustes: todo ajuste que o professor faz (automático, manual ou pontos de atenção) fica gravado na própria empresa, com antes → depois, motivo, data e efeito no resultado, e continua visível mesmo se for desfeito. O aluno vê em Apoio ao planejamento → Ajustes do professor; o professor vê de todas as empresas em Gestão → Relatório de ajustes. Os dois podem imprimir ou salvar em PDF.",
+    "Pontos de atenção agora também apontam faturamento que saltou em relação à última versão salva (reduzir quantidades) e crescimento mensal alto no Fluxo de caixa (zerar ou usar outra taxa). Mais palavras reconhecidas em Marketing (Instagram, Meta Ads…) e Software PDV (Omie, Bling, ERP…).",
     "Professor: Gestão → Ajuste geral → \"2b. Pontos de atenção e correções\". O sistema aponta, empresa por empresa, o que merece atenção e o professor escolhe a correção, vendo o impacto antes de gravar: custo do Módulo 6 diferente do Módulo 8 (qual está certo), embalagem lançada como investimento (consumo do mês ou custo do produto), linhas repetidas, financiamento sem juros e margem muito baixa. Só em equipe bloqueada, sem devolução nem desconto de nota, com aviso à equipe e Desfazer.",
     "Menu do aluno reorganizado: os Módulos 1 a 11 são os de lançamento. O antigo Módulo 12 passa a \"Análise da DRE\" e o 13 a \"Análise de Indicadores\", junto com Análise do Negócio, Cenários e Fluxo de Caixa — são análises calculadas, sem digitação.",
     "Notas automáticas dos módulos de lançamento: cada módulo vale 10 desde a primeira entrega; cada devolução para correção desconta 0,25 e a primeira entrega fora do prazo desconta 2,0. A nota muda sozinha a cada devolução e a equipe é avisada no Feedback, com o motivo e o cálculo. Reabrir um módulo aprovado (sem erro da equipe) não desconta.",
@@ -5269,6 +5272,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
     ...MODULOS.filter((m) => !ehModuloAnalise(m)).map((m) => ({ id: m.id, label: m.nome, icon: m.icon, num: rotNumModulo(m), moduloStatus: estadoModulo(fluxo, m.id).status })),
     { id: "__sec_apoio", secao: "Apoio ao planejamento (não avaliativo)" },
     { id: "capacidade", label: "Capacidade de produção", icon: Factory, num: null },
+    { id: "ajustesProf", label: "Ajustes do professor", icon: ClipboardList, num: null },
     { id: "__sec_anal", secao: "Análises (calculadas, sem lançamento)" },
     ...MODULOS.filter((m) => ehModuloAnalise(m)).map((m) => ({ id: m.id, label: m.nome, icon: m.icon, num: null, moduloStatus: estadoModulo(fluxo, m.id).status })),
     { id: "analise", label: "Análise do Negócio", icon: TrendingUp, num: null },
@@ -5550,6 +5554,8 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
           </div>
         )}
 
+        {aba === "ajustesProf" && <RelatorioAjustesAluno equipe={equipe} dados={dados} onVoltar={() => setAba("inicio")} />}
+
         {aba === "capacidade" && (
           <div>
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
@@ -5687,7 +5693,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
       { key: "guia", label: "Guia da semana", novo: true },
     ] },
     { label: "Módulos (1 a 11)", itens: MODULOS.filter((m) => !ehModuloAnalise(m)).map((m) => ({ key: m.id, label: `${rotNumModulo(m)} · ${m.nome}`, status: estadoModulo(fluxo, m.id).status })) },
-    { label: "Apoio ao planejamento", itens: [{ key: "capacidade", label: "Capacidade de produção" }] },
+    { label: "Apoio ao planejamento", itens: [{ key: "capacidade", label: "Capacidade de produção" }, { key: "ajustesProf", label: `Ajustes do professor${(dados?.relatorioAjustes || []).length ? ` (${dados.relatorioAjustes.length})` : ""}` }] },
     { label: "Análises", itens: [...MODULOS.filter((m) => ehModuloAnalise(m)).map((m) => ({ key: m.id, label: m.nome, status: estadoModulo(fluxo, m.id).status })), { key: "analise", label: "Análise do Negócio" }, { key: "cenarios", label: "Análise de Cenários" }, { key: "fluxocaixa", label: "Fluxo de Caixa Anual" }] },
     { label: "Entregas", itens: [
       { key: "ppt", label: gerandoPpt ? "Gerando apresentação…" : "Baixar Apresentação (dados da equipe)", acao: acaoBaixarPpt },
@@ -8558,8 +8564,8 @@ const PA = (() => {
   const RX_JUROS = /juro|financiament|parcela|emprestimo/;
   const mesmoProd = (a, b) => normTxt(a) === normTxt(b);
 
-  function analisar(lancIn, calcIn) {
-    const l = mergeLancamentos(lancIn); const calc = calcIn || calcular(l);
+  function analisar(lancIn, calcIn, ctx) {
+    const l = mergeLancamentos(lancIn); const calc = calcIn || calcular(l); ctx = ctx || {};
     const pontos = [];
     const resumo = resumoProdutosM6(l.m6, l.m5.itens);
 
@@ -8648,18 +8654,46 @@ const PA = (() => {
           L.m5.itens = L.m5.itens.map((x) => x.id === p.id ? { ...x, precoUnit: Math.ceil((p.custoUnit / den) * 100) / 100 } : x);
         } });
     });
+
+    // F) Faturamento que saltou em relação à última versão salva pela equipe (Análise do Negócio)
+    const snaps = (ctx.historico || []).filter((h) => h && h.indicadores && Number(h.indicadores.faturamento) > 0);
+    const ult = snaps.length ? Number(snaps[snaps.length - 1].indicadores.faturamento) : 0;
+    if (ult > 0 && calc.faturamento > ult * 1.5) {
+      const sug = Math.round((1 - ult / calc.faturamento) * 100);
+      pontos.push({ chave: "F|fat", grupo: "Decidir", mods: ["m5"], rotulo: "Faturamento que saltou",
+        texto: `O faturamento mensal passou de ${fmtBRL(ult)} (última versão salva) para ${fmtBRL(calc.faturamento)} (+${fmtNum((calc.faturamento / ult - 1) * 100, 0)}%).`,
+        opcoes: [{ id: "manter", rotulo: "Deixar como está (a equipe justificou o aumento)" }, { id: "reduzir", rotulo: "Reduzir as quantidades vendidas do Módulo 5", param: { rotulo: "Reduzir em (%)", padrao: sug } }], padrao: "manter",
+        aplicar: (L, opt, v) => {
+          if (opt !== "reduzir") return; const pc = Number(v) || 0; if (!(pc > 0 && pc < 100)) return;
+          L.m5.itens = L.m5.itens.map((x) => (Number(x.qtd) > 0 ? { ...x, qtd: Math.max(1, Math.round(Number(x.qtd) * (1 - pc / 100))) } : x));
+        } });
+    }
+
+    // G) Crescimento mensal muito alto no Fluxo de caixa (fora dos módulos de lançamento)
+    const tx = Number(ctx.taxaCrescimento) || 0;
+    if (tx > 3) {
+      pontos.push({ chave: "G|cresc", grupo: "Decidir", mods: [], extra: true, rotulo: "Crescimento mensal alto",
+        texto: `Crescimento mensal de ${fmtNum(tx)}% no Fluxo de caixa anual (≈ ${fmtNum((Math.pow(1 + tx / 100, 12) - 1) * 100, 0)}% ao ano).`,
+        opcoes: [{ id: "manter", rotulo: "Deixar como está" }, { id: "zero", rotulo: "Sem crescimento (0%)" }, { id: "taxa", rotulo: "Usar outra taxa de crescimento", param: { rotulo: "% ao mês", padrao: 1 } }], padrao: "manter",
+        aplicar: (L, opt, v, X) => {
+          if (opt === "zero") X.taxaCrescimentoFluxo = 0;
+          if (opt === "taxa") { const n = Number(v); if (Number.isFinite(n) && n >= 0) X.taxaCrescimentoFluxo = n; }
+        } });
+    }
     return pontos;
   }
 
   // escolhas = { [chave]: { opt, v } } → { lancDepois, aplicados:[chave] }
-  function aplicar(lancIn, escolhas) {
-    const base = mergeLancamentos(lancIn); const L = clone(base); const aplicados = [];
-    analisar(base).forEach((pt) => {
+  function aplicar(lancIn, escolhas, ctx) {
+    const base = mergeLancamentos(lancIn); const L = clone(base); const aplicados = []; ctx = ctx || {};
+    const X = { taxaCrescimentoFluxo: ctx.taxaCrescimento ?? 0 };
+    analisar(base, null, ctx).forEach((pt) => {
       const e = escolhas[pt.chave]; if (!e || !e.opt || e.opt === "manter") return;
-      const antes = JSON.stringify(L); pt.aplicar(L, e.opt, e.v);
-      if (JSON.stringify(L) !== antes) aplicados.push(pt.chave);
+      const antes = JSON.stringify([L, X]); pt.aplicar(L, e.opt, e.v, X);
+      if (JSON.stringify([L, X]) !== antes) aplicados.push(pt.chave);
     });
-    return { lancDepois: L, aplicados };
+    const taxaMudou = String(X.taxaCrescimentoFluxo ?? 0) !== String(ctx.taxaCrescimento ?? 0);
+    return { lancDepois: L, aplicados, taxaDepois: taxaMudou ? X.taxaCrescimentoFluxo : undefined };
   }
   return { analisar, aplicar };
 })();
@@ -8815,6 +8849,7 @@ function diffAjuste(a, b, rot, out) {
   }
   if (JSON.stringify(a) !== JSON.stringify(b)) out.push({ rot, antes: fmtValAj(a), depois: fmtValAj(b) });
 }
+const rotModAj = (modId) => (modId === "fluxo" ? "Fluxo de caixa" : `Módulo ${String(modId).slice(1)}`);
 function linhasDiffModulo(nMod, antes, depois) {
   const out = []; diffAjuste(antes, depois, `Módulo ${nMod}`, out);
   return out.map((x) => `${x.rot}: ${x.antes} → ${x.depois}`);
@@ -8900,7 +8935,7 @@ function PreviaAjusteAnalises({ calcAntes, calcDepois, dadosEq }) {
 
 // Grava, numa equipe, SÓ os módulos informados (lancamentos[modId]) + o aviso — relendo os dados na hora
 // e conferindo que a equipe continua bloqueada. `esperado[modId]` = JSON do módulo que o professor viu.
-async function gravarModulosEquipe(turmaId, equipeId, novos, esperado, comentario) {
+async function gravarModulosEquipe(turmaId, equipeId, novos, esperado, comentario, relato, taxa) {
   const aval = await lerAvaliacao(turmaId);
   if (!equipeEmAvaliacao(aval, equipeId)) throw new Error("a equipe não está mais bloqueada para avaliação");
   const d = await lerDadosEstrito(equipeId);
@@ -8910,7 +8945,18 @@ async function gravarModulosEquipe(turmaId, equipeId, novos, esperado, comentari
   const lanc = { ...(d.lancamentos || {}) };
   Object.keys(novos).forEach((modId) => { lanc[modId] = novos[modId]; });
   const coments = comentario ? [...(d.comentarios || []), comentario] : (d.comentarios || []);
-  await window.storage.set(`dados_equipe_${equipeId}`, JSON.stringify({ ...d, lancamentos: lanc, comentarios: coments }), true);
+  // Relatório permanente de ajustes do professor: fica na própria empresa (não some ao desfazer, só é marcado).
+  const relat = relato ? [...(d.relatorioAjustes || []), relato] : (d.relatorioAjustes || undefined);
+  const novoD = { ...d, lancamentos: lanc, comentarios: coments };
+  if (relat) novoD.relatorioAjustes = relat;
+  if (taxa) { if (String(d.taxaCrescimentoFluxo ?? 0) !== String(taxa.esperado ?? 0)) throw new Error("a equipe alterou o crescimento do Fluxo de caixa depois que você abriu — recarregue e refaça"); novoD.taxaCrescimentoFluxo = taxa.novo; }
+  await window.storage.set(`dados_equipe_${equipeId}`, JSON.stringify(novoD), true);
+}
+
+// Monta a linha do relatório de ajustes (antes → depois, motivo e efeito no resultado).
+function montarRelato({ id, por, tipo, motivo, linhas, lancAntes, lancDepois, mods }) {
+  const imp = resumoImpacto(lancAntes, lancDepois);
+  return { id, em: Date.now(), por, tipo, motivo: motivo || "", linhas: linhas.slice(0, 300), mods: Object.keys(mods), impacto: { a: imp.a, b: imp.b }, desfeito: false };
 }
 
 function textoAvisoAjuste(professorNome, linhas, motivo) {
@@ -9050,7 +9096,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
           linhas.push(...linhasDiffModulo(Number(m.slice(1)), lanc[m], depois[m]));
           mudancas.push({ equipeId: eqId, equipeNome: nomeEq(eqId), modId: m, antes: lanc[m], depois: depois[m] });
         });
-        planos.push({ eqId, mods, esperado, linhas });
+        planos.push({ eqId, mods, esperado, linhas, relato: montarRelato({ id, por: professorNome, tipo: "automatico", motivo: "Correções automáticas (erros de digitação e inconsistências).", linhas, lancAntes: lanc, lancDepois: depois, mods }) });
       }
       if (!planos.length) { setAviso({ tipo: "erro", texto: `Nada aplicado. ${pulados.join(" · ")}` }); setOcupado(false); return; }
       // registro ANTES de gravar (assim sempre há como desfazer)
@@ -9059,7 +9105,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
       for (const pl of planos) {
         try {
           const coment = { modulo: "Geral", texto: textoAvisoAjuste(professorNome, pl.linhas, "Correções automáticas (erros de digitação e inconsistências)."), autor: professorNome, timestamp: Date.now(), tipo: "ajuste", lote: id };
-          await gravarModulosEquipe(turma.id, pl.eqId, pl.mods, pl.esperado, coment);
+          await gravarModulosEquipe(turma.id, pl.eqId, pl.mods, pl.esperado, coment, pl.relato);
           feitos.push(nomeEq(pl.eqId));
         } catch (e) { pulados.push(`${nomeEq(pl.eqId)}: ${e.message}`); falhas.push(pl.eqId); }
       }
@@ -9077,9 +9123,10 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
     setOcupado(true); setAviso(null);
     try {
       const d = await lerDadosEstrito(paEq); const lanc = mergeLancamentos(d.lancamentos);
-      const pts = PA.analisar(lanc);
+      const ctx = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [] };
+      const pts = PA.analisar(lanc, null, ctx);
       const esc = {}; pts.forEach((pt) => { esc[pt.chave] = { opt: pt.padrao || "manter", v: "" }; });
-      setPaPontos({ equipeId: paEq, lanc, pts, dados: d }); setPaEsc(esc);
+      setPaPontos({ equipeId: paEq, lanc, pts, dados: d, ctx }); setPaEsc(esc);
     } catch (e) { falhar(e); }
     setOcupado(false);
   };
@@ -9091,7 +9138,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
       const e = paEsc[pt.chave] || { opt: "manter" }; const op = pt.opcoes.find((o) => o.id === e.opt);
       esc[pt.chave] = { opt: e.opt, v: e.v === "" || e.v == null ? (op?.param?.padrao ?? "") : e.v };
     });
-    return { esc, ...PA.aplicar(paPontos.lanc, esc) };
+    return { esc, ...PA.aplicar(paPontos.lanc, esc, paPontos.ctx) };
   }, [paPontos, paEsc]);
   const paAplicar = async () => {
     if (!paPontos || !paResultado || !paResultado.aplicados.length) return;
@@ -9102,10 +9149,11 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
     try {
       if (!equipePronta(await lerAvaliacao(turma.id), eqId, Date.now())) throw new Error("a equipe não está mais bloqueada/pronta");
       const d = await lerDadosEstrito(eqId); const lanc = mergeLancamentos(d.lancamentos);
-      const chavesFrescas = new Set(PA.analisar(lanc).map((p) => p.chave));
+      const ctxF = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [] };
+      const chavesFrescas = new Set(PA.analisar(lanc, null, ctxF).map((p) => p.chave));
       const escFresco = {}; Object.keys(paResultado.esc).forEach((k) => { if (chavesFrescas.has(k) && paResultado.aplicados.includes(k)) escFresco[k] = paResultado.esc[k]; });
       if (!Object.keys(escFresco).length) throw new Error("os pontos escolhidos já não existem (a equipe alterou os lançamentos?)");
-      const { lancDepois } = PA.aplicar(lanc, escFresco);
+      const { lancDepois, taxaDepois } = PA.aplicar(lanc, escFresco, ctxF);
       const mods = {}; const esperado = {}; const linhas = []; const mudancas = [];
       ["m1", "m4", "m5", "m6", "m8", "m10", "m11"].forEach((m) => {
         if (JSON.stringify(lanc[m]) === JSON.stringify(lancDepois[m])) return;
@@ -9113,11 +9161,13 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
         linhas.push(...linhasDiffModulo(Number(m.slice(1)), lanc[m], lancDepois[m]));
         mudancas.push({ equipeId: eqId, equipeNome: nomeEq(eqId), modId: m, antes: lanc[m], depois: lancDepois[m] });
       });
+      const taxaAntes = d.taxaCrescimentoFluxo ?? 0;
+      if (taxaDepois !== undefined) { linhas.push(`Fluxo de caixa anual — crescimento mensal: ${fmtNum(Number(taxaAntes) || 0)}% → ${fmtNum(Number(taxaDepois) || 0)}%`); mudancas.push({ equipeId: eqId, equipeNome: nomeEq(eqId), modId: "fluxo", antes: taxaAntes, depois: taxaDepois }); }
       if (!mudancas.length) throw new Error("nenhuma alteração resultou das escolhas");
       await registrarAjusteProf(turma.id, { id, em: Date.now(), por: professorNome, tipo: "pontos", motivo: "Pontos de atenção (correções escolhidas pelo professor)", mudancas, desfeito: false });
       registrado = true;
       const coment = { modulo: "Geral", texto: textoAvisoAjuste(professorNome, linhas, "Correções feitas pelo professor nos pontos de atenção do seu plano."), autor: professorNome, timestamp: Date.now(), tipo: "ajuste", lote: id };
-      await gravarModulosEquipe(turma.id, eqId, mods, esperado, coment);
+      await gravarModulosEquipe(turma.id, eqId, mods, esperado, coment, montarRelato({ id, por: professorNome, tipo: "pontos", motivo: "Pontos de atenção (correções escolhidas pelo professor).", linhas, lancAntes: lanc, lancDepois, mods: taxaDepois !== undefined ? { ...mods, fluxo: 1 } : mods }), taxaDepois !== undefined ? { esperado: taxaAntes, novo: taxaDepois } : undefined);
       setPaPontos(null); setPaEsc({}); await carregar();
       setAviso({ tipo: "ok", texto: `Correções aplicadas em ${nomeEq(eqId)} (${Object.keys(mods).map((m) => "M" + m.slice(1)).join(", ")}). A equipe recebe o aviso na aba Feedback e você pode desfazer no histórico.` });
     } catch (e) { if (registrado) await limparRegistroAjuste(turma.id, id, null); falhar(e); await carregar(); }
@@ -9149,7 +9199,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
       await registrarAjusteProf(turma.id, { id, em: Date.now(), por: professorNome, tipo: "manual", motivo: editor.motivo.trim(), mudancas: [{ equipeId: editor.equipeId, equipeNome: nomeEq(editor.equipeId), modId: editor.modId, antes: editor.base[editor.modId], depois: editor.draft[editor.modId] }], desfeito: false });
       registrado = true;
       const coment = { modulo: "Geral", texto: textoAvisoAjuste(professorNome, linhas, editor.motivo.trim() ? `Motivo: ${editor.motivo.trim()}` : ""), autor: professorNome, timestamp: Date.now(), tipo: "ajuste", lote: id };
-      await gravarModulosEquipe(turma.id, editor.equipeId, { [editor.modId]: editor.draft[editor.modId] }, { [editor.modId]: editor.baseJson }, coment);
+      await gravarModulosEquipe(turma.id, editor.equipeId, { [editor.modId]: editor.draft[editor.modId] }, { [editor.modId]: editor.baseJson }, coment, montarRelato({ id, por: professorNome, tipo: "manual", motivo: editor.motivo.trim(), linhas, lancAntes: editor.base, lancDepois: editor.draft, mods: { [editor.modId]: 1 } }));
       setEditor(null); await carregar();
       setAviso({ tipo: "ok", texto: `Ajuste gravado no Módulo ${n} de ${nomeEq(editor.equipeId)}. A equipe recebe o aviso na aba Feedback.` });
     } catch (e) { if (registrado) await limparRegistroAjuste(turma.id, id, null); falhar(e); await carregar(); }
@@ -9165,11 +9215,18 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
       for (const m of reg.mudancas) {
         try {
           const d = await lerDadosEstrito(m.equipeId);
-          if (jsonModulo(d.lancamentos, m.modId) !== JSON.stringify(m.depois)) { nao.push(`${m.equipeNome} (Módulo ${m.modId.slice(1)}: a equipe alterou depois)`); continue; }
+          if (m.modId === "fluxo") {
+            if (String(d.taxaCrescimentoFluxo ?? 0) !== String(m.depois ?? 0)) { nao.push(`${m.equipeNome} (Fluxo de caixa: a equipe alterou depois)`); continue; }
+            const relF = (d.relatorioAjustes || []).map((x) => x.id === reg.id ? { ...x, desfeitoMods: Array.from(new Set([...(x.desfeitoMods || []), "fluxo"])), desfeitoEm: Date.now(), desfeitoPor: professorNome, desfeito: Array.from(new Set([...(x.desfeitoMods || []), "fluxo"])).length >= (x.mods || []).length } : x);
+            await window.storage.set(`dados_equipe_${m.equipeId}`, JSON.stringify({ ...d, taxaCrescimentoFluxo: m.antes, comentarios: (d.comentarios || []).filter((c) => c.lote !== reg.id), ...(relF.length ? { relatorioAjustes: relF } : {}) }), true);
+            ok.push(`${m.equipeNome} (Fluxo de caixa)`); continue;
+          }
+          if (jsonModulo(d.lancamentos, m.modId) !== JSON.stringify(m.depois)) { nao.push(`${m.equipeNome} (${rotModAj(m.modId)}: a equipe alterou depois)`); continue; }
           const lanc = { ...(d.lancamentos || {}), [m.modId]: m.antes };
           const coments = (d.comentarios || []).filter((c) => c.lote !== reg.id);
-          await window.storage.set(`dados_equipe_${m.equipeId}`, JSON.stringify({ ...d, lancamentos: lanc, comentarios: coments }), true);
-          ok.push(`${m.equipeNome} (Módulo ${m.modId.slice(1)})`);
+          const rel = (d.relatorioAjustes || []).map((x) => x.id === reg.id ? { ...x, desfeitoMods: Array.from(new Set([...(x.desfeitoMods || []), m.modId])), desfeitoEm: Date.now(), desfeitoPor: professorNome, desfeito: Array.from(new Set([...(x.desfeitoMods || []), m.modId])).length >= (x.mods || []).length } : x);
+          await window.storage.set(`dados_equipe_${m.equipeId}`, JSON.stringify({ ...d, lancamentos: lanc, comentarios: coments, ...(rel.length ? { relatorioAjustes: rel } : {}) }), true);
+          ok.push(`${m.equipeNome} (${rotModAj(m.modId)})`);
         } catch (e) { nao.push(`${m.equipeNome}: ${e.message}`); }
       }
       if (ok.length) {
@@ -9349,7 +9406,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
                   <div className="text-xs font-bold text-slate-300 mb-1">Como ficará com as escolhas atuais</div>
                   <ImpactoAjuste a={imp.a} b={imp.b} />
                   <details className="text-xs text-slate-400 mt-2"><summary className="cursor-pointer text-sky-300">Ver o que será alterado</summary>
-                    <ul className="mt-1 space-y-0.5">{["m1", "m4", "m5", "m6", "m8", "m10", "m11"].flatMap((m) => linhasDiffModulo(Number(m.slice(1)), paPontos.lanc[m], paResultado.lancDepois[m]).map((l) => `${l}`)).map((l, i) => <li key={i}>• {l}</li>)}</ul>
+                    <ul className="mt-1 space-y-0.5">{paResultado.taxaDepois !== undefined && <li>• Fluxo de caixa anual — crescimento mensal: {fmtNum(Number(paPontos.ctx.taxaCrescimento) || 0)}% → {fmtNum(Number(paResultado.taxaDepois) || 0)}%</li>}{["m1", "m4", "m5", "m6", "m8", "m10", "m11"].flatMap((m) => linhasDiffModulo(Number(m.slice(1)), paPontos.lanc[m], paResultado.lancDepois[m]).map((l) => `${l}`)).map((l, i) => <li key={i}>• {l}</li>)}</ul>
                   </details>
                 </div>
               );
@@ -9393,7 +9450,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
                   {r.desfeitoParcial && <span className="text-[11px] text-amber-400">desfeito em parte</span>}
                   {!r.desfeito && <button disabled={ocupado} onClick={() => desfazer(r)} className="ml-auto flex items-center gap-1 text-xs border border-slate-600 text-slate-200 px-2.5 py-1 rounded-md hover:border-rose-500"><Undo2 size={12} /> Desfazer</button>}
                 </div>
-                <div className="text-xs text-slate-400 mt-1">{Array.from(new Set(r.mudancas.map((m) => m.equipeNome))).map((nome) => `${nome} — Módulo${r.mudancas.filter((m) => m.equipeNome === nome).length > 1 ? "s" : ""} ${r.mudancas.filter((m) => m.equipeNome === nome).map((m) => m.modId.slice(1)).join(", ")}`).join(" · ")}{r.motivo ? ` — ${r.motivo}` : ""}</div>
+                <div className="text-xs text-slate-400 mt-1">{Array.from(new Set(r.mudancas.map((m) => m.equipeNome))).map((nome) => `${nome} — ${r.mudancas.filter((m) => m.equipeNome === nome).map((m) => rotModAj(m.modId)).join(", ")}`).join(" · ")}{r.motivo ? ` — ${r.motivo}` : ""}</div>
               </div>
             ))}
           </div>
@@ -10248,6 +10305,99 @@ function capLinhaTurma(eq, d) {
   if (!(R.demanda > 0)) { alertas.push("Módulo 5 sem quantidades"); prio = Math.min(prio, 3); }
   return { eq, R, usou: true, demanda: R.demanda, alertas, prio, modelo };
 }
+// ===== Relatório de ajustes do professor (fica na empresa; aluno e professor visualizam/imprimem) =====
+const ROT_TIPO_AJUSTE = { automatico: "Automático", manual: "Manual", pontos: "Pontos de atenção" };
+const COR_TIPO_AJUSTE = { automatico: "bg-emerald-900 text-emerald-300", manual: "bg-violet-900 text-violet-300", pontos: "bg-sky-900 text-sky-300" };
+function RelatorioAjustesLista({ relatos, vazio }) {
+  const lista = [...(relatos || [])].sort((a, b) => (b.em || 0) - (a.em || 0));
+  if (!lista.length) return <p className="text-sm text-slate-500">{vazio || "Nenhum ajuste do professor registrado."}</p>;
+  const R = (v) => fmtBRL(v ?? 0);
+  return (
+    <div className="space-y-3">
+      {lista.map((r) => {
+        const a = r.impacto?.a; const b = r.impacto?.b;
+        const desf = r.desfeito ? "desfeito" : (r.desfeitoMods && r.desfeitoMods.length ? "desfeito em parte" : "");
+        return (
+          <div key={r.id} className={`border border-slate-700 rounded-xl p-3 bg-slate-900/60 ${r.desfeito ? "opacity-70" : ""}`} style={{ breakInside: "avoid" }}>
+            <div className="flex flex-wrap items-center gap-2 mb-1.5">
+              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${COR_TIPO_AJUSTE[r.tipo] || "bg-slate-800 text-slate-300"}`}>{ROT_TIPO_AJUSTE[r.tipo] || r.tipo}</span>
+              {desf && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-900 text-rose-300">{desf}{r.desfeitoEm ? ` em ${new Date(r.desfeitoEm).toLocaleDateString("pt-BR")}` : ""}</span>}
+              <b className="text-sm text-slate-100">{(r.mods || []).map((m) => rotModAj(m)).join(" · ")}</b>
+              <span className="ml-auto text-[11px] text-slate-400">{r.em ? new Date(r.em).toLocaleString("pt-BR") : ""} · {r.por || "Professor"}</span>
+            </div>
+            {r.motivo && <div className="text-xs text-slate-400 mb-1">Motivo: {r.motivo}</div>}
+            <ul className="text-xs text-slate-300 space-y-0.5">{(r.linhas || []).map((l, i) => <li key={i}>• {l}</li>)}</ul>
+            {a && b && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 text-xs">
+                <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Faturamento mensal</div>{R(a.fat)} → <b>{R(b.fat)}</b></div>
+                <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Resultado mensal</div>{R(a.res)} → <b>{R(b.res)}</b></div>
+                <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Retorno do investimento</div>{prTxt(a.pr)} → <b>{prTxt(b.pr)}</b></div>
+                <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Nota</div><b>sem desconto · sem devolução</b></div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function RelatorioAjustesAluno({ equipe, dados, onVoltar }) {
+  const relatos = dados?.relatorioAjustes || [];
+  return (
+    <div>
+      <button onClick={onVoltar} className="no-print flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
+      <SectionTitle icon={ClipboardList} sub="Tudo o que o professor alterou nos lançamentos da sua empresa, com o que era antes, o que ficou e o efeito no resultado.">Ajustes do professor</SectionTitle>
+      <div className="no-print mb-3"><button onClick={() => imprimirComTitulo(`Ajustes-do-professor-${(equipe?.nomeNegocio || "empresa").replace(/\s+/g, "-")}`)} className="flex items-center gap-2 border border-slate-600 text-slate-100 text-sm px-3 py-2 rounded-md hover:bg-slate-800"><Printer size={14} /> Imprimir / salvar PDF</button></div>
+      <div className="hidden print:block text-sm mb-2"><b>{equipe?.nomeNegocio}</b></div>
+      <RelatorioAjustesLista relatos={relatos} vazio="O professor ainda não fez nenhum ajuste nos lançamentos da sua empresa." />
+    </div>
+  );
+}
+
+function GestaoRelatorioAjustesView({ turmas }) {
+  const [turmaId, setTurmaId] = useState(turmas.length === 1 ? turmas[0].id : "");
+  const [itens, setItens] = useState(null);
+  const [erro, setErro] = useState("");
+  const [filtro, setFiltro] = useState("todas");
+  const carregar = async () => {
+    if (!turmaId) return; setItens(null); setErro("");
+    try {
+      const r = await window.storage.get(`equipes_${turmaId}`, true);
+      const eqs = (r ? JSON.parse(r.value) : []).filter((e) => e.teste !== true);
+      const out = [];
+      for (const eq of eqs) { let d = null; try { const x = await window.storage.get(`dados_equipe_${eq.id}`, true); d = x ? JSON.parse(x.value) : null; } catch { d = null; } out.push({ eq, relatos: d?.relatorioAjustes || [] }); }
+      setItens(out);
+    } catch { setErro("Não foi possível ler as empresas desta turma agora."); setItens([]); }
+  };
+  useEffect(() => { carregar(); /* eslint-disable-next-line */ }, [turmaId]);
+  const turma = turmas.find((t) => t.id === turmaId);
+  const vis = (itens || []).filter((x) => filtro === "todas" || x.eq.id === filtro).filter((x) => filtro !== "todas" || x.relatos.length);
+  const total = (itens || []).reduce((s, x) => s + x.relatos.length, 0);
+  return (
+    <div>
+      <SectionTitle icon={FileBarChart} sub="Todos os ajustes feitos pelo professor nas empresas da turma (automático, manual e pontos de atenção), com antes → depois e efeito no resultado.">Relatório de ajustes</SectionTitle>
+      <div className="no-print flex flex-wrap gap-2 items-center mb-3">
+        <SeletorTurma turmas={turmas} value={turmaId} onChange={(v) => { setTurmaId(v); setFiltro("todas"); }} />
+        {itens && itens.length > 0 && <select value={filtro} onChange={(e) => setFiltro(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100"><option value="todas">Todas as empresas com ajustes</option>{itens.map((x) => <option key={x.eq.id} value={x.eq.id}>{x.eq.nomeNegocio}</option>)}</select>}
+        <button onClick={carregar} className="border border-slate-600 text-slate-300 text-xs px-3 py-2 rounded-md flex items-center gap-1.5"><RefreshCw size={12} /> Atualizar</button>
+        <button disabled={!itens || !total} onClick={() => imprimirComTitulo(`Relatorio-de-ajustes-${(turma?.nome || "turma").replace(/\s+/g, "-")}`)} className="border border-slate-600 text-slate-100 disabled:opacity-40 text-sm px-3 py-2 rounded-md flex items-center gap-2"><Printer size={14} /> Imprimir / salvar PDF</button>
+      </div>
+      {!turmaId ? <p className="text-sm text-slate-500">Escolha uma turma.</p> : erro ? <p className="text-sm text-rose-300">{erro}</p> : !itens ? <p className="text-sm text-slate-500">Carregando…</p> : (
+        <div className="space-y-5">
+          {!vis.length && <p className="text-sm text-slate-500">Nenhum ajuste registrado nesta turma ainda.</p>}
+          {vis.map((x) => (
+            <div key={x.eq.id}>
+              <h3 className="text-sm font-bold text-slate-100 mb-2">{x.eq.nomeNegocio} <span className="text-xs font-normal text-slate-500">· {x.relatos.length} ajuste(s)</span></h3>
+              <RelatorioAjustesLista relatos={x.relatos} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GestaoCapacidadeTurmaView({ user, turmas, onAbrir }) {
   const [turmaId, setTurmaId] = useState(turmas.length === 1 ? turmas[0].id : "");
   const [linhas, setLinhas] = useState(null);
@@ -12237,9 +12387,9 @@ const ITENS_ESPERADOS_COMUNS = [
   { nome: "Água", palavras: "agua" },
   { nome: "Internet/telefone", palavras: "internet, telefone" },
   { nome: "Contabilidade", palavras: "contab, contador" },
-  { nome: "Marketing/divulgação", palavras: "marketing, divulg, publicidade, propaganda, redes sociais" },
+  { nome: "Marketing/divulgação", palavras: "marketing, divulg, publicidade, propaganda, redes sociais, instagram, facebook, meta ads, anuncio, trafego, tiktok, google ads" },
 ];
-const ITENS_PDV = { nome: "Software PDV com emissão fiscal", palavras: "software, pdv, sistema, nota fiscal, fiscal" };
+const ITENS_PDV = { nome: "Software PDV com emissão fiscal", palavras: "software, pdv, sistema, nota fiscal, fiscal, omie, erp, bling, conta azul, emissor" };
 const ITENS_ALVARA = { nome: "Alvarás, licenças e taxas", palavras: "alvara, licenc, vigilancia, bombeiro, taxa" };
 const ITENS_PRAGAS = { nome: "Controle de pragas", palavras: "praga, dedetiz" };
 const ITENS_ESPERADOS_PADRAO = {
@@ -14689,6 +14839,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
         {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}
         {aba === "verComoAluno" && <GestaoVerComoAlunoView turmas={turmas} onEntrar={(t, eq, n) => setVerAluno({ turma: t, equipe: eq, nomeAluno: n })} />}
         {aba === "capacidade" && <GestaoCapacidadeView user={user} turmas={turmas} />}
+        {aba === "relatorioAjustes" && <GestaoRelatorioAjustesView turmas={turmas} />}
         {aba === "capacidadeTurma" && <GestaoCapacidadeTurmaView user={user} turmas={turmas} onAbrir={() => irPara("capacidade")} />}
         {aba === "encerrar" && <GestaoEncerrarProjetoView turmas={turmas} professorNome={user.nome} />}
         {aba === "notasAuto" && <GestaoNotasAutoView turmas={turmas} professorNome={user.nome} />}

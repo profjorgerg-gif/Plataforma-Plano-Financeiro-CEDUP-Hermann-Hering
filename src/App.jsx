@@ -1,4 +1,4 @@
-// build: 20261030_18h53m Capacidade efetiva ligada ao plano (Modulo 5) e ajuste pelo professor
+// build: 20261030_19h05m Capacidade: horas compartilhadas e recurso compartilhado por item
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -10907,8 +10907,8 @@ function calcularCapacidade(modelo, cap, demandaM5) {
     const v = cap?.recursos?.[r.id] || {}; const porHora = capPorHora(r, v); const qtd = capNum(v.qtd);
     const capHora = qtd * porHora; const capMes = capHora * horasEf;
     // "% da demanda que usa este recurso" (opcional; vazio = 100%): ex.: marmitas para viagem não usam o salão.
-    const parc = capNum(v.parcela); const fr = parc > 0 ? Math.min(parc, 100) / 100 : 1;
-    return { r, qtd, porHora, capHora, capMes, fr, capEq: capMes / fr, preenchido: qtd > 0 && porHora > 0 };
+    const parc = capNum(v.parcela); const frx = capNum(v.__fr); const fr = frx > 0 ? frx : parc > 0 ? Math.min(parc, 100) / 100 : 1;
+    return { r, qtd, porHora, capHora, capMes, fr, capEq: capMes / fr, need: capNum(v.__need), preenchido: qtd > 0 && porHora > 0 };
   });
   const area = capNum(f.area);
   // Espaço: a área informada, descontados 20% de circulação, é repartida entre os recursos na proporção do espaço típico de cada um
@@ -11010,6 +11010,7 @@ function capLancAjustado(lanc, A) {
   return { ...lanc, m5: { ...lanc.m5, itens: (lanc.m5?.itens || []).map((it) => (mapa[it.id] != null ? { ...it, qtd: mapa[it.id] } : it)) } };
 }
 // Análise completa: atendimento (todos) e produção (só quem produz), cada uma com seu gargalo.
+const CAP_DUR_AUTO = new Set(["prof", "posto", "box", "mecanicos", "elevador", "equipe"]);
 function capAnalise(segmento, cap, itens) {
   const base = modeloCapacidade(segmento); const modelo = capModeloAtivo(base, cap);
   const its = (itens || []).filter((it) => Number(it.qtd) > 0);
@@ -11017,28 +11018,48 @@ function capAnalise(segmento, cap, itens) {
   const prodIt = its.filter((i) => tipoDe(i) === "produzo"), servIt = its.filter((i) => tipoDe(i) === "servico"), revIt = its.filter((i) => tipoDe(i) === "revenda");
   const principais = [...prodIt, ...servIt];
   const atendIt = principais.length ? principais : revIt;
-  const soma = (l) => l.reduce((a, it) => a + (Number(it.qtd) || 0), 0);
+  const soma = (l) => l.reduce((a2, it) => a2 + (Number(it.qtd) || 0), 0);
   const pecasCli = base.porCliente ? (capNum(cap?.pecasCliente) || base.porCliente) : 1;
   const demA = Math.round(soma(atendIt) / pecasCli), demP = soma(prodIt);
   const recA = modelo.recursos.filter((r) => capGrupo(r) === "a"), recP = modelo.recursos.filter((r) => capGrupo(r) === "p");
   const temProd = prodIt.length > 0;
-  const RA = calcularCapacidade({ ...modelo, recursos: recA }, cap, demA);
-  const RP = recP.length ? calcularCapacidade({ ...modelo, recursos: recP }, { ...cap, demandaManual: undefined }, demP) : null;
-  const Rall = calcularCapacidade(modelo, cap, demA);
+  // Horas compartilhadas: duração média ponderada pelos minutos informados em cada item (preenche sozinha a duração dos recursos de serviço).
+  const mins = cap?.minutos || {}; let hMin = 0, qMin = 0;
+  principais.forEach((it) => { const m = capNum(mins[it.id]); const q = Number(it.qtd) || 0; if (m > 0) { hMin += q * m; qMin += q; } });
+  const durMedia = qMin > 0 ? Math.round(hMin / qMin * 10) / 10 : null;
+  const recs = { ...(cap?.recursos || {}) }; const durAuto = {}; const compart = [];
+  [...recA, ...recP].forEach((r) => {
+    const v = recs[r.id] || {};
+    if (durMedia && r.tipo === "servico" && CAP_DUR_AUTO.has(r.id) && !(capNum(v.duracao) > 0)) { recs[r.id] = { ...v, duracao: durMedia }; durAuto[r.id] = durMedia; }
+    // Recurso comum a vários itens (litros de sorvete, kg de massa, minutos de forno): cada item informa quanto usa por unidade.
+    if (capGrupo(r) === "p" && v.comp && v.usoItem && r.tipo !== "servico") {
+      let need = 0, sem = 0;
+      prodIt.forEach((it) => { const u = capNum(v.usoItem[it.id]); if (u > 0) need += (Number(it.qtd) || 0) * u; else sem++; });
+      if (need > 0 && demP > 0) { recs[r.id] = { ...(recs[r.id] || v), __fr: need / demP, __need: need }; compart.push({ r, need, sem, unid: v.unid || "unidades do recurso" }); }
+    }
+  });
+  const capCalc = { ...cap, recursos: recs };
+  const RA = calcularCapacidade({ ...modelo, recursos: recA }, capCalc, demA);
+  const RP = recP.length ? calcularCapacidade({ ...modelo, recursos: recP }, { ...capCalc, demandaManual: undefined }, demP) : null;
+  const Rall = calcularCapacidade(modelo, capCalc, demA);
+  compart.forEach((c) => { const l = RP?.linhas.find((x) => x.r.id === c.r.id); c.disp = l ? l.capMes : null; c.uso = l && l.capMes > 0 ? c.need / l.capMes : null; });
   const m2Auto = {}; Rall.linhas.forEach((l) => { m2Auto[l.r.id] = l.m2Auto; });
   const cands = [["Atendimento", RA], ["Produção", temProd ? RP : null]].filter(([, r]) => r && r.capacidade != null);
-  const pior = cands.length ? cands.reduce((a, b) => ((b[1].utilizacao ?? -1) > (a[1].utilizacao ?? -1) ? b : a)) : null;
+  const pior = cands.length ? cands.reduce((a2, b2) => ((b2[1].utilizacao ?? -1) > (a2[1].utilizacao ?? -1) ? b2 : a2)) : null;
   const R = { ...(pior ? pior[1] : RA), espaco: Rall.espaco };
-  // Capacidade efetiva: vale a MENOR entre atendimento e produção (produzir 500 não adianta se só dá para atender 300).
+  const carga = capCarga(cap, principais, RA.horasEf);
+  // Capacidade efetiva: vale a MENOR entre atendimento, produção e horas de trabalho das pessoas (produzir 500 não adianta se só dá para atender 300).
   const fA = RA.capacidade != null && RA.demanda > 0 ? RA.capacidade / RA.demanda : null;
   const fP = temProd && RP && RP.capacidade != null && RP.demanda > 0 ? RP.capacidade / RP.demanda : null;
-  const fRaw = Math.min(fA ?? Infinity, fP ?? Infinity);
-  const temF = Number.isFinite(fRaw);
-  const fPrinc = Math.min(1, fA ?? 1, fP ?? 1), fAte = Math.min(1, fA ?? 1);
-  const fDe = (it) => { const t = tipoDe(it); return t === "produzo" ? fPrinc : t === "servico" ? fAte : (principais.length ? fPrinc : fAte); };
+  const fC = carga.ativo && carga.disp > 0 && carga.horas > 0 ? carga.disp / carga.horas : null;
+  const fontes = [[fA, "atendimento"], [fP, "produção"], [fC, "horas de trabalho das pessoas"]].filter(([x]) => x != null);
+  const menor = fontes.length ? fontes.reduce((a2, b2) => (b2[0] < a2[0] ? b2 : a2)) : null;
+  const fRaw = menor ? menor[0] : Infinity; const temF = !!menor;
+  const fPrinc = Math.min(1, fA ?? 1, fP ?? 1, fC ?? 1), fAte = Math.min(1, fA ?? 1, fC ?? 1);
+  const fDe = (it) => { const t = tipoDe(it); return t === "produzo" ? fPrinc : t === "servico" ? fAte : (principais.length ? fPrinc : Math.min(1, fA ?? 1)); };
   const itensEf = its.map((it) => { const f2 = temF ? fDe(it) : 1; const q = Number(it.qtd) || 0; return { id: it.id, nome: it.nome, tipo: tipoDe(it), qtd: q, preco: Number(it.precoUnit) || 0, f: f2, max: f2 < 1 ? Math.max(1, Math.floor(q * f2)) : q }; });
-  const ef = { fA, fP, fRaw: temF ? fRaw : null, corte: temF && fPrinc < 1, cap: temF && demA > 0 ? Math.round(demA * fRaw) : null, quem: !temF ? null : (fP != null && fP < (fA ?? Infinity) ? "produção" : "atendimento"), itens: itensEf };
-  return { ef, base, modelo, its, prodIt, servIt, revIt, principais, atendIt, demA, demP, pecasCli, recA, recP, temProd, RA, RP, Rall, m2Auto, R, rotR: pior ? pior[0] : "Atendimento", tipoDe, tipoNeg: temProd && (revIt.length || servIt.length) ? "misto" : temProd ? "produz" : servIt.length ? "servico" : "revenda" };
+  const ef = { fA, fP, fC, fRaw: temF ? fRaw : null, corte: temF && fPrinc < 1, cap: temF && demA > 0 ? Math.round(demA * fRaw) : null, quem: menor ? menor[1] : null, itens: itensEf };
+  return { tipoDe, ef, carga, durMedia, durAuto, compart, capCalc, base, modelo, its, prodIt, servIt, revIt, principais, atendIt, demA, demP, pecasCli, recA, recP, temProd, RA, RP, Rall, m2Auto, R, rotR: pior ? pior[0] : "Atendimento", tipoNeg: temProd && (revIt.length || servIt.length) ? "misto" : temProd ? "produz" : servIt.length ? "servico" : "revenda" };
 }
 function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulador, passoInicial }) {
   const segmento = equipe?.segmento;
@@ -11109,9 +11130,11 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulad
           <div className="mt-3">
             <div className="text-xs font-bold text-slate-200 mb-1">{titulo}</div>
             <div className="text-[11px] text-slate-500 mb-1">Quantos minutos de trabalho leva para fazer/atender <b>1 unidade</b>? (opcional, mas deixa o resultado mais realista: mostra se as pessoas dão conta do trabalho.)</div>
-            <div className="max-h-56 overflow-y-auto border border-slate-700 rounded-lg"><table className="w-full text-sm"><thead className="sticky top-0 bg-slate-900"><tr className="text-left text-[10.5px] uppercase text-slate-500"><th className="py-1 pl-2">Item</th><th className="text-right pr-2">Qtde/mês</th><th className="text-right pr-2">Minutos por unidade</th></tr></thead><tbody>
-              {lista.map((it) => <tr key={it.id} className="border-t border-slate-800"><td className="py-0.5 pl-2 text-slate-300">{it.nome || "(sem nome)"}</td><td className="text-right pr-2 text-slate-400">{fmtNum(Number(it.qtd) || 0, 0)}</td><td className="text-right pr-2"><CapInput value={cap.minutos?.[it.id]} placeholder="min" onChange={(v) => set({ minutos: { ...(cap.minutos || {}), [it.id]: v } })} /></td></tr>)}
+            <div className="max-h-56 overflow-y-auto border border-slate-700 rounded-lg"><table className="w-full text-sm"><thead className="sticky top-0 bg-slate-900"><tr className="text-left text-[10.5px] uppercase text-slate-500"><th className="py-1 pl-2">Item</th><th className="text-right pr-2">Qtde/mês</th><th className="text-right pr-2">Minutos por unidade</th><th className="text-right pr-2">Horas/mês</th></tr></thead><tbody>
+              {lista.map((it) => { const mi = capNum(cap.minutos?.[it.id]); return <tr key={it.id} className="border-t border-slate-800"><td className="py-0.5 pl-2 text-slate-300">{it.nome || "(sem nome)"}</td><td className="text-right pr-2 text-slate-400">{fmtNum(Number(it.qtd) || 0, 0)}</td><td className="text-right pr-2"><CapInput value={cap.minutos?.[it.id]} placeholder="min" onChange={(v) => set({ minutos: { ...(cap.minutos || {}), [it.id]: v } })} /></td><td className="text-right pr-2 text-slate-400">{mi > 0 ? fmtNum((Number(it.qtd) || 0) * mi / 60, 0) : "—"}</td></tr>; })}
+              <tr className="border-t border-slate-700 sticky bottom-0 bg-slate-900"><td className="py-1 pl-2 font-bold text-slate-100" colSpan={3}>Trabalho total necessário (todas as horas são das mesmas pessoas)</td><td className="text-right pr-2 font-bold text-slate-100">{fmtNum(A.carga.horas, 0)} h</td></tr>
             </tbody></table></div>
+            {A.carga.ativo && <div className={`text-xs mt-1 ${A.carga.disp > 0 && A.carga.uso > 1 ? "text-rose-300" : "text-slate-300"}`}>{A.durMedia ? <>Duração média ponderada: <b>{fmtNum(A.durMedia, 0)} min</b>. </> : null}{A.carga.disp > 0 ? <>Horas disponíveis: {fmtNum(A.carga.pessoas, 0)} pessoa(s) × {fmtNum(R.horasEf, 0)} h = <b>{fmtNum(A.carga.disp, 0)} h</b> → uso <b>{fmtNum(A.carga.uso * 100, 0)}%</b>{A.carga.uso > 1 ? " — não cabe: as horas das pessoas não bastam para tudo isso." : ""}</> : <>Informem quantas pessoas trabalham para comparar com as horas.</>}{A.carga.sem > 0 && <span className="text-amber-300"> · {A.carga.sem} item(ns) sem minutos não entraram na conta.</span>}</div>}
           </div>
         );
         const tabelaRecursos = (grupo, Rx) => {
@@ -11127,7 +11150,8 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulad
                     <td className="pr-2 py-2 text-xs text-slate-400 space-y-1">
                       {r.tipo === "taxa" && <div className="flex items-center gap-2"><CapInput value={v.taxa} placeholder={r.ph.taxa} onChange={(x) => setRec(r.id, "taxa", x)} /> {r.taxaRot}</div>}
                       {r.tipo === "lote" && <><div className="flex items-center gap-2"><CapInput value={v.lote} placeholder={r.ph.lote} onChange={(x) => setRec(r.id, "lote", x)} /> {r.loteRot}</div><div className="flex items-center gap-2"><CapInput value={v.ciclo} placeholder={r.ph.ciclo} onChange={(x) => setRec(r.id, "ciclo", x)} /> {r.cicloRot}</div></>}
-                      {r.tipo === "servico" && <><div className="flex items-center gap-2"><CapInput value={v.duracao} placeholder={r.ph.duracao} onChange={(x) => setRec(r.id, "duracao", x)} /> {r.duracaoRot}</div>{r.porRot && <div className="flex items-center gap-2"><CapInput value={v.por} placeholder={r.ph.por} onChange={(x) => setRec(r.id, "por", x)} /> {r.porRot}</div>}{r.visRot && <div className="flex items-center gap-2"><CapInput value={v.vis} placeholder={r.ph.vis} onChange={(x) => setRec(r.id, "vis", x)} /> {r.visRot}</div>}</>}
+                      {grupo === "p" && r.tipo !== "servico" && <label className="flex items-center gap-1.5 text-[11px] text-amber-200"><input type="checkbox" checked={!!v.comp} onChange={(e) => setRec(r.id, "comp", e.target.checked)} /> usado por vários itens (cada um gasta uma quantidade diferente)</label>}
+                      {r.tipo === "servico" && <><div className="flex items-center gap-2"><CapInput value={v.duracao} placeholder={A.durAuto[r.id] ?? r.ph.duracao} onChange={(x) => setRec(r.id, "duracao", x)} /> {r.duracaoRot}</div>{A.durAuto[r.id] && <div className="text-[10px] text-sky-300">automático: {fmtNum(A.durAuto[r.id], 0)} min = média dos minutos de cada serviço (digite para trocar)</div>}{r.porRot && <div className="flex items-center gap-2"><CapInput value={v.por} placeholder={r.ph.por} onChange={(x) => setRec(r.id, "por", x)} /> {r.porRot}</div>}{r.visRot && <div className="flex items-center gap-2"><CapInput value={v.vis} placeholder={r.ph.vis} onChange={(x) => setRec(r.id, "vis", x)} /> {r.visRot}</div>}</>}
                     </td>
                     <td className="pr-2 py-2"><CapInput value={v.parcela} placeholder={100} onChange={(x) => setRec(r.id, "parcela", x && x > 100 ? 100 : x)} /></td>
                     <td className="pr-2 py-2"><CapInput value={v.m2} placeholder={A.m2Auto[r.id] ?? l.m2Auto} onChange={(x) => setRec(r.id, "m2", x)} /></td>
@@ -11137,7 +11161,19 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulad
                 ); })}
                 {!linhas.length && <tr><td colSpan={7} className="py-2 text-xs text-slate-500">Nenhum recurso nesta etapa para o segmento. Use "Incluir outro recurso" abaixo.</td></tr>}
               </tbody>
-            </table></div>
+            </table>
+            {grupo === "p" && linhas.filter((l) => cap.recursos?.[l.r.id]?.comp).map((l) => { const r = l.r; const v = cap.recursos?.[r.id] || {}; const cp = A.compart.find((c) => c.r.id === r.id); return (
+              <div key={`c${r.id}`} className="mt-3 rounded-lg border border-amber-700/50 bg-amber-950/10 p-3">
+                <div className="text-xs font-bold text-amber-200 mb-1">Quanto de “{r.nome}” cada unidade usa</div>
+                <div className="text-[11px] text-slate-400 mb-2">Use a <b>mesma unidade</b> da capacidade informada acima. Exemplos: máquina de sorvete → <b>litros</b> (pote 1 L = 1; casquinha = 0,1); amassadeira → <b>kg de massa</b> por unidade; forno → <b>minutos de forno</b> por unidade (tempo da fornada ÷ unidades por fornada; capacidade de cada forno = 60 por hora). Assim o mesmo volume não é contado duas vezes.</div>
+                <div className="flex items-center gap-2 text-xs text-slate-300 mb-2">Unidade usada: <input value={v.unid || ""} onChange={(e) => setRec(r.id, "unid", e.target.value)} placeholder="ex.: litros, kg, minutos" className="w-40 bg-slate-950 border border-slate-600 rounded-md px-2 py-1 text-slate-100" /></div>
+                <div className="max-h-56 overflow-y-auto border border-slate-700 rounded-lg"><table className="w-full text-sm"><thead className="sticky top-0 bg-slate-900"><tr className="text-left text-[10.5px] uppercase text-slate-500"><th className="py-1 pl-2">Item produzido</th><th className="text-right pr-2">Qtde/mês</th><th className="text-right pr-2">Uso por unidade{v.unid ? ` (${v.unid})` : ""}</th></tr></thead><tbody>
+                  {A.prodIt.map((it) => <tr key={it.id} className="border-t border-slate-800"><td className="py-0.5 pl-2 text-slate-300">{it.nome || "(sem nome)"}</td><td className="text-right pr-2 text-slate-400">{fmtNum(Number(it.qtd) || 0, 0)}</td><td className="text-right pr-2"><CapInput value={v.usoItem?.[it.id]} placeholder="0" onChange={(x) => setRec(r.id, "usoItem", { ...(v.usoItem || {}), [it.id]: x })} /></td></tr>)}
+                </tbody></table></div>
+                {cp ? <div className="text-xs mt-2 text-slate-200">Necessário: <b>{fmtNum(cp.need, 1)} {cp.unid}/mês</b>{cp.disp != null ? <> · disponível: <b>{fmtNum(cp.disp, 1)}</b> · uso <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${corUso(cp.uso)}`}>{pct(cp.uso)}</span></> : <> · preencham a capacidade do recurso acima</>}{cp.sem > 0 && <span className="text-amber-300"> · {cp.sem} item(ns) sem uso informado não entraram</span>}</div> : <div className="text-[11px] text-slate-500 mt-2">Informe o uso de pelo menos um item para o cálculo.</div>}
+              </div>
+            ); })}
+            </div>
           );
         };
         const incluirRec = (grupo) => (
@@ -11261,7 +11297,7 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulad
                 <div className="text-[11px] uppercase tracking-wide text-slate-500">Capacidade efetiva (a menor das duas)</div>
                 {ef.fRaw == null ? <div className="text-sm text-slate-400 mt-1">Preencham os recursos para ver quanto a empresa realmente consegue vender.</div> : <>
                   <div className={`text-xl font-extrabold ${ef.corte ? "text-rose-400" : "text-emerald-300"}`}>{fmtNum(ef.cap, 0)} {modelo.unidade}/mês</div>
-                  <div className="text-xs text-slate-300 mt-1">O Módulo 5 prevê <b>{fmtNum(A.demA, 0)}</b>. {ef.corte ? <>Falta <b>{fmtNum(A.demA - ef.cap, 0)} ({fmtNum((1 - ef.fRaw) * 100, 0)}%)</b>: quem limita é o <b>{ef.quem}</b>. Produzir mais não adianta se não dá para atender (e vice-versa).</> : <>O plano cabe na capacidade{ef.quem ? ` (limite: ${ef.quem})` : ""}.</>}</div>
+                  <div className="text-xs text-slate-300 mt-1">O Módulo 5 prevê <b>{fmtNum(A.demA, 0)}</b>. {ef.corte ? <>Falta <b>{fmtNum(A.demA - ef.cap, 0)} ({fmtNum((1 - ef.fRaw) * 100, 0)}%)</b>: o que limita é <b>{ef.quem}</b>. Produzir mais não adianta se não dá para atender (e vice-versa).</> : <>O plano cabe na capacidade{ef.quem ? ` (limite: ${ef.quem})` : ""}.</>}</div>
                 </>}
               </div>
             </div>
@@ -11486,7 +11522,7 @@ function capLinhasDiff(a, b, segmento) {
   if (J(a.demandaManual) !== J(b.demandaManual)) out.push(`Capacidade — demanda manual: ${fmtValAj(a.demandaManual)} → ${fmtValAj(b.demandaManual)}`);
   if (J(a.pecasCliente) !== J(b.pecasCliente)) out.push(`Capacidade — itens por cliente: ${fmtValAj(a.pecasCliente)} → ${fmtValAj(b.pecasCliente)}`);
   const nomes = {}; [...modeloCapacidade(segmento).recursos, ...(a.custom || []), ...(b.custom || [])].forEach((r) => { nomes[r.id] = r.nome; });
-  const res = (v) => (v && Object.keys(v).length ? Object.entries(v).filter(([, x]) => x !== undefined && x !== null && x !== "").map(([k, x]) => `${k}=${x}`).join(", ") : "não informado");
+  const res = (v) => (v && Object.keys(v).length ? Object.entries(v).filter(([, x]) => x !== undefined && x !== null && x !== "").map(([k, x]) => (typeof x === "object" ? `${k}=${Object.keys(x).length} item(ns)` : `${k}=${x}`)).join(", ") : "não informado");
   Array.from(new Set([...Object.keys(a.recursos || {}), ...Object.keys(b.recursos || {})])).forEach((id) => { if (J(a.recursos?.[id]) !== J(b.recursos?.[id])) out.push(`Capacidade — ${nomes[id] || id}: ${res(a.recursos?.[id])} → ${res(b.recursos?.[id])}`); });
   const nMin = (c) => Object.values(c.minutos || {}).filter((x) => Number(x) > 0).length;
   if (nMin(a) !== nMin(b) || J(a.minutos) !== J(b.minutos)) out.push(`Capacidade — minutos de trabalho por item informados: ${nMin(a)} → ${nMin(b)} item(ns)`);
@@ -11510,11 +11546,11 @@ function capFichaTexto(segmento) {
   L.push("2) FUNCIONAMENTO", "- Horas de funcionamento por dia · dias por mês · eficiência real (%; na dúvida 85) · área útil em m² (sem banheiro e depósito).", "- Fator de pico (ex.: 1,3 se no pior período vendem 30% a mais: almoço, datas comemorativas, verão).", "");
   L.push("3) ATENDIMENTO (quantos clientes cabem e conseguimos atender)");
   ate.forEach((r, i) => L.push(lin(r, i)));
-  if (tipo === "servico") L.push("- Pessoas que atendem (incluindo sócios) e minutos de cada serviço (ex.: unha 120 min, trança 360 min).");
+  if (tipo === "servico") L.push("- Pessoas que atendem (incluindo sócios) e minutos de cada serviço, contando preparo, higienização e troca de cliente (ex.: unha 120 min, trança 360 min). Todos os serviços usam as mesmas horas das profissionais.");
   if (tipo !== "servico") {
     L.push("", "4) PRODUÇÃO (só para os itens que a empresa produz)");
     if (pro.length) pro.forEach((r, i) => L.push(lin(r, i)));
-    L.push("- Pessoas que trabalham na produção (incluindo sócios que produzem).", "- Minutos de trabalho para produzir 1 unidade de cada item (ex.: bolo 90 min, brigadeiro 1,5 min).");
+    L.push("- Pessoas que trabalham na produção (incluindo sócios que produzem).", "- Minutos de trabalho para produzir 1 unidade de cada item (ex.: bolo 90 min, brigadeiro 1,5 min).", "- Se vários itens usam o MESMO recurso (ex.: o mesmo sorvete vira pote, casquinha, copo e milk-shake; a mesma massa ou o mesmo forno): quanto cada item gasta dele por unidade (litros, kg ou minutos).");
     if (tipo === "revenda") L.push("(Se a empresa só revende e não produz nada, pule o item 4.)");
   }
   L.push("", `Dica: ${m.demandaDica}`);
@@ -11540,6 +11576,8 @@ function capRelatorioLinhas(eq, d) {
   grupo("Atendimento", A.RA);
   if (A.temProd) grupo("Produção", A.RP); else out.push("- Produção: não se aplica (nenhum item marcado como produzido pela empresa).");
   if (A.R.espaco?.uso != null) out.push(`- Espaço: ${fmtNum(A.R.espaco.usado, 0)} de ${fmtNum(A.R.espaco.areaUtil, 0)} m² aproveitáveis (${pc(A.R.espaco.uso)})`);
+  A.compart.forEach((c) => out.push(`- Recurso compartilhado "${c.r.nome}": necessário ${fmtNum(c.need, 1)} ${c.unid}/mês${c.disp != null ? ` × disponível ${fmtNum(c.disp, 1)} (uso ${pc(c.uso)})` : ""}${c.sem ? ` · ${c.sem} item(ns) sem uso informado` : ""}`));
+  if (A.ef.fRaw != null) out.push(`- Capacidade efetiva (a menor entre atendimento, produção e horas de trabalho): ${fmtNum(A.ef.cap || 0, 0)} ${modelo.unidade}/mês, plano do Módulo 5: ${fmtNum(A.demA, 0)}${A.ef.corte ? ` — PLANO ACIMA DA CAPACIDADE (limite: ${A.ef.quem})` : " — o plano cabe"}`);
   const cg = capCarga(cap, A.principais, A.R.horasEf);
   if (cg.ativo) out.push(`- Carga de trabalho: ${fmtNum(cg.horas, 0)} h/mês necessárias${cg.disp > 0 ? ` × ${fmtNum(cg.disp, 0)} h disponíveis (${fmtNum(cg.pessoas, 0)} pessoa(s)) = ${pc(cg.uso)}` : " (número de pessoas não informado)"}`);
   if (A.R.sobra && !(A.R.falta > 0)) out.push("- Observação: grande folga de capacidade — o desafio é vender; conferir investimento (M1) e equipe (M9).");

@@ -1,4 +1,4 @@
-// build: 20261030_10h25m Plano de viabilidade para retorno que nao se paga
+// build: 20261030_11h10m Capacidade: demanda x equilibrio, clientes por dia, faturamento maximo teorico
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -8801,6 +8801,7 @@ const PA = (() => {
     const diag = [];
     const pe = calc.pontoEquilibrio != null ? calc.pontoEquilibrio / 12 : null;
     if (pe) diag.push(`Ponto de equilíbrio de ${fmtBRL(pe)}/mês contra faturamento de ${fmtBRL(F)} (${fmtNum(F / pe * 100, 0)}%).`);
+    if (pe) { try { const { modelo: mq, demanda: dq } = capDemandaEquipe(modeloCapacidade(ctx.segmento), cap || {}, L.m5.itens); const Eq = capEmpate(L, (L.m5.itens || []).filter((it) => Number(it.qtd) > 0 && !cap?.excluidos?.[it.id]), dq); if (Eq && Eq.empate) { const dm = capNum(cap?.funcionamento?.diasMes) || 26; diag.push(`Para empatar são necessários cerca de ${fmtNum(Eq.empate, 0)} ${mq.unidade}/mês (${fmtNum(Eq.empate / dm, 1)} por dia, ticket médio de ${fmtBRL(Eq.ticket)}); o plano atual prevê ${fmtNum(dq, 0)}.`); } } catch { /* sem dados */ } }
     else diag.push("Com a margem de contribuição atual não existe ponto de equilíbrio: o custo variável consome toda a receita.");
     diag.push(`CMV ${fmtNum(pct(calc.cmv), 0)}% (limite ${fmtNum(refs.cmvMax, 0)}%) · mão de obra ${fmtNum(pct(calc.maoDeObra), 0)}% (limite ${fmtNum(refs.moMax, 0)}%) · outras fixas ${fmtNum(pct(outras), 0)}% (limite ${LIMITES_DIAG.outrasFixasOk}%) · margem de contribuição ${fmtNum(pct(calc.margemContribuicao), 0)}%.`);
     if (calc.mcPct == null) { /* sem uso */ }
@@ -10349,10 +10350,21 @@ function calcularCapacidade(modelo, cap, demandaM5) {
   return { horasEf, demanda, linhas, gargalo, capacidade, falta, opcoes, espaco, utilizacao: demanda > 0 ? demanda / capacidade : null, sobra };
 }
 
+// Ticket médio e clientes (ou unidades) necessários para empatar: usa o ponto de equilíbrio do Módulo 13 e o ticket do Módulo 5.
+function capEmpate(lanc, itens, demanda) {
+  try {
+    const receita = (itens || []).reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.precoUnit) || 0), 0);
+    if (!(receita > 0) || !(demanda > 0)) return null;
+    const c = calcular(lanc);
+    const ticket = receita / demanda;
+    const peMes = c.pontoEquilibrio != null && c.pontoEquilibrio > 0 ? c.pontoEquilibrio / 12 : null;
+    return { receita, ticket, peMes, empate: peMes ? peMes / ticket : null };
+  } catch { return null; }
+}
 function CapInput({ value, onChange, placeholder, step }) {
   return <input type="number" min="0" step={step || "any"} value={value ? value : ""} placeholder={placeholder != null ? String(placeholder) : ""} onChange={(e) => onChange(e.target.value === "" || !(Number(e.target.value) > 0) ? undefined : Number(e.target.value))} className="w-24 bg-slate-950 border border-slate-600 rounded-md px-2 py-1.5 text-sm text-slate-100 text-center focus:outline-none focus:border-amber-500" />;
 }
-function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura }) {
+function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulador }) {
   const segmento = equipe?.segmento;
   const cap = dados?.capacidade || {};
   const modelo = capModeloAtivo(modeloCapacidade(segmento), cap);
@@ -10382,6 +10394,14 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura }) {
   const setRec = (id, k, v) => set({ recursos: { ...(cap.recursos || {}), [id]: { ...(cap.recursos?.[id] || {}), [k]: v } } });
   const R = calcularCapacidade(modelo, cap, demandaM5);
   const f = cap.funcionamento || {};
+  const itensCap = usados;
+  const E = !simulador && R.capacidade != null && R.demanda > 0 ? capEmpate(lanc, itensCap, R.demanda) : null;
+  const diasMesUso = capNum(f.diasMes) || 26;
+  const cliDiaPlan = R.demanda > 0 ? R.demanda / diasMesUso : null;
+  const cliDiaMax = R.capacidade != null ? R.capacidade / diasMesUso : null;
+  const cliDiaEsp = capNum(cap.clientesDia);
+  const receitaCap = itensCap.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.precoUnit) || 0), 0);
+  const fatMaxTeorico = R.capacidade != null && R.demanda > 0 && receitaCap > 0 ? receitaCap * (R.capacidade / R.demanda) : null;
   const pct = (u) => `${fmtNum(u * 100, 0)}%`;
   const corUso = (u) => (u == null ? "" : u > 1 ? "bg-rose-900/40 text-rose-300" : u > 0.85 ? "bg-amber-900/40 text-amber-300" : "bg-emerald-900/40 text-emerald-300");
   return (
@@ -10468,7 +10488,45 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura }) {
             )}
             {R.espaco.uso != null && <div>Espaço: os recursos ocupam <b>{fmtNum(R.espaco.usado, 1)} m²</b> dos {fmtNum(R.espaco.areaUtil, 0)} m² aproveitáveis (área de {fmtNum(R.espaco.area, 0)} m² menos 20% de circulação) (<span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${R.espaco.uso > 1 ? "bg-rose-900/40 text-rose-300" : R.espaco.uso > 0.85 ? "bg-amber-900/40 text-amber-300" : "bg-emerald-900/40 text-emerald-300"}`}>{pct(R.espaco.uso)}</span>){R.espaco.uso > 1 ? " — não cabe: reduzam recursos ou ampliem a área (aluguel no Módulo 1/custos fixos)." : R.espaco.uso > 0.85 ? " — pouco espaço de sobra para circulação e crescimento." : "."}</div>}
             {R.falta === 0 && R.demanda > 0 && !R.sobra && <div className="text-emerald-300">A capacidade atende à demanda planejada{R.utilizacao > 0.85 ? ", mas com pouca folga: qualquer imprevisto pode virar atraso ou perda de vendas." : " com folga."}</div>}
-            {R.sobra && <div className="text-sky-300">A empresa está usando só {pct(R.utilizacao)} da capacidade. Vale conferir se o investimento (Módulo 1) e a equipe (Módulo 9) não estão grandes demais para a quantidade que vão vender.</div>}
+            {R.espaco.uso == null && R.espaco.area <= 0 && <div className="text-[11px] text-slate-500">Espaço: informem a área útil no item 1 (o número em cinza é só exemplo) para ver quanto do espaço os recursos ocupam.</div>}
+            {R.sobra && (
+              <div className="rounded-lg border border-sky-700/60 bg-sky-950/30 p-3 space-y-1.5">
+                <div className="text-sky-200"><b>💡 O desafio de vocês é vender, não atender.</b> A estrutura aguenta <b>{fmtNum(1 / R.utilizacao, 1)} vezes</b> mais {modelo.unidade} do que o planejado (utilização de {pct(R.utilizacao)}). Quando isso acontece, o que pesa no resultado é conseguir clientes — e o custo da estrutura que fica parada.</div>
+              </div>
+            )}
+            {!simulador && cliDiaPlan != null && (
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">{modelo.unidade} por dia (planejado)</div><b className="text-slate-100">{fmtNum(cliDiaPlan, 1)}</b> <span className="text-slate-500">de {fmtNum(cliDiaMax, 1)} possíveis</span></div>
+                  <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Para empatar, precisam de</div>{E && E.empate ? <><b className={E.empate > R.demanda ? "text-amber-300" : "text-emerald-300"}>{fmtNum(E.empate, 0)} {modelo.unidade}/mês</b> <span className="text-slate-500">({fmtNum(E.empate / diasMesUso, 1)} por dia)</span></> : <span className="text-slate-500">sem dados suficientes</span>}</div>
+                  <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Vocês planejam</div><b className="text-slate-100">{fmtNum(R.demanda, 0)} {modelo.unidade}/mês</b></div>
+                  <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Espaço usado</div>{R.espaco.uso != null ? <><b className="text-slate-100">{fmtNum(R.espaco.usado, 0)} de {fmtNum(R.espaco.areaUtil, 0)} m²</b> <span className="text-slate-500">({pct(R.espaco.uso)})</span></> : <span className="text-slate-500">informe a área</span>}</div>
+                </div>
+                {E && E.empate != null && (
+                  <div className="text-xs text-slate-300">
+                    <div className="h-3 bg-slate-900 rounded-full overflow-hidden border border-slate-700"><div className="h-full" style={{ width: `${Math.min(100, R.demanda / R.capacidade * 100)}%`, background: R.demanda >= E.empate ? "#10b981" : "#ef4444" }} /></div>
+                    <div className="mt-1 text-slate-400">Planejado {fmtNum(R.demanda, 0)} · equilíbrio {fmtNum(E.empate, 0)} · capacidade {fmtNum(R.capacidade, 0)}. {R.demanda >= E.empate ? <span className="text-emerald-300">O planejado cobre o equilíbrio.</span> : E.empate <= R.capacidade ? <span className="text-amber-300">Vocês precisam vender {fmtNum(E.empate / R.demanda, 1)}× mais para empatar, e a capacidade comporta.</span> : <span className="text-rose-300">Nem a capacidade total chega ao equilíbrio: revisem preços, custos fixos ou ampliem a estrutura.</span>}</div>
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">Quanto vocês acham que conseguem atrair por dia? <CapInput value={cap.clientesDia} placeholder={fmtNum(cliDiaPlan, 1)} onChange={(v) => set({ clientesDia: v })} /> {modelo.unidade}/dia{cliDiaEsp > 0 && <span className="text-slate-400">= {fmtNum(cliDiaEsp * diasMesUso, 0)} por mês · {cliDiaEsp * diasMesUso >= R.demanda ? `acima do Módulo 5 (${fmtNum(R.demanda, 0)})` : `abaixo do Módulo 5 (${fmtNum(R.demanda, 0)}): revisem o Módulo 5`}{E && E.empate ? (cliDiaEsp * diasMesUso >= E.empate ? " e cobre o equilíbrio" : ` e não chega ao equilíbrio (${fmtNum(E.empate, 0)})`) : ""}</span>}</div>
+                <div className="text-[11px] text-slate-500">Este campo não altera nenhum lançamento: serve só para comparar com o Módulo 5 e com o equilíbrio.</div>
+              </div>
+            )}
+            {R.sobra && !simulador && (
+              <div>
+                <div className="font-bold text-slate-100 text-xs mb-1">O que revisar (a estrutura está sobrando):</div>
+                <ul className="text-xs text-slate-300 space-y-1 list-disc pl-5">
+                  <li><b>Módulo 11 — divulgação:</b> o que vocês farão para trazer mais clientes? Há verba de marketing lançada?</li>
+                  <li><b>Módulo 9 — equipe:</b> o custo de pessoal está proporcional ao movimento previsto?</li>
+                  <li><b>Módulo 1 — equipamentos e instalações:</b> há itens que ficarão ociosos?</li>
+                  <li><b>Módulo 5 — preços e mix:</b> com poucos clientes{E ? ` (ticket médio de R$ ${fmtNum(E.ticket, 0)})` : ""}, o ticket precisa compensar.</li>
+                </ul>
+              </div>
+            )}
+            {R.sobra && simulador && <div className="text-sky-300">A empresa está usando só {pct(R.utilizacao)} da capacidade. Vale conferir se o investimento (Módulo 1) e a equipe (Módulo 9) não estão grandes demais para a quantidade que vão vender.</div>}
+            {fatMaxTeorico != null && R.capacidade > R.demanda && (
+              <div className="text-xs text-slate-400 border-t border-slate-700 pt-2"><b className="text-slate-300">Faturamento máximo teórico:</b> R$ {fmtNum(fatMaxTeorico, 0)} por mês — só valeria se houvesse clientes para encher toda a capacidade ({fmtNum(R.capacidade, 0)} {modelo.unidade}/mês). Não é uma projeção.</div>
+            )}
           </div>
         )}
       </Card>
@@ -10525,7 +10583,7 @@ function CenariosCapacidade({ modelo, cap, itens: itensTodos, obj, mudar }) {
   return (
     <Card className="p-4 mt-4">
       <h3 className="text-sm font-bold text-slate-100 mb-1">5 · Análise e cenários <span className="text-[10px] bg-violet-600 text-white rounded-full px-2 py-0.5 ml-1">só professor</span></h3>
-      <div className="text-[11px] text-slate-500 mb-3">A coluna "Sistema" é automática (vem do que está lançado acima). Em cada cenário, digite apenas o que quer mudar: o resto é herdado e o cálculo atualiza na hora.</div>
+      <div className="text-[11px] text-slate-500 mb-3"><b>Faturamento máximo teórico</b> = o que a empresa faturaria se houvesse clientes para encher toda a capacidade; não é projeção de vendas. A coluna "Sistema" é automática (vem do que está lançado acima). Em cada cenário, digite apenas o que quer mudar: o resto é herdado e o cálculo atualiza na hora.</div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm" style={{ minWidth: 640 + cenarios.length * 190 }}>
           <thead><tr className="text-xs text-slate-400"><th className="w-40"></th>{colunas.map((k) => <th key={k.id} className={`px-2 pb-2 text-center ${k.sis ? "bg-teal-950/30" : ""}`}>{k.sis ? <>🤖 Sistema<div className="text-[10px] font-normal text-slate-500">situação lançada</div></> : <input value={k.c.titulo || ""} onChange={(e) => setC(k.id, { titulo: e.target.value })} className="w-full bg-slate-950 border border-slate-600 rounded-md px-1.5 py-1 text-xs text-center text-slate-100" />}</th>)}</tr></thead>
@@ -10537,8 +10595,9 @@ function CenariosCapacidade({ modelo, cap, itens: itensTodos, obj, mudar }) {
             {linha("Gargalo", (k) => k.R.gargalo ? k.R.gargalo.r.nome : "—")}
             {linha("Utilização", (k) => k.R.utilizacao != null ? <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${corU(k.R.utilizacao)}`}>{pct(k.R.utilizacao)}</span> : "—")}
             {linha("Faltam / sobram", (k) => k.R.capacidade == null || !(k.R.demanda > 0) ? "—" : k.R.falta > 0 ? <span className="text-rose-300">faltam {fmtNum(k.R.falta, 0)}</span> : <span className="text-emerald-300">sobram {fmtNum(k.R.capacidade - k.R.demanda, 0)}</span>)}
-            {linha("Espaço ocupado", (k) => k.R.espaco && k.R.espaco.uso != null ? <>{fmtNum(k.R.espaco.usado, 0)} de {fmtNum(k.R.espaco.areaUtil, 0)} m² <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${corU(k.R.espaco.uso)}`}>{pct(k.R.espaco.uso)}</span></> : "—")}
-            {linha("Faturamento possível (M5)", (k) => { const v = fat(k.R, k.R.demanda); return v == null ? "—" : <span className={v < receita * 0.999 ? "text-amber-300" : "text-emerald-300"}>R$ {fmtNum(v, 0)}{receita > 0 ? ` (${v >= receita ? "+" : "−"}${fmtNum(Math.abs(v / receita - 1) * 100, 0)}%)` : ""}</span>; })}
+            {linha("Espaço ocupado", (k) => k.R.espaco && k.R.espaco.uso != null ? <>{fmtNum(k.R.espaco.usado, 0)} de {fmtNum(k.R.espaco.areaUtil, 0)} m² <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${corU(k.R.espaco.uso)}`}>{pct(k.R.espaco.uso)}</span></> : <span className="text-[10px] text-slate-500">{k.R.espaco && k.R.espaco.area > 0 ? "—" : "área não informada"}</span>)}
+            {linha(`${modelo.unidade} por dia`, (k) => k.R.demanda > 0 ? <>{fmtNum(k.R.demanda / (capNum(k.capX?.funcionamento?.diasMes) || 26), 1)}{k.R.capacidade != null && <span className="text-[10px] text-slate-500"> de {fmtNum(k.R.capacidade / (capNum(k.capX?.funcionamento?.diasMes) || 26), 1)}</span>}</> : "—")}
+            {linha("Faturamento máximo teórico (M5)", (k) => { const v = fat(k.R, k.R.demanda); return v == null ? "—" : <span className={v < receita * 0.999 ? "text-amber-300" : "text-emerald-300"}>R$ {fmtNum(v, 0)}{receita > 0 ? ` (${v >= receita ? "+" : "−"}${fmtNum(Math.abs(v / receita - 1) * 100, 0)}%)` : ""}</span>; })}
             {linha("💡 Sugestão do sistema", (k) => <div className="text-xs text-teal-200 text-left leading-snug">{capSugestaoTexto(k.R, modelo)}</div>)}
             {linha("✍️ Anotações do professor", (k) => k.sis ? <div className="text-xs text-slate-500 text-left">Automático (somente leitura)</div> : <textarea value={k.c.texto || ""} onChange={(e) => setC(k.id, { texto: e.target.value })} rows={5} placeholder="Digite o cenário, perguntas para a turma, orientações…" className="w-full bg-slate-950 border border-slate-600 rounded-md px-2 py-1.5 text-xs text-left text-slate-100" />)}
             <tr className="border-t border-slate-700"><td></td>{colunas.map((k) => <td key={k.id} className="py-2 px-2 text-center">{!k.sis && <button onClick={() => excluir(k.id)} className="text-[11px] border border-rose-800/60 text-rose-300 rounded px-2 py-1">🗑 Excluir</button>}</td>)}</tr>
@@ -10973,7 +11032,7 @@ function GestaoCapacidadeView({ user, turmas }) {
           </div>
         </div>
       </Card>
-      <CapacidadeView equipe={{ segmento: obj.segmento || "" }} lanc={{ m5: { itens: obj.m5 || [] } }} dados={{ capacidade: obj.cap || {} }} setDados={(d) => mudar({ cap: d.capacidade })} somenteLeitura={false} />
+      <CapacidadeView equipe={{ segmento: obj.segmento || "" }} lanc={{ m5: { itens: obj.m5 || [] } }} dados={{ capacidade: obj.cap || {} }} setDados={(d) => mudar({ cap: d.capacidade })} somenteLeitura={false} simulador />
       <CenariosCapacidade modelo={capModeloAtivo(modeloCapacidade(obj.segmento), obj.cap || {})} cap={obj.cap || {}} itens={obj.m5 || []} obj={obj} mudar={mudar} />
     </div>
   );

@@ -1,4 +1,4 @@
-// build: 20261030_12h42m Realismo de mercado no Ajuste geral
+// build: 20261030_13h02m Realismo de mercado: aceitar sugestao ou digitar
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -8603,15 +8603,31 @@ const MERC_SEG = {
   "Lavanderia": { lucMin: 8, lucMax: 20, rentMin: 20, rentMax: 60, cmvMin: 10, moMin: 20 },
   "Floricultura": { lucMin: 4, lucMax: 12, rentMin: 15, rentMax: 45, cmvMin: 35, moMin: 12 },
 };
+// prazos típicos (dias) por segmento: [vendas mín, vendas máx, estoque mín, estoque máx, compras máx]
+const PRAZOS_SEG = {
+  "Restaurante / lanchonete": [1, 10, 2, 7, 15], "Padaria / confeitaria": [1, 5, 1, 5, 15], "Estética / beleza": [5, 15, 10, 30, 15],
+  "Moda / brechó": [10, 30, 45, 90, 30], "Semijoias / acessórios": [10, 30, 45, 90, 30], "Sorveteria": [1, 10, 5, 20, 21],
+  "Papelaria / livraria": [5, 20, 30, 60, 30], "Pet shop": [5, 20, 20, 45, 30], "Academia / estúdio fitness": [5, 15, 0, 15, 15],
+  "Loja de conveniência / mercadinho": [1, 10, 10, 30, 21], "Oficina mecânica / autopeças": [10, 30, 20, 45, 30],
+  "Salão de festas / eventos": [10, 30, 0, 10, 15], "Lavanderia": [1, 10, 0, 10, 15], "Floricultura": [1, 10, 3, 10, 15],
+};
+const PRAZOS_GERAL = [5, 30, 15, 45, 30];
+const TIPO_SIMPLES_SEG = { "Restaurante / lanchonete": "comercio", "Padaria / confeitaria": "industria", "Estética / beleza": "servicos", "Moda / brechó": "comercio", "Semijoias / acessórios": "comercio", "Sorveteria": "industria", "Papelaria / livraria": "comercio", "Pet shop": "comercio", "Academia / estúdio fitness": "servicos", "Loja de conveniência / mercadinho": "comercio", "Oficina mecânica / autopeças": "servicos", "Salão de festas / eventos": "servicos", "Lavanderia": "servicos", "Floricultura": "comercio" };
 const MERC_ROTULOS = [
-  ["lucMax", "Lucratividade máxima realista (%)", "Acima disso a empresa é tratada como otimista demais."],
-  ["lucMin", "Lucratividade mínima do segmento (%)", "Usada para definir o cenário sugerido."],
-  ["rentMax", "Rentabilidade máxima realista (% ao ano)", "Acima disso o retorno é otimista demais (payback = 100 ÷ rentabilidade)."],
-  ["rentMin", "Rentabilidade mínima do segmento (% ao ano)", "Usada para definir o cenário sugerido."],
-  ["cmvMin", "CMV mínimo do segmento (% do faturamento)", "Abaixo disso o custo da mercadoria é considerado subestimado."],
-  ["moMin", "Mão de obra mínima do segmento (% do faturamento)", "Abaixo disso a equipe é considerada subdimensionada."],
+  ["lucMax", "Lucratividade máxima realista (%)", "Acima disso a empresa é tratada como otimista demais.", "%"],
+  ["lucMin", "Lucratividade mínima do segmento (%)", "Usada para definir o cenário sugerido.", "%"],
+  ["rentMax", "Rentabilidade máxima realista (% ao ano)", "Acima disso o retorno é otimista demais (payback = 100 ÷ rentabilidade).", "%"],
+  ["rentMin", "Rentabilidade mínima do segmento (% ao ano)", "Usada para definir o cenário sugerido.", "%"],
+  ["cmvMin", "CMV mínimo do segmento (% do faturamento)", "Abaixo disso o custo da mercadoria é considerado subestimado.", "%"],
+  ["moMin", "Mão de obra mínima do segmento (% do faturamento)", "Abaixo disso a equipe é considerada subdimensionada.", "%"],
+  ["pvMin", "Prazo mínimo típico de recebimento das vendas (dias)", "Abaixo disso o prazo de vendas é considerado otimista.", "dias"],
+  ["pvMax", "Prazo máximo típico de recebimento das vendas (dias)", "Acima disso o prazo de vendas é considerado exagerado.", "dias"],
+  ["peMin", "Prazo mínimo típico de estoque (dias)", "Abaixo disso o estoque é considerado irreal (curto demais).", "dias"],
+  ["peMax", "Prazo máximo típico de estoque (dias)", "Acima de uma vez e meia disso o estoque é considerado exagerado.", "dias"],
+  ["pcMax", "Prazo máximo de pagamento a fornecedores para empresa nova (dias)", "Acima disso o prazo de compras é considerado otimista.", "dias"],
+  ["aluguelM2Max", "Aluguel máximo típico (R$ por m² ao mês)", "Acima disso o aluguel é considerado alto para a área informada na Capacidade.", "R$/m²"],
 ];
-const mercPadraoSeg = (segmento) => ({ ...MERC_GERAL, ...(MERC_SEG[segmento] || {}) });
+const mercPadraoSeg = (segmento) => { const pz = PRAZOS_SEG[segmento] || PRAZOS_GERAL; return { ...MERC_GERAL, pvMin: pz[0], pvMax: pz[1], peMin: pz[2], peMax: pz[3], pcMax: pz[4], aluguelM2Max: 40, ...(MERC_SEG[segmento] || {}) }; };
 function refsDoSegmento(cfg, segmento) {
   const mine = (cfg && cfg[segmento]) || {}; const out = { ...REFS_PADRAO, ...mercPadraoSeg(segmento) };
   Object.keys(out).forEach((k) => { const v = Number(mine[k]); if (mine[k] !== undefined && mine[k] !== "" && Number.isFinite(v) && v >= 0) out[k] = v; });
@@ -8873,6 +8889,97 @@ const PA = (() => {
       } };
   }
 
+  // ---- Listas de verificação (giro, impostos, coerência): cada item é marcado/desmarcado pelo professor ----
+  const VIDA_TIP = { "Máquinas": 10, "Móveis": 10, "Equipamentos de Informática": 5, "Utensílios": 5, "Veículos": 5, "Edificações": 25 };
+  const refsX = (ctx) => ({ ...MERC_GERAL, ...REFS_PADRAO, ...mercPadraoSeg(ctx?.segmento), ...(ctx?.refs || {}) });
+  const montarLista = (chave, grupo, rotulo, mods, tabela, itens, titulo, extra) => {
+    if (!itens.some((i) => !i.info)) return itens.length || (tabela || []).some((t) => t.sit && t.sit !== "ok" && t.sit !== "—") ? { chave, grupo, rotulo, mods, tabela, itens, titulo, opcoes: [{ id: "manter", rotulo: "Deixar como está" }], padrao: "manter", ...(extra || {}), aplicar: () => {} } : null;
+    return { chave, grupo, rotulo, mods, tabela, itens, titulo, padrao: "manter", ...(extra || {}),
+      opcoes: [{ id: "manter", rotulo: "Deixar como está" }, { id: "aplicar", rotulo: "Aplicar os itens marcados", recomendado: true }],
+      aplicar: (Lx, opt, v, Xx) => {
+        if (opt !== "aplicar") return; const feitos = [];
+        itens.forEach((it) => { if (it.info || (v && v[it.id] === false)) return; const a0 = JSON.stringify(Lx); it.fn(Lx); if (JSON.stringify(Lx) !== a0) feitos.push(it.linha); });
+        if (feitos.length) Xx.linhas.push(`${titulo} — ${feitos.join(" · ")}`);
+      } };
+  };
+  function giro(L, ctx) {
+    const R = refsX(ctx); const c = calcular(L); const g = L.m2;
+    const pv = Number(g.prazoVendasDias) || 0, pe = Number(g.prazoEstoqueDias) || 0, pc = Number(g.prazoComprasDias) || 0, est = Number(g.estoqueInicial) || 0;
+    if (!(c.faturamento > 0)) return null;
+    const mid = (a, b) => Math.round((a + b) / 2);
+    let sPv = pv, sPe = pe, sPc = pc; const itens = [];
+    if (pv < R.pvMin || pv > R.pvMax) { sPv = pv > R.pvMax ? R.pvMax : mid(R.pvMin, R.pvMax); itens.push({ id: "pv", texto: `Prazo de vendas ${pv} → ${sPv} dias (módulo 2)`, linha: `prazo de vendas ${pv} → ${sPv} dias`, fn: (X) => { X.m2.prazoVendasDias = sPv; } }); }
+    if (pe < R.peMin || pe > R.peMax * 1.5) { sPe = pe > R.peMax * 1.5 ? R.peMax : mid(R.peMin, R.peMax); itens.push({ id: "pe", texto: `Prazo de estoque ${pe} → ${sPe} dias (módulo 2)`, linha: `prazo de estoque ${pe} → ${sPe} dias`, fn: (X) => { X.m2.prazoEstoqueDias = sPe; } }); }
+    if (pc > R.pcMax) { sPc = R.pcMax; itens.push({ id: "pc", texto: `Prazo de compras ${pc} → ${sPc} dias (módulo 2)`, linha: `prazo de compras ${pc} → ${sPc} dias`, fn: (X) => { X.m2.prazoComprasDias = sPc; } }); }
+    const ideal = c.cmv > 0 ? Math.round((c.cmv / 30) * sPe / 100) * 100 : 0;
+    let sEst = est;
+    if (c.cmv > 0 && sPe > 0 && (est < ideal * 0.5 || est > ideal * 2)) { sEst = ideal; itens.push({ id: "est", texto: `Estoque inicial ${fmtBRL(est)} → ${fmtBRL(sEst)} (cobre ${sPe} dias de vendas)`, linha: `estoque inicial ${fmtBRL(est)} → ${fmtBRL(sEst)}`, fn: (X) => { const cx = calcular(X); const dias = Number(X.m2.prazoEstoqueDias) || 0; if (cx.cmv > 0 && dias > 0) X.m2.estoqueInicial = Math.round((cx.cmv / 30) * dias / 100) * 100; } }); }
+    if (!itens.length) return null;
+    const dep = mercadoAplicaLista(L, itens); const cd = calcular(dep);
+    const sit = (v, mn, mx) => (v > mx ? "acima" : v < mn ? "abaixo" : "ok");
+    const tabela = [
+      { rot: "Prazo médio de vendas", hoje: `${pv} dias`, faixa: `${R.pvMin} a ${R.pvMax} dias`, sit: sit(pv, R.pvMin, R.pvMax), depois: `${sPv} dias` },
+      { rot: "Prazo de estoque", hoje: `${pe} dias`, faixa: `${R.peMin} a ${R.peMax} dias`, sit: pe < R.peMin ? "abaixo" : pe > R.peMax * 1.5 ? "acima" : "ok", depois: `${sPe} dias` },
+      { rot: "Prazo de compras", hoje: `${pc} dias`, faixa: `até ${R.pcMax} dias`, sit: pc > R.pcMax ? "acima" : "ok", depois: `${sPc} dias` },
+      { rot: "Estoque inicial", hoje: fmtBRL(est), faixa: ideal > 0 ? `≈ ${fmtBRL(ideal)}` : "—", sit: c.cmv > 0 && sPe > 0 ? (est < ideal * 0.5 ? "abaixo" : est > ideal * 2 ? "acima" : "ok") : "—", depois: fmtBRL(sEst) },
+      { rot: "Capital de giro total", hoje: fmtBRL(c.capitalGiroTotal), faixa: "—", sit: "—", depois: fmtBRL(cd.capitalGiroTotal) },
+    ];
+    return montarLista("R|giro", "Mercado", "Capital de giro e prazos (Módulo 2)", ["m2"], tabela, itens, "Capital de giro e prazos", { resumo: `Capital de giro e prazos: capital de giro ${fmtBRL(c.capitalGiroTotal)} → ${fmtBRL(cd.capitalGiroTotal)}.` });
+  }
+  const mercadoAplicaLista = (L, itens) => { const X = clone(L); itens.forEach((i) => { if (!i.info) i.fn(X); }); return X; };
+  function imposto(L, ctx) {
+    const c = calcular(L); const m7 = L.m7; if (!(c.faturamento > 0)) return null;
+    const tipoSug = TIPO_SIMPLES_SEG[ctx?.segmento] || "comercio"; const modo = m7.modoImposto || "simples";
+    const tipo = m7.tipoAtividade || ""; const itens = [];
+    const rbt = c.faturamento * 12;
+    const efetiva = (t) => { const sm = calcularSimples(t, rbt); return sm ? Number((sm.aliquotaEfetiva * 100).toFixed(2)) : null; };
+    const pctAtual = Number(m7.pctImpostos) || 0;
+    if (modo === "simples" && !tipo) itens.push({ id: "tipo", texto: `Tipo de atividade não informado → ${TABELA_SIMPLES[tipoSug].nome} (sugestão para o segmento; confirme)`, linha: `tipo de atividade → ${TABELA_SIMPLES[tipoSug].nome}`, fn: (X) => { X.m7.tipoAtividade = tipoSug; const p = efetiva(tipoSug); if (p != null) X.m7.pctImpostos = p; } });
+    if (modo === "manual") {
+      const t = tipo || tipoSug; const ef = efetiva(t);
+      if (ef != null && (pctAtual === 0 || pctAtual < ef - 1)) itens.push({ id: "modo", texto: `Imposto informado ${fmtNum(pctAtual, 2)}% abaixo do Simples (${TABELA_SIMPLES[t].nome}: ${fmtNum(ef, 2)}%) → usar a tabela do Simples`, linha: `imposto ${fmtNum(pctAtual, 2)}% → ${fmtNum(ef, 2)}% (tabela do Simples, ${TABELA_SIMPLES[t].nome})`, fn: (X) => { X.m7.modoImposto = "simples"; X.m7.tipoAtividade = t; X.m7.pctImpostos = ef; } });
+    }
+    if (modo === "simples" && tipo) {
+      const ef = efetiva(tipo);
+      if (ef != null && Math.abs(ef - pctAtual) > 0.05) itens.push({ id: "pct", texto: `Alíquota lançada ${fmtNum(pctAtual, 2)}% difere da calculada pela tabela (${fmtNum(ef, 2)}%) → corrigir`, linha: `alíquota ${fmtNum(pctAtual, 2)}% → ${fmtNum(ef, 2)}%`, fn: (X) => { X.m7.pctImpostos = ef; } });
+      const sm = calcularSimples(tipo, rbt); if (sm && sm.acimaDoLimite) itens.push({ id: "lim", info: true, texto: "O faturamento anual passa do limite do Simples Nacional (R$ 4,8 milhões): o regime precisa ser revisto com a equipe." });
+    }
+    if (!itens.length) return null;
+    const dep = mercadoAplicaLista(L, itens); const cd = calcular(dep);
+    const tabela = [
+      { rot: "Forma de cálculo", hoje: modo === "simples" ? "Tabela do Simples" : "Percentual manual", faixa: "Simples Nacional", sit: modo === "simples" ? "ok" : "abaixo", depois: "Tabela do Simples" },
+      { rot: "Alíquota de impostos", hoje: `${fmtNum(pctAtual, 2)}%`, faixa: efetiva(tipo || tipoSug) != null ? `${fmtNum(efetiva(tipo || tipoSug), 2)}%` : "—", sit: efetiva(tipo || tipoSug) != null && Math.abs(efetiva(tipo || tipoSug) - pctAtual) > 0.05 ? "abaixo" : "ok", depois: `${fmtNum(Number(dep.m7.pctImpostos) || 0, 2)}%` },
+      { rot: "Resultado mensal", hoje: fmtBRL(c.resultadoOperacional), faixa: "—", sit: "—", depois: fmtBRL(cd.resultadoOperacional) },
+    ];
+    return montarLista("R|imp", "Mercado", "Impostos e regime tributário (Módulo 7)", ["m7"], tabela, itens, "Impostos", { resumo: `Impostos: resultado mensal ${fmtBRL(c.resultadoOperacional)} → ${fmtBRL(cd.resultadoOperacional)}.` });
+  }
+  function coerencia(L, ctx) {
+    const R = refsX(ctx); const itens = []; const cap = ctx?.capacidade;
+    const area = capNum(cap?.funcionamento?.area);
+    const al = (L.m11.itens || []).find((x) => /alug/.test(normTxt(x.desc || "")) && Number(x.valor) > 0);
+    if (al && area > 0) {
+      const m2 = Number(al.valor) / area;
+      if (m2 > R.aluguelM2Max) { const novo = Math.round(area * R.aluguelM2Max / 10) * 10; itens.push({ id: "alug", texto: `Aluguel ${fmtBRL(al.valor)} para ${fmtNum(area, 0)} m² = ${fmtBRL(m2)}/m² (típico até ${fmtBRL(R.aluguelM2Max)}) → ${fmtBRL(novo)} (Módulo 11)`, linha: `aluguel ${fmtBRL(al.valor)} → ${fmtBRL(novo)}`, fn: (X) => { X.m11.itens = X.m11.itens.map((x) => (x.id === al.id ? { ...x, valor: novo } : x)); } }); }
+    }
+    (L.m1.itens || []).forEach((it) => {
+      const t = VIDA_TIP[it.categoria]; const raw = L.m10.vidasUteis?.[it.id]; const v = raw === undefined || raw === null || raw === "" ? null : Number(raw);
+      if (t && v != null && v > 0 && (v > t * 1.5 || v < t / 2)) itens.push({ id: `vu_${it.id}`, texto: `Vida útil de "${it.desc || "item"}": ${v} anos → ${t} anos (típico de ${String(it.categoria).toLowerCase()}) (Módulo 10)`, linha: `vida útil de "${it.desc || "item"}" ${v} → ${t} anos`, fn: (X) => { X.m10.vidasUteis = { ...(X.m10.vidasUteis || {}), [it.id]: t }; } });
+    });
+    if (cap && cap.recursos) {
+      const m1txt = (L.m1.itens || []).map((x) => normTxt(x.desc || "")).join(" | ");
+      const { modelo } = capDemandaEquipe(modeloCapacidade(ctx?.segmento), cap, L.m5.itens);
+      (modelo.recursos || []).forEach((r) => {
+        const q = capNum(cap.recursos?.[r.id]?.qtd); if (!(q > 0) || r.mod === CAP_M9) return;
+        const raiz = normTxt(r.nome).split(" ").find((w) => w.length > 4); if (!raiz) return;
+        if (!m1txt.includes(raiz.slice(0, 5))) itens.push({ id: `eq_${r.id}`, info: true, texto: `A Capacidade informa ${q} × "${r.nome.toLowerCase()}", mas não encontrei esse item no Módulo 1: confira se o investimento foi lançado.` });
+      });
+    }
+    if (!itens.length) return null;
+    const dep = mercadoAplicaLista(L, itens); const c0 = calcular(L), c1 = calcular(dep);
+    return montarLista("R|coe", "Mercado", "Coerência entre módulos", ["m10", "m11"], null, itens, "Coerência entre módulos", { resumo: `Coerência entre módulos: resultado mensal ${fmtBRL(c0.resultadoOperacional)} → ${fmtBRL(c1.resultadoOperacional)}.` });
+  }
+  const LISTAS = [["R|giro", giro], ["R|imp", imposto], ["R|coe", coerencia]];
+
   // ---- Realismo de mercado: aproxima a empresa das faixas típicas do segmento (só corrige o que está "bom demais") ----
   const MERC_MAX = { cmv: 150, mo: 1e9, div: 1e9, preco: 40, qtd: 50 };
   function mercadoSim(L, m) {
@@ -8962,6 +9069,16 @@ const PA = (() => {
         if (JSON.stringify(L) !== aL || JSON.stringify(X.capacidade) !== aC) { aplicados.push("H|cap"); X.linhas.splice(n0, 0, cp.resumo); }
       }
     }
+    // Listas de verificação (giro, impostos, coerência): sobre o cenário já corrigido, antes do realismo de mercado
+    LISTAS.forEach(([chave, fn]) => {
+      const el = escolhas[chave]; if (!el || !el.opt || el.opt === "manter") return;
+      const pt = fn(L, { ...ctx, capacidade: X.capacidade || ctx.capacidade });
+      if (pt && pt.opcoes.some((o) => o.id === el.opt)) {
+        const aL = JSON.stringify(L); const n0 = X.linhas.length;
+        pt.aplicar(L, el.opt, el.v, X);
+        if (JSON.stringify(L) !== aL) { aplicados.push(chave); X.linhas.splice(n0, 0, pt.resumo); }
+      }
+    });
     // Realismo de mercado: sobre o cenário já corrigido e com a capacidade decidida; a viabilidade vem depois
     const em = escolhas["R|mer"];
     if (em && em.opt && em.opt !== "manter") {
@@ -8986,7 +9103,8 @@ const PA = (() => {
     const capMudou = JSON.stringify(X.capacidade ?? null) !== JSON.stringify(ctx.capacidade ?? null);
     return { lancDepois: L, aplicados, taxaDepois: taxaMudou ? X.taxaCrescimentoFluxo : undefined, capacidadeDepois: capMudou ? X.capacidade : undefined, linhasExtras: X.linhas };
   }
-  return { analisar, aplicar, capacidade, viabilidade, mercado, mercadoSim };
+  const CHAVES_EXTRA = ["H|cap", "R|giro", "R|imp", "R|coe", "R|mer", "V|via"];
+  return { analisar, aplicar, capacidade, viabilidade, mercado, mercadoSim, giro, imposto, coerencia, LISTAS, CHAVES_EXTRA };
 })();
 
 // ===== Ajuste geral (menu Gestão → Ajuste geral) =====
@@ -9141,7 +9259,7 @@ function diffAjuste(a, b, rot, out) {
   if (JSON.stringify(a) !== JSON.stringify(b)) out.push({ rot, antes: fmtValAj(a), depois: fmtValAj(b) });
 }
 const CAMPO_EXTRA_AJ = { fluxo: "taxaCrescimentoFluxo", capacidade: "capacidade" };
-const MODS_PONTOS = ["m1", "m4", "m5", "m6", "m8", "m9", "m10", "m11"];
+const MODS_PONTOS = ["m1", "m2", "m4", "m5", "m6", "m7", "m8", "m9", "m10", "m11"];
 const rotModAj = (modId) => (modId === "fluxo" ? "Fluxo de caixa" : modId === "capacidade" ? "Capacidade de produção" : `Módulo ${String(modId).slice(1)}`);
 function linhasDiffModulo(nMod, antes, depois) {
   const out = []; diffAjuste(antes, depois, `Módulo ${nMod}`, out);
@@ -9440,17 +9558,24 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
     const capPt = PA.capacidade(cen.lancDepois, paPontos.ctx);
     const escC = { ...esc }; if (capPt) escC["H|cap"] = val(capPt, paEsc["H|cap"]);
     const rc = PA.aplicar(paPontos.lanc, escC, paPontos.ctx);
-    // 4) realismo de mercado do cenário já corrigido e com a capacidade decidida
+    // 4) listas de verificação (giro, impostos, coerência), cada uma sobre o cenário anterior
+    const listas = {}; let escL = { ...escC }; let cur = rc;
+    PA.LISTAS.forEach(([chave, fn]) => {
+      const pt = fn(cur.lancDepois, { ...paPontos.ctx, capacidade: cur.capacidadeDepois ?? paPontos.ctx.capacidade });
+      if (!pt) return; listas[chave] = pt; const eL = paEsc[chave] || {};
+      escL = { ...escL, [chave]: { opt: eL.opt || "manter", v: eL.v || {} } }; cur = PA.aplicar(paPontos.lanc, escL, paPontos.ctx);
+    });
+    // 5) realismo de mercado do cenário já corrigido e com a capacidade decidida
     const eM = paEsc["R|mer"] || {};
-    const merPt = PA.mercado(rc.lancDepois, { ...paPontos.ctx, capacidade: rc.capacidadeDepois ?? paPontos.ctx.capacidade });
-    const escM = { ...escC }; if (merPt) escM["R|mer"] = { opt: eM.opt || "manter", v: eM.v || {} };
+    const merPt = PA.mercado(cur.lancDepois, { ...paPontos.ctx, capacidade: cur.capacidadeDepois ?? paPontos.ctx.capacidade });
+    const escM = { ...escL }; if (merPt) escM["R|mer"] = { opt: eM.opt || "manter", v: eM.v || {} };
     const rm = PA.aplicar(paPontos.lanc, escM, paPontos.ctx);
     // 5) viabilidade (retorno do investimento) do cenário já corrigido, com o mercado e a capacidade decididos
     const eV = paEsc["V|via"] || {}; const alvo = Number(eV.alvo) > 0 ? Number(eV.alvo) : (paPontos.ctx.refs?.retornoMax ?? 5);
     const viaPt = PA.viabilidade(rm.lancDepois, { ...paPontos.ctx, capacidade: rm.capacidadeDepois ?? paPontos.ctx.capacidade }, undefined, alvo);
     const escAll = { ...escM }; if (viaPt) escAll["V|via"] = { opt: eV.opt || "manter", v: eV.v || {}, alvo };
     const fim = PA.aplicar(paPontos.lanc, escAll, paPontos.ctx);
-    return { esc: escAll, capPt, merPt, viaPt, ...fim };
+    return { esc: escAll, capPt, listas, merPt, viaPt, ...fim };
   }, [paPontos, paEsc]);
   const paAplicar = async () => {
     if (!paPontos || !paResultado || !paResultado.aplicados.length) return;
@@ -9463,11 +9588,11 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
       const d = await lerDadosEstrito(eqId); const lanc = mergeLancamentos(d.lancamentos);
       const ctxF = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [], refs: paPontos.ctx.refs, capacidade: d.capacidade || null, segmento: paPontos.ctx.segmento };
       const chavesFrescas = new Set(PA.analisar(lanc, null, ctxF).map((p) => p.chave));
-      const escFresco = {}; Object.keys(paResultado.esc).forEach((k) => { if ((chavesFrescas.has(k) || k === "H|cap" || k === "R|mer" || k === "V|via") && paResultado.aplicados.includes(k)) escFresco[k] = paResultado.esc[k]; });
+      const escFresco = {}; Object.keys(paResultado.esc).forEach((k) => { if ((chavesFrescas.has(k) || PA.CHAVES_EXTRA.includes(k)) && paResultado.aplicados.includes(k)) escFresco[k] = paResultado.esc[k]; });
       if (!Object.keys(escFresco).length) throw new Error("os pontos escolhidos já não existem (a equipe alterou os lançamentos?)");
       const { lancDepois, taxaDepois, capacidadeDepois, linhasExtras } = PA.aplicar(lanc, escFresco, ctxF);
       const mods = {}; const esperado = {}; const linhas = []; const mudancas = [];
-      if (escFresco["H|cap"] || escFresco["R|mer"] || escFresco["V|via"]) linhas.push(...linhasExtras);
+      if (PA.CHAVES_EXTRA.some((k) => escFresco[k])) linhas.push(...linhasExtras);
       MODS_PONTOS.forEach((m) => {
         if (JSON.stringify(lanc[m]) === JSON.stringify(lancDepois[m])) return;
         mods[m] = lancDepois[m]; esperado[m] = jsonModulo(d.lancamentos, m);
@@ -9753,6 +9878,28 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
                 </div>
               );
             })()}
+            {paResultado && paResultado.listas && PA.LISTAS.map(([chave]) => paResultado.listas[chave]).filter(Boolean).map((lp) => {
+              const e = paEsc[lp.chave] || { opt: "manter", v: {} };
+              const cor = (sv) => (sv === "ok" ? "bg-emerald-900/40 text-emerald-300" : sv === "—" ? "bg-slate-800 text-slate-400" : "bg-rose-900/40 text-rose-300");
+              return (
+                <div key={lp.chave} className="border-2 border-violet-500/60 rounded-xl p-3 bg-slate-900/60">
+                  <div className="text-sm font-bold text-slate-100 mb-1">🌎 {lp.rotulo} <span className="text-[11px] font-normal text-slate-400">· {paPontos.ctx.segmento || "segmento não escolhido"}</span></div>
+                  {lp.tabela && <div className="overflow-x-auto"><table className="w-full text-xs mb-2"><thead><tr className="text-slate-500 text-left"><th className="py-1 pr-2">Item</th><th className="pr-2">Hoje</th><th className="pr-2">Típico do segmento</th><th className="pr-2">Situação</th><th>Sugerido</th></tr></thead>
+                    <tbody>{lp.tabela.map((r) => <tr key={r.rot} className="border-t border-slate-700 text-slate-200"><td className="py-1 pr-2">{r.rot}</td><td className="pr-2">{r.hoje}</td><td className="pr-2 text-slate-400">{r.faixa}</td><td className="pr-2"><span className={`text-[10.5px] font-bold rounded-full px-2 py-0.5 ${cor(r.sit)}`}>{r.sit}</span></td><td className="font-bold">{r.depois}</td></tr>)}</tbody></table></div>}
+                  <div className="space-y-1 mb-2">{lp.itens.map((it) => (
+                    <label key={it.id} className={`flex items-start gap-2 text-xs rounded-md px-2 py-1.5 border ${it.info ? "border-amber-800/50 bg-amber-950/20" : "border-slate-700"}`}>
+                      {it.info ? <span>⚠</span> : <input type="checkbox" className="mt-0.5" disabled={e.opt !== "aplicar"} checked={(e.v || {})[it.id] !== false} onChange={(ev) => paEscolher(lp.chave, { v: { ...(e.v || {}), [it.id]: ev.target.checked } })} />}
+                      <span className="text-slate-300">{it.texto}{it.info ? <span className="text-slate-500"> (só aviso: não altera nada)</span> : null}</span>
+                    </label>))}
+                  </div>
+                  <div className="space-y-1.5">{lp.opcoes.map((op) => (
+                    <label key={op.id} className={`flex items-start gap-2 text-xs rounded-md px-2 py-1.5 border ${op.recomendado ? "border-emerald-600/60 bg-emerald-950/20" : "border-slate-700"}`}>
+                      <input type="radio" className="mt-0.5" name={lp.chave} checked={e.opt === op.id} onChange={() => paEscolher(lp.chave, { opt: op.id, v: {} })} /><b className="text-slate-300">{op.rotulo}</b>
+                    </label>))}
+                  </div>
+                </div>
+              );
+            })}
             {paResultado && paResultado.merPt && (() => {
               const mp = paResultado.merPt; const e = paEsc["R|mer"] || { opt: "manter", v: {} };
               const setV = (k, val) => paEscolher("R|mer", { v: { ...(e.v || {}), [k]: val } });
@@ -9770,11 +9917,22 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
                         <input type="radio" className="mt-0.5" name="R|mer" checked={e.opt === op.id} onChange={() => paEscolher("R|mer", { opt: op.id, v: {} })} />
                         <span className="flex-1 text-slate-300"><b>{op.rotulo}</b>
                           {op.id === "realista" && e.opt === "realista" && (
-                            <span className="mt-1 block space-y-1">{op.params.map((pr) => (
-                              <span key={pr.k} className="flex flex-wrap items-center gap-2"><span className="w-44 inline-block">{pr.rotulo}:</span>
-                                <input type="number" step="0.5" min="0" max={pr.max < 1e8 ? pr.max : undefined} value={(e.v || {})[pr.k] ?? pr.padrao} onChange={(ev) => setV(pr.k, ev.target.value)} className="w-24 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100" />
-                                <span className="text-[11px] text-slate-500">{pr.dica}</span></span>))}
-                              <span className="block text-[11px] text-slate-500">Deixe 0 no que não quiser aplicar.</span>
+                            <span className="mt-1 block space-y-1.5">{op.params.map((pr) => {
+                              const vv = e.v || {}; const dig = vv["_d" + pr.k] === true; const nao = !dig && vv[pr.k] !== undefined && Number(vv[pr.k]) === 0;
+                              const modo = dig ? "dig" : nao ? "nao" : "ace"; const un = ["mo", "div"].includes(pr.k) ? "R$/mês" : "%";
+                              const setModo = (m) => { const n = { ...vv }; delete n["_d" + pr.k]; if (m === "ace") delete n[pr.k]; else if (m === "nao") n[pr.k] = 0; else { n[pr.k] = vv[pr.k] > 0 ? vv[pr.k] : pr.padrao; n["_d" + pr.k] = true; } paEscolher("R|mer", { v: n }); };
+                              const bt = (m, rot, ativo) => <button type="button" onClick={() => setModo(m)} className={`text-[11px] px-2 py-0.5 rounded border ${modo === m ? "bg-violet-600 border-violet-500 text-white font-bold" : "border-slate-600 text-slate-300"}`}>{rot}</button>;
+                              return (
+                                <span key={pr.k} className="block border border-slate-700 rounded-md px-2 py-1.5">
+                                  <span className="flex flex-wrap items-center gap-2"><b className="w-44 inline-block">{pr.rotulo}</b>
+                                    <span className={`text-[11px] ${pr.padrao > 0 ? "text-emerald-300" : "text-slate-500"}`}>sugerido: {pr.padrao > 0 ? `${fmtNum(pr.padrao, 1)} ${un}` : "nenhum (0)"}</span></span>
+                                  <span className="flex flex-wrap items-center gap-2 mt-1">{bt("ace", pr.padrao > 0 ? "Aceitar sugestão" : "Manter sem mudança")}{bt("dig", "Digitar outro valor")}{bt("nao", "Não aplicar")}
+                                    {modo === "dig" && <input type="number" step="0.5" min="0" max={pr.max < 1e8 ? pr.max : undefined} value={vv[pr.k] ?? ""} onChange={(ev) => paEscolher("R|mer", { v: { ...vv, [pr.k]: ev.target.value, ["_d" + pr.k]: true } })} className="w-24 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100" />}
+                                    {modo === "dig" && <span className="text-[11px] text-slate-400">{un}</span>}</span>
+                                  <span className="block text-[11px] text-slate-500 mt-0.5">{pr.dica}</span>
+                                </span>);
+                            })}
+                              <span className="block text-[11px] text-slate-500">Para cada ajuste: aceite a sugestão, digite o seu valor ou não aplique.</span>
                             </span>)}
                         </span>
                       </label>
@@ -10930,9 +11088,9 @@ function GestaoReferenciasSegmentoView({ user, turmas }) {
         <div className="pt-2 border-t border-slate-700">
           <div className="text-sm font-bold text-slate-100">Faixas de mercado do segmento <span className="text-[11px] font-normal text-slate-500">(usadas no "Realismo de mercado" do Ajuste geral)</span></div>
           <div className="space-y-2 mt-2">
-            {MERC_ROTULOS.map(([k, rot, dica]) => (
+            {MERC_ROTULOS.map(([k, rot, dica, un]) => (
               <div key={k} className="grid sm:grid-cols-[1fr_auto] gap-2 items-center">
-                <div><div className="text-sm text-slate-200">{rot}</div><div className="text-[11px] text-slate-500">{dica} Padrão do segmento: {mercPadraoSeg(seg)[k]}%</div></div>
+                <div><div className="text-sm text-slate-200">{rot}</div><div className="text-[11px] text-slate-500">{dica} Padrão do segmento: {mercPadraoSeg(seg)[k]} {un}</div></div>
                 <input type="number" min="0" step="0.5" className={inp} value={salvos[seg]?.[k] ?? ""} placeholder={String(mercPadraoSeg(seg)[k])} onChange={(e) => gravar(k, e.target.value)} />
               </div>
             ))}

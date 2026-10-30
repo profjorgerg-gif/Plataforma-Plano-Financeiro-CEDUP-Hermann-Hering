@@ -1,4 +1,4 @@
-// build: 20261030_10h05m Capacidade de produção dentro do Ajuste geral (pontos de atenção)
+// build: 20261030_10h18m Alerta ao aluno e texto do Classroom (Capacidade)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1356,6 +1356,7 @@ function chamadoPassaFiltro(c, filtro) {
 // ============================================================================
 const VERSOES = [
   { versao: "3.6", data: "29/10/2026", itens: [
+    "Alerta do professor às equipes: nas empresas que ainda não preencheram a Capacidade de produção, o professor marca as empresas e clica em \"Enviar alerta\" (em Gestão → Capacidade da turma, ou no card de Capacidade do Ajuste geral). Os alunos veem um aviso urgente ao entrar, com botão \"Preencher agora\", que some sozinho quando a Capacidade for preenchida (ou quando o professor retirar). O mesmo painel gera, por empresa, o texto para o Classroom com o nome da empresa e dos integrantes (prazo opcional) e botão Copiar. O alerta fica em área separada e não mexe nos dados das equipes.",
     "Pontos de atenção + Capacidade de produção: depois das correções escolhidas, o sistema refaz a análise de capacidade/atendimento da empresa com o NOVO cenário (demanda do Módulo 5 × capacidade que a equipe preencheu, gargalo, utilização e espaço) e propõe: reduzir as quantidades do Módulo 5, acrescentar unidades do gargalo no Módulo 1 (você informa o valor), ampliar horas com horas extras no Módulo 9 (você informa o custo) ou, se houver folga grande, aproveitar a folga. A capacidade da equipe também é atualizada, tudo entra no Relatório de ajustes e pode ser desfeito. Sem dados de capacidade, o sistema só avisa.",
     "Professor: novo item Gestão → Referências por segmento. Você define, para cada um dos 15 segmentos, a margem mínima por produto, o crescimento mensal máximo e o salto de faturamento aceitos; os Pontos de atenção passam a usar esses limites. A tela compara com a mediana da turma (CMV, mão de obra e margem) e lista as empresas fora do limite.",
     "Relatório de ajustes: todo ajuste que o professor faz (automático, manual ou pontos de atenção) fica gravado na própria empresa, com antes → depois, motivo, data e efeito no resultado, e continua visível mesmo se for desfeito. O aluno vê em Apoio ao planejamento → Ajustes do professor; o professor vê de todas as empresas em Gestão → Relatório de ajustes. Os dois podem imprimir ou salvar em PDF.",
@@ -5088,6 +5089,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   const encEntrada = encKey?.equipes?.[equipe?.id];
   const encerrado = !!(encEntrada && encEntrada.ativo) && !somenteLeitura && equipe?.teste !== true;
   const setDados = (somenteLeitura || bloqueadoAval || encerrado) ? () => {} : setDadosReal;
+  const [alertasTurma] = useSharedObject(turmaId && equipe?.id && equipe?.teste !== true ? chaveAlertas(turmaId) : null, null);
   const [aba, setAba] = useState("inicio");
   const [menuAberto, setMenuAberto] = useState(false);
   const [gerandoPpt, setGerandoPpt] = useState(false);
@@ -5299,8 +5301,18 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
     baixarArquivo(`backup_${equipe.nomeNegocio.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo(agora)}.json`, JSON.stringify(pacote, null, 2));
   };
 
+  const alertaProf = alertasTurma?.[equipe?.id];
+  const mostrarAlertaCap = !!(alertaProf && alertaProf.ativo) && !capacidadePreenchida(dados?.capacidade) && aba !== "capacidade";
   const avisosAluno = (
     <>
+        {mostrarAlertaCap && (
+          <div className="mb-4 bg-amber-950/40 border-2 border-amber-500 rounded-xl px-4 py-3 text-amber-100">
+            <div className="font-bold mb-1">🔔 Aviso do professor — urgente</div>
+            <p className="text-sm">O professor pediu que a equipe <b>{equipe?.nomeNegocio}</b> preencha a <b>Capacidade de produção/atendimento</b>. Ela é usada para conferir se o que vocês planejaram vender cabe na estrutura da empresa.</p>
+            <button onClick={() => { setAba("capacidade"); setMenuAberto(false); }} className="mt-2 bg-amber-500 text-slate-900 text-sm font-bold px-4 py-2 rounded-md">Preencher agora →</button>
+            <div className="text-[11px] text-amber-300/80 mt-1">Enviado em {new Date(alertaProf.em).toLocaleString("pt-BR")}{alertaProf.por ? ` por ${alertaProf.por}` : ""} · some sozinho quando a Capacidade for preenchida.</div>
+          </div>
+        )}
         {equipe?.teste === true && dados?.exemploAplicado && (
           <div className="mb-4 bg-violet-950/30 border border-violet-700/50 rounded-md px-4 py-2 text-xs text-violet-200 flex items-center gap-2">
             <span>📋</span><span><b>Dados fictícios de exemplo</b> — {dados.exemploAplicado}. Você pode editar qualquer valor para demonstrar; para voltar ao original, use "Restaurar exemplo" em Segmento do negócio.</span>
@@ -9517,6 +9529,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
                       <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Espaço</div><b className={I.espaco > 1 ? "text-rose-300" : ""}>{I.espaco == null ? "não informado" : `${fmtNum(I.espaco * 100, 0)}% do útil`}</b></div>
                     </div>
                   )}
+                  {cp.semDados && paPontos && <PainelAvisoCapacidade turmaId={turma.id} empresas={equipes.filter((x) => x.id === paPontos.equipeId)} profNome={professorNome} titulo="🔔 Avisar esta equipe" />}
                   {!cp.semDados && !cp.ok && (
                     <div className="space-y-1">
                       {cp.opcoes.map((op) => (
@@ -10611,6 +10624,90 @@ function GestaoReferenciasSegmentoView({ user, turmas }) {
   );
 }
 
+// ===== Alerta do professor às equipes + texto do Classroom (área separada: não mexe nos dados da equipe) =====
+const chaveAlertas = (turmaId) => `alertas_${turmaId}`;
+const capacidadePreenchida = (cap) => Object.values(cap?.recursos || {}).some((v) => capNum(v?.qtd) > 0);
+async function gravarAlertasCapacidade(turmaId, ids, por, ativo) {
+  const r = await window.storage.get(chaveAlertas(turmaId), true);
+  const a = r ? JSON.parse(r.value) : {};
+  ids.forEach((id) => { if (ativo) a[id] = { tipo: "capacidade", em: Date.now(), por, ativo: true }; else delete a[id]; });
+  await window.storage.set(chaveAlertas(turmaId), JSON.stringify(a), true);
+  return a;
+}
+function textoClassroomCapacidade(eq, prazo, profNome) {
+  const ints = (eq.integrantes || []).filter(Boolean);
+  const lista = ints.length > 1 ? `${ints.slice(0, -1).join(", ")} e ${ints[ints.length - 1]}` : (ints[0] || "");
+  return [
+    `URGENTE — Capacidade de produção/atendimento · ${eq.nomeNegocio || "(sem nome)"}`,
+    lista ? `Equipe: ${lista}` : "",
+    "",
+    `Pessoal da empresa ${eq.nomeNegocio || ""}${lista ? ` (${lista})` : ""}, ao revisar os lançamentos de vocês verifiquei que a ferramenta Capacidade de produção/atendimento ainda não foi preenchida.`,
+    "",
+    "O que fazer: entrem no PPF (ppfn.com.br) → menu Apoio ao planejamento → Capacidade de produção, informem os recursos do negócio (equipamentos, profissionais, horários de funcionamento e, se souberem, a área do espaço) e confiram o resultado do sistema.",
+    "",
+    "Ela não vale nota, mas é essencial: com ela eu confiro se o que vocês planejaram vender cabe na estrutura da empresa e fecho a análise e os ajustes dos lançamentos.",
+    prazo ? `Prazo: ${prazo}.` : "Façam isso com urgência, o quanto antes.",
+    "Qualquer dúvida, falem comigo.",
+    profNome ? `Prof. ${profNome}` : "",
+  ].filter((x, i, arr) => !(x === "" && arr[i - 1] === "")).join("\n").trim();
+}
+function PainelAvisoCapacidade({ turmaId, empresas, profNome, titulo }) {
+  const [sel, setSel] = useState(() => new Set(empresas.map((e) => e.id)));
+  const [alertas, setAlertas] = useState({});
+  const [prazo, setPrazo] = useState("");
+  const [textos, setTextos] = useState(null);
+  const [msg, setMsg] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const ids = empresas.map((e) => e.id).join("|");
+  useEffect(() => { setSel(new Set(empresas.map((e) => e.id))); setTextos(null); /* eslint-disable-next-line */ }, [ids]);
+  const ler = async () => { try { const r = await window.storage.get(chaveAlertas(turmaId), true); setAlertas(r ? JSON.parse(r.value) : {}); } catch { /* sem leitura: não afirma nada */ } };
+  useEffect(() => { ler(); /* eslint-disable-next-line */ }, [turmaId, ids]);
+  if (!empresas.length) return null;
+  const marcadas = empresas.filter((e) => sel.has(e.id));
+  const alternar = (id) => setSel((o) => { const n = new Set(o); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const agir = async (ativo) => {
+    if (!marcadas.length) return; setOcupado(true); setMsg("");
+    try { setAlertas(await gravarAlertasCapacidade(turmaId, marcadas.map((e) => e.id), profNome, ativo)); setMsg(ativo ? `Alerta enviado a ${marcadas.length} empresa(s). Aparece para os alunos assim que entrarem e some quando preencherem a Capacidade.` : `Alerta retirado de ${marcadas.length} empresa(s).`); }
+    catch (e) { setMsg(`Não foi possível gravar o alerta: ${e?.message || "erro"}. Nada foi alterado.`); }
+    setOcupado(false);
+  };
+  const copiar = async (t) => { try { await navigator.clipboard.writeText(t); setMsg("Texto copiado. Cole na postagem do Classroom."); } catch { setMsg("Não foi possível copiar automaticamente: selecione o texto e copie."); } };
+  return (
+    <div className="border border-amber-500/50 rounded-xl p-3 bg-slate-900/60">
+      <div className="text-sm font-bold text-slate-100 mb-1">{titulo || "🔔 Avisar as equipes que ainda não preencheram a Capacidade"}</div>
+      <div className="space-y-1 mb-2">
+        {empresas.map((e) => (
+          <label key={e.id} className="flex items-center gap-2 text-xs bg-slate-900 border border-slate-700 rounded-md px-2.5 py-1.5">
+            <input type="checkbox" checked={sel.has(e.id)} onChange={() => alternar(e.id)} />
+            <span className="font-semibold text-slate-100">{e.nomeNegocio || "(sem nome)"}</span>
+            <span className="text-slate-500">{e.segmento || "—"} · {(e.integrantes || []).length} aluno(s)</span>
+            {alertas[e.id]?.ativo && <span className="ml-auto text-amber-300">alerta enviado em {new Date(alertas[e.id].em).toLocaleString("pt-BR")}</span>}
+          </label>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button disabled={ocupado || !marcadas.length} onClick={() => agir(true)} className="bg-amber-500 disabled:opacity-40 text-slate-900 text-xs font-bold px-3 py-1.5 rounded-md">🔔 Enviar alerta às marcadas</button>
+        <button disabled={ocupado || !marcadas.length} onClick={() => agir(false)} className="border border-slate-600 text-slate-200 disabled:opacity-40 text-xs px-3 py-1.5 rounded-md">Retirar alerta</button>
+        <label className="text-xs text-slate-400 flex items-center gap-1">Prazo (opcional): <input value={prazo} onChange={(e) => setPrazo(e.target.value)} placeholder="ex.: até sexta, 31/10" className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-100 w-44" /></label>
+        <button disabled={!marcadas.length} onClick={() => setTextos(marcadas.map((e) => ({ id: e.id, nome: e.nomeNegocio, texto: textoClassroomCapacidade(e, prazo.trim(), profNome) })))} className="border border-slate-600 text-slate-200 disabled:opacity-40 text-xs px-3 py-1.5 rounded-md">📋 Texto para o Classroom</button>
+      </div>
+      {msg && <div className="text-xs text-emerald-300 mt-2">{msg}</div>}
+      {textos && (
+        <div className="mt-3 space-y-2">
+          {textos.map((t) => (
+            <div key={t.id} className="bg-slate-950 border border-slate-700 rounded-lg p-2">
+              <div className="flex items-center justify-between mb-1"><b className="text-xs text-slate-200">{t.nome}</b><button onClick={() => copiar(t.texto)} className="text-xs border border-slate-600 text-slate-200 rounded-md px-2 py-1">Copiar</button></div>
+              <textarea readOnly value={t.texto} rows={9} className="w-full bg-slate-900 border border-slate-700 rounded-md px-2 py-1.5 text-xs text-slate-100" />
+            </div>
+          ))}
+          <button onClick={() => copiar(textos.map((t) => t.texto).join("\n\n────────────\n\n"))} className="text-xs border border-slate-600 text-slate-200 rounded-md px-3 py-1.5">Copiar todos</button>
+        </div>
+      )}
+      <p className="text-[11px] text-slate-500 mt-2">O alerta fica numa área separada (não mexe nos dados da equipe) e só some quando a equipe preencher a Capacidade ou você retirar.</p>
+    </div>
+  );
+}
+
 function GestaoCapacidadeTurmaView({ user, turmas, onAbrir }) {
   const [turmaId, setTurmaId] = useState(turmas.length === 1 ? turmas[0].id : "");
   const [linhas, setLinhas] = useState(null);
@@ -10687,6 +10784,7 @@ function GestaoCapacidadeTurmaView({ user, turmas, onAbrir }) {
               {lista.length === 0 && <tr><td colSpan={9} className="p-6 text-center text-slate-500">Nenhuma empresa cadastrada nesta turma.</td></tr>}
             </tbody>
           </table></div>
+          {lista.some((l) => !l.usou) && <div className="mt-4"><PainelAvisoCapacidade turmaId={turmaId} empresas={lista.filter((l) => !l.usou).map((l) => l.eq)} profNome={user?.nome} /></div>}
           <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-400">
             <button onClick={copiar} className="border border-slate-600 text-slate-200 rounded-md px-3 py-1.5">📋 Copiar resumo da turma</button>
             <button onClick={carregar} className="border border-slate-600 text-slate-200 rounded-md px-3 py-1.5">↻ Atualizar</button>

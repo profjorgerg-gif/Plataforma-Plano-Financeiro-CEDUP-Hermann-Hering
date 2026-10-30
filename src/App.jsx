@@ -1,4 +1,4 @@
-// build: 20261029_22h44m capacidade: modelos para os 15 segmentos, recursos essenciais/incluir, itens da demanda
+// build: 20261029_22h58m painel Capacidade da turma (professor)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -735,6 +735,7 @@ const GESTAO_ITENS = [
   { id: "relatorios", label: "Relatórios", icon: FileBarChart },
   { id: "verComoAluno", label: "Ver como aluno (só leitura)", icon: Eye },
   { id: "capacidade", label: "Simulador de capacidade", icon: Factory },
+  { id: "capacidadeTurma", label: "Capacidade da turma", icon: FileBarChart },
   { id: "empresaTeste", label: "Empresa Teste", icon: FlaskConical },
   { id: "backup", label: "Backup", icon: Save },
   { id: "auditoria", label: "Auditoria", icon: History },
@@ -1358,6 +1359,7 @@ const VERSOES = [
     "Gestão → Notas automáticas: prévia por equipe e módulo (nota atual x automática, com o cálculo), aplicação só do que o professor marcar, registro com Desfazer e envio do comunicado do novo formato de avaliação (texto editável) às equipes.",
     "Os Módulos 12 e 13 não têm nota própria; a \"nota final do plano financeiro\" é digitada pelo professor (mantém o peso de 20% da avaliação). Se o professor digitar uma nota à mão num módulo, ela fica fixada até ele voltar ao automático.",
     "Novo item no menu do aluno, em \"Apoio ao planejamento\": Capacidade de produção/atendimento. Não é avaliativo (sem envio, nota ou prazo): a equipe informa os recursos do seu segmento (fornos, cadeiras, vendedores, caixas...), o sistema calcula quanto a empresa consegue produzir ou atender por mês, compara com a quantidade do Módulo 5, aponta o gargalo e mostra o que ajustar nos Módulos 1, 5 e 9. Modelos para Padaria, Restaurante, Estética, Moda/brechó, Semijoias e um modelo genérico para os demais segmentos.",
+    "Professor: novo item \"Capacidade da turma\" em Gestão — quadro somente leitura com utilização, gargalo, espaço e alertas de todas as empresas da turma, ordenado por prioridade, com atalho \"Abrir no simulador\" (copia para o rascunho do professor, sem alterar a equipe).",
     "Capacidade de produção para todos os 15 segmentos: cada segmento tem seu modelo (ex.: Sorveteria, Pet shop, Academia, Oficina, Salão de festas, Lavanderia, Floricultura). A equipe vê só os recursos essenciais do seu segmento e inclui outros de uma lista ou cria o seu próprio. Na demanda, marca quais itens do Módulo 5 usam a capacidade (revenda fica de fora) e recebe aviso quando há unidades diferentes (kg × unid.). No simulador do professor, ao escolher uma empresa, o segmento e os recursos seguem os dela.",
     "Simulador do professor: item 5 \"Análise e cenários\" em colunas — a coluna Sistema analisa automaticamente o que está lançado (gargalo, utilização, espaço, faturamento possível e sugestão) e o professor cria cenários com números e anotações, salvos só no rascunho dele, com botão para copiar ao Classroom.",
     "Professor: novo item \"Simulador de capacidade\" na Gestão, para simular cenários de capacidade e orientar os alunos. Pode partir do segmento, da demanda do Módulo 5 e dos recursos de uma empresa (somente leitura); o rascunho fica salvo só para o professor e nada é gravado nas empresas.",
@@ -9987,6 +9989,120 @@ function CenariosCapacidade({ modelo, cap, itens: itensTodos, obj, mudar }) {
   );
 }
 
+// ---- Gestão → Capacidade da turma (professor). SOMENTE LEITURA: lê M5 e `capacidade` de cada empresa; nada é gravado nas equipes. ----
+// "Abrir no simulador" copia os dados da empresa para o RASCUNHO do professor (`cap_prof_{uid}`), nunca para a equipe.
+function capDemandaEquipe(modeloBase, cap, itens) {
+  const m = capModeloAtivo(modeloBase, cap);
+  const usados = (itens || []).filter((it) => Number(it.qtd) > 0 && !cap?.excluidos?.[it.id]);
+  const total = usados.reduce((s, it) => s + (Number(it.qtd) || 0), 0);
+  const porCli = m.porCliente ? (capNum(cap?.pecasCliente) || m.porCliente) : 1;
+  return { modelo: m, demanda: Math.round(total / porCli), itensUsados: usados.length };
+}
+function capLinhaTurma(eq, d) {
+  const lanc = mergeLancamentos(d?.lancamentos);
+  const cap = d?.capacidade || {};
+  const base = modeloCapacidade(eq.segmento);
+  const { modelo, demanda } = capDemandaEquipe(base, cap, lanc?.m5?.itens);
+  const R = calcularCapacidade(modelo, cap, demanda);
+  const usou = !!(d?.capacidade && Object.values(d.capacidade.recursos || {}).some((v) => capNum(v?.qtd) > 0));
+  const alertas = []; let prio = 4;
+  if (!usou || R.capacidade == null) return { eq, R, usou: false, demanda, alertas: ["equipe ainda não usou o simulador"], prio: 5, modelo };
+  if (R.demanda > 0 && R.falta > 0) { alertas.push(`⚠ faltam ${fmtNum(R.falta, 0)} ${modelo.unidade}/mês`); prio = 1; }
+  if (R.espaco?.uso > 1) { alertas.push("⚠ não cabe no espaço"); prio = Math.min(prio, 1); }
+  else if (R.espaco?.uso > 0.85) { alertas.push("⚠ pouco espaço de sobra"); prio = Math.min(prio, 2); }
+  if (R.demanda > 0 && R.falta === 0 && R.utilizacao > 0.85) { alertas.push("atende, com pouca folga"); prio = Math.min(prio, 2); }
+  if (R.sobra) { alertas.push("ℹ muita folga: rever investimento (M1) e equipe (M9)"); prio = Math.min(prio, 3); }
+  if (!(R.demanda > 0)) { alertas.push("Módulo 5 sem quantidades"); prio = Math.min(prio, 3); }
+  return { eq, R, usou: true, demanda: R.demanda, alertas, prio, modelo };
+}
+function GestaoCapacidadeTurmaView({ user, turmas, onAbrir }) {
+  const [turmaId, setTurmaId] = useState(turmas.length === 1 ? turmas[0].id : "");
+  const [linhas, setLinhas] = useState(null);
+  const [erro, setErro] = useState("");
+  const [aviso, setAviso] = useState("");
+  const turma = turmas.find((t) => t.id === turmaId);
+  const carregar = async () => {
+    if (!turmaId) return;
+    setLinhas(null); setErro("");
+    try {
+      const r = await window.storage.get(`equipes_${turmaId}`, true);
+      const eqs = (r ? JSON.parse(r.value) : []).filter((e) => e.teste !== true);
+      const out = [];
+      for (const eq of eqs) {
+        let d = null; try { const x = await window.storage.get(`dados_equipe_${eq.id}`, true); d = x ? JSON.parse(x.value) : null; } catch { d = null; }
+        out.push({ ...capLinhaTurma(eq, d), dados: d });
+      }
+      out.sort((a, b) => a.prio - b.prio);
+      setLinhas(out);
+    } catch { setErro("Não foi possível ler as empresas desta turma agora. Tente novamente."); setLinhas([]); }
+  };
+  useEffect(() => { carregar(); }, [turmaId]);
+  const pct = (u) => (u == null ? "—" : `${fmtNum(u * 100, 0)}%`);
+  const cor = (u) => (u == null ? "bg-slate-800 text-slate-400" : u > 1 ? "bg-rose-900/40 text-rose-300" : u > 0.85 ? "bg-amber-900/40 text-amber-300" : u < 0.6 ? "bg-sky-900/40 text-sky-300" : "bg-emerald-900/40 text-emerald-300");
+  const abrir = async (l) => {
+    setAviso("");
+    try {
+      const d = l.dados || {}; const lanc = mergeLancamentos(d.lancamentos);
+      const itens = (lanc?.m5?.itens || []).map((it) => ({ id: it.id, nome: it.nome, qtd: it.qtd, precoUnit: it.precoUnit }));
+      const atual = await window.storage.get(`cap_prof_${user.uid}`, true).then((x) => (x ? JSON.parse(x.value) : {})).catch(() => ({}));
+      await window.storage.set(`cap_prof_${user.uid}`, JSON.stringify({ ...atual, segmento: l.eq.segmento || "", cap: d.capacidade || {}, m5: itens, origem: { nome: l.eq.nomeNegocio || "(sem nome)", turma: turma?.nome || "" } }), true);
+      onAbrir();
+    } catch { setAviso("Não foi possível abrir no simulador agora. Tente novamente."); }
+  };
+  const lista = linhas || [];
+  const cont = { total: lista.length, ok: lista.filter((l) => l.usou && l.prio >= 3 && !(l.R.sobra)).length, acima: lista.filter((l) => l.usou && l.R.falta > 0).length, folga: lista.filter((l) => l.usou && l.R.sobra).length, nao: lista.filter((l) => !l.usou).length };
+  const copiar = async () => {
+    const L = [`CAPACIDADE DA TURMA — ${turma?.nome || ""}`];
+    lista.forEach((l) => L.push(`${l.eq.nomeNegocio || "(sem nome)"} (${l.eq.segmento || "sem segmento"}): ${l.usou ? `capacidade ${fmtNum(l.R.capacidade, 0)} · demanda ${fmtNum(l.demanda, 0)} · utilização ${pct(l.R.utilizacao)} · gargalo ${l.R.gargalo?.r.nome || "—"}` : "não preenchido"}${l.alertas.length ? ` — ${l.alertas.join("; ")}` : ""}`));
+    try { await navigator.clipboard.writeText(L.join("\n")); setAviso("Resumo copiado."); } catch { setAviso(L.join(" | ")); }
+  };
+  return (
+    <div>
+      <SectionTitle icon={Factory} sub="Somente leitura: lê o Módulo 5 e a tela Capacidade de produção de cada empresa. Nada é gravado nas equipes.">Capacidade da turma</SectionTitle>
+      <div className="mb-4"><SeletorTurma turmas={turmas} value={turmaId} onChange={setTurmaId} /></div>
+      {!turmaId && <Card className="p-8 text-center text-slate-500">Selecione uma turma.</Card>}
+      {turmaId && linhas === null && <LoadingScreen />}
+      {erro && <Card className="p-4 text-rose-300 text-sm">{erro}</Card>}
+      {turmaId && linhas !== null && !erro && (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+            <StatCard label="Empresas" value={cont.total} />
+            <StatCard label="Dentro da capacidade" value={cont.ok} tone="emerald" />
+            <StatCard label="Acima da capacidade" value={cont.acima} tone="rose" />
+            <StatCard label="Muita folga (<60%)" value={cont.folga} tone="gold" />
+            <StatCard label="Ainda não preencheram" value={cont.nao} />
+          </div>
+          <div className="overflow-x-auto"><table className="w-full text-sm bg-slate-900/60 border border-slate-700 rounded-lg">
+            <thead><tr className="text-left text-[11px] uppercase text-slate-500"><th className="p-2">Empresa</th><th>Segmento</th><th>Demanda (M5)</th><th>Capacidade/mês</th><th>Utilização</th><th>Gargalo</th><th>Espaço</th><th>Alerta</th><th></th></tr></thead>
+            <tbody>
+              {lista.map((l) => (
+                <tr key={l.eq.id} className="border-t border-slate-700 align-middle">
+                  <td className="p-2 font-bold text-slate-100">{l.eq.nomeNegocio || "(sem nome)"}</td>
+                  <td className="text-slate-300">{l.eq.segmento || "—"}</td>
+                  <td className="text-slate-200">{l.usou ? fmtNum(l.demanda, 0) : "—"}</td>
+                  <td className="text-slate-200">{l.usou ? fmtNum(l.R.capacidade, 0) : "—"}</td>
+                  <td>{l.usou ? <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${cor(l.R.utilizacao)}`}>{pct(l.R.utilizacao)}</span> : <span className="text-[11px] rounded-full px-2 py-0.5 bg-slate-800 text-slate-400">não preenchido</span>}</td>
+                  <td className="text-slate-300">{l.usou ? l.R.gargalo?.r.nome : "—"}</td>
+                  <td>{l.usou && l.R.espaco?.uso != null ? <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${cor(l.R.espaco.uso)}`}>{pct(l.R.espaco.uso)}</span> : "—"}</td>
+                  <td className="text-xs text-amber-300 max-w-[260px]">{l.alertas.join(" · ")}</td>
+                  <td className="pr-2"><button onClick={() => abrir(l)} className="text-xs border border-slate-600 text-slate-200 rounded-md px-2 py-1 hover:bg-slate-800">Abrir no simulador</button></td>
+                </tr>
+              ))}
+              {lista.length === 0 && <tr><td colSpan={9} className="p-6 text-center text-slate-500">Nenhuma empresa cadastrada nesta turma.</td></tr>}
+            </tbody>
+          </table></div>
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+            <button onClick={copiar} className="border border-slate-600 text-slate-200 rounded-md px-3 py-1.5">📋 Copiar resumo da turma</button>
+            <button onClick={carregar} className="border border-slate-600 text-slate-200 rounded-md px-3 py-1.5">↻ Atualizar</button>
+            <span>Ordenado por prioridade (acima da capacidade primeiro). "Abrir no simulador" copia os dados para o seu rascunho; a equipe não é alterada.</span>
+            {aviso && <span className="text-emerald-300">{aviso}</span>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function GestaoCapacidadeView({ user, turmas }) {
   const [obj, salvar] = useSharedObject(user?.uid ? `cap_prof_${user.uid}` : null, { segmento: "", cap: {}, origem: null, m5: [] });
   const [turmaId, setTurmaId] = useState("");
@@ -14340,6 +14456,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
         {aba === "relatorios" && <GestaoRelatoriosView turmas={turmas} />}
         {aba === "verComoAluno" && <GestaoVerComoAlunoView turmas={turmas} onEntrar={(t, eq, n) => setVerAluno({ turma: t, equipe: eq, nomeAluno: n })} />}
         {aba === "capacidade" && <GestaoCapacidadeView user={user} turmas={turmas} />}
+        {aba === "capacidadeTurma" && <GestaoCapacidadeTurmaView user={user} turmas={turmas} onAbrir={() => irPara("capacidade")} />}
         {aba === "encerrar" && <GestaoEncerrarProjetoView turmas={turmas} professorNome={user.nome} />}
         {aba === "notasAuto" && <GestaoNotasAutoView turmas={turmas} professorNome={user.nome} />}
         {aba === "empresaTeste" && <GestaoEmpresaTesteView turmas={turmas} onEntrar={(t, eq) => setTesteAtivo({ turmaId: t.id, equipeId: eq.id, turmaNome: t.nome })} onAbrirCorrecao={abrirCorrecao} />}

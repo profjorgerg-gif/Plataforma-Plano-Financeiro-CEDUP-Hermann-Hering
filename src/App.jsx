@@ -1,4 +1,4 @@
-// build: 20261030_13h13m Realismo completo: arranque, custos, pro-labore, financiamento, preco minimo, estresse, pontuacao
+// build: 20261030_14h07m Coerencia: equipamentos e area acionaveis
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -8920,7 +8920,7 @@ const PA = (() => {
       opcoes: [{ id: "manter", rotulo: "Deixar como está" }, { id: "aplicar", rotulo: "Aplicar os itens marcados", recomendado: true }],
       aplicar: (Lx, opt, v, Xx) => {
         if (opt !== "aplicar") return; const feitos = [];
-        itens.forEach((it) => { if (it.info || (it.off ? !(v && v[it.id] === true) : (v && v[it.id] === false))) return; const a0 = JSON.stringify([Lx, Xx.curva ?? null]); it.fn(Lx, Xx); if (JSON.stringify([Lx, Xx.curva ?? null]) !== a0) feitos.push(it.linha); });
+        itens.forEach((it) => { if (it.info || (it.off ? !(v && v[it.id] === true) : (v && v[it.id] === false))) return; if (it.param && !(Number(v?.[it.id + "_v"]) > 0)) return; const a0 = JSON.stringify([Lx, Xx.curva ?? null, Xx.capacidade ?? null]); it.fn(Lx, Xx, v); if (JSON.stringify([Lx, Xx.curva ?? null, Xx.capacidade ?? null]) !== a0) feitos.push(it.param ? it.linha(Number(v[it.id + "_v"])) : it.linha); });
         if (feitos.length) Xx.linhas.push(`${titulo} — ${feitos.join(" · ")}`);
       } };
   };
@@ -8989,16 +8989,25 @@ const PA = (() => {
     });
     if (cap && cap.recursos) {
       const m1txt = (L.m1.itens || []).map((x) => normTxt(x.desc || "")).join(" | ");
-      const { modelo } = capDemandaEquipe(modeloCapacidade(ctx?.segmento), cap, L.m5.itens);
+      const { modelo, demanda } = capDemandaEquipe(modeloCapacidade(ctx?.segmento), cap, L.m5.itens);
+      const catDe = (nome) => { const n = normTxt(nome); return /computador|notebook|tablet|sistema|impressora/.test(n) ? "Equipamentos de Informática" : /cadeira|mesa|lugar|bancada|balcao|arara|prateleira|provador|sofa|salao|expositor|vitrine/.test(n) ? "Móveis" : /veiculo|carro|moto|furgao/.test(n) ? "Veículos" : "Máquinas"; };
       (modelo.recursos || []).forEach((r) => {
         const q = capNum(cap.recursos?.[r.id]?.qtd); if (!(q > 0) || r.mod === CAP_M9) return;
         const raiz = normTxt(r.nome).split(" ").find((w) => w.length > 4); if (!raiz) return;
-        if (!m1txt.includes(raiz.slice(0, 5))) itens.push({ id: `eq_${r.id}`, info: true, texto: `A Capacidade informa ${q} × "${r.nome.toLowerCase()}", mas não encontrei esse item no Módulo 1: confira se o investimento foi lançado.` });
+        if (!m1txt.includes(raiz.slice(0, 5))) {
+          const nome = r.nome.charAt(0).toUpperCase() + r.nome.slice(1);
+          itens.push({ id: `eq_${r.id}`, param: { rot: "valor de cada unidade (R$)" }, texto: `A Capacidade informa ${q} × "${r.nome.toLowerCase()}", mas não há esse item no Módulo 1: incluir ${q} unidade(s) no investimento (Módulo 1). Digite o valor unitário pesquisado.`, linha: (val) => `inclui no Módulo 1: ${q} × ${nome} a ${fmtBRL(val)}`, fn: (X, _Xx, v) => { const val = Number(v?.[`eq_${r.id}_v`]); if (val > 0) X.m1.itens = [...X.m1.itens, { id: uid(), desc: nome, categoria: catDe(r.nome), qtd: q, valorUnit: val }]; } });
+        }
       });
+      const RC = calcularCapacidade(modelo, cap, demanda);
+      if (RC.espaco && RC.espaco.uso != null && RC.espaco.uso > 1) {
+        const nec = Math.ceil(RC.espaco.usado / 0.8);
+        itens.push({ id: "area", off: true, texto: `Os recursos ocupam ${fmtNum(RC.espaco.usado, 0)} m² e a área informada na Capacidade (${fmtNum(RC.espaco.area, 0)} m²) só comporta ${fmtNum(RC.espaco.areaUtil, 0)} m² úteis (${fmtNum(RC.espaco.uso * 100, 0)}%). Opção: informar a área de ${fmtNum(nec, 0)} m² na Capacidade — depois revise o aluguel (Módulo 11). Alternativa: reduzir os recursos na tela de Capacidade.`, linha: `área da Capacidade ${fmtNum(RC.espaco.area, 0)} → ${fmtNum(nec, 0)} m²`, fn: (_X, Xx) => { if (Xx && Xx.capacidade) Xx.capacidade = { ...Xx.capacidade, funcionamento: { ...(Xx.capacidade.funcionamento || {}), area: nec } }; } });
+      }
     }
     if (!itens.length) return null;
     const dep = mercadoAplicaLista(L, itens); const c0 = calcular(L), c1 = calcular(dep);
-    return montarLista("R|coe", "Mercado", "Coerência entre módulos", ["m10", "m11"], null, itens, "Coerência entre módulos", { resumo: `Coerência entre módulos: resultado mensal ${fmtBRL(c0.resultadoOperacional)} → ${fmtBRL(c1.resultadoOperacional)}.` });
+    return montarLista("R|coe", "Mercado", "Coerência entre módulos", ["m1", "m10", "m11"], null, itens, "Coerência entre módulos", { resumo: `Coerência entre módulos: resultado mensal ${fmtBRL(c0.resultadoOperacional)} → ${fmtBRL(c1.resultadoOperacional)}.` });
   }
   function custosFaltantes(L, ctx) {
     const R = refsX(ctx); const c = calcular(L); if (!(c.faturamento > 0)) return null;
@@ -9186,9 +9195,9 @@ const PA = (() => {
       const el = escolhas[chave]; if (!el || !el.opt || el.opt === "manter") return;
       const pt = fn(L, { ...ctx, capacidade: X.capacidade || ctx.capacidade }, X);
       if (pt && pt.opcoes.some((o) => o.id === el.opt)) {
-        const aL = JSON.stringify([L, X.curva ?? null]); const n0 = X.linhas.length;
+        const aL = JSON.stringify([L, X.curva ?? null, X.capacidade ?? null]); const n0 = X.linhas.length;
         pt.aplicar(L, el.opt, el.v, X);
-        if (JSON.stringify([L, X.curva ?? null]) !== aL) { aplicados.push(chave); X.linhas.splice(n0, 0, pt.resumo); }
+        if (JSON.stringify([L, X.curva ?? null, X.capacidade ?? null]) !== aL) { aplicados.push(chave); X.linhas.splice(n0, 0, pt.resumo); }
       }
     });
     // Realismo de mercado: sobre o cenário já corrigido e com a capacidade decidida; a viabilidade vem depois
@@ -10031,7 +10040,8 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
                   <div className="space-y-1 mb-2">{lp.itens.map((it) => (
                     <label key={it.id} className={`flex items-start gap-2 text-xs rounded-md px-2 py-1.5 border ${it.info ? "border-amber-800/50 bg-amber-950/20" : "border-slate-700"}`}>
                       {it.info ? <span>⚠</span> : <input type="checkbox" className="mt-0.5" disabled={e.opt !== "aplicar"} checked={it.off ? (e.v || {})[it.id] === true : (e.v || {})[it.id] !== false} onChange={(ev) => paEscolher(lp.chave, { v: { ...(e.v || {}), [it.id]: ev.target.checked } })} />}
-                      <span className="text-slate-300">{it.texto}{it.info ? <span className="text-slate-500"> (só aviso: não altera nada)</span> : null}</span>
+                      <span className="text-slate-300">{it.texto}{it.info ? <span className="text-slate-500"> (só aviso: não altera nada)</span> : null}
+                        {it.param && <span className="mt-1 flex flex-wrap items-center gap-2"><span>{it.param.rot}:</span><input type="number" min="0" step="any" disabled={e.opt !== "aplicar"} value={(e.v || {})[it.id + "_v"] ?? ""} onChange={(ev) => paEscolher(lp.chave, { v: { ...(e.v || {}), [it.id + "_v"]: ev.target.value } })} className="w-28 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100 disabled:opacity-50" /><span className="text-[11px] text-slate-500">{(Number((e.v || {})[it.id + "_v"]) > 0) ? "" : "sem valor, o item não é aplicado"}</span></span>}</span>
                     </label>))}
                   </div>
                   <div className="space-y-1.5">{lp.opcoes.map((op) => (

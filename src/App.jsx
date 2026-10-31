@@ -1,4 +1,4 @@
-// build: 20261030_19h53m Ajuste geral: precos sugeridos (usar ou nao)
+// build: 20261031_13h00m Ajuste geral: historico de ajustes recolhido
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -9562,6 +9562,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
   const [paEq, setPaEq] = useState("");          // equipe escolhida para os Pontos de atenção
   const [paPontos, setPaPontos] = useState(null);  // pontos encontrados (sem funções) + dados lidos
   const [paEsc, setPaEsc] = useState({});         // { [chave]: { opt, v } }
+  const [histAberto, setHistAberto] = useState(false); // "4. Ajustes feitos" fica recolhido; clique para abrir
   const [prEq, setPrEq] = useState("");          // equipe escolhida para os preços sugeridos
   const [prEd, setPrEd] = useState(null);         // { equipeId, d, lanc, margem, usar, edit, motivo }
   const [cpEq, setCpEq] = useState("");          // equipe escolhida para preencher a Capacidade
@@ -10381,9 +10382,9 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
       </Card>
 
       <Card className="p-4">
-        <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2 mb-2"><History size={15} className="text-amber-400" /> 4. Ajustes feitos (com desfazer)</h3>
-        {hist.length === 0 ? <p className="text-sm text-slate-500">Nenhum ajuste feito ainda.</p> : (
-          <div className="space-y-2">
+        <button onClick={() => setHistAberto((v) => !v)} aria-expanded={histAberto} className="w-full text-left text-sm font-bold text-slate-100 flex items-center gap-2"><History size={15} className="text-amber-400" /> 4. Ajustes feitos (com desfazer) <span className="text-[11px] font-normal text-slate-500">({hist.length}) · {histAberto ? "clique para recolher" : "clique para abrir"}</span><ChevronDown size={16} className={`ml-auto text-slate-400 transition-transform ${histAberto ? "rotate-180" : ""}`} /></button>
+        {histAberto && (hist.length === 0 ? <p className="text-sm text-slate-500 mt-2">Nenhum ajuste feito ainda.</p> : (
+          <div className="space-y-2 mt-2">
             {hist.map((r) => (
               <div key={r.id} className="border border-slate-700 rounded-lg p-3 text-sm">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -10397,7 +10398,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
               </div>
             ))}
           </div>
-        )}
+        ))}
       </Card>
     </div>
   );

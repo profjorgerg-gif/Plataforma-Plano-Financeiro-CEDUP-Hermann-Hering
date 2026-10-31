@@ -1,4 +1,4 @@
-// build: 20261031_16h08m Ajuste geral: analises abertas atualizam apos qualquer ajuste
+// build: 20261031_16h29m Ajuste geral: historico de ajustes em paginas (limite de 1 MB do banco)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -9362,8 +9362,42 @@ async function lerAvaliacao(turmaId) {
   const r = await window.storage.get(chaveAvaliacao(turmaId), true);
   return r ? JSON.parse(r.value) : { equipes: {} };
 }
+// O histórico de ajustes fica em páginas: a principal (`ajustes_prof_{turma}`, a mais nova) e páginas de arquivo
+// (`ajustes_prof_{turma}__{k}`), porque cada documento do banco aceita no máximo ~1 MB e o histórico cresce a cada ajuste.
+const chaveAjustesProfPag = (turmaId, k) => `ajustes_prof_${turmaId}__${k}`;
+const chaveAjustesProfMeta = (turmaId) => `ajustes_prof_meta_${turmaId}`;
+const AJUSTES_PAG_MAX = 350000;   // bytes: acima disso a página principal é arquivada antes de gravar um novo registro
+const bytesTxt = (t) => { try { return new TextEncoder().encode(t).length; } catch { return t.length * 2; } };
+async function lerMetaAjustesProf(turmaId) {
+  try { const r = await window.storage.get(chaveAjustesProfMeta(turmaId), true); const n = r ? Number(JSON.parse(r.value).n) : 0; return Number.isFinite(n) && n > 0 ? n : 0; } catch { return 0; }
+}
 async function lerAjustesProf(turmaId) {
-  try { const r = await window.storage.get(chaveAjustesProf(turmaId), true); return r ? JSON.parse(r.value) : []; } catch { return []; }
+  let principal = [];
+  try { const r = await window.storage.get(chaveAjustesProf(turmaId), true); principal = r ? JSON.parse(r.value) : []; } catch { principal = []; }
+  const n = await lerMetaAjustesProf(turmaId);
+  const vistos = new Set(principal.map((x) => x.id));
+  let todos = [...principal];
+  for (let k = n; k >= 1; k--) {
+    try {
+      const r = await window.storage.get(chaveAjustesProfPag(turmaId, k), true);
+      const pag = r ? JSON.parse(r.value) : [];
+      pag.forEach((x) => { if (!vistos.has(x.id)) { vistos.add(x.id); todos.push(x); } });
+    } catch { /* página ilegível: mostra o que for possível */ }
+  }
+  return todos.sort((a, b) => (b.em || 0) - (a.em || 0));
+}
+// Aplica `fn(registro)` em todas as páginas (devolve outro registro, ou null para remover) e regrava só as que mudaram.
+async function atualizarAjustesProf(turmaId, fn) {
+  const n = await lerMetaAjustesProf(turmaId);
+  const chaves = [chaveAjustesProf(turmaId), ...Array.from({ length: n }, (_, i) => chaveAjustesProfPag(turmaId, i + 1))];
+  for (const ch of chaves) {
+    const r = await window.storage.get(ch, true);
+    if (!r) continue;
+    const lista = JSON.parse(r.value);
+    const nova = lista.map(fn).filter((x) => x);
+    const txt = JSON.stringify(nova);
+    if (txt !== r.value) await window.storage.set(ch, txt, true);
+  }
 }
 async function definirBloqueioAvaliacao(turmaId, ids, ligar, por, mensagem) {
   const a = await lerAvaliacao(turmaId);
@@ -9530,19 +9564,29 @@ function textoAvisoAjuste(professorNome, linhas, motivo) {
 // Se a gravação nos dados falhou, tira do registro o que NÃO foi aplicado (evita "Desfazer" de algo que não aconteceu).
 async function limparRegistroAjuste(turmaId, id, equipesFalhas) {
   try {
-    const lista = await lerAjustesProf(turmaId);
-    const nova = lista.map((r) => {
+    await atualizarAjustesProf(turmaId, (r) => {
       if (r.id !== id) return r;
       const falhou = (m) => !equipesFalhas || equipesFalhas.includes(m.equipeId);
-      return { ...r, mudancas: r.mudancas.filter((m) => !falhou(m)) };
-    }).filter((r) => r.id !== id || r.mudancas.length > 0);
-    await window.storage.set(chaveAjustesProf(turmaId), JSON.stringify(nova), true);
+      const mud = r.mudancas.filter((m) => !falhou(m));
+      return mud.length ? { ...r, mudancas: mud } : null;
+    });
   } catch { /* melhor esforço */ }
 }
 
 async function registrarAjusteProf(turmaId, registro) {
-  const lista = await lerAjustesProf(turmaId);
-  await window.storage.set(chaveAjustesProf(turmaId), JSON.stringify([registro, ...lista]), true);
+  try {
+    // leitura estrita da página principal: se falhar, NÃO grava (senão apagaria o histórico)
+    const r = await window.storage.get(chaveAjustesProf(turmaId), true);
+    const lista = r ? JSON.parse(r.value) : [];
+    if (r && bytesTxt(r.value) > AJUSTES_PAG_MAX && lista.length > 0) {
+      const k = (await lerMetaAjustesProf(turmaId)) + 1;
+      await window.storage.set(chaveAjustesProfPag(turmaId, k), r.value, true);          // 1º arquiva a página cheia
+      await window.storage.set(chaveAjustesProfMeta(turmaId), JSON.stringify({ n: k }), true);
+      await window.storage.set(chaveAjustesProf(turmaId), JSON.stringify([registro]), true);
+    } else {
+      await window.storage.set(chaveAjustesProf(turmaId), JSON.stringify([registro, ...lista]), true);
+    }
+  } catch (e) { throw new Error(`histórico de ajustes: ${e.message}`); }
 }
 
 function AjusteGeralTurma({ turma, equipes, professorNome }) {
@@ -9943,8 +9987,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
         } catch (e) { nao.push(`${m.equipeNome}: ${e.message}`); }
       }
       if (ok.length) {
-        const lista = await lerAjustesProf(turma.id);
-        await window.storage.set(chaveAjustesProf(turma.id), JSON.stringify(lista.map((r) => r.id === reg.id ? { ...r, desfeito: !nao.length, desfeitoParcial: !!nao.length, desfeitoEm: Date.now() } : r)), true);
+        await atualizarAjustesProf(turma.id, (r) => r.id === reg.id ? { ...r, desfeito: !nao.length, desfeitoParcial: !!nao.length, desfeitoEm: Date.now() } : r);
       }
       await carregar();
       setAviso({ tipo: ok.length ? "ok" : "erro", texto: `${ok.length ? `Desfeito: ${ok.join(", ")}. ` : "Nada foi desfeito. "}${nao.length ? `Mantido: ${nao.join(" · ")}.` : ""}` });

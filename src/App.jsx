@@ -1,4 +1,4 @@
-// build: 20261031_13h00m Ajuste geral: historico de ajustes recolhido
+// build: 20261031_16h08m Ajuste geral: analises abertas atualizam apos qualquer ajuste
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -9587,6 +9587,8 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
     await Promise.all(equipes.map(async (e) => { try { mapa[e.id] = await lerDadosEstrito(e.id); } catch { mapa[e.id] = null; } }));
     setDadosMap(mapa);
     setHist(await lerAjustesProf(turma.id));
+    // Os dados das equipes mudaram (ajuste, desfazer ou atualização): análises e rascunhos abertos ficariam velhos, então são descartados.
+    setPaPontos(null); setPaEsc({}); setCpEd(null); setPrEd(null);
   };
   useEffect(() => { carregar(); /* eslint-disable-next-line */ }, [turma.id]);
   useEffect(() => { const t = setInterval(() => setAgora(Date.now()), 1000); return () => clearInterval(t); }, []);

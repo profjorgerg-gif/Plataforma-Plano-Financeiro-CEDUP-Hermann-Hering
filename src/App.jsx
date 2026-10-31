@@ -1,4 +1,4 @@
-// build: 20261031_16h29m Ajuste geral: historico de ajustes em paginas (limite de 1 MB do banco)
+// build: 20261031_16h40m Saude dos dados (painel) e listas em paginas (lotes, pareceres, notas automaticas)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -13,7 +13,7 @@ import {
   Clock, UserCheck, UserX, Eye, EyeOff, Crown, ScrollText, UserPlus, Upload,
   ListChecks, FileSpreadsheet, ClipboardCheck, X, Pencil, Menu,
   LifeBuoy, Send, Megaphone, RotateCcw, Printer, Play, Video, GitCompareArrows, Monitor, FileDown, Info, Library,
-  FileText, Calendar, RefreshCw, Undo2, CircleDot, Inbox, LogIn, Users2, ImageDown, Sparkles, Link2, Tag, FlaskConical,
+  FileText, Calendar, RefreshCw, Undo2, CircleDot, Inbox, LogIn, Users2, ImageDown, Sparkles, Link2, Tag, FlaskConical, Database,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
@@ -8264,7 +8264,7 @@ async function lerDadosEquipeFresco(equipeId) {
   try { const r = await window.storage.get(`dados_equipe_${equipeId}`, true); return r ? JSON.parse(r.value) : null; } catch { return null; }
 }
 async function lerLotesAjustes(turmaId) {
-  try { const r = await window.storage.get(chaveLotesAjustes(turmaId), true); return r ? JSON.parse(r.value) : []; } catch { return []; }
+  return lerListaPag(chaveLotesAjustes(turmaId), "fim");
 }
 function equipeChegouAoFinal(fluxo) {
   return estadoModulo(fluxo, MODULO_GATILHO_AJUSTES).status === "corrigido";
@@ -8284,7 +8284,7 @@ const PARECER_NIVEIS = {
 };
 const chavePareceres = (turmaId) => `pareceres_${turmaId}`;
 async function lerPareceres(turmaId) {
-  try { const r = await window.storage.get(chavePareceres(turmaId), true); return r ? JSON.parse(r.value) : []; } catch { return []; }
+  return lerListaPag(chavePareceres(turmaId), "fim");
 }
 
 // Sugere o veredito pelas regras já usadas na plataforma (nada novo é inventado)
@@ -8435,12 +8435,10 @@ function ParecerEmpresa({ turma, equipe, professorNome, onVoltar }) {
     setOcupado(true); setAviso("");
     try {
       const reg = { id: uid(), equipeId: equipe.id, nome: equipe.nomeNegocio, em: Date.now(), por: professorNome || "Professor", nivel, texto, enviado: false };
-      const lista = await lerPareceres(turma.id);
-      await window.storage.set(chavePareceres(turma.id), JSON.stringify([...lista, reg]), true);   // 1º: histórico
+      await anexarListaPag(chavePareceres(turma.id), reg, "fim");   // 1º: histórico
       if (enviar) {
         try { await enviarParecerComentario(equipe.id, texto, professorNome || "Professor", reg.id); reg.enviado = true; reg.enviadoEm = Date.now();
-          const l2 = await lerPareceres(turma.id);
-          await window.storage.set(chavePareceres(turma.id), JSON.stringify(l2.map((p) => (p.id === reg.id ? reg : p))), true);
+          await atualizarListaPag(chavePareceres(turma.id), (p) => (p.id === reg.id ? reg : p));
         } catch { setAviso("Parecer salvo no histórico, mas não foi possível enviar para a equipe. Tente enviar pelo histórico."); setOcupado(false); setHist((await lerPareceres(turma.id)).filter((p) => p.equipeId === equipe.id).sort((x, y) => y.em - x.em)); return; }
       }
       setHist((await lerPareceres(turma.id)).filter((p) => p.equipeId === equipe.id).sort((x, y) => y.em - x.em));
@@ -8453,8 +8451,7 @@ function ParecerEmpresa({ turma, equipe, professorNome, onVoltar }) {
     setOcupado(true); setAviso("");
     try {
       await enviarParecerComentario(equipe.id, p.texto, professorNome || "Professor", p.id);
-      const l2 = await lerPareceres(turma.id);
-      await window.storage.set(chavePareceres(turma.id), JSON.stringify(l2.map((x) => (x.id === p.id ? { ...x, enviado: true, enviadoEm: Date.now() } : x))), true);
+      await atualizarListaPag(chavePareceres(turma.id), (x) => (x.id === p.id ? { ...x, enviado: true, enviadoEm: Date.now() } : x));
       setHist((await lerPareceres(turma.id)).filter((x) => x.equipeId === equipe.id).sort((a, b) => b.em - a.em));
       setAviso("Parecer enviado para a equipe.");
     } catch { setAviso("Não foi possível enviar."); }
@@ -9399,6 +9396,54 @@ async function atualizarAjustesProf(turmaId, fn) {
     if (txt !== r.value) await window.storage.set(ch, txt, true);
   }
 }
+
+// Listas que só crescem (lotes, pareceres, notas automáticas): mesma divisão em páginas do histórico de ajustes.
+// `fim` = novos registros entram no fim da lista; `inicio` = entram no começo. Nada é apagado: a página cheia é só movida.
+const chavePag = (chave, k) => `${chave}__${k}`;
+const chavePagMeta = (chave) => `${chave}__meta`;
+async function lerPagMeta(chave) {
+  try { const r = await window.storage.get(chavePagMeta(chave), true); const n = r ? Number(JSON.parse(r.value).n) : 0; return Number.isFinite(n) && n > 0 ? n : 0; } catch { return 0; }
+}
+async function lerListaPag(chave, ordem) {
+  let principal = [];
+  try { const r = await window.storage.get(chave, true); principal = r ? JSON.parse(r.value) : []; } catch { principal = []; }
+  const n = await lerPagMeta(chave);
+  const vistos = new Set(principal.map((x) => x.id));
+  const antigas = [];   // da página mais recente para a mais antiga
+  for (let k = n; k >= 1; k--) {
+    try {
+      const r = await window.storage.get(chavePag(chave, k), true);
+      const pag = (r ? JSON.parse(r.value) : []).filter((x) => { if (vistos.has(x.id)) return false; vistos.add(x.id); return true; });
+      antigas.push(pag);
+    } catch { /* página ilegível: mostra o que for possível */ }
+  }
+  return ordem === "inicio" ? [...principal, ...antigas.flat()] : [...antigas.reverse().flat(), ...principal];
+}
+async function anexarListaPag(chave, registro, ordem) {
+  try {
+    const r = await window.storage.get(chave, true);   // leitura estrita: se falhar, não grava (não apaga o histórico)
+    const lista = r ? JSON.parse(r.value) : [];
+    if (r && bytesTxt(r.value) > AJUSTES_PAG_MAX && lista.length > 0) {
+      const k = (await lerPagMeta(chave)) + 1;
+      await window.storage.set(chavePag(chave, k), r.value, true);
+      await window.storage.set(chavePagMeta(chave), JSON.stringify({ n: k }), true);
+      await window.storage.set(chave, JSON.stringify([registro]), true);
+    } else {
+      await window.storage.set(chave, JSON.stringify(ordem === "inicio" ? [registro, ...lista] : [...lista, registro]), true);
+    }
+  } catch (e) { throw new Error(`${chave}: ${e.message}`); }
+}
+async function atualizarListaPag(chave, fn) {
+  const n = await lerPagMeta(chave);
+  const chaves = [chave, ...Array.from({ length: n }, (_, i) => chavePag(chave, i + 1))];
+  for (const ch of chaves) {
+    const r = await window.storage.get(ch, true);
+    if (!r) continue;
+    const nova = JSON.parse(r.value).map(fn).filter((x) => x);
+    const txt = JSON.stringify(nova);
+    if (txt !== r.value) await window.storage.set(ch, txt, true);
+  }
+}
 async function definirBloqueioAvaliacao(turmaId, ids, ligar, por, mensagem) {
   const a = await lerAvaliacao(turmaId);
   const eqs = { ...(a.equipes || {}) };
@@ -9587,6 +9632,82 @@ async function registrarAjusteProf(turmaId, registro) {
       await window.storage.set(chaveAjustesProf(turmaId), JSON.stringify([registro, ...lista]), true);
     }
   } catch (e) { throw new Error(`histórico de ajustes: ${e.message}`); }
+}
+
+const LIMITE_DOC_BYTES = 1048487;   // limite do banco por documento
+function SaudeDadosCard({ turma, equipes }) {
+  const [aberto, setAberto] = useState(false);
+  const [res, setRes] = useState(null);       // { linhas, em }
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState("");
+  const medir = async (chave) => { try { const r = await window.storage.get(chave, true); return r ? bytesTxt(r.value) : null; } catch { return -1; } };
+  const verificar = async () => {
+    setBusy(true); setErro("");
+    try {
+      const linhas = [];
+      const unico = async (rotulo, guarda, chave, dica) => { const b = await medir(chave); if (b === null) return; linhas.push({ rotulo, guarda, bytes: Math.max(b, 0), ilegivel: b < 0, pags: 1, total: Math.max(b, 0), dica }); };
+      const paginada = async (rotulo, guarda, chave, n, chavePagina) => {
+        const b = await medir(chave); if (b === null && n === 0) return;
+        let total = Math.max(b || 0, 0);
+        for (let k = 1; k <= n; k++) total += Math.max((await medir(chavePagina(k))) || 0, 0);
+        linhas.push({ rotulo, guarda, bytes: Math.max(b || 0, 0), ilegivel: b === -1, pags: n + 1, total, dica: "Dividido em páginas automaticamente; nada a fazer." });
+      };
+      const tid = turma.id;
+      await paginada("Histórico de ajustes", "Antes/depois dos ajustes do professor", chaveAjustesProf(tid), await lerMetaAjustesProf(tid), (k) => chaveAjustesProfPag(tid, k));
+      for (const [rot, guarda, ch] of [["Lotes de avisos da turma", "Avisos e devolutivas em lote", chaveLotesAjustes(tid)], ["Pareceres da turma", "Pareceres do professor", chavePareceres(tid)], ["Notas automáticas da turma", "Registro das notas automáticas", chaveNotasAutoReg(tid)]]) {
+        await paginada(rot, guarda, ch, await lerPagMeta(ch), (k) => chavePag(ch, k));
+      }
+      await unico("Lista de equipes da turma", "Equipes e integrantes", `equipes_${tid}`, "Cresce devagar; sem ação necessária.");
+      await unico("Bloqueios de avaliação", "Equipes em avaliação", chaveAvaliacao(tid), "Sem ação necessária.");
+      await unico("Alertas da turma", "Alertas por equipe", chaveAlertas(tid), "Sem ação necessária.");
+      const dicaEq = "Ainda não é dividido em páginas. Se passar de 60%: faça o Backup geral e avise o desenvolvedor antes de ajustar mais esta equipe.";
+      const lotes = await Promise.all((equipes || []).map(async (e) => [e, await medir(`dados_equipe_${e.id}`), await medir(chaveLixeira(e.id))]));
+      lotes.forEach(([e, d, l]) => {
+        if (d !== null) linhas.push({ rotulo: `Dados de ${e.nomeNegocio || e.id}`, guarda: "Lançamentos, comentários e relatório de ajustes", bytes: Math.max(d, 0), ilegivel: d < 0, pags: 1, total: Math.max(d, 0), dica: dicaEq });
+        if (l !== null && l > 0) linhas.push({ rotulo: `Lixeira de ${e.nomeNegocio || e.id}`, guarda: "Itens excluídos (restauráveis)", bytes: l, pags: 1, total: l, dica: "Tem limite de itens; sem ação necessária." });
+      });
+      linhas.forEach((l) => { l.pct = Math.round((l.bytes / LIMITE_DOC_BYTES) * 100); l.sit = l.ilegivel ? "ilegivel" : l.pct >= 85 ? "risco" : l.pct >= 60 ? "atencao" : "ok"; });
+      linhas.sort((a, b) => b.pct - a.pct);
+      setRes({ linhas, em: Date.now() });
+    } catch (e) { setErro(`Não foi possível verificar: ${e.message}`); }
+    setBusy(false);
+  };
+  const fmtTam = (b) => (b >= 1048576 ? `${(b / 1048576).toFixed(1).replace(".", ",")} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+  const cor = { ok: ["bg-emerald-500", "bg-emerald-500/15 text-emerald-300", "ok"], atencao: ["bg-amber-500", "bg-amber-500/15 text-amber-300", "atenção"], risco: ["bg-red-500", "bg-red-500/15 text-red-300", "em risco"], ilegivel: ["bg-slate-500", "bg-slate-500/15 text-slate-300", "não lido"] };
+  const L = res?.linhas || [];
+  return (
+    <Card className="p-4">
+      <button onClick={() => setAberto((v) => !v)} aria-expanded={aberto} className="w-full text-left text-sm font-bold text-slate-100 flex items-center gap-2"><Database size={15} className="text-emerald-400" /> 5. Saúde dos dados (só leitura) <span className="text-[11px] font-normal text-slate-500">{aberto ? "clique para recolher" : "clique para abrir"}</span><ChevronDown size={16} className={`ml-auto text-slate-400 transition-transform ${aberto ? "rotate-180" : ""}`} /></button>
+      {aberto && (
+        <div className="mt-2">
+          <p className="text-xs text-slate-400">Mostra quanto cada documento do banco já usou do limite de ~1 MB. Não grava nada. A partir de 60% fica em atenção; a partir de 85%, em risco.</p>
+          <div className="flex items-center gap-3 mt-3"><button onClick={verificar} disabled={busy} className="bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-900 text-sm font-bold px-4 py-2 rounded-md">{busy ? "Verificando…" : "Verificar agora"}</button>{res && <span className="text-xs text-slate-500">Última verificação: {new Date(res.em).toLocaleString("pt-BR")}</span>}</div>
+          {erro && <p className="text-sm text-red-300 mt-2">{erro}</p>}
+          {res && (
+            <div className="mt-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                {[["Documentos verificados", L.length, ""], ["Em atenção (≥ 60%)", L.filter((x) => x.sit === "atencao").length, "text-amber-300"], ["Em risco (≥ 85%)", L.filter((x) => x.sit === "risco").length, "text-red-300"], ["Maior uso", `${L.length ? L[0].pct : 0}%`, ""]].map(([t, v, c]) => <div key={t} className="rounded-lg border border-slate-700 px-3 py-2"><div className="text-[11px] text-slate-400">{t}</div><div className={`text-lg font-bold ${c}`}>{v}</div></div>)}
+              </div>
+              <div className="overflow-auto max-h-96">
+                <table className="w-full text-xs">
+                  <thead><tr className="text-left text-slate-400 border-b border-slate-700"><th className="py-1.5 pr-2">Documento</th><th className="pr-2">O que guarda</th><th className="pr-2">Tamanho</th><th className="pr-2">Uso do limite</th><th>Situação</th></tr></thead>
+                  <tbody>{L.map((l, i) => (
+                    <tr key={i} className="border-b border-slate-800 align-top">
+                      <td className="py-1.5 pr-2 text-slate-200">{l.rotulo}</td>
+                      <td className="pr-2 text-slate-400">{l.guarda}{l.sit !== "ok" && l.dica ? <div className="text-[11px] text-amber-200/80 mt-0.5">{l.dica}</div> : null}</td>
+                      <td className="pr-2 whitespace-nowrap text-slate-300">{fmtTam(l.total)}{l.pags > 1 ? ` em ${l.pags} páginas` : ""}</td>
+                      <td className="pr-2 whitespace-nowrap"><span className="inline-block w-28 h-2 bg-slate-800 rounded-full overflow-hidden align-middle"><span className={`block h-full ${cor[l.sit][0]}`} style={{ width: `${Math.min(100, l.pct)}%` }} /></span> <span className="text-slate-300">{l.pct}%</span>{l.pags > 1 ? <span className="text-slate-500"> (página atual)</span> : null}</td>
+                      <td><span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${cor[l.sit][1]}`}>{cor[l.sit][2]}</span></td>
+                    </tr>))}</tbody>
+                </table>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-2">Nada é apagado por este painel. Para documentos em atenção, siga a orientação indicada na linha.</p>
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
 }
 
 function AjusteGeralTurma({ turma, equipes, professorNome }) {
@@ -10445,6 +10566,8 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
           </div>
         ))}
       </Card>
+
+      <SaudeDadosCard turma={turma} equipes={equipes} />
     </div>
   );
 }
@@ -10484,7 +10607,7 @@ function GestaoAjusteGeralView({ turmas, professorNome }) {
 // ================= Gestão → Notas automáticas (v3.6) =================
 const chaveNotasAutoReg = (turmaId) => `notas_auto_reg_${turmaId}`;
 async function lerNotasAutoReg(turmaId) {
-  try { const r = await window.storage.get(chaveNotasAutoReg(turmaId), true); return r ? JSON.parse(r.value) : []; } catch { return []; }
+  return lerListaPag(chaveNotasAutoReg(turmaId), "inicio");
 }
 const MSG_AVALIACAO_NOTAS = "O professor está atualizando as notas do seu projeto. Aguarde alguns instantes: você pode consultar os dados, mas não editar nem enviar módulos agora.";
 const COMUNICADO_NOVO_FORMATO = `NOVO FORMATO DE AVALIAÇÃO — LEIAM COM ATENÇÃO
@@ -10613,7 +10736,7 @@ function NotasAutomaticasTurma({ turma, equipes, professorNome }) {
         }
         // registro ANTES de gravar (sempre há como desfazer)
         const regMud = plano.filter((p) => Object.keys(p.mud).length || p.ativouAgora).map((p) => ({ equipeId: p.eqId, equipeNome: nomeEq(p.eqId), notas: p.mud, ativouAgora: p.ativouAgora }));
-        if (regMud.length) { const lista = await lerNotasAutoReg(turma.id); await window.storage.set(chaveNotasAutoReg(turma.id), JSON.stringify([{ id, em: Date.now(), por: professorNome, mudancas: regMud, desfeito: false }, ...lista]), true); }
+        if (regMud.length) { await anexarListaPag(chaveNotasAutoReg(turma.id), { id, em: Date.now(), por: professorNome, mudancas: regMud, desfeito: false }, "inicio"); }
         for (const p of plano) {
           try {
             await window.storage.set(`dados_equipe_${p.eqId}`, JSON.stringify(p.novo), true);
@@ -10627,10 +10750,8 @@ function NotasAutomaticasTurma({ turma, equipes, professorNome }) {
         if (falhas.length) {
           // tira do registro o que NÃO foi aplicado
           try {
-            const lista = await lerNotasAutoReg(turma.id);
             const falhouIds = plano.filter((p) => !ok.includes(nomeEq(p.eqId))).map((p) => p.eqId);
-            const nova = lista.map((r) => r.id !== id ? r : { ...r, mudancas: r.mudancas.filter((m) => !falhouIds.includes(m.equipeId)) }).filter((r) => r.id !== id || r.mudancas.length > 0);
-            await window.storage.set(chaveNotasAutoReg(turma.id), JSON.stringify(nova), true);
+            await atualizarListaPag(chaveNotasAutoReg(turma.id), (r) => { if (r.id !== id) return r; const mud = r.mudancas.filter((m) => !falhouIds.includes(m.equipeId)); return mud.length ? { ...r, mudancas: mud } : null; });
           } catch { /* melhor esforço */ }
         }
       });
@@ -10663,8 +10784,7 @@ function NotasAutomaticasTurma({ turma, equipes, professorNome }) {
             feitos.push(mu.equipeNome);
           } catch (e) { pulados.push(`${mu.equipeNome}: ${e.message}`); }
         }
-        const lista = await lerNotasAutoReg(turma.id);
-        await window.storage.set(chaveNotasAutoReg(turma.id), JSON.stringify(lista.map((r) => r.id === reg.id ? { ...r, desfeito: true, desfeitoEm: Date.now() } : r)), true);
+        await atualizarListaPag(chaveNotasAutoReg(turma.id), (r) => r.id === reg.id ? { ...r, desfeito: true, desfeitoEm: Date.now() } : r);
       });
       setAviso({ tipo: feitos.length ? "ok" : "erro", texto: `${feitos.length ? `Desfeito em: ${feitos.join(", ")}. ` : "Nada foi desfeito. "}${pulados.length ? `Pulados: ${pulados.join(" · ")}.` : ""}` });
     } catch (e) { setAviso({ tipo: "erro", texto: `Interrompido: ${e.message}.` }); }
@@ -12366,8 +12486,7 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
       if (plano.length === 0) { setAviso("Nenhuma equipe apta no momento (releitura do banco)."); setOcupado(false); return; }
       // 1) grava primeiro o registro do lote (estado anterior) — se falhar, nada é alterado
       const registro = { id: loteId, em: agora, por: professorNome, prazo, reta, mensagem: reta ? msgReta : msg, equipes: plano.map((p) => ({ id: p.id, nome: p.nome, antes: p.antes })) };
-      const lista = await lerLotesAjustes(turma.id);
-      await window.storage.set(chaveLotesAjustes(turma.id), JSON.stringify([...lista, registro]), true);
+      await anexarListaPag(chaveLotesAjustes(turma.id), registro, "fim");
       // 2) altera SOMENTE fluxoModulos e acrescenta o comentário "Geral" com o relatório
       for (const p of plano) {
         const coment = { modulo: "Geral", texto: p.geral, autor: professorNome || "Professor", timestamp: agora, tipo: "orientacao", lote: loteId };
@@ -12396,8 +12515,7 @@ function AjustesFinaisTurma({ turma, equipes, professorNome, fixo }) {
         });
         if (mudou) await window.storage.set(`dados_equipe_${eq.id}`, JSON.stringify({ ...d, fluxoModulos: fluxo, comentarios: (d.comentarios || []).filter((c) => c.lote !== lote.id) }), true);
       }
-      const lista = await lerLotesAjustes(turma.id);
-      await window.storage.set(chaveLotesAjustes(turma.id), JSON.stringify(lista.map((l) => (l.id === lote.id ? { ...l, desfeitoEm: Date.now() } : l))), true);
+      await atualizarListaPag(chaveLotesAjustes(turma.id), (l) => (l.id === lote.id ? { ...l, desfeitoEm: Date.now() } : l));
       setAviso(`Lote desfeito: ${revertidos} módulo(s) voltaram a "corrigido"; ${mantidos} já tinham sido reenviados e foram mantidos.`);
       await carregar();
     } catch { setAviso("Não foi possível desfazer. Tente de novo."); }

@@ -1,4 +1,4 @@
-// build: 20261101_13h35m Relatório de adequação ao mercado (menu do professor: gerar, salvar e imprimir)
+// build: 20261101_14h37m Relatório de adequação ao mercado com miniaturas das telas de cada módulo
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -15225,6 +15225,54 @@ function mercNorm(s) {
   return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9 ]+/g, " ").split(/\s+/)
     .filter((w) => w && !MERC_STOP.has(w)).map((w) => (w.length > 3 && w.endsWith("s") ? w.slice(0, -1) : w)).join(" ");
 }
+
+// Miniatura da tela do sistema, desenhada com os dados reais da empresa (só leitura).
+function telaMercado(a, ctx) {
+  const { l, m9, m5, cap, f, hlSet } = ctx;
+  const R = (v) => fmtBRL(v || 0);
+  const nomes = mercNorm((a.nums || "") + " " + (a.fazer || ""));
+  const acha = (nome) => { const k = mercNorm(nome || ""); return k.length > 2 && (nomes.includes(k) || (hlSet && hlSet.has(k))); };
+  const tabela = (mod, abas, ativa, cols, linhas, tag, ordemHl = true) => {
+    let rows = linhas.map((r) => ({ c: r.c, h: !!r.h }));
+    const mais = Math.max(0, rows.length - 6);
+    if (mais > 0) { const hl = rows.filter((r) => r.h); const nh = rows.filter((r) => !r.h); rows = [...hl, ...nh].slice(0, 6); if (!ordemHl) rows = linhas.slice(0, 6); }
+    return { k: "tab", mod, abas, ativa, cols, rows, mais, tag };
+  };
+  const form = (mod, abas, ativa, campos, tag) => ({ k: "form", mod, abas, ativa, campos, tag });
+  const o = a.onde || "";
+  const nz = (v) => (v === undefined || v === null || v === "" ? "— vazio —" : String(v));
+  if (/^Capacidade › abas 1, 2 e 3/.test(o)) return form("Capacidade", ["1 Funcionamento", "2 Atendimento", "3 Produção", "4 Condições"], 0, [{ l: "Horas por dia", v: nz(f.horasDia), h: true }, { l: "Dias por mês", v: nz(f.diasMes), h: true }, { l: "Pessoas que produzem/atendem", v: "— vazio —", h: true }, { l: "Tempo de cada produto/serviço", v: "— vazio —", h: true }], "① preencher os campos em vermelho nas abas 1, 2 e 3");
+  if (/aba 1/.test(o) || /^Capacidade × Módulo 9/.test(o)) {
+    const pico = /fator de pico/.test(o), jor = /aba 1  ·  Módulo 9/.test(o);
+    return form("Capacidade", ["1 Funcionamento", "2 Atendimento", "3 Produção", "4 Condições"], 0, [{ l: "Horas por dia", v: nz(f.horasDia), h: jor }, { l: "Dias por mês", v: nz(f.diasMes) }, { l: "Eficiência real (%)", v: nz(f.eficiencia) }, { l: "Fator de pico", v: nz(f.pico), h: pico }, { l: "Pessoas que produzem/atendem", v: nz(f.pessoas), h: !pico && !jor }], pico ? "① informar o fator de pico (ex.: 1,3)" : jor ? "① informar o horário real; incluir turno no Módulo 9" : "① conferir as pessoas e igualar ao Módulo 9");
+  }
+  if (/aba 4/.test(o)) return form("Capacidade", ["1 Funcionamento", "2 Atendimento", "3 Produção", "4 Condições"], 3, [{ l: "Dado do segmento 1", v: "— vazio —", h: true }, { l: "Dado do segmento 2", v: "— vazio —", h: true }, { l: "Dado do segmento 3", v: "— vazio —", h: true }, { l: "Fonte de cada dado", v: "— vazio —", h: true }], "① pesquisar e anotar o valor e a fonte");
+  if (/^Capacidade › Espaço/.test(o)) return form("Capacidade", ["1 Funcionamento", "2 Atendimento", "3 Produção", "4 Condições"], 0, [{ l: "Área total (m²)", v: nz(f.area), h: true }, { l: "Área de produção (m²)", v: nz(f.areaProducao), h: true }, { l: "Área de atendimento (m²)", v: nz(f.areaAtendimento), h: true }], "① conferir as áreas e as quantidades de mesas/equipamentos");
+  if (/^Capacidade › aba [23]/.test(o)) {
+    const rec = Object.entries(cap?.recursos || {}).filter(([, v]) => capNum(v?.qtd) > 0).slice(0, 6);
+    return tabela("Capacidade › " + (/aba 3/.test(o) ? "Produção" : "Atendimento"), ["1 Funcionamento", "2 Atendimento", "3 Produção", "4 Condições"], /aba 3/.test(o) ? 2 : 1, ["Recurso", "Quantidade", "Tempo (min)"], rec.map(([n, v]) => ({ c: [n, String(v.qtd), nz(v.duracao)], h: true })), "① conferir quantidade e tempo de cada recurso");
+  }
+  if (/^Módulo 9/.test(o)) {
+    const rows = [...m9.linhas.map((r) => ({ c: [r.funcao || "—", String(r.qtd), R(r.total)], h: /refor[cç]o de equipe/i.test(r.funcao || "") })), ...m9.prolabore.map((r) => ({ c: [(r.funcao || "Sócio") + " (pró-labore)", String(r.qtd), R(r.total)], h: !m9.linhas.some((x) => /refor[cç]o/i.test(x.funcao || "")) }))];
+    return tabela("Módulo 9 · Mão de Obra", ["Funcionários", "Pró-labore"], 0, ["Função", "Qtd", "Custo/mês"], rows, rows.some((r) => r.h && /refor/i.test(r.c[0])) ? "① trocar pela função real ou clicar na lixeira" : "① conferir o valor retirado pelos sócios");
+  }
+  if (/^Módulo 1 e Módulo 10 → Módulo 2/.test(o)) return tabela("Módulo 1 · Investimentos Fixos", [], 0, ["Descrição", "Qtd", "Valor un."], (l.m1.itens || []).map((it) => ({ c: [it.desc || "—", String(Number(it.qtd) || 0), R(it.valorUnit)], h: acha(it.desc) })), "① excluir estas linhas · ② lançar o valor no Módulo 2 › Estoque inicial");
+  if (/^Módulo 1 – /.test(o)) return tabela("Módulo 1 · Investimentos Fixos", [], 0, ["Descrição", "Qtd", "Valor un."], (l.m1.itens || []).map((it) => ({ c: [it.desc || "—", String(Number(it.qtd) || 0), R(it.valorUnit)], h: acha(it.desc) })), "① conferir se é a mesma coisa; excluir a linha repetida");
+  if (/^Módulo 1 e Módulo 10 × Módulo 11/.test(o)) return tabela("Módulo 1 · Investimentos Fixos", [], 0, ["Descrição", "Qtd", "Valor un."], (l.m1.itens || []).map((it) => ({ c: [it.desc || "—", String(Number(it.qtd) || 0), R(it.valorUnit)], h: acha(it.desc) })), "① excluir a assinatura daqui (já está no Módulo 11)");
+  if (/^Módulo 2/.test(o)) return form("Módulo 2 · Capital de Giro", [], 0, [{ l: "Estoque inicial (R$)", v: R(l.m2.estoqueInicial), h: true }, { l: "Prazo médio de vendas (dias)", v: nz(l.m2.prazoVendasDias), h: /caixa mínimo ficou zero/.test(a.fazer) }, { l: "Prazo de estoque (dias)", v: nz(l.m2.prazoEstoqueDias), h: true }, { l: "Prazo de compras (dias)", v: nz(l.m2.prazoComprasDias), h: /caixa mínimo ficou zero/.test(a.fazer) }], "① conferir com fornecedores e clientes");
+  if (/^Módulo 6/.test(o)) {
+    const set6 = new Set((l.m6.itens || []).map((it) => mercNorm(it.produto)));
+    const rows = m5.map((it) => { const tem = set6.has(mercNorm(it.nome)); return { c: [it.nome, tem ? "✔ pronta" : "+ Criar ficha"], h: !tem }; });
+    if (/viabilidade|reduziu o custo/i.test(a.fazer)) return tabela("Módulo 6 · Custo unitário (fichas)", [], 0, ["Produto", "Ficha"], m5.map((it) => ({ c: [it.nome, "conferir cotações"], h: true })), "① refazer a cotação de cada insumo");
+    return tabela("Módulo 6 · Custo unitário (fichas)", [], 0, ["Produto (Módulo 5)", "Ficha"], rows, "① clicar em “Criar ficha” nas linhas em vermelho");
+  }
+  if (/^Módulo 5 e Módulo 8/.test(o)) return tabela("Módulo 5 · Faturamento", [], 0, ["Produto", "Preço", "Custo un. (M8)"], m5.map((it) => ({ c: [it.nome, R(it.precoUnit), R(l.m8.custosUnit?.[it.id])], h: acha(it.nome) })), "① rever o preço (pesquisar concorrentes) ou o custo");
+  if (/^Módulo 5 – /.test(o)) return tabela("Módulo 5 · Faturamento", [], 0, ["Produto", "Qtd/mês", "Preço"], m5.map((it) => ({ c: [it.nome, String(Number(it.qtd) || 0), R(it.precoUnit)], h: true })), "① estimar a demanda real de cada item");
+  if (/^Módulo 7 e Módulo 11/.test(o)) return form("Módulo 7 · Impostos e taxas", [], 0, [{ l: "Impostos sobre vendas (%)", v: nz(l.m7.pctImpostos) }, { l: "Comissão / taxa de cartão (%)", v: nz(l.m7.pctComissao), h: true }], "① informar a taxa da maquininha em %; tirar o valor fixo do Módulo 11");
+  if (/^Módulo 11/.test(o)) return tabela("Módulo 11 · Custos Fixos", [], 0, ["Descrição", "Valor/mês"], (l.m11.itens || []).map((it) => ({ c: [it.desc || "—", R(it.valor)], h: /aluguel/i.test(it.desc || "") })), "① anexar orçamento/anúncio que comprove o valor");
+  return null;
+}
+
 function gerarRelatorioMercado(item) {
   const { equipe, dados, calc } = item;
   const l = mergeLancamentos(dados.lancamentos);
@@ -15317,6 +15365,7 @@ function gerarRelatorioMercado(item) {
   // ---------- 3. Investimentos fixos × estoque ----------
   const set5 = new Set(m5.map((it) => mercNorm(it.nome)));
   const merc1 = (l.m1.itens || []).filter((it) => it.desc && set5.has(mercNorm(it.desc)));
+  const hlSet = new Set(merc1.map((it) => mercNorm(it.desc)));
   if (merc1.length >= 2) {
     const tot = merc1.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.valorUnit) || 0), 0);
     sev("cus", "r", "mercadoria no Módulo 1");
@@ -15384,6 +15433,7 @@ function gerarRelatorioMercado(item) {
 
   const ordem = { A: 0, M: 1 };
   acoes.sort((a, b) => ordem[a.p] - ordem[b.p]);
+  acoes.forEach((a) => { try { a.tela = telaMercado(a, { l, m9, m5, cap, f, hlSet }); } catch { a.tela = null; } });
   const lab = { cap: "Capacidade", pes: "Pessoal (M9)", pre: "Preços", cus: "Custos / estoque", ret: "Retorno" };
   return {
     id: equipe.id, nome: equipe.nomeNegocio, segmento: equipe.segmento || "não informado", integrantes: equipe.integrantes || [], teste: !!equipe.teste,
@@ -15412,6 +15462,11 @@ function FolhasMercadoImpressao({ lista, turma, emitidoEm, notas }) {
     .mk-pr{display:inline-block;font-size:8.5px;font-weight:800;padding:1px 7px;border-radius:99px;margin-bottom:2px}
     .mk-on{font-size:10px;color:#1f4e8c;font-weight:700}.mk-on:before{content:"ONDE: ";color:#667085;font-weight:600}
     .mk-fz{font-weight:700;margin-top:1px}.mk-rf{margin-top:3px;font-size:10px;background:#f1f4f9;border-radius:5px;padding:3px 7px;color:#344054}.mk-rf:before{content:"NÚMEROS: ";font-weight:700;color:#667085}
+    .mk-tl{flex:0 0 44%;min-width:0;width:44%;box-sizing:border-box;border:1px solid #94a3b8;border-radius:6px;overflow:hidden;background:#f8fafc;font-size:8.5px;align-self:flex-start}
+    .mk-tl .bar{background:#334155;color:#fff;padding:2px 6px;font-size:8px}.mk-tl .ab{display:flex;gap:3px;padding:3px 6px;background:#e2e8f0}.mk-tl .ab span{padding:0 5px;border-radius:8px;background:#fff;color:#334155}.mk-tl .ab .on2{background:#1f4e8c;color:#fff}
+    .mk-tl table{width:100%;border-collapse:collapse}.mk-tl td,.mk-tl th{border-bottom:1px solid #e2e8f0;padding:2px 5px;text-align:left;font-weight:400}.mk-tl th{background:#f1f5f9;color:#64748b}
+    .mk-tl .hl td,.mk-tl .hl{background:#fff1f2;outline:2px solid #e11d48;outline-offset:-2px;font-weight:700}.mk-tl .fl{display:flex;justify-content:space-between;padding:2px 6px;border-bottom:1px solid #e2e8f0}
+    .mk-tl .tg{background:#e11d48;color:#fff;font-weight:700;font-size:8px;padding:2px 6px}.mk-ar{display:flex;gap:9px;flex:1;min-width:0}.mk-ar>.tx{flex:1 1 0;min-width:0}
     .mk-prof{background:#fff8e1;border:1px solid #f3d79a;border-radius:8px;padding:6px 10px}.mk-prof ul{margin:2px 0 0;padding-left:16px}
     .mk-obs{border:1px solid #d6dbe4;border-radius:8px;padding:6px 10px;white-space:pre-wrap;min-height:30px}
     .mk-ft{margin-top:8px;font-size:9px;color:#667085;display:flex;justify-content:space-between;border-top:1px solid #c9d6ea;padding-top:4px}
@@ -15455,9 +15510,21 @@ function FolhasMercadoImpressao({ lista, turma, emitidoEm, notas }) {
             {o.acoes.length === 0 ? <div style={{ color: "#2f855a", fontWeight: 700 }}>Nenhuma pendência encontrada pelas regras automáticas.</div> : o.acoes.map((a, i) => (
               <div className="mk-ac" key={i}>
                 <div className="mk-n">{i + 1}</div>
-                <div>
-                  <span className="mk-pr" style={a.p === "A" ? { background: "#fdecea", color: "#c0392b" } : { background: "#fff5e0", color: "#b7791f" }}>{a.p === "A" ? "PRIORIDADE ALTA" : "PRIORIDADE MÉDIA"}</span>
-                  <div className="mk-on">{a.onde}</div><div className="mk-fz">{a.fazer}</div>{a.nums && <div className="mk-rf">{a.nums}</div>}
+                <div className="mk-ar">
+                  <div className="tx" style={a.tela ? undefined : { flex: 1 }}>
+                    <span className="mk-pr" style={a.p === "A" ? { background: "#fdecea", color: "#c0392b" } : { background: "#fff5e0", color: "#b7791f" }}>{a.p === "A" ? "PRIORIDADE ALTA" : "PRIORIDADE MÉDIA"}</span>
+                    <div className="mk-on">{a.onde}</div><div className="mk-fz">{a.fazer}</div>{a.nums && <div className="mk-rf">{a.nums}</div>}
+                  </div>
+                  {a.tela && (
+                    <div className="mk-tl">
+                      <div className="bar">{a.tela.mod}</div>
+                      {a.tela.abas.length > 0 && <div className="ab">{a.tela.abas.map((t, j) => <span key={j} className={j === a.tela.ativa ? "on2" : ""}>{t}</span>)}</div>}
+                      {a.tela.k === "tab" ? (
+                        <table><thead><tr>{a.tela.cols.map((c, j) => <th key={j}>{c}</th>)}</tr></thead><tbody>{a.tela.rows.map((r, j) => <tr key={j} className={r.h ? "hl" : ""}>{r.c.map((x, q) => <td key={q}>{x}</td>)}</tr>)}{a.tela.mais > 0 && <tr><td colSpan={a.tela.cols.length} style={{ color: "#64748b" }}>… e mais {a.tela.mais} linha(s)</td></tr>}</tbody></table>
+                      ) : a.tela.campos.map((c, j) => <div key={j} className={"fl" + (c.h ? " hl" : "")}><span>{c.l}</span><span>{c.v}</span></div>)}
+                      <div className="tg">{a.tela.tag}</div>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

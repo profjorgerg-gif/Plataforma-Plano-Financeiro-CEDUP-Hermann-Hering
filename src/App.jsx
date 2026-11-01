@@ -1,4 +1,4 @@
-// build: 20261101_14h37m Relatório de adequação ao mercado com miniaturas das telas de cada módulo
+// build: 20261101_14h54m Adequação ao mercado: observações salvas, conferido pelo professor, comparação com o último relatório, quadro da turma
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -15226,6 +15226,23 @@ function mercNorm(s) {
     .filter((w) => w && !MERC_STOP.has(w)).map((w) => (w.length > 3 && w.endsWith("s") ? w.slice(0, -1) : w)).join(" ");
 }
 
+// ---- Registro do professor (só leitura para as equipes): observações, conferências, prazo e último relatório emitido ----
+async function lerMercadoTurma(turmaId) { try { const x = await window.storage.get(`mercado_${turmaId}`, true); const o = x ? JSON.parse(x.value) : {}; return o && typeof o === "object" ? o : {}; } catch { return {}; } }
+async function gravarMercadoTurma(turmaId, obj) { await window.storage.set(`mercado_${turmaId}`, JSON.stringify(obj), true); }
+function mercChave(a) { return mercNorm(`${a.onde}|${(a.fazer || "").slice(0, 50)}`); }
+function situacaoMercado(o, reg) {
+  const conf = (reg && reg.conf) || {};
+  const cur = (o.acoes || []).map((a) => ({ ...a, k: mercChave(a) }));
+  const base = reg && reg.ultimo && Array.isArray(reg.ultimo.itens) ? reg.ultimo.itens : null;
+  const ks = new Set(cur.map((a) => a.k));
+  const resolv = base ? base.filter((b) => !ks.has(b.k)) : [];
+  const novos = base ? cur.filter((a) => !base.some((b) => b.k === a.k)) : [];
+  const pend = cur.filter((a) => !conf[a.k]);
+  const conferidos = cur.filter((a) => conf[a.k]);
+  const total = base ? base.length + novos.length : cur.length;
+  return { cur, base, resolv, novos, pend, conferidos, total, feitos: resolv.length + conferidos.length };
+}
+
 // Miniatura da tela do sistema, desenhada com os dados reais da empresa (só leitura).
 function telaMercado(a, ctx) {
   const { l, m9, m5, cap, f, hlSet } = ctx;
@@ -15442,7 +15459,7 @@ function gerarRelatorioMercado(item) {
   };
 }
 
-function FolhasMercadoImpressao({ lista, turma, emitidoEm, notas }) {
+function FolhasMercadoImpressao({ lista, turma, emitidoEm, notas, regs }) {
   const cor = { r: ["#fdecea", "#c0392b", "Corrigir"], a: ["#fff5e0", "#b7791f", "Confirmar"], g: ["#e6f6ec", "#2f855a", "Ok"] };
   const css = `
     .mk-pg{font-family:Arial,Helvetica,sans-serif;color:#1d2330;font-size:11px;line-height:1.35;page-break-after:always;break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fff}
@@ -15466,7 +15483,12 @@ function FolhasMercadoImpressao({ lista, turma, emitidoEm, notas }) {
     .mk-tl .bar{background:#334155;color:#fff;padding:2px 6px;font-size:8px}.mk-tl .ab{display:flex;gap:3px;padding:3px 6px;background:#e2e8f0}.mk-tl .ab span{padding:0 5px;border-radius:8px;background:#fff;color:#334155}.mk-tl .ab .on2{background:#1f4e8c;color:#fff}
     .mk-tl table{width:100%;border-collapse:collapse}.mk-tl td,.mk-tl th{border-bottom:1px solid #e2e8f0;padding:2px 5px;text-align:left;font-weight:400}.mk-tl th{background:#f1f5f9;color:#64748b}
     .mk-tl .hl td,.mk-tl .hl{background:#fff1f2;outline:2px solid #e11d48;outline-offset:-2px;font-weight:700}.mk-tl .fl{display:flex;justify-content:space-between;padding:2px 6px;border-bottom:1px solid #e2e8f0}
-    .mk-tl .tg{background:#e11d48;color:#fff;font-weight:700;font-size:8px;padding:2px 6px}.mk-ar{display:flex;gap:9px;flex:1;min-width:0}.mk-ar>.tx{flex:1 1 0;min-width:0}
+    .mk-tl .tg{background:#e11d48;color:#fff;font-weight:700;font-size:8px;padding:2px 6px}.mk-ar{display:flex;gap:9px;flex:1;min-width:0}.mk-ar .tx{flex:1 1 0;min-width:0}
+    .mk-av{display:flex;gap:16px;align-items:center;background:#eef2f7;border-radius:8px;padding:6px 10px;margin:6px 0}.mk-av b{font-size:14px}.mk-av .bg{flex:1;height:9px;background:#d1d5db;border-radius:5px;overflow:hidden}.mk-av .bg>div{height:100%;background:#2f855a}
+    .mk-okc{display:flex;gap:8px;align-items:center;border:1px solid #9ad3b0;background:#e6f6ec;border-radius:8px;padding:5px 9px;margin-bottom:5px;break-inside:avoid;font-size:10px}.mk-okc i{font-style:normal;background:#2f855a;color:#fff;font-weight:800;font-size:8.5px;padding:1px 7px;border-radius:99px;white-space:nowrap}
+    .mk-ck{margin-top:5px;border:1px dashed #94a3b8;border-radius:5px;padding:3px 8px;font-size:9.5px;color:#475569;display:flex;gap:14px}.mk-bx{display:inline-block;width:9px;height:9px;border:1.5px solid #475569;vertical-align:-1px;margin-right:4px}
+    .mk-sg{display:flex;gap:30px;margin-top:22px;break-inside:avoid}.mk-sg>div{flex:1;border-top:1px solid #334155;padding-top:3px;font-size:9px;color:#475569}
+    .mk-qd{width:100%;border-collapse:collapse;font-size:10.5px}.mk-qd th,.mk-qd td{border-bottom:1px solid #e2e8f0;padding:5px 6px;text-align:left;font-weight:400}.mk-qd th{background:#f1f5f9;color:#64748b;font-size:9.5px}.mk-dt{display:inline-block;width:11px;height:11px;border-radius:50%}
     .mk-prof{background:#fff8e1;border:1px solid #f3d79a;border-radius:8px;padding:6px 10px}.mk-prof ul{margin:2px 0 0;padding-left:16px}
     .mk-obs{border:1px solid #d6dbe4;border-radius:8px;padding:6px 10px;white-space:pre-wrap;min-height:30px}
     .mk-ft{margin-top:8px;font-size:9px;color:#667085;display:flex;justify-content:space-between;border-top:1px solid #c9d6ea;padding-top:4px}
@@ -15475,6 +15497,11 @@ function FolhasMercadoImpressao({ lista, turma, emitidoEm, notas }) {
     <div id="merc-print-root">
       <style>{css}</style>
       {lista.map((o) => {
+        const reg = (regs && regs[o.id]) || {};
+        const sit = situacaoMercado(o, reg);
+        const obs = (notas && notas[o.id] != null ? notas[o.id] : reg.notas) || "";
+        const dmy = (t) => (t ? new Date(t).toLocaleDateString("pt-BR") : "");
+        const prazoTxt = reg.prazo ? reg.prazo.split("-").reverse().join("/") : "____/____/______";
         const c = o.cap;
         const u = c.dem != null && c.cap ? c.dem / c.cap : null;
         const col = u == null ? "#2f855a" : u > 1 ? "#c0392b" : u >= 0.9 ? "#d99a1f" : "#2f855a";
@@ -15507,29 +15534,38 @@ function FolhasMercadoImpressao({ lista, turma, emitidoEm, notas }) {
               </div>
             </div>
             <h2>2. O que fazer, nesta ordem</h2>
-            {o.acoes.length === 0 ? <div style={{ color: "#2f855a", fontWeight: 700 }}>Nenhuma pendência encontrada pelas regras automáticas.</div> : o.acoes.map((a, i) => (
+            {sit.base && (
+              <div className="mk-av"><div><span style={{ fontSize: 9, color: "#64748b" }}>DESDE O ÚLTIMO RELATÓRIO ({new Date(reg.ultimo.em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }).replace(",", " às")})</span><br /><b style={{ color: "#2f855a" }}>{sit.feitos} resolvido(s)</b> &nbsp; <b style={{ color: "#c0392b" }}>{sit.pend.length} pendente(s)</b>{sit.novos.length > 0 && <> &nbsp; <b style={{ color: "#b7791f" }}>{sit.novos.length} novo(s)</b></>}</div><div className="bg"><div style={{ height: 9, background: "#2f855a", width: `${sit.total ? Math.min(100, sit.feitos / sit.total * 100) : 0}%` }} /></div><b>{sit.feitos} de {sit.total}</b></div>
+            )}
+            {sit.resolv.map((b, i) => (<div className="mk-okc" key={"r" + i}><i>RESOLVIDO</i><span><b>{b.onde}</b> — {b.t}</span></div>))}
+            {sit.conferidos.map((a, i) => (<div className="mk-okc" key={"c" + i}><i>CONFERIDO PELO PROFESSOR</i><span><b>{a.onde}</b>{reg.conf?.[a.k] ? ` — em ${dmy(reg.conf[a.k])}` : ""}</span></div>))}
+            {sit.pend.length === 0 ? <div style={{ color: "#2f855a", fontWeight: 700 }}>Nenhuma pendência encontrada pelas regras automáticas.</div> : sit.pend.map((a, i) => (
               <div className="mk-ac" key={i}>
                 <div className="mk-n">{i + 1}</div>
-                <div className="mk-ar">
-                  <div className="tx" style={a.tela ? undefined : { flex: 1 }}>
-                    <span className="mk-pr" style={a.p === "A" ? { background: "#fdecea", color: "#c0392b" } : { background: "#fff5e0", color: "#b7791f" }}>{a.p === "A" ? "PRIORIDADE ALTA" : "PRIORIDADE MÉDIA"}</span>
-                    <div className="mk-on">{a.onde}</div><div className="mk-fz">{a.fazer}</div>{a.nums && <div className="mk-rf">{a.nums}</div>}
-                  </div>
-                  {a.tela && (
-                    <div className="mk-tl">
-                      <div className="bar">{a.tela.mod}</div>
-                      {a.tela.abas.length > 0 && <div className="ab">{a.tela.abas.map((t, j) => <span key={j} className={j === a.tela.ativa ? "on2" : ""}>{t}</span>)}</div>}
-                      {a.tela.k === "tab" ? (
-                        <table><thead><tr>{a.tela.cols.map((c, j) => <th key={j}>{c}</th>)}</tr></thead><tbody>{a.tela.rows.map((r, j) => <tr key={j} className={r.h ? "hl" : ""}>{r.c.map((x, q) => <td key={q}>{x}</td>)}</tr>)}{a.tela.mais > 0 && <tr><td colSpan={a.tela.cols.length} style={{ color: "#64748b" }}>… e mais {a.tela.mais} linha(s)</td></tr>}</tbody></table>
-                      ) : a.tela.campos.map((c, j) => <div key={j} className={"fl" + (c.h ? " hl" : "")}><span>{c.l}</span><span>{c.v}</span></div>)}
-                      <div className="tg">{a.tela.tag}</div>
+                <div className="mk-ar" style={{ flexDirection: "column", gap: 0 }}>
+                  <div style={{ display: "flex", gap: 9, minWidth: 0 }}>
+                    <div className="tx" style={a.tela ? undefined : { flex: 1 }}>
+                      <span className="mk-pr" style={a.p === "A" ? { background: "#fdecea", color: "#c0392b" } : { background: "#fff5e0", color: "#b7791f" }}>{a.p === "A" ? "PRIORIDADE ALTA" : "PRIORIDADE MÉDIA"}</span>
+                      <div className="mk-on">{a.onde}</div><div className="mk-fz">{a.fazer}</div>{a.nums && <div className="mk-rf">{a.nums}</div>}
                     </div>
-                  )}
+                    {a.tela && (
+                      <div className="mk-tl">
+                        <div className="bar">{a.tela.mod}</div>
+                        {a.tela.abas.length > 0 && <div className="ab">{a.tela.abas.map((t, j) => <span key={j} className={j === a.tela.ativa ? "on2" : ""}>{t}</span>)}</div>}
+                        {a.tela.k === "tab" ? (
+                          <table><thead><tr>{a.tela.cols.map((cc, j) => <th key={j}>{cc}</th>)}</tr></thead><tbody>{a.tela.rows.map((r, j) => <tr key={j} className={r.h ? "hl" : ""}>{r.c.map((x, q) => <td key={q}>{x}</td>)}</tr>)}{a.tela.mais > 0 && <tr><td colSpan={a.tela.cols.length} style={{ color: "#64748b" }}>… e mais {a.tela.mais} linha(s)</td></tr>}</tbody></table>
+                        ) : a.tela.campos.map((cc, j) => <div key={j} className={"fl" + (cc.h ? " hl" : "")}><span>{cc.l}</span><span>{cc.v}</span></div>)}
+                        <div className="tg">{a.tela.tag}</div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mk-ck"><span><span className="mk-bx" />Equipe fez</span><span><span className="mk-bx" />Professor conferiu</span><span style={{ marginLeft: "auto" }}>Entregar até: {prazoTxt}</span></div>
                 </div>
               </div>
             ))}
             {o.prof.length > 0 && (<><h2>3. O professor já alterou no plano de vocês — confirmem se faz sentido</h2><div className="mk-prof"><ul>{o.prof.map((t, i) => <li key={i}>{t}</li>)}</ul></div></>)}
-            {(notas && notas[o.id] && notas[o.id].trim()) && (<><h2>Observações do professor</h2><div className="mk-obs">{notas[o.id]}</div></>)}
+            {obs.trim() && (<><h2>Observações do professor</h2><div className="mk-obs">{obs}</div></>)}
+            <div className="mk-sg"><div>Assinatura da equipe — confirmamos que conferimos todos os passos</div><div>Professor — data ____/____/______</div></div>
             <div className="mk-ft"><span>Este relatório só orienta: nenhum lançamento é alterado por ele. Depois de corrigir, reenviem o módulo.</span><span>Emitido em {emitidoEm}</span></div>
           </section>
         );
@@ -15538,66 +15574,154 @@ function FolhasMercadoImpressao({ lista, turma, emitidoEm, notas }) {
   );
 }
 
+function QuadroMercadoImpressao({ lista, regs, turma, emitidoEm }) {
+  const cor = { r: "#ef4444", a: "#f59e0b", g: "#22c55e" };
+  return (
+    <div id="merc-print-root">
+      <style>{`.mk-pg{font-family:Arial,Helvetica,sans-serif;color:#1d2330;font-size:11px;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}.mk-pg *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      .mk-cab{position:relative;min-height:72px;text-align:center;font-size:9.5px;line-height:1.3;padding:0 90px}.mk-cab img.fl{position:absolute;left:0;top:0;height:68px}.mk-cab img.lg{position:absolute;right:0;top:0;height:68px}
+      .mk-qd{width:100%;border-collapse:collapse;font-size:10.5px}.mk-qd th,.mk-qd td{border-bottom:1px solid #e2e8f0;padding:5px 6px;text-align:left;font-weight:400}.mk-qd th{background:#f1f5f9;color:#64748b;font-size:9.5px}.mk-dt{display:inline-block;width:11px;height:11px;border-radius:50%}`}</style>
+      <section className="mk-pg">
+        <div className="mk-cab">
+          <img className="fl" src={PLANO_IMG_BRASAO} alt="" /><img className="lg" src={PLANO_IMG_CEDUP} alt="" />
+          <b>ESTADO DE SANTA CATARINA</b><br /><b>SECRETARIA DE ESTADO DA EDUCAÇÃO</b><br />
+          <b>CEDUP – CENTRO DE EDUCAÇÃO PROFISSIONAL HERMANN HERING</b><br />Plataforma do Plano Financeiro
+        </div>
+        <div style={{ fontSize: 8.5, letterSpacing: 2, color: "#64748b", marginTop: 8 }}>QUADRO DA TURMA · ADEQUAÇÃO AO MERCADO · EMITIDO EM {emitidoEm}</div>
+        <div style={{ fontSize: 19, margin: "2px 0 8px" }}>{turma?.nome || ""}</div>
+        <table className="mk-qd">
+          <thead><tr><th>Empresa</th><th>Capac.</th><th>Pessoal</th><th>Preços</th><th>Custos</th><th>Retorno</th><th>Passos resolvidos</th><th>Pendências altas</th></tr></thead>
+          <tbody>
+            {lista.map((o) => {
+              const sit = situacaoMercado(o, regs && regs[o.id]);
+              const altas = sit.pend.filter((a) => a.p === "A").length;
+              return (
+                <tr key={o.id}>
+                  <td><b>{o.nome}</b></td>
+                  {(o.sem.length ? o.sem : [1, 2, 3, 4, 5].map(() => ({ k: "a" }))).map((x, i) => <td key={i}><span className="mk-dt" style={{ background: cor[x.k] }} /></td>)}
+                  <td>{sit.base ? `${sit.feitos} de ${sit.total}` : "sem relatório anterior"}</td>
+                  <td style={{ color: altas ? "#c0392b" : "#2f855a", fontWeight: 700 }}>{altas}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <div style={{ marginTop: 8, color: "#64748b", fontSize: 9.5 }}>● vermelho = corrigir · ● amarelo = confirmar · ● verde = ok. “Passos resolvidos” compara com o último relatório impresso de cada equipe (passos que sumiram da lista + passos conferidos pelo professor).</div>
+      </section>
+    </div>
+  );
+}
+
 function RelatorioMercado({ turma, dadosEquipes }) {
-  const [folhas, setFolhas] = useState(null);
+  const [imp, setImp] = useState(null); // { tipo: "folhas", lista } | { tipo: "quadro" }
   const [selId, setSelId] = useState(null);
-  const [notas, setNotas] = useState({});
+  const [regs, setRegs] = useState(null);
+  const [msg, setMsg] = useState("");
+  const regsRef = useRef({});
   const lista = useMemo(() => (dadosEquipes || []).map((it) => { try { return gerarRelatorioMercado(it); } catch (e) { return { id: it.equipe.id, nome: it.equipe.nomeNegocio, segmento: it.equipe.segmento || "", integrantes: it.equipe.integrantes || [], sem: [], cap: { titulo: "Capacidade", dem: null, cap: null, un: "", pico: "", pess: "", falta: "Não foi possível analisar esta empresa." }, acoes: [], prof: [], erro: true }; } }), [dadosEquipes]);
   const emitidoEm = new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }).replace(",", " às");
+  useEffect(() => { let vivo = true; lerMercadoTurma(turma.id).then((o) => { if (vivo) { regsRef.current = o; setRegs(o); } }); return () => { vivo = false; }; }, [turma.id]);
+  const salvar = async (eqId, mudar) => {
+    const atual = regsRef.current || {};
+    const prox = { ...atual, [eqId]: mudar({ ...(atual[eqId] || {}) }) };
+    regsRef.current = prox; setRegs(prox);
+    try { await gravarMercadoTurma(turma.id, prox); setMsg("Salvo."); } catch { setMsg("Não foi possível salvar. Tente de novo."); }
+  };
   useEffect(() => {
-    if (!folhas) return undefined;
-    const titulo = folhas.length === 1 ? `Adequacao-ao-mercado - ${folhas[0].nome} - ${sufixoDataHoraArquivo()}` : `Adequacao-ao-mercado - ${turma.nome} - todas as equipes - ${sufixoDataHoraArquivo()}`;
+    if (!imp) return undefined;
+    const titulo = imp.tipo === "quadro" ? `Adequacao-ao-mercado - quadro da turma ${turma.nome} - ${sufixoDataHoraArquivo()}` : imp.lista.length === 1 ? `Adequacao-ao-mercado - ${imp.lista[0].nome} - ${sufixoDataHoraArquivo()}` : `Adequacao-ao-mercado - ${turma.nome} - todas as equipes - ${sufixoDataHoraArquivo()}`;
     const estilo = document.createElement("style");
     estilo.textContent = "@media screen { #merc-print-root-wrap { display: none !important; } } @media print { @page { size: A4 portrait; margin: 10mm; } body > *:not(#merc-print-root-wrap) { display: none !important; } #merc-print-root-wrap { display: block !important; } }";
     document.head.appendChild(estilo);
     const original = document.title;
-    const t = setTimeout(() => { document.title = titulo; window.print(); document.title = original; if (estilo.parentNode) estilo.parentNode.removeChild(estilo); setFolhas(null); }, 200);
+    const t = setTimeout(() => {
+      document.title = titulo; window.print(); document.title = original;
+      if (estilo.parentNode) estilo.parentNode.removeChild(estilo);
+      if (imp.tipo === "folhas") {
+        // guarda este relatório como referência da próxima comparação (só se a lista de passos mudou)
+        const atual = regsRef.current || {}; const prox = { ...atual }; let mudou = false; const agora = Date.now();
+        imp.lista.forEach((o) => {
+          const itens = (o.acoes || []).map((a) => ({ k: mercChave(a), onde: a.onde, t: (a.fazer || "").slice(0, 90) }));
+          const ant = atual[o.id]?.ultimo?.itens;
+          const igual = ant && ant.length === itens.length && ant.every((b) => itens.some((x) => x.k === b.k));
+          if (!igual) { prox[o.id] = { ...(atual[o.id] || {}), ultimo: { em: agora, itens } }; mudou = true; }
+        });
+        if (mudou) { regsRef.current = prox; setRegs(prox); gravarMercadoTurma(turma.id, prox).then(() => setMsg("Relatório guardado como referência da próxima comparação.")).catch(() => setMsg("Não foi possível guardar a referência.")); }
+      }
+      setImp(null);
+    }, 200);
     return () => { clearTimeout(t); if (estilo.parentNode) estilo.parentNode.removeChild(estilo); };
-  }, [folhas, turma]);
-  if (dadosEquipes === null) return <LoadingScreen />;
+  }, [imp, turma]);
+  if (dadosEquipes === null || regs === null) return <LoadingScreen />;
   if (dadosEquipes.length === 0) return <Card className="p-8 text-center text-slate-500">Nenhuma empresa nesta turma ainda.</Card>;
-  const portal = folhas ? createPortal(<div id="merc-print-root-wrap"><FolhasMercadoImpressao lista={folhas} turma={turma} emitidoEm={emitidoEm} notas={notas} /></div>, document.body) : null;
+  const notasMap = Object.fromEntries(Object.entries(regs).map(([k, v]) => [k, v?.notas || ""]));
+  const portal = imp ? createPortal(<div id="merc-print-root-wrap">{imp.tipo === "quadro" ? <QuadroMercadoImpressao lista={lista.filter((o) => !o.teste)} regs={regs} turma={turma} emitidoEm={emitidoEm} /> : <FolhasMercadoImpressao lista={imp.lista} turma={turma} emitidoEm={emitidoEm} notas={notasMap} regs={regs} />}</div>, document.body) : null;
   const sel = selId ? lista.find((o) => o.id === selId) : null;
   const dot = { r: "bg-rose-500", a: "bg-amber-400", g: "bg-emerald-500" };
+  const btnP = "flex items-center gap-2 bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm";
   if (sel) {
+    const reg = regs[sel.id] || {};
+    const sit = situacaoMercado(sel, reg);
     return (
       <div>
         {portal}
         <div className="no-print flex flex-wrap items-center gap-2 mb-3">
           <button onClick={() => setSelId(null)} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Voltar à lista</button>
-          <button onClick={() => setFolhas([sel])} className="ml-auto flex items-center gap-2 bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm"><Printer size={14} /> Imprimir / Salvar PDF desta equipe</button>
+          {msg && <span className="text-xs text-emerald-400">{msg}</span>}
+          <button onClick={() => setImp({ tipo: "folhas", lista: [sel] })} className={`ml-auto ${btnP}`}><Printer size={14} /> Imprimir / Salvar PDF desta equipe</button>
         </div>
         <Card className="no-print p-3 mb-3">
-          <div className="text-xs font-semibold text-slate-300 mb-1">Observações do professor (opcional — saem impressas no relatório desta equipe; ficam só nesta tela)</div>
-          <textarea value={notas[sel.id] || ""} onChange={(e) => setNotas({ ...notas, [sel.id]: e.target.value })} rows={3} className="w-full bg-slate-900 border border-slate-700 rounded-md p-2 text-sm text-slate-100" placeholder="Ex.: conferir o preço do açaí 700 ml com 3 concorrentes; trazer o projeto escrito na próxima aula." />
+          <div className="text-xs font-semibold text-slate-300 mb-1">Observações do professor (saem impressas no relatório desta equipe e ficam salvas)</div>
+          <textarea defaultValue={reg.notas || ""} key={sel.id} onBlur={(e) => { const v = e.target.value; if (v !== (reg.notas || "")) salvar(sel.id, (r) => ({ ...r, notas: v })); }} rows={3} className="w-full bg-slate-900 border border-slate-700 rounded-md p-2 text-sm text-slate-100" placeholder="Ex.: conferir o preço do açaí 700 ml com 3 concorrentes; trazer o projeto escrito na próxima aula." />
+          <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-slate-300">
+            <label className="flex items-center gap-2">Entregar até: <input type="date" value={reg.prazo || ""} onChange={(e) => salvar(sel.id, (r) => ({ ...r, prazo: e.target.value }))} className="bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-slate-100" /></label>
+            {sit.base && <span className="text-slate-400">Último relatório impresso em {new Date(reg.ultimo.em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}: {sit.feitos} de {sit.total} resolvidos.</span>}
+          </div>
         </Card>
-        <div className="rounded-xl overflow-hidden bg-white p-4"><FolhasMercadoImpressao lista={[sel]} turma={turma} emitidoEm={emitidoEm} notas={notas} /></div>
+        {sit.cur.length > 0 && (
+          <Card className="no-print p-3 mb-3">
+            <div className="text-xs font-semibold text-slate-300 mb-1">Professor conferiu (marque os passos que o senhor já verificou; eles saem da lista de pendências e aparecem como “conferido”)</div>
+            {sit.cur.map((a) => (
+              <label key={a.k} className="flex items-start gap-2 text-xs text-slate-300 py-1 cursor-pointer">
+                <input type="checkbox" className="mt-0.5" checked={!!(reg.conf && reg.conf[a.k])} onChange={(e) => salvar(sel.id, (r) => { const conf = { ...(r.conf || {}) }; if (e.target.checked) conf[a.k] = Date.now(); else delete conf[a.k]; return { ...r, conf }; })} />
+                <span><b className="text-slate-100">{a.onde}</b> — {(a.fazer || "").slice(0, 110)}{(a.fazer || "").length > 110 ? "…" : ""}</span>
+              </label>
+            ))}
+          </Card>
+        )}
+        <div className="rounded-xl overflow-hidden bg-white p-4"><FolhasMercadoImpressao lista={[sel]} turma={turma} emitidoEm={emitidoEm} notas={notasMap} regs={regs} /></div>
       </div>
     );
   }
   return (
     <div>
       {portal}
-      <p className="no-print text-sm text-slate-400 mb-3">Relatório objetivo, por empresa, do que a equipe precisa revisar e fazer para adequar o plano ao mercado — com ONDE fazer, O QUE fazer e os números. Foi gerado pelas regras automáticas a partir dos lançamentos atuais; <b className="text-slate-200">nenhum dado das equipes é alterado</b>. Abra uma equipe para ver, escrever observações e imprimir/salvar em PDF, ou imprima todas de uma vez (uma por folha).</p>
-      <div className="no-print flex flex-wrap gap-2 mb-3">
-        <button onClick={() => setFolhas(lista.filter((o) => !o.teste))} className="flex items-center gap-2 bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm"><Printer size={14} /> Imprimir / Salvar PDF de todas as equipes</button>
+      <p className="no-print text-sm text-slate-400 mb-3">Relatório objetivo, por empresa, do que a equipe precisa revisar e fazer para adequar o plano ao mercado — com ONDE fazer, O QUE fazer, os números e a miniatura da tela. É gerado pelas regras automáticas a partir dos lançamentos atuais; <b className="text-slate-200">nenhum dado das equipes é alterado</b>. Ficam salvos, por equipe, só os seus registros: observações, prazo, passos conferidos e o último relatório impresso (para comparar o que foi resolvido). Esses registros entram no Backup geral.</p>
+      <div className="no-print flex flex-wrap items-center gap-2 mb-3">
+        <button onClick={() => setImp({ tipo: "folhas", lista: lista.filter((o) => !o.teste) })} className={btnP}><Printer size={14} /> Imprimir / Salvar PDF de todas as equipes</button>
+        <button onClick={() => setImp({ tipo: "quadro" })} className="flex items-center gap-2 border border-slate-600 text-slate-200 font-semibold px-4 py-2 rounded-md hover:bg-slate-800 text-sm"><Printer size={14} /> Imprimir quadro da turma</button>
+        {msg && <span className="text-xs text-emerald-400">{msg}</span>}
       </div>
       <Card className="no-print overflow-x-auto">
         <table className="w-full text-sm">
-          <thead><tr>{["Empresa", "Capacidade", "Pessoal", "Preços", "Custos", "Retorno", "Ações", ""].map((h) => <th key={h} className="py-2 px-3 text-left text-[11px] uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40">{h}</th>)}</tr></thead>
+          <thead><tr>{["Empresa", "Capacidade", "Pessoal", "Preços", "Custos", "Retorno", "Pendências", "Resolvidos", ""].map((h) => <th key={h} className="py-2 px-3 text-left text-[11px] uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40">{h}</th>)}</tr></thead>
           <tbody>
-            {lista.map((o) => (
-              <tr key={o.id} className="border-b border-slate-800">
-                <td className="py-2 px-3 font-semibold text-slate-100">{o.nome}<div className="text-[11px] text-slate-500 font-normal">{o.segmento}</div></td>
-                {(o.sem.length ? o.sem : [1, 2, 3, 4, 5].map(() => ({ k: "a" }))).map((s, i) => <td key={i} className="py-2 px-3"><span className={`inline-block w-3.5 h-3.5 rounded-full ${dot[s.k]}`} title={s.d || ""} /></td>)}
-                <td className="py-2 px-3 text-slate-300">{o.acoes.filter((a) => a.p === "A").length} alta(s) · {o.acoes.filter((a) => a.p === "M").length} média(s)</td>
-                <td className="py-2 px-3"><button onClick={() => setSelId(o.id)} className="text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800">Abrir</button></td>
-              </tr>
-            ))}
+            {lista.map((o) => {
+              const sit = situacaoMercado(o, regs[o.id]);
+              return (
+                <tr key={o.id} className="border-b border-slate-800">
+                  <td className="py-2 px-3 font-semibold text-slate-100">{o.nome}<div className="text-[11px] text-slate-500 font-normal">{o.segmento}</div></td>
+                  {(o.sem.length ? o.sem : [1, 2, 3, 4, 5].map(() => ({ k: "a" }))).map((s, i) => <td key={i} className="py-2 px-3"><span className={`inline-block w-3.5 h-3.5 rounded-full ${dot[s.k]}`} title={s.d || ""} /></td>)}
+                  <td className="py-2 px-3 text-slate-300">{sit.pend.filter((a) => a.p === "A").length} alta(s) · {sit.pend.filter((a) => a.p === "M").length} média(s)</td>
+                  <td className="py-2 px-3 text-slate-300">{sit.base ? `${sit.feitos} de ${sit.total}` : "—"}</td>
+                  <td className="py-2 px-3"><button onClick={() => setSelId(o.id)} className="text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800">Abrir</button></td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </Card>
-      <p className="no-print text-[11px] text-slate-500 mt-2">● vermelho = corrigir · ● amarelo = confirmar · ● verde = sem pendência. Os dados vêm da foto carregada ao abrir a turma (botão “Atualizar dados”).</p>
+      <p className="no-print text-[11px] text-slate-500 mt-2">● vermelho = corrigir · ● amarelo = confirmar · ● verde = sem pendência. Os dados vêm da foto carregada ao abrir a turma (botão “Atualizar dados”). O relatório impresso fica como referência da próxima comparação.</p>
     </div>
   );
 }
@@ -15741,10 +15865,10 @@ function GestaoBackupView({ turmas, onExcluir }) {
     setExcluindo(false);
   };
 
-  const exportarBackup = () => {
+  const exportarBackup = async () => {
     if (!turma || !dadosEquipes) return;
     const agora = new Date();
-    const pacote = { versaoBackup: 1, geradoEm: agora.toISOString(), turma, equipes: dadosEquipes.map(({ equipe, dados }) => ({ equipe, dados })) };
+    const pacote = { versaoBackup: 1, geradoEm: agora.toISOString(), turma, equipes: dadosEquipes.map(({ equipe, dados }) => ({ equipe, dados })), mercado: await lerMercadoTurma(turma.id) };
     baixarArquivo(`backup_${turma.nome.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo(agora)}.json`, JSON.stringify(pacote, null, 2));
     setUltimoBackupTurmaId(turma.id);
     setStatus("Backup exportado com sucesso.");
@@ -15763,6 +15887,7 @@ function GestaoBackupView({ turmas, onExcluir }) {
       const porTurma = await Promise.all(turmas.map(async (t) => ({
         turma: t,
         equipes: await buscarEquipesComDados(t.id),
+        mercado: await lerMercadoTurma(t.id),
       })));
       const agora = new Date();
       const pacote = { versaoBackup: 1, tipo: "geral", geradoEm: agora.toISOString(), turmas: porTurma };
@@ -15796,6 +15921,7 @@ function GestaoBackupView({ turmas, onExcluir }) {
       for (const { equipe, dados } of pacote.equipes) {
         await window.storage.set(`dados_equipe_${equipe.id}`, JSON.stringify(dados), true);
       }
+      if (pacote.mercado && Object.keys(pacote.mercado).length) { try { await gravarMercadoTurma(turma.id, pacote.mercado); } catch {} }
       setStatus("Backup importado com sucesso. Troque de aba e volte para ver os dados restaurados.");
     } catch (e) {
       setStatus("Não foi possível importar este arquivo. Confira se é um backup válido, gerado por esta plataforma.");

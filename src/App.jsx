@@ -1,4 +1,4 @@
-// build: 20261101_18h20m Menu do professor: Cálculo da capacidade (gerar/atualizar, imprimir, quadro da turma e liberação ao aluno)
+// build: 20261101_18h30m Adequação ao mercado: inclui o cálculo da capacidade gerado (tela e impressão)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -15465,7 +15465,7 @@ function gerarRelatorioMercado(item) {
   };
 }
 
-function FolhasMercadoImpressao({ lista, turma, emitidoEm, notas, regs }) {
+function FolhasMercadoImpressao({ lista, turma, emitidoEm, notas, regs, calcs, assins }) {
   const cor = { r: ["#fdecea", "#c0392b", "Corrigir"], a: ["#fff5e0", "#b7791f", "Confirmar"], g: ["#e6f6ec", "#2f855a", "Ok"] };
   const css = `
     .mk-pg{font-family:Arial,Helvetica,sans-serif;color:#1d2330;font-size:11px;line-height:1.35;page-break-after:always;break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fff}
@@ -15495,6 +15495,8 @@ function FolhasMercadoImpressao({ lista, turma, emitidoEm, notas, regs }) {
     .mk-ck{margin-top:5px;border:1px dashed #94a3b8;border-radius:5px;padding:3px 8px;font-size:9.5px;color:#475569;display:flex;gap:14px}.mk-bx{display:inline-block;width:9px;height:9px;border:1.5px solid #475569;vertical-align:-1px;margin-right:4px}
     .mk-sg{display:flex;gap:30px;margin-top:22px;break-inside:avoid}.mk-sg>div{flex:1;border-top:1px solid #334155;padding-top:3px;font-size:9px;color:#475569}
     .mk-qd{width:100%;border-collapse:collapse;font-size:10.5px}.mk-qd th,.mk-qd td{border-bottom:1px solid #e2e8f0;padding:5px 6px;text-align:left;font-weight:400}.mk-qd th{background:#f1f5f9;color:#64748b;font-size:9.5px}.mk-dt{display:inline-block;width:11px;height:11px;border-radius:50%}
+    .mk-ct{width:100%;border-collapse:collapse}.mk-ct th,.mk-ct td{border-bottom:1px solid #e2e8f0;padding:3px 5px;text-align:left}.mk-ct th{background:#f1f5f9;color:#667085;font-size:9px}.mk-ct .gar td{background:#fff1f2;font-weight:700}.mk-cf{font-family:Consolas,monospace;font-size:9.5px;color:#334155}
+    .mk-st{display:inline-block;font-size:9px;font-weight:700;padding:2px 8px;border-radius:99px;margin-bottom:4px}
     .mk-prof{background:#fff8e1;border:1px solid #f3d79a;border-radius:8px;padding:6px 10px}.mk-prof ul{margin:2px 0 0;padding-left:16px}
     .mk-obs{border:1px solid #d6dbe4;border-radius:8px;padding:6px 10px;white-space:pre-wrap;min-height:30px}
     .mk-ft{margin-top:8px;font-size:9px;color:#667085;display:flex;justify-content:space-between;border-top:1px solid #c9d6ea;padding-top:4px}
@@ -15507,6 +15509,10 @@ function FolhasMercadoImpressao({ lista, turma, emitidoEm, notas, regs }) {
         const sit = situacaoMercado(o, reg);
         const obs = (notas && notas[o.id] != null ? notas[o.id] : reg.notas) || "";
         const dmy = (t) => (t ? new Date(t).toLocaleDateString("pt-BR") : "");
+        const cc = calcs && calcs[o.id] ? calcs[o.id] : null;
+        const ccOk = !!(cc && cc.dados && assins && assins[o.id] === cc.assin);
+        const ccd = ccOk ? cc.dados : null;
+        const ccTxt = cc ? new Date(cc.em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }).replace(",", " às") : "";
         const prazoTxt = reg.prazo ? reg.prazo.split("-").reverse().join("/") : "____/____/______";
         const c = o.cap;
         const u = c.dem != null && c.cap ? c.dem / c.cap : null;
@@ -15522,6 +15528,27 @@ function FolhasMercadoImpressao({ lista, turma, emitidoEm, notas, regs }) {
             <div className="mk-hd"><small>RELATÓRIO DE ADEQUAÇÃO AO MERCADO · {turma?.nome || ""}</small><h1>{o.nome}{o.teste ? " (CONTA DE TESTE)" : ""}</h1><p>{o.segmento} · {o.integrantes.join(" · ") || "sem integrantes"}</p></div>
             <div className="mk-ch">{o.sem.map((s) => (<div className="mk-c" key={s.t} style={{ background: cor[s.k][0] }}><b>{s.t}</b><span style={{ color: cor[s.k][1] }}>{cor[s.k][2]}</span><i>{s.d}</i></div>))}</div>
             <h2>1. Capacidade de produção/atendimento — confiram com o projeto escrito de vocês</h2>
+            {ccd ? (
+              <div>
+                <span className="mk-st" style={{ background: "#e6f6ec", color: "#2f855a" }}>Cálculo gerado em {ccTxt} — atualizado</span>
+                <div className="mk-ch" style={{ margin: "0 0 4px" }}>{[["Horas/dia", `${fmtNum(ccd.func.horasDia, 1)} h`], ["Dias/mês", fmtNum(ccd.func.diasMes, 0)], ["Eficiência", `${fmtNum(ccd.func.efic, 0)}%`], ["Pico", fmtNum(ccd.func.pico, 1)], ["Minutos por dia", `${fmtNum(ccd.func.horasDia, 1)}×60×${fmtNum(ccd.func.efic / 100, 2)} = ${fmtNum(ccd.func.minDia, 0)}`]].map(([t, v]) => <div className="mk-c" key={t} style={{ background: "#eef2f7", border: "none" }}><b>{t}</b><span style={{ fontSize: 11 }}>{v}</span></div>)}</div>
+                {ccd.grupos.length === 0 && <div className="mk-conf">A capacidade ainda não foi informada. Preencham os passos 1 a 3 da Capacidade.</div>}
+                {ccd.grupos.map((g) => (
+                  <div key={g.titulo} style={{ marginBottom: 5 }}>
+                    <b>{g.titulo}</b> <span style={{ color: "#667085" }}>· plano do Módulo 5: {fmtNum(g.dem, 0)} {ccd.un}/mês</span>
+                    <table className="mk-ct"><thead><tr><th>Recurso</th><th>Qtd</th><th>Tempo</th><th>Conta</th><th>Capac./mês</th></tr></thead>
+                      <tbody>{g.linhas.map((x, i) => <tr key={i} className={x.gargalo ? "gar" : ""}><td>{x.nome}{x.gargalo ? " ◀ gargalo" : ""}</td><td>{fmtNum(x.qtd, 0)}</td><td>{x.tempo}</td><td className="mk-cf">{x.conta}</td><td>{x.cap != null ? fmtNum(x.cap, 0) : "—"}</td></tr>)}</tbody></table>
+                    {g.cap != null ? <div style={{ marginTop: 2 }}>Plano ÷ capacidade: {fmtNum(g.dem, 0)} ÷ {fmtNum(g.cap, 0)} = <b>{fmtNum(g.uso * 100, 0)}%</b> · no pico: {fmtNum(g.dem, 0)} × {fmtNum(ccd.func.pico, 1)} = {fmtNum(g.dem * ccd.func.pico, 0)} → <b style={{ color: g.usoPico > 1 ? "#c0392b" : g.usoPico >= 0.9 ? "#b7791f" : "#2f855a" }}>{fmtNum(g.usoPico * 100, 0)}%{g.usoPico > 1 ? " — não atende" : ""}</b></div> : <div style={{ marginTop: 2, color: "#b7791f", fontWeight: 700 }}>Capacidade não calculada: faltam quantidades ou tempos dos recursos acima.</div>}
+                  </div>
+                ))}
+                {ccd.horas && <div className="mk-conf" style={{ background: "#fff", borderColor: "#d6dbe4" }}><b>Horas de trabalho:</b> {fmtNum(ccd.horas.nec, 0)} h necessárias × {fmtNum(ccd.horas.disp, 0)} h disponíveis ({fmtNum(ccd.horas.pessoas, 0)} pessoa(s) × {fmtNum(ccd.horas.porPessoa, 1)} h) = <b>{fmtNum(ccd.horas.uso * 100, 0)}%</b>{ccd.func.pico > 1 ? ` · no pico ${fmtNum(ccd.horas.usoPico * 100, 0)}%` : ""}</div>}
+                {ccd.caber.map((x, i) => <div key={i} style={{ background: "#fdecea", border: "1px solid #f5b5ae", borderRadius: 7, padding: "4px 9px", marginTop: 4, breakInside: "avoid" }}><b>Para caber — {x.g}:</b> A. {x.a} B. {x.b}</div>)}
+                <div className="mk-conf"><b>Vocês precisam conferir:</b> horas e dias de funcionamento · pessoas que atendem/produzem · tempo de cada produto ou atendimento · equipamentos e lugares</div>
+                {ccd.conferir.length > 0 && <div className="mk-conf"><b>Conferir antes de mexer:</b><ul>{ccd.conferir.map((t, i) => <li key={i}>{t}</li>)}</ul></div>}
+              </div>
+            ) : (
+              <>
+                {cc ? <span className="mk-st" style={{ background: "#fff5e0", color: "#b7791f" }}>Cálculo de {ccTxt} — os dados da equipe mudaram depois; peça ao professor para atualizar</span> : <span className="mk-st" style={{ background: "#eceff4", color: "#667085" }}>Cálculo ainda não gerado — o professor gera em Relatórios › Cálculo da capacidade</span>}
             <div className="mk-box">
               <div>
                 <b>{c.titulo}</b>
@@ -15539,6 +15566,8 @@ function FolhasMercadoImpressao({ lista, turma, emitidoEm, notas, regs }) {
                 <div className="mk-conf"><b>Vocês precisam conferir:</b><ul><li>Horas por dia e dias por mês de funcionamento</li><li>Quantas pessoas realmente produzem/atendem</li><li>Tempo de cada produto ou atendimento</li><li>Equipamentos e lugares (quantidade e capacidade)</li></ul></div>
               </div>
             </div>
+              </>
+            )}
             <h2>2. O que fazer, nesta ordem</h2>
             {sit.base && (
               <div className="mk-av"><div><span style={{ fontSize: 9, color: "#64748b" }}>DESDE O ÚLTIMO RELATÓRIO ({new Date(reg.ultimo.em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }).replace(",", " às")})</span><br /><b style={{ color: "#2f855a" }}>{sit.feitos} resolvido(s)</b> &nbsp; <b style={{ color: "#c0392b" }}>{sit.pend.length} pendente(s)</b>{sit.novos.length > 0 && <> &nbsp; <b style={{ color: "#b7791f" }}>{sit.novos.length} novo(s)</b></>}</div><div className="bg"><div style={{ height: 9, background: "#2f855a", width: `${sit.total ? Math.min(100, sit.feitos / sit.total * 100) : 0}%` }} /></div><b>{sit.feitos} de {sit.total}</b></div>
@@ -15944,11 +15973,13 @@ function RelatorioMercado({ turma, dadosEquipes }) {
   const [imp, setImp] = useState(null); // { tipo: "folhas", lista } | { tipo: "quadro" }
   const [selId, setSelId] = useState(null);
   const [regs, setRegs] = useState(null);
+  const [calcs, setCalcs] = useState(null);
   const [msg, setMsg] = useState("");
   const regsRef = useRef({});
   const lista = useMemo(() => (dadosEquipes || []).map((it) => { try { return gerarRelatorioMercado(it); } catch (e) { return { id: it.equipe.id, nome: it.equipe.nomeNegocio, segmento: it.equipe.segmento || "", integrantes: it.equipe.integrantes || [], sem: [], cap: { titulo: "Capacidade", dem: null, cap: null, un: "", pico: "", pess: "", falta: "Não foi possível analisar esta empresa." }, acoes: [], prof: [], erro: true }; } }), [dadosEquipes]);
   const emitidoEm = new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }).replace(",", " às");
-  useEffect(() => { let vivo = true; lerMercadoTurma(turma.id).then((o) => { if (vivo) { regsRef.current = o; setRegs(o); } }); return () => { vivo = false; }; }, [turma.id]);
+  useEffect(() => { let vivo = true; lerMercadoTurma(turma.id).then((o) => { if (vivo) { regsRef.current = o; setRegs(o); } }); lerCapCalcTurma(turma.id).then((o) => { if (vivo) setCalcs(o); }); return () => { vivo = false; }; }, [turma.id]);
+  const assins = useMemo(() => { const m = {}; (dadosEquipes || []).forEach((it) => { try { m[it.equipe.id] = capCalcAssinatura(it); } catch { /* sem assinatura */ } }); return m; }, [dadosEquipes]);
   const liberar = async (os) => {
     const atual = regsRef.current || {}; const prox = { ...atual };
     try {
@@ -15995,10 +16026,10 @@ function RelatorioMercado({ turma, dadosEquipes }) {
     }, 200);
     return () => { clearTimeout(t); if (estilo.parentNode) estilo.parentNode.removeChild(estilo); };
   }, [imp, turma]);
-  if (dadosEquipes === null || regs === null) return <LoadingScreen />;
+  if (dadosEquipes === null || regs === null || calcs === null) return <LoadingScreen />;
   if (dadosEquipes.length === 0) return <Card className="p-8 text-center text-slate-500">Nenhuma empresa nesta turma ainda.</Card>;
   const notasMap = Object.fromEntries(Object.entries(regs).map(([k, v]) => [k, v?.notas || ""]));
-  const portal = imp ? createPortal(<div id="merc-print-root-wrap">{imp.tipo === "quadro" ? <QuadroMercadoImpressao lista={lista.filter((o) => !o.teste)} regs={regs} turma={turma} emitidoEm={emitidoEm} /> : <FolhasMercadoImpressao lista={imp.lista} turma={turma} emitidoEm={emitidoEm} notas={notasMap} regs={regs} />}</div>, document.body) : null;
+  const portal = imp ? createPortal(<div id="merc-print-root-wrap">{imp.tipo === "quadro" ? <QuadroMercadoImpressao lista={lista.filter((o) => !o.teste)} regs={regs} turma={turma} emitidoEm={emitidoEm} /> : <FolhasMercadoImpressao lista={imp.lista} turma={turma} emitidoEm={emitidoEm} notas={notasMap} regs={regs} calcs={calcs} assins={assins} />}</div>, document.body) : null;
   const sel = selId ? lista.find((o) => o.id === selId) : null;
   const dot = { r: "bg-rose-500", a: "bg-amber-400", g: "bg-emerald-500" };
   const btnP = "flex items-center gap-2 bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm";
@@ -16037,7 +16068,7 @@ function RelatorioMercado({ turma, dadosEquipes }) {
             ))}
           </Card>
         )}
-        <div className="rounded-xl overflow-hidden bg-white p-4"><FolhasMercadoImpressao lista={[sel]} turma={turma} emitidoEm={emitidoEm} notas={notasMap} regs={regs} /></div>
+        <div className="rounded-xl overflow-hidden bg-white p-4"><FolhasMercadoImpressao lista={[sel]} turma={turma} emitidoEm={emitidoEm} notas={notasMap} regs={regs} calcs={calcs} assins={assins} /></div>
       </div>
     );
   }

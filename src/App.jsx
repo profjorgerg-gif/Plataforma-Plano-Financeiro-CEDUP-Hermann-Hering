@@ -1,4 +1,4 @@
-// build: 20261101_13h01m Realismo de mercado: o que mexer em cada indicador, ajuste sozinho, investimento e quadro final
+// build: 20261101_13h35m Relatório de adequação ao mercado (menu do professor: gerar, salvar e imprimir)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -15218,12 +15218,330 @@ function RelatorioPlanoSemestral({ turma }) {
   );
 }
 
+// ===== Relatório de adequação ao mercado (o professor gera, salva e imprime; NÃO altera nenhum lançamento) =====
+const MERC_RE_PESSOA = /cozinheir|padeir|vendedor|atendente|profission|confeiteir|balconista|manicure|cabeleireir|sorveteir|esteticista|auxiliar de (produ|prepar|cozinha)/i;
+const MERC_STOP = new Set(["de", "da", "do", "com", "e", "para", "em", "a", "o"]);
+function mercNorm(s) {
+  return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9 ]+/g, " ").split(/\s+/)
+    .filter((w) => w && !MERC_STOP.has(w)).map((w) => (w.length > 3 && w.endsWith("s") ? w.slice(0, -1) : w)).join(" ");
+}
+function gerarRelatorioMercado(item) {
+  const { equipe, dados, calc } = item;
+  const l = mergeLancamentos(dados.lancamentos);
+  const acoes = [];
+  const add = (p, onde, fazer, nums) => acoes.push({ p, onde, fazer, nums });
+  const peso = { g: 0, a: 1, r: 2 };
+  const sem = { cap: ["g", "ok"], pes: ["g", "ok"], pre: ["g", "ok"], cus: ["g", "ok"], ret: ["g", "ok"] };
+  const sev = (k, st, det) => { if (peso[st] > peso[sem[k][0]]) sem[k] = [st, det || ""]; };
+  const pc = (u) => (u == null ? "—" : `${fmtNum(u * 100, 0)}%`);
+  const R = (v) => fmtBRL(v || 0);
+  const m5 = (l.m5.itens || []).filter((it) => Number(it.qtd) > 0);
+  const fat = calc.faturamento || 0;
+  const cap = dados.capacidade; const f = cap?.funcionamento || {};
+  const usou = !!(cap && Object.values(cap.recursos || {}).some((v) => capNum(v?.qtd) > 0));
+  const totUn = m5.reduce((s, it) => s + (Number(it.qtd) || 0), 0);
+  const m9 = detalheMaoDeObra(l.m9);
+  const nFunc = m9.linhas.reduce((s, r) => s + r.qtd, 0); const nSoc = m9.prolabore.reduce((s, r) => s + r.qtd, 0);
+  const txtM9 = `Módulo 9: ${fmtNum(nFunc, 0)} funcionário(s) + ${fmtNum(nSoc, 0)} sócio(s) com pró-labore`;
+  let capInfo = { titulo: "Capacidade", dem: null, cap: null, un: "", pico: "", pess: txtM9, falta: "" };
+
+  // ---------- 1. Capacidade de produção/atendimento ----------
+  if (!usou) {
+    sev("cap", "r", "não informada");
+    capInfo.falta = `A capacidade ainda não foi informada. Plano do Módulo 5: ${fmtNum(totUn, 0)} unidades/mês (${fmtNum(totUn / 26, 0)} por dia) em ${m5.length} itens.`;
+    add("A", "Capacidade › abas 1, 2 e 3", "Preencher a Capacidade: horário de funcionamento, quantas pessoas produzem/atendem, equipamentos e tempos. Sem isso não dá para saber se o plano do Módulo 5 cabe na empresa.", `Plano: ${fmtNum(totUn, 0)} unidades/mês = ${fmtNum(totUn / 26, 0)} por dia, ${m5.length} itens.`);
+  } else {
+    let A = null;
+    try { A = capAnalise(equipe.segmento, cap, m5); } catch { A = null; }
+    if (A) {
+      const un = A.modelo.unidade; capInfo.un = un;
+      const grupos = [["Atendimento", A.RA]]; if (A.temProd) grupos.push(["Produção", A.RP]);
+      let melhor = null;
+      grupos.forEach(([tit, Rx]) => {
+        if (!Rx || Rx.capacidade == null) {
+          sev("cap", "r", "não calculada");
+          add("A", `Capacidade › ${tit === "Produção" ? "aba 3 Produção" : "aba 2 Atendimento"}`, `A capacidade de ${tit.toLowerCase()} não foi calculada porque faltam quantidades ou tempos. Preencher o tempo de cada produto/serviço e a quantidade de cada recurso.`, `Plano: ${fmtNum(totUn, 0)} unidades/mês = ${fmtNum(totUn / 26, 0)} por dia, ${m5.length} itens.`);
+          if (!melhor) capInfo.falta = `A capacidade de ${tit.toLowerCase()} não foi calculada: faltam tempos ou quantidades. Plano: ${fmtNum(totUn, 0)} un/mês = ${fmtNum(totUn / 26, 0)} por dia.`;
+          return;
+        }
+        if (!melhor || Rx.utilizacao > melhor.Rx.utilizacao) melhor = { tit, Rx };
+        const u = Rx.utilizacao; const up = Rx.utilizacaoPico;
+        const nums = `Plano ${fmtNum(Rx.demanda, 0)} × capacidade ${fmtNum(Rx.capacidade, 0)} ${un}/mês = ${pc(u)}${Rx.pico > 1 ? `; no pico ${pc(up)}` : ""}. Gargalo: ${Rx.gargalo.r.nome}.`;
+        if (u > 1 || (up != null && up > 1)) {
+          const forte = u > 1 || up > 1.15;
+          sev("cap", forte ? "r" : "a", `${pc(u)}${up > 1 ? ` (pico ${pc(up)})` : ""}`);
+          add(forte ? "A" : "M", `Capacidade › ${tit === "Produção" ? "aba 3 Produção" : "aba 2 Atendimento"}  ·  Módulos 5, 1 e 9`, `A estrutura não dá conta do plano${u <= 1 ? " no pico" : ""}. Primeiro conferir no projeto escrito: horas de funcionamento, pessoas e equipamentos. Se estiver certo, reduzir as quantidades do Módulo 5 ou ampliar equipe/equipamentos (Módulos 1 e 9).`, nums);
+        } else if (u >= 0.9) {
+          sev("cap", "a", `${pc(u)}`);
+          add("M", `Capacidade › ${tit === "Produção" ? "aba 3 Produção" : "aba 2 Atendimento"}`, "A empresa trabalha no limite da capacidade. Conferir se há folga para imprevistos e para o pico de vendas.", nums);
+        }
+        const gl = (Rx.linhas || []).find((x) => x.r && x.r.nome === Rx.gargalo.r.nome);
+        if (gl && MERC_RE_PESSOA.test(Rx.gargalo.r.nome) && capNum(gl.qtd) <= 1 && capNum(f.horasDia) > 8) {
+          sev("pes", "r", "jornada acima de 8 h");
+          add("A", "Capacidade › aba 1  ·  Módulo 9", `O funcionamento é de ${fmtNum(capNum(f.horasDia), 0)} h por dia, mas há apenas 1 pessoa em "${Rx.gargalo.r.nome}". A jornada normal é de 8 h por dia. Informar o horário real; se abrir mais de 8 h, incluir outro turno no Módulo 9 ou reduzir o horário.`, `Funcionamento ${fmtNum(capNum(f.horasDia), 0)} h/dia, ${fmtNum(capNum(f.diasMes) || 26, 0)} dias/mês.`);
+        }
+      });
+      if (melhor) { capInfo.titulo = melhor.tit === "Produção" ? "Produção" : "Atendimento"; capInfo.dem = melhor.Rx.demanda; capInfo.cap = melhor.Rx.capacidade; capInfo.pico = melhor.Rx.pico > 1 ? `${pc(melhor.Rx.utilizacaoPico)} no pico${melhor.Rx.utilizacaoPico > 1 ? " (não atende)" : ""}` : ""; }
+      const cg = capCarga(cap, A.principais, A.R.horasEf);
+      const ef = A.ef || {};
+      if (ef.corte || (cg.ativo && cg.uso != null && cg.uso > 1)) {
+        sev("cap", "r", "horas acima do possível");
+        add("A", "Capacidade › abas 1 e 3  ·  Módulo 9", "As horas de trabalho necessárias passam das horas disponíveis. Conferir quantas pessoas realmente produzem/atendem e quanto tempo leva cada produto/serviço. Depois, ajustar as quantidades do Módulo 5 ou incluir pessoas no Módulo 9.", `${cg.ativo ? `${fmtNum(cg.horas, 0)} h necessárias × ${fmtNum(cg.disp, 0)} h disponíveis (${fmtNum(cg.pessoas, 0)} pessoa(s)) = ${pc(cg.uso)}. ` : ""}${ef.cap != null ? `Capacidade efetiva ${fmtNum(ef.cap, 0)} × plano ${fmtNum(A.demA, 0)} ${un}/mês.` : ""}`);
+      }
+      if (cg.ativo) capInfo.pess = `Horas: ${fmtNum(cg.horas, 0)} necessárias × ${fmtNum(cg.disp, 0)} disponíveis = ${pc(cg.uso)} (${fmtNum(cg.pessoas, 0)} pessoa(s)) · ${txtM9}`;
+      if (cg.pessoas > 0 && nFunc + nSoc > cg.pessoas) {
+        sev("pes", "a", "pessoas diferentes");
+        add("M", "Capacidade × Módulo 9", "A Capacidade conta menos pessoas do que o Módulo 9 lista. Dizer quem realmente produz e quem atende, e deixar os dois módulos iguais.", `Capacidade usa ${fmtNum(cg.pessoas, 0)} pessoa(s); Módulo 9 tem ${fmtNum(nFunc, 0)} funcionário(s) + ${fmtNum(nSoc, 0)} sócio(s).`);
+      } else if (cg.ativo && !(cg.pessoas > 0)) {
+        sev("pes", "a", "pessoas não informadas");
+        add("M", "Capacidade › aba 1", "O número de pessoas que produzem/atendem não foi informado; sem ele as horas de trabalho não são conferidas.", txtM9 + ".");
+      }
+      const maxU = Math.max(0, ...grupos.map(([, Rx]) => (Rx && Rx.utilizacao) || 0));
+      if (capNum(f.pico) <= 1 && maxU >= 0.7) add("M", "Capacidade › aba 1 (fator de pico)", "Informar o fator de pico: quanto a movimentação sobe nos melhores dias (fim de semana, datas especiais). Sem ele, a conta considera todos os dias iguais.", `Utilização média ${pc(maxU)}.`);
+      const esp = A.R && A.R.espaco;
+      if (esp && esp.uso != null && (esp.uso < 0.4 || esp.uso > 1)) add("M", "Capacidade › Espaço", esp.uso > 1 ? "Os itens não cabem na área informada. Conferir a área útil e as quantidades de mesas, equipamentos e lugares." : "Só uma parte pequena da área aparece como usada. Conferir as áreas de produção, balcão e mesas.", `${fmtNum(esp.usado, 0)} de ${fmtNum(esp.areaUtil, 0)} m² aproveitáveis (${pc(esp.uso)}).`);
+    }
+  }
+  try {
+    const pq = capPesqPreenchidos(cap || {}, equipe.segmento);
+    if (pq.total > 0 && pq.n < pq.total) add("M", "Capacidade › aba 4 Condições do segmento", "Pesquisar os dados do segmento e anotar a fonte de cada um.", `${pq.n} de ${pq.total} dados preenchidos.`);
+  } catch {}
+
+  // ---------- 2. Mão de obra ----------
+  m9.linhas.filter((r) => /refor[cç]o de equipe/i.test(r.funcao || "")).forEach((r) => {
+    sev("pes", "r", "linha sem função");
+    add("A", "Módulo 9 – Mão de Obra", `A linha "${r.funcao}" foi criada pela plataforma, não é uma função real. Se vão contratar alguém, trocar pela função (ex.: auxiliar, atendente) com salário de mercado; se não, retirar. O resultado vai mudar.`, `${R(r.total)} por mês${fat ? ` = ${fmtNum(r.total / fat * 100, 0)}% do faturamento` : ""}. Mão de obra total ${R(calc.maoDeObra)}.`);
+  });
+  if (fat > 0 && m9.totalProlabore / fat > 0.3) { sev("pes", "a", "pró-labore alto"); add("M", "Módulo 9 – Mão de Obra", "O pró-labore está muito alto para o faturamento. Conferir o valor que os sócios retirarão na fase de abertura.", `Pró-labore ${R(m9.totalProlabore)} = ${fmtNum(m9.totalProlabore / fat * 100, 0)}% do faturamento.`); }
+
+  // ---------- 3. Investimentos fixos × estoque ----------
+  const set5 = new Set(m5.map((it) => mercNorm(it.nome)));
+  const merc1 = (l.m1.itens || []).filter((it) => it.desc && set5.has(mercNorm(it.desc)));
+  if (merc1.length >= 2) {
+    const tot = merc1.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.valorUnit) || 0), 0);
+    sev("cus", "r", "mercadoria no Módulo 1");
+    add("A", "Módulo 1 e Módulo 10 → Módulo 2", "Itens que a empresa vende estão lançados como investimento fixo (e depreciados). Mercadoria é estoque: tirar do Módulo 1/10 e contar no estoque inicial do Módulo 2.", `${merc1.length} itens, ${R(tot)}. Ex.: ${merc1.slice(0, 3).map((it) => it.desc).join(", ")}.`);
+  }
+  const cont = {}; (l.m1.itens || []).forEach((it) => { const k = mercNorm(it.desc); if (k) (cont[k] = cont[k] || []).push(it); });
+  const dup = Object.values(cont).filter((v) => v.length >= 2);
+  if (dup.length) { sev("cus", "a", "possível duplicidade"); add("M", "Módulo 1 – Investimentos Fixos", "Há itens com a mesma descrição em linhas separadas. Conferir se são mesmo itens diferentes ou se foram lançados duas vezes.", dup.slice(0, 4).map((v) => `${v[0].desc} (${v.length} linhas)`).join(" · ") + "."); }
+  const TOK_IGN = new Set(["sistema", "plano", "software", "gestao", "caixa", "vendas", "mensal", "internet", "telefone", "assinatura", "licenca", "monitor", "controle", "pecas"]);
+  const toks = (s) => mercNorm(s).split(" ").filter((w) => w.length >= 4 && !TOK_IGN.has(w));
+  const t11 = new Set((l.m11.itens || []).flatMap((it) => toks(it.desc)));
+  const assin = (l.m1.itens || []).filter((it) => /sistema|software|assinatura|licen[cç]a|plano/i.test(it.desc || "") && toks(it.desc).some((w) => t11.has(w)));
+  if (assin.length) { sev("cus", "a", "assinatura duplicada"); add("M", "Módulo 1 e Módulo 10 × Módulo 11", "O mesmo sistema/assinatura aparece como bem no Módulo 1 e como mensalidade no Módulo 11. Assinatura é despesa: retirar do Módulo 1/10.", assin.map((it) => `${it.desc} (${R((Number(it.qtd) || 0) * (Number(it.valorUnit) || 0))})`).join(" · ") + "."); }
+
+  // ---------- 4. Custos (Módulos 6 e 8) ----------
+  if ((l.m6.itens || []).length > 0) {
+    const set6 = new Set((l.m6.itens || []).map((it) => mercNorm(it.produto)));
+    const sem6 = m5.filter((it) => !set6.has(mercNorm(it.nome)));
+    if (sem6.length) { sev("cus", "a", `${sem6.length} sem ficha`); add("M", "Módulo 6 – Custo Unit.", "Criar a ficha de custo dos produtos/serviços do Módulo 5 que não têm (ou corrigir o nome da linha, se ela existir com outro nome).", `${sem6.length} de ${m5.length} sem ficha: ${sem6.slice(0, 4).map((it) => it.nome).join(", ")}${sem6.length > 4 ? ", …" : ""}.`); }
+  }
+  const baixo = m5.filter((it) => (Number(l.m8.custosUnit?.[it.id]) || 0) >= (Number(it.precoUnit) || 0) && (Number(it.precoUnit) || 0) > 0);
+  if (baixo.length) { sev("pre", "r", "custo ≥ preço"); add("A", "Módulo 5 e Módulo 8", "Nestes itens o custo é igual ou maior que o preço de venda: cada venda dá prejuízo. Rever o preço (pesquisar concorrentes) ou o custo.", baixo.slice(0, 5).map((it) => `${it.nome} (preço ${R(it.precoUnit)} × custo ${R(l.m8.custosUnit?.[it.id])})`).join(" · ") + "."); }
+  const freq = {}; m5.forEach((it) => { const q = Number(it.qtd) || 0; freq[q] = (freq[q] || 0) + 1; });
+  const rep = Object.entries(freq).filter(([q, n]) => n >= 8 && Number(q) > 0).sort((a, b) => b[1] - a[1])[0];
+  if (rep) { sev("pre", "r", "quantidades repetidas"); add("A", "Módulo 5 – Faturamento", "Vários itens têm exatamente a mesma quantidade. Estimar a demanda de cada item (os mais procurados vendem mais) e justificar.", `${rep[1]} itens com ${fmtNum(Number(rep[0]), 0)} unidades/mês.`); }
+  // custo reduzido automaticamente pelo ajuste de viabilidade
+  let redCusto = null;
+  (dados.comentarios || []).filter((c) => /AJUSTES FEITOS PELO PROFESSOR/i.test(c.texto || "")).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)).forEach((c) => {
+    const m = /custo dos produtos\s*[−-]\s*([\d.,]+)%/i.exec(c.texto || "");
+    if (m) redCusto = { pct: Number(m[1].replace(",", ".")), em: c.timestamp };
+  });
+  if (redCusto && redCusto.pct >= 10) {
+    sev("cus", redCusto.pct >= 15 ? "r" : "a", `custo −${fmtNum(redCusto.pct, 1)}% automático`);
+    add(redCusto.pct >= 15 ? "A" : "M", "Módulo 6 – Custo Unit.", `Um ajuste de viabilidade reduziu o custo dos produtos em ${fmtNum(redCusto.pct, 1)}%${redCusto.em ? ` (${new Date(redCusto.em).toLocaleDateString("pt-BR")})` : ""}. Refazer as cotações de cada insumo com fornecedores e confirmar os custos. Se o custo real for maior, o resultado cai.`, `Resultado mensal hoje: ${R(calc.resultadoOperacional)}.`);
+  }
+
+  // ---------- 5. Capital de giro e custos fixos ----------
+  if (calc.necessidadeLiquidaDias <= 0 && (calc.custoFixoTotal || 0) > 0 && fat > 0) {
+    sev("cus", "r", "caixa mínimo zero");
+    add("A", "Módulo 2 – Capital de Giro", "O caixa mínimo ficou zero porque os prazos de venda, estoque e compras se compensam. Conferir com fornecedores e clientes se os prazos são mesmo estes; a empresa paga folha e custos fixos todo mês.", `Prazos: vendas ${fmtNum(Number(l.m2.prazoVendasDias) || 0, 0)} d · estoque ${fmtNum(Number(l.m2.prazoEstoqueDias) || 0, 0)} d · compras ${fmtNum(Number(l.m2.prazoComprasDias) || 0, 0)} d. Custos fixos ${R(calc.custoFixoTotal)}/mês.`);
+  } else if (calc.investimentoTotal > 0 && calc.capitalGiroTotal / calc.investimentoTotal > 0.6) {
+    sev("cus", "a", "giro alto");
+    add("M", "Módulo 2 – Capital de Giro", "O capital de giro é a maior parte do investimento. Justificar o estoque inicial e o prazo de estoque (reposição real do fornecedor).", `Estoque ${R(calc.estoqueInicial)} · caixa mínimo ${R(calc.caixaMinimo)} · giro ${R(calc.capitalGiroTotal)} de ${R(calc.investimentoTotal)} (${fmtNum(calc.capitalGiroTotal / calc.investimentoTotal * 100, 0)}%).`);
+  }
+  const cart = (l.m11.itens || []).find((it) => /cart[aã]o|pix|maquin/i.test(it.desc || ""));
+  if (cart && fat > 0 && (Number(cart.valor) || 0) / fat < 0.01) { sev("cus", "a", "taxa de cartão fixa"); add("M", "Módulo 7 e Módulo 11", "A taxa de cartão/PIX foi lançada como valor fixo. Ela é um percentual das vendas: informar a taxa da maquininha no Módulo 7.", `"${cart.desc}" ${R(cart.valor)}; cada 1% de taxa = ${R(fat * 0.01)} por mês.`); }
+  const alug = (l.m11.itens || []).find((it) => /aluguel/i.test(it.desc || ""));
+  const area = capNum(f.area);
+  if (alug && area > 0) {
+    const pm = (Number(alug.valor) || 0) / area;
+    if (pm > 0 && (pm < 8 || pm > 100)) { sev("cus", "a", "aluguel a confirmar"); add("M", "Módulo 11 – Custos Fixos", "Apresentar orçamento ou anúncio do imóvel que comprove o valor do aluguel; ele foge do que costuma ser praticado.", `Aluguel ${R(alug.valor)} para ${fmtNum(area, 0)} m² = ${R(pm)} por m².`); }
+  }
+
+  // ---------- 6. Retorno ----------
+  if (calc.resultadoOperacional < 0) { sev("ret", "r", "prejuízo"); add("A", "Módulos 5, 6, 9 e 11", "O resultado mensal é negativo. Rever preços e quantidades (após fechar a capacidade) e os custos que estejam acima do necessário.", `Resultado mensal ${R(calc.resultadoOperacional)}.`); }
+  else if (calc.prazoRetorno == null || calc.prazoRetorno > 5) { sev("ret", "r", calc.prazoRetorno == null ? "não se paga" : `${fmtNum(calc.prazoRetorno, 1)} anos`); add("M", "Módulos 5, 6 e 11", "O investimento demora mais de 5 anos para voltar. Depois de fechar a capacidade e os custos, conferir de novo preços, quantidades e custos fixos.", `Retorno: ${calc.prazoRetorno == null ? "não se paga" : fmtNum(calc.prazoRetorno, 1) + " anos"} · lucratividade ${fmtPct(calc.lucratividade)}.`); }
+  else if (calc.prazoRetorno > 3) sev("ret", "a", `${fmtNum(calc.prazoRetorno, 1)} anos`);
+  else sev("ret", "g", `${fmtNum(calc.prazoRetorno, 1)} anos`);
+
+  // ---------- o que o professor já alterou ----------
+  const por = {}; (dados.relatorioAjustes || []).forEach((r) => { if (r.desfeito) return; (r.mods || []).forEach((m) => { const o = por[m] || (por[m] = { n: 0, em: 0 }); o.n++; o.em = Math.max(o.em, r.em || 0); }); });
+  const prof = Object.entries(por).sort((a, b) => b[1].em - a[1].em).map(([m, o]) => `${rotModAj(m)}: ${o.n} ajuste(s), o último em ${o.em ? new Date(o.em).toLocaleDateString("pt-BR") : "—"}`);
+  m9.linhas.filter((r) => /refor[cç]o de equipe/i.test(r.funcao || "")).forEach(() => prof.push('Linha "Reforço de equipe" no Módulo 9 (criada pelo realismo de mercado)'));
+  if (por.m5 && sem.pre[0] === "g") sev("pre", "a", "ajustados pelo professor");
+
+  const ordem = { A: 0, M: 1 };
+  acoes.sort((a, b) => ordem[a.p] - ordem[b.p]);
+  const lab = { cap: "Capacidade", pes: "Pessoal (M9)", pre: "Preços", cus: "Custos / estoque", ret: "Retorno" };
+  return {
+    id: equipe.id, nome: equipe.nomeNegocio, segmento: equipe.segmento || "não informado", integrantes: equipe.integrantes || [], teste: !!equipe.teste,
+    sem: Object.keys(lab).map((k) => ({ t: lab[k], k: sem[k][0], d: sem[k][0] === "g" ? "sem pendência" : sem[k][1] })),
+    cap: capInfo, acoes, prof,
+  };
+}
+
+function FolhasMercadoImpressao({ lista, turma, emitidoEm, notas }) {
+  const cor = { r: ["#fdecea", "#c0392b", "Corrigir"], a: ["#fff5e0", "#b7791f", "Confirmar"], g: ["#e6f6ec", "#2f855a", "Ok"] };
+  const css = `
+    .mk-pg{font-family:Arial,Helvetica,sans-serif;color:#1d2330;font-size:11px;line-height:1.35;page-break-after:always;break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fff}
+    .mk-pg:last-child{page-break-after:auto;break-after:auto}.mk-pg *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .mk-cab{position:relative;min-height:72px;text-align:center;font-size:9.5px;line-height:1.3;padding:0 90px}
+    .mk-cab img.fl{position:absolute;left:0;top:0;height:68px}.mk-cab img.lg{position:absolute;right:0;top:0;height:68px}
+    .mk-hd{margin-top:6px;background:#1f4e8c;color:#fff;border-radius:8px;padding:9px 14px}.mk-hd small{font-size:9px;letter-spacing:1.2px;opacity:.85}
+    .mk-hd h1{margin:2px 0;font-size:19px}.mk-hd p{margin:0;font-size:10.5px;opacity:.92}
+    .mk-ch{display:flex;gap:6px;margin:8px 0}.mk-c{flex:1;border-radius:7px;padding:5px 8px;border:1px solid #ddd}.mk-c b{display:block;font-size:9px;color:#667085}.mk-c span{font-weight:700;font-size:12px}.mk-c i{font-style:normal;font-size:9px;display:block;color:#667085}
+    .mk-pg h2{font-size:12px;margin:11px 0 5px;color:#0f172a;border-bottom:2px solid #c9d6ea;padding-bottom:2px}
+    .mk-box{border:1px solid #d6dbe4;border-radius:8px;padding:8px 10px;display:flex;gap:16px}.mk-box>div{flex:1}
+    .mk-bar{height:17px;border-radius:5px;background:#eceff4;margin:3px 0;overflow:hidden}.mk-bar>div{height:100%;color:#fff;font-weight:700;font-size:10px;padding:2px 6px;white-space:nowrap}
+    .mk-lbl{display:flex;justify-content:space-between;font-size:9.5px;color:#667085}
+    .mk-conf{background:#fff8e1;border:1px solid #f3d79a;border-radius:7px;padding:6px 9px;margin-top:5px}.mk-conf ul{margin:3px 0 0;padding-left:16px}
+    .mk-ac{display:flex;gap:9px;border:1px solid #d6dbe4;border-radius:8px;padding:7px 9px;margin-bottom:6px;break-inside:avoid;page-break-inside:avoid}
+    .mk-n{flex:0 0 24px;height:24px;border-radius:50%;background:#1f4e8c;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:12px}
+    .mk-pr{display:inline-block;font-size:8.5px;font-weight:800;padding:1px 7px;border-radius:99px;margin-bottom:2px}
+    .mk-on{font-size:10px;color:#1f4e8c;font-weight:700}.mk-on:before{content:"ONDE: ";color:#667085;font-weight:600}
+    .mk-fz{font-weight:700;margin-top:1px}.mk-rf{margin-top:3px;font-size:10px;background:#f1f4f9;border-radius:5px;padding:3px 7px;color:#344054}.mk-rf:before{content:"NÚMEROS: ";font-weight:700;color:#667085}
+    .mk-prof{background:#fff8e1;border:1px solid #f3d79a;border-radius:8px;padding:6px 10px}.mk-prof ul{margin:2px 0 0;padding-left:16px}
+    .mk-obs{border:1px solid #d6dbe4;border-radius:8px;padding:6px 10px;white-space:pre-wrap;min-height:30px}
+    .mk-ft{margin-top:8px;font-size:9px;color:#667085;display:flex;justify-content:space-between;border-top:1px solid #c9d6ea;padding-top:4px}
+  `;
+  return (
+    <div id="merc-print-root">
+      <style>{css}</style>
+      {lista.map((o) => {
+        const c = o.cap;
+        const u = c.dem != null && c.cap ? c.dem / c.cap : null;
+        const col = u == null ? "#2f855a" : u > 1 ? "#c0392b" : u >= 0.9 ? "#d99a1f" : "#2f855a";
+        const mx = c.dem != null ? Math.max(c.dem, c.cap) : 1;
+        return (
+          <section className="mk-pg" key={o.id}>
+            <div className="mk-cab">
+              <img className="fl" src={PLANO_IMG_BRASAO} alt="" /><img className="lg" src={PLANO_IMG_CEDUP} alt="" />
+              <b>ESTADO DE SANTA CATARINA</b><br /><b>SECRETARIA DE ESTADO DA EDUCAÇÃO</b><br />
+              <b>CEDUP – CENTRO DE EDUCAÇÃO PROFISSIONAL HERMANN HERING</b><br />Plataforma do Plano Financeiro
+            </div>
+            <div className="mk-hd"><small>RELATÓRIO DE ADEQUAÇÃO AO MERCADO · {turma?.nome || ""}</small><h1>{o.nome}{o.teste ? " (CONTA DE TESTE)" : ""}</h1><p>{o.segmento} · {o.integrantes.join(" · ") || "sem integrantes"}</p></div>
+            <div className="mk-ch">{o.sem.map((s) => (<div className="mk-c" key={s.t} style={{ background: cor[s.k][0] }}><b>{s.t}</b><span style={{ color: cor[s.k][1] }}>{cor[s.k][2]}</span><i>{s.d}</i></div>))}</div>
+            <h2>1. Capacidade de produção/atendimento — confiram com o projeto escrito de vocês</h2>
+            <div className="mk-box">
+              <div>
+                <b>{c.titulo}</b>
+                {c.dem != null ? (<>
+                  <div className="mk-lbl"><span>Plano (Módulo 5)</span><span>{fmtNum(c.dem, 0)} {c.un}/mês</span></div>
+                  <div className="mk-bar"><div style={{ width: `${Math.min(100, c.dem / mx * 100)}%`, background: col }}>{fmtNum(u * 100, 0)}% da capacidade</div></div>
+                  <div className="mk-lbl"><span>Capacidade</span><span>{fmtNum(c.cap, 0)} {c.un}/mês</span></div>
+                  <div className="mk-bar"><div style={{ width: `${Math.min(100, c.cap / mx * 100)}%`, background: "#6b7a90" }} /></div>
+                  {c.pico && <div style={{ color: c.pico.includes("não atende") ? "#c0392b" : col, fontWeight: 700 }}>{c.pico}</div>}
+                </>) : <div style={{ background: "#fdecea", color: "#c0392b", padding: 8, borderRadius: 6, fontWeight: 700, marginTop: 4 }}>{c.falta}</div>}
+              </div>
+              <div>
+                <b>O sistema usou estes dados</b>
+                <div style={{ margin: "3px 0" }}>{c.pess}</div>
+                <div className="mk-conf"><b>Vocês precisam conferir:</b><ul><li>Horas por dia e dias por mês de funcionamento</li><li>Quantas pessoas realmente produzem/atendem</li><li>Tempo de cada produto ou atendimento</li><li>Equipamentos e lugares (quantidade e capacidade)</li></ul></div>
+              </div>
+            </div>
+            <h2>2. O que fazer, nesta ordem</h2>
+            {o.acoes.length === 0 ? <div style={{ color: "#2f855a", fontWeight: 700 }}>Nenhuma pendência encontrada pelas regras automáticas.</div> : o.acoes.map((a, i) => (
+              <div className="mk-ac" key={i}>
+                <div className="mk-n">{i + 1}</div>
+                <div>
+                  <span className="mk-pr" style={a.p === "A" ? { background: "#fdecea", color: "#c0392b" } : { background: "#fff5e0", color: "#b7791f" }}>{a.p === "A" ? "PRIORIDADE ALTA" : "PRIORIDADE MÉDIA"}</span>
+                  <div className="mk-on">{a.onde}</div><div className="mk-fz">{a.fazer}</div>{a.nums && <div className="mk-rf">{a.nums}</div>}
+                </div>
+              </div>
+            ))}
+            {o.prof.length > 0 && (<><h2>3. O professor já alterou no plano de vocês — confirmem se faz sentido</h2><div className="mk-prof"><ul>{o.prof.map((t, i) => <li key={i}>{t}</li>)}</ul></div></>)}
+            {(notas && notas[o.id] && notas[o.id].trim()) && (<><h2>Observações do professor</h2><div className="mk-obs">{notas[o.id]}</div></>)}
+            <div className="mk-ft"><span>Este relatório só orienta: nenhum lançamento é alterado por ele. Depois de corrigir, reenviem o módulo.</span><span>Emitido em {emitidoEm}</span></div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function RelatorioMercado({ turma, dadosEquipes }) {
+  const [folhas, setFolhas] = useState(null);
+  const [selId, setSelId] = useState(null);
+  const [notas, setNotas] = useState({});
+  const lista = useMemo(() => (dadosEquipes || []).map((it) => { try { return gerarRelatorioMercado(it); } catch (e) { return { id: it.equipe.id, nome: it.equipe.nomeNegocio, segmento: it.equipe.segmento || "", integrantes: it.equipe.integrantes || [], sem: [], cap: { titulo: "Capacidade", dem: null, cap: null, un: "", pico: "", pess: "", falta: "Não foi possível analisar esta empresa." }, acoes: [], prof: [], erro: true }; } }), [dadosEquipes]);
+  const emitidoEm = new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }).replace(",", " às");
+  useEffect(() => {
+    if (!folhas) return undefined;
+    const titulo = folhas.length === 1 ? `Adequacao-ao-mercado - ${folhas[0].nome} - ${sufixoDataHoraArquivo()}` : `Adequacao-ao-mercado - ${turma.nome} - todas as equipes - ${sufixoDataHoraArquivo()}`;
+    const estilo = document.createElement("style");
+    estilo.textContent = "@media screen { #merc-print-root-wrap { display: none !important; } } @media print { @page { size: A4 portrait; margin: 10mm; } body > *:not(#merc-print-root-wrap) { display: none !important; } #merc-print-root-wrap { display: block !important; } }";
+    document.head.appendChild(estilo);
+    const original = document.title;
+    const t = setTimeout(() => { document.title = titulo; window.print(); document.title = original; if (estilo.parentNode) estilo.parentNode.removeChild(estilo); setFolhas(null); }, 200);
+    return () => { clearTimeout(t); if (estilo.parentNode) estilo.parentNode.removeChild(estilo); };
+  }, [folhas, turma]);
+  if (dadosEquipes === null) return <LoadingScreen />;
+  if (dadosEquipes.length === 0) return <Card className="p-8 text-center text-slate-500">Nenhuma empresa nesta turma ainda.</Card>;
+  const portal = folhas ? createPortal(<div id="merc-print-root-wrap"><FolhasMercadoImpressao lista={folhas} turma={turma} emitidoEm={emitidoEm} notas={notas} /></div>, document.body) : null;
+  const sel = selId ? lista.find((o) => o.id === selId) : null;
+  const dot = { r: "bg-rose-500", a: "bg-amber-400", g: "bg-emerald-500" };
+  if (sel) {
+    return (
+      <div>
+        {portal}
+        <div className="no-print flex flex-wrap items-center gap-2 mb-3">
+          <button onClick={() => setSelId(null)} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Voltar à lista</button>
+          <button onClick={() => setFolhas([sel])} className="ml-auto flex items-center gap-2 bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm"><Printer size={14} /> Imprimir / Salvar PDF desta equipe</button>
+        </div>
+        <Card className="no-print p-3 mb-3">
+          <div className="text-xs font-semibold text-slate-300 mb-1">Observações do professor (opcional — saem impressas no relatório desta equipe; ficam só nesta tela)</div>
+          <textarea value={notas[sel.id] || ""} onChange={(e) => setNotas({ ...notas, [sel.id]: e.target.value })} rows={3} className="w-full bg-slate-900 border border-slate-700 rounded-md p-2 text-sm text-slate-100" placeholder="Ex.: conferir o preço do açaí 700 ml com 3 concorrentes; trazer o projeto escrito na próxima aula." />
+        </Card>
+        <div className="rounded-xl overflow-hidden bg-white p-4"><FolhasMercadoImpressao lista={[sel]} turma={turma} emitidoEm={emitidoEm} notas={notas} /></div>
+      </div>
+    );
+  }
+  return (
+    <div>
+      {portal}
+      <p className="no-print text-sm text-slate-400 mb-3">Relatório objetivo, por empresa, do que a equipe precisa revisar e fazer para adequar o plano ao mercado — com ONDE fazer, O QUE fazer e os números. Foi gerado pelas regras automáticas a partir dos lançamentos atuais; <b className="text-slate-200">nenhum dado das equipes é alterado</b>. Abra uma equipe para ver, escrever observações e imprimir/salvar em PDF, ou imprima todas de uma vez (uma por folha).</p>
+      <div className="no-print flex flex-wrap gap-2 mb-3">
+        <button onClick={() => setFolhas(lista.filter((o) => !o.teste))} className="flex items-center gap-2 bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm"><Printer size={14} /> Imprimir / Salvar PDF de todas as equipes</button>
+      </div>
+      <Card className="no-print overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead><tr>{["Empresa", "Capacidade", "Pessoal", "Preços", "Custos", "Retorno", "Ações", ""].map((h) => <th key={h} className="py-2 px-3 text-left text-[11px] uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40">{h}</th>)}</tr></thead>
+          <tbody>
+            {lista.map((o) => (
+              <tr key={o.id} className="border-b border-slate-800">
+                <td className="py-2 px-3 font-semibold text-slate-100">{o.nome}<div className="text-[11px] text-slate-500 font-normal">{o.segmento}</div></td>
+                {(o.sem.length ? o.sem : [1, 2, 3, 4, 5].map(() => ({ k: "a" }))).map((s, i) => <td key={i} className="py-2 px-3"><span className={`inline-block w-3.5 h-3.5 rounded-full ${dot[s.k]}`} title={s.d || ""} /></td>)}
+                <td className="py-2 px-3 text-slate-300">{o.acoes.filter((a) => a.p === "A").length} alta(s) · {o.acoes.filter((a) => a.p === "M").length} média(s)</td>
+                <td className="py-2 px-3"><button onClick={() => setSelId(o.id)} className="text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800">Abrir</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+      <p className="no-print text-[11px] text-slate-500 mt-2">● vermelho = corrigir · ● amarelo = confirmar · ● verde = sem pendência. Os dados vêm da foto carregada ao abrir a turma (botão “Atualizar dados”).</p>
+    </div>
+  );
+}
+
 const ABAS_RELATORIO = [
   { id: "resumo", label: "Resumo Comparativo", icon: FileBarChart },
   { id: "empresa", label: "Relatório por Empresa", icon: Building2 },
   { id: "notas", label: "Relatório de Notas", icon: GraduationCap },
   { id: "pendencias", label: "Pendências", icon: ClipboardCheck },
   { id: "orientacao", label: "Orientação", icon: ClipboardList },
+  { id: "mercado", label: "Adequação ao mercado", icon: ClipboardCheck },
   { id: "descricoes", label: "Descrições p/ Escola", icon: Copy },
   { id: "plano", label: "Plano Semestral", icon: FileText },
 ];
@@ -15237,7 +15555,7 @@ function GestaoRelatoriosView({ turmas, abaInicial, semAbas, abasPermitidas }) {
   const [leituraEm, setLeituraEm] = useState(null);
   const turma = turmas.find((t) => t.id === turmaId);
   const [incluirTeste, setIncluirTeste] = useState(false);
-  const dadosEquipes = useEquipesComDados(turmaId, refreshKey, incluirTeste && (aba === "empresa" || aba === "orientacao"));
+  const dadosEquipes = useEquipesComDados(turmaId, refreshKey, incluirTeste && (aba === "empresa" || aba === "orientacao" || aba === "mercado"));
   // Hora da última leitura dos dados no banco — os relatórios mostram uma
   // "foto" carregada ao abrir a turma; o botão Atualizar relê tudo.
   useEffect(() => { if (dadosEquipes !== null) setLeituraEm(Date.now()); }, [dadosEquipes]);
@@ -15274,7 +15592,7 @@ function GestaoRelatoriosView({ turmas, abaInicial, semAbas, abasPermitidas }) {
             })}
           </div>)}
           <div className="text-xs text-slate-400 mb-3">Turma: <b className="text-slate-200">{turma?.nome}</b>{turma?.professor ? <> · Professor(a): <b className="text-slate-200">{turma.professor}</b></> : null}</div>
-          {(aba === "empresa" || aba === "orientacao") && (
+          {(aba === "empresa" || aba === "orientacao" || aba === "mercado") && (
             <label className="no-print flex items-center gap-2 text-xs text-slate-400 mb-4 cursor-pointer w-fit">
               <input type="checkbox" checked={incluirTeste} onChange={(e) => setIncluirTeste(e.target.checked)} />
               🧪 Mostrar empresa de teste (só aqui e em Orientação; os demais relatórios nunca a incluem)
@@ -15285,6 +15603,7 @@ function GestaoRelatoriosView({ turmas, abaInicial, semAbas, abasPermitidas }) {
           {aba === "notas" && <RelatorioNotas turma={turma} dadosEquipes={dadosEquipes} />}
           {aba === "pendencias" && <RelatorioPendencias turma={turma} dadosEquipes={dadosEquipes} />}
           {aba === "orientacao" && <RelatorioOrientacao turma={turma} dadosEquipes={dadosEquipes} onAtualizar={() => setRefreshKey((k) => k + 1)} podeEnviar={!abasPermitidas} />}
+          {aba === "mercado" && <RelatorioMercado turma={turma} dadosEquipes={dadosEquipes} />}
           {aba === "descricoes" && <RelatorioDescricoesEscola turma={turma} />}
           {aba === "plano" && <RelatorioPlanoSemestral turma={turma} />}
         </div>

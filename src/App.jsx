@@ -1,4 +1,4 @@
-// build: 20261101_14h58m Adequação ao mercado: liberação do relatório para a equipe (tela do aluno)
+// build: 20261101_18h10m Adequação ao mercado: nomes dos passos da Capacidade iguais aos do sistema
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -15259,17 +15259,19 @@ function telaMercado(a, ctx) {
   };
   const form = (mod, abas, ativa, campos, tag) => ({ k: "form", mod, abas, ativa, campos, tag });
   const o = a.onde || "";
+  const PASSOS = ctx.temProd === false ? ["1 O que faz", "2 Atendimento", "3 Resultado", "4 Condições"] : ["1 O que faz", "2 Atendimento", "3 Produção", "4 Resultado", "5 Condições"];
+  const ULT = PASSOS.length - 1;
   const nz = (v) => (v === undefined || v === null || v === "" ? "— vazio —" : String(v));
-  if (/^Capacidade › abas 1, 2 e 3/.test(o)) return form("Capacidade", ["1 Funcionamento", "2 Atendimento", "3 Produção", "4 Condições"], 0, [{ l: "Horas por dia", v: nz(f.horasDia), h: true }, { l: "Dias por mês", v: nz(f.diasMes), h: true }, { l: "Pessoas que produzem/atendem", v: "— vazio —", h: true }, { l: "Tempo de cada produto/serviço", v: "— vazio —", h: true }], "① preencher os campos em vermelho nas abas 1, 2 e 3");
-  if (/aba 1/.test(o) || /^Capacidade × Módulo 9/.test(o)) {
-    const pico = /fator de pico/.test(o), jor = /aba 1  ·  Módulo 9/.test(o);
-    return form("Capacidade", ["1 Funcionamento", "2 Atendimento", "3 Produção", "4 Condições"], 0, [{ l: "Horas por dia", v: nz(f.horasDia), h: jor }, { l: "Dias por mês", v: nz(f.diasMes) }, { l: "Eficiência real (%)", v: nz(f.eficiencia) }, { l: "Fator de pico", v: nz(f.pico), h: pico }, { l: "Pessoas que produzem/atendem", v: nz(f.pessoas), h: !pico && !jor }], pico ? "① informar o fator de pico (ex.: 1,3)" : jor ? "① informar o horário real; incluir turno no Módulo 9" : "① conferir as pessoas e igualar ao Módulo 9");
+  if (/^Capacidade › passos 1 a 3/.test(o)) return form("Capacidade", PASSOS, 1, [{ l: "Horas por dia", v: nz(f.horasDia), h: true }, { l: "Dias por mês", v: nz(f.diasMes), h: true }, { l: "Pessoas que produzem/atendem", v: "— vazio —", h: true }, { l: "Tempo de cada produto/serviço", v: "— vazio —", h: true }], "① preencher os campos em vermelho nas abas 1, 2 e 3");
+  if (/^Capacidade › passo 2 \((funcionamento|fator de pico|pessoas)\)/.test(o) || /^Capacidade × Módulo 9/.test(o)) {
+    const pico = /fator de pico/.test(o), jor = /\(funcionamento\)/.test(o);
+    return form("Capacidade › Passo 2 · Funcionamento e atendimento", PASSOS, 1, [{ l: "Horas por dia", v: nz(f.horasDia), h: jor }, { l: "Dias por mês", v: nz(f.diasMes) }, { l: "Eficiência real (%)", v: nz(f.eficiencia) }, { l: "Fator de pico", v: nz(f.pico), h: pico }, { l: "Pessoas que produzem/atendem", v: nz(f.pessoas), h: !pico && !jor }], pico ? "① informar o fator de pico (ex.: 1,3)" : jor ? "① informar o horário real; incluir turno no Módulo 9" : "① conferir as pessoas e igualar ao Módulo 9");
   }
-  if (/aba 4/.test(o)) return form("Capacidade", ["1 Funcionamento", "2 Atendimento", "3 Produção", "4 Condições"], 3, [{ l: "Dado do segmento 1", v: "— vazio —", h: true }, { l: "Dado do segmento 2", v: "— vazio —", h: true }, { l: "Dado do segmento 3", v: "— vazio —", h: true }, { l: "Fonte de cada dado", v: "— vazio —", h: true }], "① pesquisar e anotar o valor e a fonte");
-  if (/^Capacidade › Espaço/.test(o)) return form("Capacidade", ["1 Funcionamento", "2 Atendimento", "3 Produção", "4 Condições"], 0, [{ l: "Área total (m²)", v: nz(f.area), h: true }, { l: "Área de produção (m²)", v: nz(f.areaProducao), h: true }, { l: "Área de atendimento (m²)", v: nz(f.areaAtendimento), h: true }], "① conferir as áreas e as quantidades de mesas/equipamentos");
-  if (/^Capacidade › aba [23]/.test(o)) {
+  if (/^Capacidade › último passo/.test(o)) return form("Capacidade › Condições do segmento", PASSOS, ULT, [{ l: "Dado do segmento 1", v: "— vazio —", h: true }, { l: "Dado do segmento 2", v: "— vazio —", h: true }, { l: "Dado do segmento 3", v: "— vazio —", h: true }, { l: "Fonte de cada dado", v: "— vazio —", h: true }], "① pesquisar e anotar o valor e a fonte");
+  if (/^Capacidade › Espaço/.test(o)) return form("Capacidade › Passo 2 · Funcionamento e atendimento", PASSOS, 1, [{ l: "Área total (m²)", v: nz(f.area), h: true }, { l: "Área de produção (m²)", v: nz(f.areaProducao), h: true }, { l: "Área de atendimento (m²)", v: nz(f.areaAtendimento), h: true }], "① conferir as áreas e as quantidades de mesas/equipamentos");
+  if (/^Capacidade › passo [23] /.test(o)) {
     const rec = Object.entries(cap?.recursos || {}).filter(([, v]) => capNum(v?.qtd) > 0).slice(0, 6);
-    return tabela("Capacidade › " + (/aba 3/.test(o) ? "Produção" : "Atendimento"), ["1 Funcionamento", "2 Atendimento", "3 Produção", "4 Condições"], /aba 3/.test(o) ? 2 : 1, ["Recurso", "Quantidade", "Tempo (min)"], rec.map(([n, v]) => ({ c: [n, String(v.qtd), nz(v.duracao)], h: true })), "① conferir quantidade e tempo de cada recurso");
+    return tabela("Capacidade › " + (/passo 3/.test(o) ? "Passo 3 · Produção" : "Passo 2 · Funcionamento e atendimento"), PASSOS, /passo 3/.test(o) ? 2 : 1, ["Recurso", "Quantidade", "Tempo (min)"], rec.map(([n, v]) => ({ c: [n, String(v.qtd), nz(v.duracao)], h: true })), "① conferir quantidade e tempo de cada recurso");
   }
   if (/^Módulo 9/.test(o)) {
     const rows = [...m9.linhas.map((r) => ({ c: [r.funcao || "—", String(r.qtd), R(r.total)], h: /refor[cç]o de equipe/i.test(r.funcao || "") })), ...m9.prolabore.map((r) => ({ c: [(r.funcao || "Sócio") + " (pró-labore)", String(r.qtd), R(r.total)], h: !m9.linhas.some((x) => /refor[cç]o/i.test(x.funcao || "")) }))];
@@ -15310,24 +15312,26 @@ function gerarRelatorioMercado(item) {
   const m9 = detalheMaoDeObra(l.m9);
   const nFunc = m9.linhas.reduce((s, r) => s + r.qtd, 0); const nSoc = m9.prolabore.reduce((s, r) => s + r.qtd, 0);
   const txtM9 = `Módulo 9: ${fmtNum(nFunc, 0)} funcionário(s) + ${fmtNum(nSoc, 0)} sócio(s) com pró-labore`;
+  let temProdG = true;
   let capInfo = { titulo: "Capacidade", dem: null, cap: null, un: "", pico: "", pess: txtM9, falta: "" };
 
   // ---------- 1. Capacidade de produção/atendimento ----------
   if (!usou) {
     sev("cap", "r", "não informada");
     capInfo.falta = `A capacidade ainda não foi informada. Plano do Módulo 5: ${fmtNum(totUn, 0)} unidades/mês (${fmtNum(totUn / 26, 0)} por dia) em ${m5.length} itens.`;
-    add("A", "Capacidade › abas 1, 2 e 3", "Preencher a Capacidade: horário de funcionamento, quantas pessoas produzem/atendem, equipamentos e tempos. Sem isso não dá para saber se o plano do Módulo 5 cabe na empresa.", `Plano: ${fmtNum(totUn, 0)} unidades/mês = ${fmtNum(totUn / 26, 0)} por dia, ${m5.length} itens.`);
+    add("A", "Capacidade › passos 1 a 3", "Preencher a Capacidade: horário de funcionamento, quantas pessoas produzem/atendem, equipamentos e tempos. Sem isso não dá para saber se o plano do Módulo 5 cabe na empresa.", `Plano: ${fmtNum(totUn, 0)} unidades/mês = ${fmtNum(totUn / 26, 0)} por dia, ${m5.length} itens.`);
   } else {
     let A = null;
     try { A = capAnalise(equipe.segmento, cap, m5); } catch { A = null; }
     if (A) {
+      temProdG = !!A.temProd;
       const un = A.modelo.unidade; capInfo.un = un;
       const grupos = [["Atendimento", A.RA]]; if (A.temProd) grupos.push(["Produção", A.RP]);
       let melhor = null;
       grupos.forEach(([tit, Rx]) => {
         if (!Rx || Rx.capacidade == null) {
           sev("cap", "r", "não calculada");
-          add("A", `Capacidade › ${tit === "Produção" ? "aba 3 Produção" : "aba 2 Atendimento"}`, `A capacidade de ${tit.toLowerCase()} não foi calculada porque faltam quantidades ou tempos. Preencher o tempo de cada produto/serviço e a quantidade de cada recurso.`, `Plano: ${fmtNum(totUn, 0)} unidades/mês = ${fmtNum(totUn / 26, 0)} por dia, ${m5.length} itens.`);
+          add("A", `Capacidade › ${tit === "Produção" ? "passo 3 Produção" : "passo 2 Funcionamento e atendimento"}`, `A capacidade de ${tit.toLowerCase()} não foi calculada porque faltam quantidades ou tempos. Preencher o tempo de cada produto/serviço e a quantidade de cada recurso.`, `Plano: ${fmtNum(totUn, 0)} unidades/mês = ${fmtNum(totUn / 26, 0)} por dia, ${m5.length} itens.`);
           if (!melhor) capInfo.falta = `A capacidade de ${tit.toLowerCase()} não foi calculada: faltam tempos ou quantidades. Plano: ${fmtNum(totUn, 0)} un/mês = ${fmtNum(totUn / 26, 0)} por dia.`;
           return;
         }
@@ -15337,15 +15341,15 @@ function gerarRelatorioMercado(item) {
         if (u > 1 || (up != null && up > 1)) {
           const forte = u > 1 || up > 1.15;
           sev("cap", forte ? "r" : "a", `${pc(u)}${up > 1 ? ` (pico ${pc(up)})` : ""}`);
-          add(forte ? "A" : "M", `Capacidade › ${tit === "Produção" ? "aba 3 Produção" : "aba 2 Atendimento"}  ·  Módulos 5, 1 e 9`, `A estrutura não dá conta do plano${u <= 1 ? " no pico" : ""}. Primeiro conferir no projeto escrito: horas de funcionamento, pessoas e equipamentos. Se estiver certo, reduzir as quantidades do Módulo 5 ou ampliar equipe/equipamentos (Módulos 1 e 9).`, nums);
+          add(forte ? "A" : "M", `Capacidade › ${tit === "Produção" ? "passo 3 Produção" : "passo 2 Funcionamento e atendimento"}  ·  Módulos 5, 1 e 9`, `A estrutura não dá conta do plano${u <= 1 ? " no pico" : ""}. Primeiro conferir no projeto escrito: horas de funcionamento, pessoas e equipamentos. Se estiver certo, reduzir as quantidades do Módulo 5 ou ampliar equipe/equipamentos (Módulos 1 e 9).`, nums);
         } else if (u >= 0.9) {
           sev("cap", "a", `${pc(u)}`);
-          add("M", `Capacidade › ${tit === "Produção" ? "aba 3 Produção" : "aba 2 Atendimento"}`, "A empresa trabalha no limite da capacidade. Conferir se há folga para imprevistos e para o pico de vendas.", nums);
+          add("M", `Capacidade › ${tit === "Produção" ? "passo 3 Produção" : "passo 2 Funcionamento e atendimento"}`, "A empresa trabalha no limite da capacidade. Conferir se há folga para imprevistos e para o pico de vendas.", nums);
         }
         const gl = (Rx.linhas || []).find((x) => x.r && x.r.nome === Rx.gargalo.r.nome);
         if (gl && MERC_RE_PESSOA.test(Rx.gargalo.r.nome) && capNum(gl.qtd) <= 1 && capNum(f.horasDia) > 8) {
           sev("pes", "r", "jornada acima de 8 h");
-          add("A", "Capacidade › aba 1  ·  Módulo 9", `O funcionamento é de ${fmtNum(capNum(f.horasDia), 0)} h por dia, mas há apenas 1 pessoa em "${Rx.gargalo.r.nome}". A jornada normal é de 8 h por dia. Informar o horário real; se abrir mais de 8 h, incluir outro turno no Módulo 9 ou reduzir o horário.`, `Funcionamento ${fmtNum(capNum(f.horasDia), 0)} h/dia, ${fmtNum(capNum(f.diasMes) || 26, 0)} dias/mês.`);
+          add("A", "Capacidade › passo 2 (funcionamento)  ·  Módulo 9", `O funcionamento é de ${fmtNum(capNum(f.horasDia), 0)} h por dia, mas há apenas 1 pessoa em "${Rx.gargalo.r.nome}". A jornada normal é de 8 h por dia. Informar o horário real; se abrir mais de 8 h, incluir outro turno no Módulo 9 ou reduzir o horário.`, `Funcionamento ${fmtNum(capNum(f.horasDia), 0)} h/dia, ${fmtNum(capNum(f.diasMes) || 26, 0)} dias/mês.`);
         }
       });
       if (melhor) { capInfo.titulo = melhor.tit === "Produção" ? "Produção" : "Atendimento"; capInfo.dem = melhor.Rx.demanda; capInfo.cap = melhor.Rx.capacidade; capInfo.pico = melhor.Rx.pico > 1 ? `${pc(melhor.Rx.utilizacaoPico)} no pico${melhor.Rx.utilizacaoPico > 1 ? " (não atende)" : ""}` : ""; }
@@ -15353,7 +15357,7 @@ function gerarRelatorioMercado(item) {
       const ef = A.ef || {};
       if (ef.corte || (cg.ativo && cg.uso != null && cg.uso > 1)) {
         sev("cap", "r", "horas acima do possível");
-        add("A", "Capacidade › abas 1 e 3  ·  Módulo 9", "As horas de trabalho necessárias passam das horas disponíveis. Conferir quantas pessoas realmente produzem/atendem e quanto tempo leva cada produto/serviço. Depois, ajustar as quantidades do Módulo 5 ou incluir pessoas no Módulo 9.", `${cg.ativo ? `${fmtNum(cg.horas, 0)} h necessárias × ${fmtNum(cg.disp, 0)} h disponíveis (${fmtNum(cg.pessoas, 0)} pessoa(s)) = ${pc(cg.uso)}. ` : ""}${ef.cap != null ? `Capacidade efetiva ${fmtNum(ef.cap, 0)} × plano ${fmtNum(A.demA, 0)} ${un}/mês.` : ""}`);
+        add("A", "Capacidade › passos 2 e 3  ·  Módulo 9", "As horas de trabalho necessárias passam das horas disponíveis. Conferir quantas pessoas realmente produzem/atendem e quanto tempo leva cada produto/serviço. Depois, ajustar as quantidades do Módulo 5 ou incluir pessoas no Módulo 9.", `${cg.ativo ? `${fmtNum(cg.horas, 0)} h necessárias × ${fmtNum(cg.disp, 0)} h disponíveis (${fmtNum(cg.pessoas, 0)} pessoa(s)) = ${pc(cg.uso)}. ` : ""}${ef.cap != null ? `Capacidade efetiva ${fmtNum(ef.cap, 0)} × plano ${fmtNum(A.demA, 0)} ${un}/mês.` : ""}`);
       }
       if (cg.ativo) capInfo.pess = `Horas: ${fmtNum(cg.horas, 0)} necessárias × ${fmtNum(cg.disp, 0)} disponíveis = ${pc(cg.uso)} (${fmtNum(cg.pessoas, 0)} pessoa(s)) · ${txtM9}`;
       if (cg.pessoas > 0 && nFunc + nSoc > cg.pessoas) {
@@ -15361,17 +15365,17 @@ function gerarRelatorioMercado(item) {
         add("M", "Capacidade × Módulo 9", "A Capacidade conta menos pessoas do que o Módulo 9 lista. Dizer quem realmente produz e quem atende, e deixar os dois módulos iguais.", `Capacidade usa ${fmtNum(cg.pessoas, 0)} pessoa(s); Módulo 9 tem ${fmtNum(nFunc, 0)} funcionário(s) + ${fmtNum(nSoc, 0)} sócio(s).`);
       } else if (cg.ativo && !(cg.pessoas > 0)) {
         sev("pes", "a", "pessoas não informadas");
-        add("M", "Capacidade › aba 1", "O número de pessoas que produzem/atendem não foi informado; sem ele as horas de trabalho não são conferidas.", txtM9 + ".");
+        add("M", "Capacidade › passo 2 (pessoas)", "O número de pessoas que produzem/atendem não foi informado; sem ele as horas de trabalho não são conferidas.", txtM9 + ".");
       }
       const maxU = Math.max(0, ...grupos.map(([, Rx]) => (Rx && Rx.utilizacao) || 0));
-      if (capNum(f.pico) <= 1 && maxU >= 0.7) add("M", "Capacidade › aba 1 (fator de pico)", "Informar o fator de pico: quanto a movimentação sobe nos melhores dias (fim de semana, datas especiais). Sem ele, a conta considera todos os dias iguais.", `Utilização média ${pc(maxU)}.`);
+      if (capNum(f.pico) <= 1 && maxU >= 0.7) add("M", "Capacidade › passo 2 (fator de pico)", "Informar o fator de pico: quanto a movimentação sobe nos melhores dias (fim de semana, datas especiais). Sem ele, a conta considera todos os dias iguais.", `Utilização média ${pc(maxU)}.`);
       const esp = A.R && A.R.espaco;
       if (esp && esp.uso != null && (esp.uso < 0.4 || esp.uso > 1)) add("M", "Capacidade › Espaço", esp.uso > 1 ? "Os itens não cabem na área informada. Conferir a área útil e as quantidades de mesas, equipamentos e lugares." : "Só uma parte pequena da área aparece como usada. Conferir as áreas de produção, balcão e mesas.", `${fmtNum(esp.usado, 0)} de ${fmtNum(esp.areaUtil, 0)} m² aproveitáveis (${pc(esp.uso)}).`);
     }
   }
   try {
     const pq = capPesqPreenchidos(cap || {}, equipe.segmento);
-    if (pq.total > 0 && pq.n < pq.total) add("M", "Capacidade › aba 4 Condições do segmento", "Pesquisar os dados do segmento e anotar a fonte de cada um.", `${pq.n} de ${pq.total} dados preenchidos.`);
+    if (pq.total > 0 && pq.n < pq.total) add("M", "Capacidade › último passo: Condições do segmento", "Pesquisar os dados do segmento e anotar a fonte de cada um.", `${pq.n} de ${pq.total} dados preenchidos.`);
   } catch {}
 
   // ---------- 2. Mão de obra ----------
@@ -15452,7 +15456,7 @@ function gerarRelatorioMercado(item) {
 
   const ordem = { A: 0, M: 1 };
   acoes.sort((a, b) => ordem[a.p] - ordem[b.p]);
-  acoes.forEach((a) => { try { a.tela = telaMercado(a, { l, m9, m5, cap, f, hlSet }); } catch { a.tela = null; } });
+  acoes.forEach((a) => { try { a.tela = telaMercado(a, { l, m9, m5, cap, f, hlSet, temProd: temProdG }); } catch { a.tela = null; } });
   const lab = { cap: "Capacidade", pes: "Pessoal (M9)", pre: "Preços", cus: "Custos / estoque", ret: "Retorno" };
   return {
     id: equipe.id, nome: equipe.nomeNegocio, segmento: equipe.segmento || "não informado", integrantes: equipe.integrantes || [], teste: !!equipe.teste,

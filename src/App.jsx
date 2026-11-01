@@ -1,4 +1,4 @@
-// build: 20261101_18h10m Adequação ao mercado: nomes dos passos da Capacidade iguais aos do sistema
+// build: 20261101_18h20m Menu do professor: Cálculo da capacidade (gerar/atualizar, imprimir, quadro da turma e liberação ao aluno)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -15582,7 +15582,7 @@ function FolhasMercadoImpressao({ lista, turma, emitidoEm, notas, regs }) {
 
 
 // ---- Liberação do relatório para a equipe (cópia só do que o aluno pode ver) ----
-function montarLiberacaoMercado(o, reg) {
+function montarLiberacaoMercado(o, reg, calc) {
   const sit = situacaoMercado(o, reg);
   return {
     v: 1, em: Date.now(), equipeId: o.id, nome: o.nome, segmento: o.segmento, sem: o.sem, prazo: (reg && reg.prazo) || "", msg: (reg && reg.notas) || "",
@@ -15590,6 +15590,7 @@ function montarLiberacaoMercado(o, reg) {
     resolvidos: [...sit.resolv.map((b) => ({ onde: b.onde, t: b.t })), ...sit.conferidos.map((a) => ({ onde: a.onde, t: "conferido pelo professor" }))],
     pend: sit.pend.map((a) => ({ p: a.p, onde: a.onde, fazer: a.fazer, nums: a.nums || "", tela: a.tela || null })),
     prof: o.prof || [],
+    calc: calc || null,
   };
 }
 async function lerLiberacaoMercado(equipeId) { try { const x = await window.storage.get(`mercado_lib_${equipeId}`, true); const o = x ? JSON.parse(x.value) : null; return o && !o.recolhido ? o : null; } catch { return null; } }
@@ -15653,7 +15654,250 @@ function AdequacaoMercadoAluno({ equipe, onIr }) {
         );
       })}
       {lib.msg && lib.msg.trim() && <div className="text-sm text-slate-300 mb-3"><b className="text-slate-100">O professor escreveu para a equipe:</b> “{lib.msg}”</div>}
+      {lib.calc && <div className="mb-3"><div className="font-bold text-slate-100 mb-1">Cálculo da capacidade da sua empresa <span className="text-xs text-slate-400 font-normal">· gerado pelo professor em {new Date(lib.calc.em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</span></div><CalculoCapacidadeTela c={lib.calc} /></div>}
       {(lib.prof || []).length > 0 && <div className="text-xs text-slate-400"><b className="text-slate-300">O professor já alterou no plano de vocês:</b> {lib.prof.join(" · ")}</div>}
+    </div>
+  );
+}
+
+// ================= Cálculo da capacidade (menu do professor: gerar / atualizar) =================
+async function lerCapCalcTurma(turmaId) { try { const x = await window.storage.get(`capcalc_${turmaId}`, true); const o = x ? JSON.parse(x.value) : {}; return o && typeof o === "object" ? o : {}; } catch { return {}; } }
+async function gravarCapCalcTurma(turmaId, obj) { await window.storage.set(`capcalc_${turmaId}`, JSON.stringify(obj), true); }
+function capCalcAssinatura(item) {
+  const { dados, equipe } = item; const l = mergeLancamentos(dados.lancamentos); const m9 = detalheMaoDeObra(l.m9);
+  const base = JSON.stringify([dados.capacidade || null, (l.m5.itens || []).map((it) => [it.id, it.nome, it.qtd]), m9.linhas.reduce((s, r) => s + r.qtd, 0), m9.prolabore.reduce((s, r) => s + r.qtd, 0), equipe.segmento]);
+  let h = 5381; for (let i = 0; i < base.length; i++) h = ((h * 33) ^ base.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+function gerarCalculoCapacidade(item) {
+  const { equipe, dados } = item;
+  const l = mergeLancamentos(dados.lancamentos); const cap = dados.capacidade || {}; const f = cap.funcionamento || {};
+  const m5 = (l.m5.itens || []).filter((it) => Number(it.qtd) > 0);
+  const m9 = detalheMaoDeObra(l.m9); const nFunc = m9.linhas.reduce((s, r) => s + r.qtd, 0); const nSoc = m9.prolabore.reduce((s, r) => s + r.qtd, 0);
+  const horasDia = capNum(f.horasDia) || 8, diasMes = capNum(f.diasMes) || 26, efic = capNum(f.eficiencia) || 85; const pico = Math.max(1, capNum(f.pico) || 1);
+  const ef = Math.min(efic, 100) / 100; const minDia = horasDia * 60 * ef; const horasEf = horasDia * diasMes * ef; const minMes = horasEf * 60;
+  const out = { id: equipe.id, nome: equipe.nomeNegocio, segmento: equipe.segmento || "não informado", integrantes: equipe.integrantes || [], teste: !!equipe.teste, em: Date.now(), assin: capCalcAssinatura(item),
+    func: { horasDia, diasMes, efic, pico, picoInformado: capNum(f.pico) > 1, minDia, minMes, horasEf }, grupos: [], horas: null, caber: [], conferir: [], res: { k: "n", txt: "não calculada", gargalo: "" }, pessoas: { cap: capNum(cap.pessoasTrab) || 0, func: nFunc, soc: nSoc } };
+  let A = null; try { A = capAnalise(equipe.segmento, cap, m5); } catch { A = null; }
+  if (!A) { out.conferir.push("Não foi possível calcular a Capacidade desta empresa."); return out; }
+  const un = A.modelo.unidade; out.un = un;
+  const pcc = (u) => `${fmtNum(u * 100, 0)}%`;
+  const grupos = [["Atendimento", A.RA, A.demA]]; if (A.temProd) grupos.push(["Produção", A.RP, A.demP]);
+  const recs = (A.capCalc && A.capCalc.recursos) || {};
+  grupos.forEach(([tit, Rx, dem]) => {
+    if (!Rx) return;
+    const linhas = (Rx.linhas || []).filter((ln) => ln.qtd > 0).map((ln) => {
+      const r = ln.r; const v = recs[r.id] || {}; const q = fmtNum(ln.qtd, 0); let tempo = "", conta = "";
+      if (r.tipo === "taxa") { tempo = `${fmtNum(capNum(v.taxa), 1)} un/h`; conta = `${q} × ${fmtNum(capNum(v.taxa), 1)} × ${fmtNum(horasEf, 1)} h`; }
+      else if (r.tipo === "lote") { tempo = `${fmtNum(capNum(v.lote), 0)} un a cada ${fmtNum(capNum(v.ciclo), 0)} min`; conta = `${q} × (${fmtNum(capNum(v.lote), 0)} × 60 ÷ ${fmtNum(capNum(v.ciclo), 0)}) × ${fmtNum(horasEf, 1)} h`; }
+      else { const d = capNum(v.duracao); tempo = d > 0 ? `${fmtNum(d, 1)} min` : ""; conta = `${q} × ${fmtNum(minMes, 0)} ÷ ${fmtNum(d, 1)} min`; if (r.porRot && (capNum(v.por) || 1) > 1) conta += ` × ${fmtNum(capNum(v.por), 0)}`; if (r.visRot && (capNum(v.vis) || 1) > 1) conta += ` ÷ ${fmtNum(capNum(v.vis), 0)}`; }
+      if (!ln.preenchido) conta = "faltam quantidade ou tempo";
+      else if (ln.fr && ln.fr !== 1) conta += ` ÷ ${fmtNum(ln.fr, 2)} (parte da demanda que usa)`;
+      return { nome: r.nome, qtd: ln.qtd, tempo, conta, cap: ln.preenchido ? ln.capEq : null, gargalo: !!(Rx.gargalo && Rx.gargalo.r.id === r.id) };
+    });
+    const g = { titulo: tit, dem, cap: Rx.capacidade == null ? null : Rx.capacidade, uso: Rx.capacidade ? dem / Rx.capacidade : null, usoPico: Rx.capacidade ? dem * pico / Rx.capacidade : null, linhas, gargalo: Rx.gargalo ? Rx.gargalo.r.nome : "", incompleto: Rx.capacidade == null || linhas.some((x) => x.cap == null) };
+    out.grupos.push(g);
+    if (Rx.capacidade != null && dem > 0 && dem * pico > Rx.capacidade) {
+      const demP = dem * pico;
+      const prec = (Rx.linhas || []).filter((ln) => ln.preenchido && ln.capEq < demP).map((ln) => { const por = ln.capEq / ln.qtd; return `${ln.r.nome}: ${fmtNum(ln.qtd, 0)} → ${fmtNum(Math.ceil(demP / por), 0)} (${fmtNum(demP, 0)} ÷ ${fmtNum(por, 0)} por unidade)`; });
+      const maxPlano = Math.floor(Rx.capacidade / pico);
+      out.caber.push({ g: tit, a: `Ampliar a estrutura (${tit.toLowerCase()}): ${prec.join(" · ")}. Depois, lançar nos Módulos 1 e 9.`, b: `Reduzir o plano: ${fmtNum(Rx.capacidade, 0)}${pico > 1 ? ` ÷ ${fmtNum(pico, 1)}` : ""} = ${fmtNum(maxPlano, 0)} ${un}/mês (${fmtNum((1 - maxPlano / dem) * 100, 0)}% a menos). Depois, ajustar o Módulo 5.` });
+    }
+  });
+  const c = A.carga;
+  if (c.ativo && c.pessoas > 0) {
+    const porPes8 = 8 * diasMes * ef;
+    out.horas = { nec: c.horas, pessoas: c.pessoas, porPessoa: horasEf, disp: c.disp, uso: c.uso, usoPico: c.usoPico, pessoas8: Math.ceil(c.horas * pico / porPes8), porPes8, precisa: Math.ceil(c.horas * pico / horasEf) };
+    if (c.usoPico != null && c.usoPico > 1) out.caber.push({ g: "Horas de trabalho", a: `Precisam de ${fmtNum(out.horas.precisa, 0)} pessoa(s) (${fmtNum(c.horas * pico, 0)} h ÷ ${fmtNum(horasEf, 1)} h por pessoa); hoje a Capacidade usa ${fmtNum(c.pessoas, 0)}.${horasDia > 8 ? ` Com jornada de 8 h por pessoa (${fmtNum(porPes8, 1)} h/mês) seriam ${fmtNum(out.horas.pessoas8, 0)} pessoa(s).` : ""} Lancem no Módulo 9.`, b: "Ou reduzir as quantidades do Módulo 5 / o tempo de cada item, se estiver acima do real." });
+  } else if (!c.ativo) out.conferir.push("Os minutos de cada produto/serviço não foram informados: as horas de trabalho não são conferidas.");
+  else out.conferir.push("O número de pessoas que produzem/atendem não foi informado: as horas de trabalho não são conferidas.");
+  if (horasDia > 8) out.conferir.push(`O funcionamento é de ${fmtNum(horasDia, 0)} h por dia, mas cada pessoa trabalha cerca de 8 h. Se há mais de um turno, as pessoas da Capacidade devem ser contadas por turno e todas lançadas no Módulo 9.`);
+  if (c.pessoas > 0 && c.pessoas !== nFunc + nSoc) out.conferir.push(`A Capacidade usa ${fmtNum(c.pessoas, 0)} pessoa(s); o Módulo 9 tem ${fmtNum(nFunc, 0)} funcionário(s) + ${fmtNum(nSoc, 0)} sócio(s). Dizer quem produz/atende e deixar os dois iguais.`);
+  if (A.durMedia && capTipoSeg(equipe.segmento) === "servico") (A.recA || []).forEach((r) => { const d = capNum((cap.recursos || {})[r.id]?.duracao); if (r.tipo === "servico" && d > 0 && Math.abs(d - A.durMedia) / A.durMedia >= 0.1) out.conferir.push(`O tempo do recurso "${r.nome}" (${fmtNum(d, 0)} min) é diferente da média dos minutos por serviço informados (${fmtNum(A.durMedia, 0)} min). Usar o mesmo tempo nos dois lugares.`); });
+  if (!out.func.picoInformado) out.conferir.push("O fator de pico não foi informado (a conta usa 1,0). Informar quanto a movimentação sobe nos melhores dias.");
+  try { const pq = capPesqPreenchidos(cap, equipe.segmento); if (pq.total > 0 && pq.n < pq.total) out.conferir.push(`Condições do segmento: ${pq.n} de ${pq.total} dados pesquisados. Pesquisar e anotar a fonte.`); } catch { /* sem pesquisa */ }
+  // resumo para a lista
+  const cand = out.grupos.filter((g) => g.usoPico != null).sort((a, b) => b.usoPico - a.usoPico)[0];
+  const hPico = out.horas ? out.horas.usoPico : null;
+  if (!cand && hPico == null) out.res = { k: "n", txt: "não calculada (faltam tempos ou quantidades)", gargalo: "" };
+  else { const u = Math.max(cand ? cand.usoPico : 0, hPico || 0); out.res = { k: u > 1 ? "r" : u >= 0.9 ? "a" : "g", txt: `${pcc(u)} no pico${u > 1 ? " — não atende" : ""}`, gargalo: hPico != null && hPico >= (cand ? cand.usoPico : 0) ? "Horas das pessoas" : cand.gargalo }; }
+  return out;
+}
+
+function CalculoCapacidadeTela({ c }) {
+  const cor = { r: "text-rose-400", a: "text-amber-400", g: "text-emerald-400", n: "text-slate-400" };
+  return (
+    <div className="text-sm text-slate-200 space-y-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+        {[["Horas por dia", `${fmtNum(c.func.horasDia, 1)} h`], ["Dias por mês", fmtNum(c.func.diasMes, 0)], ["Eficiência real", `${fmtNum(c.func.efic, 0)}%`], ["Fator de pico", fmtNum(c.func.pico, 1)], ["Minutos por dia", `${fmtNum(c.func.horasDia, 1)} × 60 × ${fmtNum(c.func.efic / 100, 2)} = ${fmtNum(c.func.minDia, 0)}`], ["Minutos por mês", fmtNum(c.func.minMes, 0)]].map(([t, v]) => <div key={t} className="rounded-lg bg-slate-800 px-3 py-2"><div className="text-[10px] text-slate-400">{t}</div><div className="font-bold">{v}</div></div>)}
+      </div>
+      {c.grupos.map((g) => (
+        <div key={g.titulo} className="rounded-xl border border-slate-700 bg-slate-900/60 p-3">
+          <div className="font-bold text-slate-100 mb-1">Contas — {g.titulo} <span className="text-xs text-slate-400 font-normal">· plano do Módulo 5: {fmtNum(g.dem, 0)} {c.un}/mês</span></div>
+          <div className="overflow-x-auto"><table className="w-full text-xs"><thead><tr className="text-slate-500 text-left"><th className="py-1 pr-2">Recurso</th><th className="pr-2">Qtd</th><th className="pr-2">Tempo</th><th className="pr-2">Conta</th><th className="text-right">Capacidade/mês</th></tr></thead>
+            <tbody>{g.linhas.map((x, i) => <tr key={i} className={`border-t border-slate-800 ${x.gargalo ? "bg-rose-950/40 font-bold" : ""}`}><td className="py-1 pr-2">{x.nome}{x.gargalo ? " ◀ gargalo" : ""}</td><td className="pr-2">{fmtNum(x.qtd, 0)}</td><td className="pr-2">{x.tempo}</td><td className="pr-2 font-mono text-slate-400">{x.conta}</td><td className="text-right">{x.cap != null ? fmtNum(x.cap, 0) : "—"}</td></tr>)}</tbody></table></div>
+          {g.cap != null ? <div className="mt-2 text-xs">Plano ÷ capacidade: {fmtNum(g.dem, 0)} ÷ {fmtNum(g.cap, 0)} = <b>{fmtNum(g.uso * 100, 0)}%</b> · no pico: {fmtNum(g.dem, 0)} × {fmtNum(c.func.pico, 1)} = {fmtNum(g.dem * c.func.pico, 0)} → <b className={g.usoPico > 1 ? "text-rose-400" : g.usoPico >= 0.9 ? "text-amber-400" : "text-emerald-400"}>{fmtNum(g.usoPico * 100, 0)}%{g.usoPico > 1 ? " — não atende" : ""}</b></div> : <div className="mt-2 text-xs text-amber-300">Capacidade não calculada: faltam quantidades ou tempos dos recursos acima.</div>}
+        </div>
+      ))}
+      {c.horas && <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-3 text-xs"><b className="text-slate-100">Horas de trabalho:</b> {fmtNum(c.horas.nec, 0)} h necessárias × {fmtNum(c.horas.disp, 0)} h disponíveis ({fmtNum(c.horas.pessoas, 0)} pessoa(s) × {fmtNum(c.horas.porPessoa, 1)} h) = <b className={c.horas.uso > 1 ? "text-rose-400" : "text-emerald-400"}>{fmtNum(c.horas.uso * 100, 0)}%</b>{c.func.pico > 1 ? ` · no pico ${fmtNum(c.horas.usoPico * 100, 0)}%` : ""}</div>}
+      {c.caber.length > 0 && <div><div className="font-bold text-slate-100 mb-1">Para o plano caber no pico — escolham um caminho</div>{c.caber.map((x, i) => <div key={i} className="rounded-lg border border-rose-900 bg-rose-950/30 px-3 py-2 mb-2 text-xs"><b className="text-rose-200">{x.g}</b><div>A. {x.a}</div><div>B. {x.b}</div></div>)}</div>}
+      {c.conferir.length > 0 && <div><div className="font-bold text-slate-100 mb-1">Conferir antes de mexer</div><div className="rounded-lg border border-amber-800 bg-amber-950/30 px-3 py-2 text-xs"><ul className="list-disc pl-4 space-y-0.5">{c.conferir.map((t, i) => <li key={i}>{t}</li>)}</ul></div></div>}
+    </div>
+  );
+}
+
+function FolhasCapacidadeImpressao({ lista, turma, emitidoEm }) {
+  const css = `
+    .cc-pg{font-family:Arial,Helvetica,sans-serif;color:#1d2330;font-size:10.5px;line-height:1.35;page-break-after:always;break-after:page;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}.cc-pg:last-child{page-break-after:auto;break-after:auto}.cc-pg *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .cc-cab{position:relative;min-height:72px;text-align:center;font-size:9.5px;line-height:1.3;padding:0 90px}.cc-cab img.fl{position:absolute;left:0;top:0;height:68px}.cc-cab img.lg{position:absolute;right:0;top:0;height:68px}
+    .cc-hd{margin-top:6px;background:#1f4e8c;color:#fff;border-radius:8px;padding:8px 14px}.cc-hd small{font-size:9px;letter-spacing:1.2px;opacity:.85}.cc-hd h1{margin:2px 0;font-size:18px}.cc-hd p{margin:0;font-size:10px;opacity:.92}
+    .cc-pg h2{font-size:12px;margin:10px 0 5px;border-bottom:2px solid #c9d6ea;padding-bottom:2px}
+    .cc-kv{display:flex;gap:6px;margin-bottom:4px}.cc-kv>div{flex:1;background:#eef2f7;border-radius:6px;padding:4px 7px}.cc-kv b{display:block;font-size:8.5px;color:#667085}.cc-kv span{font-weight:700;font-size:11.5px}
+    .cc-t{width:100%;border-collapse:collapse}.cc-t th,.cc-t td{border-bottom:1px solid #e2e8f0;padding:3px 5px;text-align:left}.cc-t th{background:#f1f5f9;color:#667085;font-size:9px}.cc-t .gar td{background:#fff1f2;font-weight:700}.cc-fm{font-family:Consolas,monospace;font-size:9.5px;color:#334155}
+    .cc-bx{border:1px solid #d6dbe4;border-radius:7px;padding:5px 9px;margin-bottom:5px;break-inside:avoid;page-break-inside:avoid}.cc-bx.p{background:#fdecea;border-color:#f5b5ae}.cc-bx.y{background:#fff8e1;border-color:#f3d79a}
+    .cc-ft{margin-top:8px;font-size:9px;color:#667085;display:flex;justify-content:space-between;border-top:1px solid #c9d6ea;padding-top:4px}
+  `;
+  return (
+    <div id="capc-print-root">
+      <style>{css}</style>
+      {lista.map((c) => (
+        <section className="cc-pg" key={c.id}>
+          <div className="cc-cab"><img className="fl" src={PLANO_IMG_BRASAO} alt="" /><img className="lg" src={PLANO_IMG_CEDUP} alt="" /><b>ESTADO DE SANTA CATARINA</b><br /><b>SECRETARIA DE ESTADO DA EDUCAÇÃO</b><br /><b>CEDUP – CENTRO DE EDUCAÇÃO PROFISSIONAL HERMANN HERING</b><br />Plataforma do Plano Financeiro</div>
+          <div className="cc-hd"><small>CÁLCULO DA CAPACIDADE · {turma?.nome || ""} · GERADO EM {new Date(c.em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }).replace(",", " às")}</small><h1>{c.nome}{c.teste ? " (CONTA DE TESTE)" : ""}</h1><p>{c.segmento} · {(c.integrantes || []).join(" · ") || "sem integrantes"}</p></div>
+          <h2>1. Dados de funcionamento usados (da Capacidade de vocês)</h2>
+          <div className="cc-kv">{[["Horas por dia", `${fmtNum(c.func.horasDia, 1)} h`], ["Dias por mês", fmtNum(c.func.diasMes, 0)], ["Eficiência real", `${fmtNum(c.func.efic, 0)}%`], ["Fator de pico", fmtNum(c.func.pico, 1)], ["Minutos por dia", `${fmtNum(c.func.horasDia, 1)} × 60 × ${fmtNum(c.func.efic / 100, 2)} = ${fmtNum(c.func.minDia, 0)}`], ["Minutos por mês", fmtNum(c.func.minMes, 0)]].map(([t, v]) => <div key={t}><b>{t}</b><span>{v}</span></div>)}</div>
+          <h2>2. Contas passo a passo — {c.segmento}</h2>
+          {c.grupos.length === 0 && <div className="cc-bx y">A capacidade ainda não foi informada. Preencham os passos 1 a 3 da Capacidade.</div>}
+          {c.grupos.map((g) => (
+            <div key={g.titulo} style={{ marginBottom: 6 }}>
+              <b>{g.titulo}</b> <span style={{ color: "#667085" }}>· plano do Módulo 5: {fmtNum(g.dem, 0)} {c.un}/mês</span>
+              <table className="cc-t"><thead><tr><th>Recurso</th><th>Qtd</th><th>Tempo</th><th>Conta</th><th>Capacidade/mês</th></tr></thead>
+                <tbody>{g.linhas.map((x, i) => <tr key={i} className={x.gargalo ? "gar" : ""}><td>{x.nome}{x.gargalo ? " ◀ gargalo" : ""}</td><td>{fmtNum(x.qtd, 0)}</td><td>{x.tempo}</td><td className="cc-fm">{x.conta}</td><td>{x.cap != null ? fmtNum(x.cap, 0) : "—"}</td></tr>)}</tbody></table>
+              {g.cap != null ? <div style={{ marginTop: 3 }}>Plano ÷ capacidade: {fmtNum(g.dem, 0)} ÷ {fmtNum(g.cap, 0)} = <b>{fmtNum(g.uso * 100, 0)}%</b> · no pico: {fmtNum(g.dem, 0)} × {fmtNum(c.func.pico, 1)} = {fmtNum(g.dem * c.func.pico, 0)} → <b style={{ color: g.usoPico > 1 ? "#c0392b" : g.usoPico >= 0.9 ? "#b7791f" : "#2f855a" }}>{fmtNum(g.usoPico * 100, 0)}%{g.usoPico > 1 ? " — não atende" : ""}</b></div> : <div style={{ marginTop: 3, color: "#b7791f", fontWeight: 700 }}>Capacidade não calculada: faltam quantidades ou tempos dos recursos acima.</div>}
+            </div>
+          ))}
+          {c.horas && <div className="cc-bx"><b>Horas de trabalho:</b> {fmtNum(c.horas.nec, 0)} h necessárias × {fmtNum(c.horas.disp, 0)} h disponíveis ({fmtNum(c.horas.pessoas, 0)} pessoa(s) × {fmtNum(c.horas.porPessoa, 1)} h) = <b>{fmtNum(c.horas.uso * 100, 0)}%</b>{c.func.pico > 1 ? ` · no pico ${fmtNum(c.horas.usoPico * 100, 0)}%` : ""}. <span style={{ color: "#667085" }}>Módulo 9: {fmtNum(c.pessoas.func, 0)} funcionário(s) + {fmtNum(c.pessoas.soc, 0)} sócio(s)</span></div>}
+          {c.caber.length > 0 && (<><h2>3. Para o plano caber no pico — escolham um caminho</h2>{c.caber.map((x, i) => <div className="cc-bx p" key={i}><b>{x.g}</b><div>A. {x.a}</div><div>B. {x.b}</div></div>)}</>)}
+          {c.conferir.length > 0 && (<><h2>{c.caber.length > 0 ? "4" : "3"}. Conferir antes de mexer</h2><div className="cc-bx y"><ul style={{ margin: 0, paddingLeft: 16 }}>{c.conferir.map((t, i) => <li key={i}>{t}</li>)}</ul></div></>)}
+          <div className="cc-ft"><span>Este relatório só orienta: nenhum lançamento é alterado por ele. Depois de corrigir a Capacidade, peçam ao professor para atualizar.</span><span>Emitido em {emitidoEm}</span></div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function QuadroCapacidadeImpressao({ lista, turma, emitidoEm }) {
+  const cor = { r: "#c0392b", a: "#b7791f", g: "#2f855a", n: "#667085" };
+  return (
+    <div id="capc-print-root">
+      <style>{`.cc-pg{font-family:Arial,Helvetica,sans-serif;color:#1d2330;font-size:10.5px;background:#fff}.cc-cab{position:relative;min-height:72px;text-align:center;font-size:9.5px;line-height:1.3;padding:0 90px}.cc-cab img.fl{position:absolute;left:0;top:0;height:68px}.cc-cab img.lg{position:absolute;right:0;top:0;height:68px}.cc-t{width:100%;border-collapse:collapse}.cc-t th,.cc-t td{border-bottom:1px solid #e2e8f0;padding:5px 6px;text-align:left;vertical-align:top}.cc-t th{background:#f1f5f9;color:#667085;font-size:9px}`}</style>
+      <section className="cc-pg">
+        <div className="cc-cab"><img className="fl" src={PLANO_IMG_BRASAO} alt="" /><img className="lg" src={PLANO_IMG_CEDUP} alt="" /><b>ESTADO DE SANTA CATARINA</b><br /><b>SECRETARIA DE ESTADO DA EDUCAÇÃO</b><br /><b>CEDUP – CENTRO DE EDUCAÇÃO PROFISSIONAL HERMANN HERING</b><br />Plataforma do Plano Financeiro</div>
+        <div style={{ fontSize: 8.5, letterSpacing: 2, color: "#64748b", marginTop: 8 }}>QUADRO DA TURMA · CÁLCULO DA CAPACIDADE · EMITIDO EM {emitidoEm}</div>
+        <div style={{ fontSize: 18, margin: "2px 0 8px" }}>{turma?.nome || ""}</div>
+        <table className="cc-t"><thead><tr><th>Empresa</th><th>Funcionamento</th><th>Plano × capacidade no pico</th><th>Gargalo</th><th>Para caber</th></tr></thead>
+          <tbody>{lista.map((c) => (
+            <tr key={c.id}><td><b>{c.nome}</b><div style={{ color: "#667085" }}>{c.segmento}</div></td>
+              <td>{fmtNum(c.func.horasDia, 1)} h · {fmtNum(c.func.diasMes, 0)} d · {fmtNum(c.func.efic, 0)}% · pico {fmtNum(c.func.pico, 1)}</td>
+              <td style={{ color: cor[c.res.k], fontWeight: 700 }}>{c.res.txt}</td><td>{c.res.gargalo || "—"}</td>
+              <td>{c.caber.length ? c.caber.map((x, i) => <div key={i}><b>{x.g}:</b> {x.b.replace(/\. Depois.*$/, "")}</div>) : "—"}</td></tr>
+          ))}</tbody></table>
+        <div style={{ marginTop: 8, color: "#64748b", fontSize: 9.5 }}>Cálculos gerados pelo professor em cada empresa; valem para a data de geração de cada uma.</div>
+      </section>
+    </div>
+  );
+}
+
+function RelatorioCapacidadeCalc({ turma, dadosEquipes }) {
+  const [reg, setReg] = useState(null);
+  const [selId, setSelId] = useState(null);
+  const [imp, setImp] = useState(null); // { tipo: "folhas", lista } | { tipo: "quadro", lista }
+  const [msg, setMsg] = useState("");
+  const regRef = useRef({});
+  useEffect(() => { let vivo = true; lerCapCalcTurma(turma.id).then((o) => { if (vivo) { regRef.current = o; setReg(o); } }); return () => { vivo = false; }; }, [turma.id]);
+  const itens = useMemo(() => (dadosEquipes || []).map((it) => { let assin = ""; try { assin = capCalcAssinatura(it); } catch { assin = ""; } return { it, assin }; }), [dadosEquipes]);
+  const emitidoEm = new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }).replace(",", " às");
+  const gerar = async (lista) => {
+    try {
+      const atual = await lerCapCalcTurma(turma.id); const prox = { ...atual };
+      lista.forEach((x) => { let c = null; try { c = gerarCalculoCapacidade(x.it); } catch { c = null; } if (c) prox[x.it.equipe.id] = { em: c.em, assin: c.assin, dados: c }; });
+      await gravarCapCalcTurma(turma.id, prox); regRef.current = prox; setReg(prox); setMsg(lista.length === 1 ? "Cálculo gerado." : `Cálculo gerado para ${lista.length} empresa(s).`);
+    } catch { setMsg("Não foi possível gerar/salvar. Tente de novo."); }
+  };
+  useEffect(() => {
+    if (!imp) return undefined;
+    const titulo = imp.tipo === "quadro" ? `Calculo-da-capacidade - quadro da turma ${turma.nome} - ${sufixoDataHoraArquivo()}` : imp.lista.length === 1 ? `Calculo-da-capacidade - ${imp.lista[0].nome} - ${sufixoDataHoraArquivo()}` : `Calculo-da-capacidade - ${turma.nome} - todas as equipes - ${sufixoDataHoraArquivo()}`;
+    const estilo = document.createElement("style");
+    estilo.textContent = "@media screen { #capc-print-root-wrap { display: none !important; } } @media print { @page { size: A4 portrait; margin: 10mm; } body > *:not(#capc-print-root-wrap) { display: none !important; } #capc-print-root-wrap { display: block !important; } }";
+    document.head.appendChild(estilo);
+    const original = document.title;
+    const t = setTimeout(() => { document.title = titulo; window.print(); document.title = original; if (estilo.parentNode) estilo.parentNode.removeChild(estilo); setImp(null); }, 200);
+    return () => { clearTimeout(t); if (estilo.parentNode) estilo.parentNode.removeChild(estilo); };
+  }, [imp, turma]);
+  if (dadosEquipes === null || reg === null) return <LoadingScreen />;
+  if (dadosEquipes.length === 0) return <Card className="p-8 text-center text-slate-500">Nenhuma empresa nesta turma ainda.</Card>;
+  const situ = (x) => { const r = reg[x.it.equipe.id]; return !r ? "nunca" : r.assin === x.assin ? "atual" : "mudou"; };
+  const chip = { atual: ["Atualizado", "bg-emerald-900 text-emerald-300"], mudou: ["Dados mudaram — atualizar", "bg-amber-900 text-amber-200"], nunca: ["Nunca gerado", "bg-slate-700 text-slate-300"] };
+  const corRes = { r: "text-rose-400 font-bold", a: "text-amber-400", g: "text-emerald-400 font-bold", n: "text-slate-400" };
+  const reais = itens.filter((x) => !x.it.equipe.teste);
+  const geradas = (reais.length ? reais : itens).filter((x) => reg[x.it.equipe.id]).map((x) => reg[x.it.equipe.id].dados);
+  const portal = imp ? createPortal(<div id="capc-print-root-wrap">{imp.tipo === "quadro" ? <QuadroCapacidadeImpressao lista={imp.lista} turma={turma} emitidoEm={emitidoEm} /> : <FolhasCapacidadeImpressao lista={imp.lista} turma={turma} emitidoEm={emitidoEm} />}</div>, document.body) : null;
+  const btnP = "flex items-center gap-2 bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-md hover:bg-amber-400 text-sm";
+  const btnS = "flex items-center gap-2 border border-slate-600 text-slate-200 font-semibold px-4 py-2 rounded-md hover:bg-slate-800 text-sm";
+  const sel = selId ? itens.find((x) => x.it.equipe.id === selId) : null;
+  if (sel) {
+    const r = reg[sel.it.equipe.id]; const st = situ(sel);
+    return (
+      <div>
+        {portal}
+        <div className="no-print flex flex-wrap items-center gap-2 mb-3">
+          <button onClick={() => setSelId(null)} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"><ArrowLeft size={15} /> Voltar à lista</button>
+          <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${chip[st][1]}`}>{chip[st][0]}</span>
+          {msg && <span className="text-xs text-emerald-400">{msg}</span>}
+          <button onClick={() => gerar([sel])} className="ml-auto flex items-center gap-2 bg-emerald-600 text-white font-bold px-4 py-2 rounded-md hover:bg-emerald-500 text-sm">{r ? "⟳ Atualizar" : "⟳ Gerar"}</button>
+          {r && <button onClick={() => setImp({ tipo: "folhas", lista: [r.dados] })} className={btnP}><Printer size={14} /> Imprimir / Salvar PDF</button>}
+        </div>
+        {r ? (
+          <Card className="no-print p-4">
+            <div className="text-xs text-slate-400 mb-2">{sel.it.equipe.nomeNegocio} · gerado em {new Date(r.em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}{st === "mudou" ? " — os dados da equipe mudaram depois disso; clique em Atualizar." : ""}</div>
+            <CalculoCapacidadeTela c={r.dados} />
+          </Card>
+        ) : <Card className="no-print p-8 text-center text-slate-400">Ainda não foi gerado o cálculo desta empresa. Clique em “Gerar”.</Card>}
+      </div>
+    );
+  }
+  return (
+    <div>
+      {portal}
+      <p className="no-print text-sm text-slate-400 mb-3">Para cada empresa: dados de funcionamento usados, contas passo a passo (as fórmulas do segmento com os números da equipe), resultado no pico e o que falta para o plano caber. <b className="text-slate-200">Nada é alterado nos dados das equipes.</b> Depois que os alunos mudarem a Capacidade, clique em <b className="text-slate-200">Gerar / atualizar</b>. Cada geração fica guardada com a data (e entra no Backup geral). Para o aluno ver, gere e depois use “Liberar” em Adequação ao mercado.</p>
+      <div className="no-print flex flex-wrap items-center gap-2 mb-3">
+        <button onClick={() => gerar(reais.length ? reais : itens)} className={btnP}>⟳ Gerar / atualizar todas</button>
+        <button disabled={!geradas.length} onClick={() => setImp({ tipo: "folhas", lista: geradas })} className={`${btnS} disabled:opacity-40`}><Printer size={14} /> Imprimir / PDF de todas</button>
+        <button disabled={!geradas.length} onClick={() => setImp({ tipo: "quadro", lista: geradas })} className={`${btnS} disabled:opacity-40`}><Printer size={14} /> Quadro da turma</button>
+        {msg && <span className="text-xs text-emerald-400">{msg}</span>}
+      </div>
+      <Card className="no-print overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead><tr>{["Empresa", "Segmento", "Gerado em", "Situação", "Plano × capacidade no pico", "Gargalo", ""].map((h) => <th key={h} className="py-2 px-3 text-left text-[11px] uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40">{h}</th>)}</tr></thead>
+          <tbody>
+            {itens.map((x) => {
+              const r = reg[x.it.equipe.id]; const st = situ(x);
+              return (
+                <tr key={x.it.equipe.id} className="border-t border-slate-800">
+                  <td className="py-2 px-3 font-semibold text-slate-100">{x.it.equipe.nomeNegocio}</td>
+                  <td className="py-2 px-3 text-slate-300">{x.it.equipe.segmento}</td>
+                  <td className="py-2 px-3 text-slate-400 text-xs">{r ? new Date(r.em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—"}</td>
+                  <td className="py-2 px-3"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${chip[st][1]}`}>{chip[st][0]}</span></td>
+                  <td className={`py-2 px-3 ${r ? corRes[r.dados.res.k] : "text-slate-500"}`}>{r ? r.dados.res.txt : "—"}</td>
+                  <td className="py-2 px-3 text-slate-300">{r ? (r.dados.res.gargalo || "—") : "—"}</td>
+                  <td className="py-2 px-3 whitespace-nowrap"><button onClick={() => setSelId(x.it.equipe.id)} className="text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800 mr-1">Ver</button><button onClick={() => gerar([x])} className={`text-xs font-bold px-2.5 py-1.5 rounded-md ${st === "atual" ? "border border-slate-600 text-slate-200 hover:bg-slate-800" : "bg-emerald-600 text-white hover:bg-emerald-500"}`}>{st === "nunca" ? "⟳ Gerar" : "⟳ Atualizar"}</button></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </Card>
+      <p className="no-print text-[11px] text-slate-500 mt-2">“Dados mudaram” aparece sozinho quando a Capacidade, o Módulo 5 ou as pessoas do Módulo 9 de uma equipe são diferentes da última geração. Os dados vêm da foto carregada ao abrir a turma (botão “Atualizar dados”).</p>
     </div>
   );
 }
@@ -15708,7 +15952,8 @@ function RelatorioMercado({ turma, dadosEquipes }) {
   const liberar = async (os) => {
     const atual = regsRef.current || {}; const prox = { ...atual };
     try {
-      for (const o of os) { await window.storage.set(`mercado_lib_${o.id}`, JSON.stringify(montarLiberacaoMercado(o, atual[o.id] || {})), true); prox[o.id] = { ...(atual[o.id] || {}), lib: { em: Date.now() } }; }
+      const cc = await lerCapCalcTurma(turma.id);
+      for (const o of os) { await window.storage.set(`mercado_lib_${o.id}`, JSON.stringify(montarLiberacaoMercado(o, atual[o.id] || {}, cc[o.id] ? cc[o.id].dados : null)), true); prox[o.id] = { ...(atual[o.id] || {}), lib: { em: Date.now() } }; }
       regsRef.current = prox; setRegs(prox); await gravarMercadoTurma(turma.id, prox); setMsg(os.length === 1 ? "Liberado para a equipe." : `Liberado para ${os.length} equipe(s).`);
     } catch { setMsg("Não foi possível liberar. Tente de novo."); }
   };
@@ -15839,6 +16084,7 @@ const ABAS_RELATORIO = [
   { id: "pendencias", label: "Pendências", icon: ClipboardCheck },
   { id: "orientacao", label: "Orientação", icon: ClipboardList },
   { id: "mercado", label: "Adequação ao mercado", icon: ClipboardCheck },
+  { id: "capcalc", label: "Cálculo da capacidade", icon: Factory },
   { id: "descricoes", label: "Descrições p/ Escola", icon: Copy },
   { id: "plano", label: "Plano Semestral", icon: FileText },
 ];
@@ -15852,7 +16098,7 @@ function GestaoRelatoriosView({ turmas, abaInicial, semAbas, abasPermitidas }) {
   const [leituraEm, setLeituraEm] = useState(null);
   const turma = turmas.find((t) => t.id === turmaId);
   const [incluirTeste, setIncluirTeste] = useState(false);
-  const dadosEquipes = useEquipesComDados(turmaId, refreshKey, incluirTeste && (aba === "empresa" || aba === "orientacao" || aba === "mercado"));
+  const dadosEquipes = useEquipesComDados(turmaId, refreshKey, incluirTeste && (aba === "empresa" || aba === "orientacao" || aba === "mercado" || aba === "capcalc"));
   // Hora da última leitura dos dados no banco — os relatórios mostram uma
   // "foto" carregada ao abrir a turma; o botão Atualizar relê tudo.
   useEffect(() => { if (dadosEquipes !== null) setLeituraEm(Date.now()); }, [dadosEquipes]);
@@ -15889,7 +16135,7 @@ function GestaoRelatoriosView({ turmas, abaInicial, semAbas, abasPermitidas }) {
             })}
           </div>)}
           <div className="text-xs text-slate-400 mb-3">Turma: <b className="text-slate-200">{turma?.nome}</b>{turma?.professor ? <> · Professor(a): <b className="text-slate-200">{turma.professor}</b></> : null}</div>
-          {(aba === "empresa" || aba === "orientacao" || aba === "mercado") && (
+          {(aba === "empresa" || aba === "orientacao" || aba === "mercado" || aba === "capcalc") && (
             <label className="no-print flex items-center gap-2 text-xs text-slate-400 mb-4 cursor-pointer w-fit">
               <input type="checkbox" checked={incluirTeste} onChange={(e) => setIncluirTeste(e.target.checked)} />
               🧪 Mostrar empresa de teste (só aqui e em Orientação; os demais relatórios nunca a incluem)
@@ -15901,6 +16147,7 @@ function GestaoRelatoriosView({ turmas, abaInicial, semAbas, abasPermitidas }) {
           {aba === "pendencias" && <RelatorioPendencias turma={turma} dadosEquipes={dadosEquipes} />}
           {aba === "orientacao" && <RelatorioOrientacao turma={turma} dadosEquipes={dadosEquipes} onAtualizar={() => setRefreshKey((k) => k + 1)} podeEnviar={!abasPermitidas} />}
           {aba === "mercado" && <RelatorioMercado turma={turma} dadosEquipes={dadosEquipes} />}
+          {aba === "capcalc" && <RelatorioCapacidadeCalc turma={turma} dadosEquipes={dadosEquipes} />}
           {aba === "descricoes" && <RelatorioDescricoesEscola turma={turma} />}
           {aba === "plano" && <RelatorioPlanoSemestral turma={turma} />}
         </div>
@@ -15974,7 +16221,7 @@ function GestaoBackupView({ turmas, onExcluir }) {
   const exportarBackup = async () => {
     if (!turma || !dadosEquipes) return;
     const agora = new Date();
-    const pacote = { versaoBackup: 1, geradoEm: agora.toISOString(), turma, equipes: dadosEquipes.map(({ equipe, dados }) => ({ equipe, dados })), mercado: await lerMercadoTurma(turma.id) };
+    const pacote = { versaoBackup: 1, geradoEm: agora.toISOString(), turma, equipes: dadosEquipes.map(({ equipe, dados }) => ({ equipe, dados })), mercado: await lerMercadoTurma(turma.id), capcalc: await lerCapCalcTurma(turma.id) };
     baixarArquivo(`backup_${turma.nome.replace(/\s+/g, "_")}_${sufixoDataHoraArquivo(agora)}.json`, JSON.stringify(pacote, null, 2));
     setUltimoBackupTurmaId(turma.id);
     setStatus("Backup exportado com sucesso.");
@@ -15994,6 +16241,7 @@ function GestaoBackupView({ turmas, onExcluir }) {
         turma: t,
         equipes: await buscarEquipesComDados(t.id),
         mercado: await lerMercadoTurma(t.id),
+        capcalc: await lerCapCalcTurma(t.id),
       })));
       const agora = new Date();
       const pacote = { versaoBackup: 1, tipo: "geral", geradoEm: agora.toISOString(), turmas: porTurma };
@@ -16028,6 +16276,7 @@ function GestaoBackupView({ turmas, onExcluir }) {
         await window.storage.set(`dados_equipe_${equipe.id}`, JSON.stringify(dados), true);
       }
       if (pacote.mercado && Object.keys(pacote.mercado).length) { try { await gravarMercadoTurma(turma.id, pacote.mercado); } catch {} }
+      if (pacote.capcalc && Object.keys(pacote.capcalc).length) { try { await gravarCapCalcTurma(turma.id, pacote.capcalc); } catch {} }
       setStatus("Backup importado com sucesso. Troque de aba e volte para ver os dados restaurados.");
     } catch (e) {
       setStatus("Não foi possível importar este arquivo. Confira se é um backup válido, gerado por esta plataforma.");

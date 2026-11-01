@@ -1,4 +1,4 @@
-// build: 20261101_14h54m Adequação ao mercado: observações salvas, conferido pelo professor, comparação com o último relatório, quadro da turma
+// build: 20261101_14h58m Adequação ao mercado: liberação do relatório para a equipe (tela do aluno)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -5290,6 +5290,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
     { id: "__sec_apoio", secao: "Apoio ao planejamento (não avaliativo)" },
     { id: "capacidade", label: "Capacidade de produção", icon: Factory, num: null },
     { id: "ajustesProf", label: "Ajustes do professor", icon: ClipboardList, num: null },
+    { id: "mercado", label: "Adequação ao mercado", icon: ClipboardCheck, num: null },
     { id: "__sec_anal", secao: "Análises (calculadas, sem lançamento)" },
     ...MODULOS.filter((m) => ehModuloAnalise(m)).map((m) => ({ id: m.id, label: m.nome, icon: m.icon, num: null, moduloStatus: estadoModulo(fluxo, m.id).status })),
     { id: "analise", label: "Análise do Negócio", icon: TrendingUp, num: null },
@@ -5582,6 +5583,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
         )}
 
         {aba === "ajustesProf" && <RelatorioAjustesAluno equipe={equipe} dados={dados} onVoltar={() => setAba("inicio")} />}
+        {aba === "mercado" && <AdequacaoMercadoAluno equipe={equipe} onIr={(id) => setAba(id)} />}
 
         {aba === "capacidade" && (
           <div>
@@ -5720,7 +5722,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
       { key: "guia", label: "Guia da semana", novo: true },
     ] },
     { label: "Módulos (1 a 11)", itens: MODULOS.filter((m) => !ehModuloAnalise(m)).map((m) => ({ key: m.id, label: `${rotNumModulo(m)} · ${m.nome}`, status: estadoModulo(fluxo, m.id).status })) },
-    { label: "Apoio ao planejamento", itens: [{ key: "capacidade", label: "Capacidade de produção" }, { key: "ajustesProf", label: `Ajustes do professor${(dados?.relatorioAjustes || []).length ? ` (${dados.relatorioAjustes.length})` : ""}` }] },
+    { label: "Apoio ao planejamento", itens: [{ key: "capacidade", label: "Capacidade de produção" }, { key: "ajustesProf", label: `Ajustes do professor${(dados?.relatorioAjustes || []).length ? ` (${dados.relatorioAjustes.length})` : ""}` }, { key: "mercado", label: "Adequação ao mercado", novo: true }] },
     { label: "Análises", itens: [...MODULOS.filter((m) => ehModuloAnalise(m)).map((m) => ({ key: m.id, label: m.nome, status: estadoModulo(fluxo, m.id).status })), { key: "analise", label: "Análise do Negócio" }, { key: "cenarios", label: "Análise de Cenários" }, { key: "fluxocaixa", label: "Fluxo de Caixa Anual" }] },
     { label: "Entregas", itens: [
       { key: "ppt", label: gerandoPpt ? "Gerando apresentação…" : "Baixar Apresentação (dados da equipe)", acao: acaoBaixarPpt },
@@ -15574,6 +15576,84 @@ function FolhasMercadoImpressao({ lista, turma, emitidoEm, notas, regs }) {
   );
 }
 
+
+// ---- Liberação do relatório para a equipe (cópia só do que o aluno pode ver) ----
+function montarLiberacaoMercado(o, reg) {
+  const sit = situacaoMercado(o, reg);
+  return {
+    v: 1, em: Date.now(), equipeId: o.id, nome: o.nome, segmento: o.segmento, sem: o.sem, prazo: (reg && reg.prazo) || "", msg: (reg && reg.notas) || "",
+    feitos: sit.feitos, total: sit.total || sit.cur.length,
+    resolvidos: [...sit.resolv.map((b) => ({ onde: b.onde, t: b.t })), ...sit.conferidos.map((a) => ({ onde: a.onde, t: "conferido pelo professor" }))],
+    pend: sit.pend.map((a) => ({ p: a.p, onde: a.onde, fazer: a.fazer, nums: a.nums || "", tela: a.tela || null })),
+    prof: o.prof || [],
+  };
+}
+async function lerLiberacaoMercado(equipeId) { try { const x = await window.storage.get(`mercado_lib_${equipeId}`, true); const o = x ? JSON.parse(x.value) : null; return o && !o.recolhido ? o : null; } catch { return null; } }
+function destinoMercado(onde) { if (/^Capacidade/.test(onde || "")) return { id: "capacidade", rot: "Capacidade" }; const m = /M[óo]dulos?\s+(\d+)/.exec(onde || ""); return m ? { id: `m${m[1]}`, rot: `Módulo ${m[1]}` } : null; }
+
+function TelaMercadoMini({ t }) {
+  const hl = { outline: "2px solid #e11d48", outlineOffset: -2, background: "#fff1f2", fontWeight: 700 };
+  return (
+    <div style={{ width: 290, flex: "none", border: "1px solid #64748b", borderRadius: 6, overflow: "hidden", background: "#f8fafc", color: "#0f172a", fontSize: 10, alignSelf: "flex-start" }}>
+      <div style={{ background: "#334155", color: "#fff", padding: "3px 6px", fontSize: 9 }}>{t.mod}</div>
+      {t.abas && t.abas.length > 0 && <div style={{ display: "flex", gap: 3, padding: "3px 6px", background: "#e2e8f0", flexWrap: "wrap" }}>{t.abas.map((a, j) => <span key={j} style={{ padding: "0 5px", borderRadius: 8, background: j === t.ativa ? "#1f4e8c" : "#fff", color: j === t.ativa ? "#fff" : "#334155", fontSize: 9 }}>{a}</span>)}</div>}
+      {t.k === "tab" ? (
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr>{t.cols.map((c, j) => <th key={j} style={{ background: "#f1f5f9", color: "#64748b", padding: "2px 5px", textAlign: "left", fontWeight: 400 }}>{c}</th>)}</tr></thead>
+          <tbody>{t.rows.map((r, j) => <tr key={j} style={r.h ? hl : undefined}>{r.c.map((x, q) => <td key={q} style={{ borderBottom: "1px solid #e2e8f0", padding: "2px 5px" }}>{x}</td>)}</tr>)}{t.mais > 0 && <tr><td colSpan={t.cols.length} style={{ color: "#64748b", padding: "2px 5px" }}>… e mais {t.mais} linha(s)</td></tr>}</tbody>
+        </table>
+      ) : (t.campos || []).map((c, j) => <div key={j} style={{ display: "flex", justifyContent: "space-between", padding: "2px 6px", borderBottom: "1px solid #e2e8f0", ...(c.h ? hl : {}) }}><span>{c.l}</span><span>{c.v}</span></div>)}
+      <div style={{ background: "#e11d48", color: "#fff", fontWeight: 700, fontSize: 9, padding: "2px 6px" }}>{t.tag}</div>
+    </div>
+  );
+}
+
+function AdequacaoMercadoAluno({ equipe, onIr }) {
+  const [lib, setLib] = useState(undefined);
+  useEffect(() => { let vivo = true; lerLiberacaoMercado(equipe.id).then((o) => { if (vivo) setLib(o); }); return () => { vivo = false; }; }, [equipe.id]);
+  if (lib === undefined) return <LoadingScreen />;
+  const dot = { r: "text-rose-400", a: "text-amber-400", g: "text-emerald-400" };
+  const rot = { r: "Corrigir", a: "Confirmar", g: "Ok" };
+  if (!lib) return (
+    <div>
+      <h2 className="text-lg font-bold text-slate-100 mb-1">Adequação ao mercado</h2>
+      <div className="border border-dashed border-slate-600 rounded-xl p-8 text-center text-slate-400 bg-slate-900/50">O professor ainda não liberou o relatório da sua equipe.<br />Quando ele liberar, os passos aparecem aqui, com a tela de cada módulo.</div>
+    </div>
+  );
+  const prazo = lib.prazo ? lib.prazo.split("-").reverse().join("/") : "";
+  return (
+    <div>
+      <h2 className="text-lg font-bold text-slate-100">Adequação ao mercado — {lib.nome}</h2>
+      <p className="text-sm text-slate-400 mb-3">O que a equipe precisa revisar e fazer. Liberado pelo professor em {new Date(lib.em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}. Nada aqui altera os seus lançamentos: você corrige nos módulos indicados.</p>
+      <div className="rounded-lg border border-emerald-800 bg-emerald-900/20 px-3 py-2 mb-3 flex flex-wrap justify-between gap-2 text-sm">
+        <span className="text-slate-200">{prazo ? <b>Prazo para a equipe: {prazo} · </b> : null}Comece pelos passos de prioridade alta.</span>
+        {lib.total > 0 && <b className="text-emerald-400">{lib.feitos} de {lib.total} passos resolvidos</b>}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">{(lib.sem || []).map((x) => <div key={x.t} className="rounded-lg bg-slate-800 px-3 py-2"><div className="text-[10px] text-slate-400">{x.t}</div><div className={`font-bold text-sm ${dot[x.k]}`}>{rot[x.k]}</div></div>)}</div>
+      {(lib.resolvidos || []).map((r, i) => <div key={i} className="rounded-lg border border-emerald-800 bg-emerald-900/20 px-3 py-2 mb-2 text-sm text-slate-200 flex items-center gap-2"><span className="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">RESOLVIDO</span><span><b>{r.onde}</b> — {r.t}</span></div>)}
+      {(lib.pend || []).length === 0 && <div className="text-emerald-400 font-bold mb-3">Nenhuma pendência no momento. Aguarde a conferência do professor.</div>}
+      {(lib.pend || []).map((a, i) => {
+        const d = destinoMercado(a.onde);
+        return (
+          <div key={i} className="rounded-xl border border-slate-700 bg-slate-800 p-3 mb-3 flex flex-wrap gap-3">
+            <div className="w-6 h-6 rounded-full bg-blue-800 text-white font-bold text-sm flex items-center justify-center flex-none">{i + 1}</div>
+            <div className="flex-1 min-w-[220px]">
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${a.p === "A" ? "bg-rose-200 text-rose-900" : "bg-amber-200 text-amber-900"}`}>{a.p === "A" ? "PRIORIDADE ALTA" : "PRIORIDADE MÉDIA"}</span>
+              <div className="text-sm font-bold text-blue-300 mt-1">ONDE: {a.onde}</div>
+              <div className="text-sm font-semibold text-slate-100">{a.fazer}</div>
+              {a.nums && <div className="text-xs text-slate-400 bg-slate-900 rounded-md px-2 py-1 mt-2">NÚMEROS: {a.nums}</div>}
+              {d && onIr && <button onClick={() => onIr(d.id)} className="mt-2 bg-amber-500 text-slate-900 font-bold text-xs px-3 py-1.5 rounded-md hover:bg-amber-400">Ir para {d.rot} →</button>}
+            </div>
+            {a.tela && <TelaMercadoMini t={a.tela} />}
+          </div>
+        );
+      })}
+      {lib.msg && lib.msg.trim() && <div className="text-sm text-slate-300 mb-3"><b className="text-slate-100">O professor escreveu para a equipe:</b> “{lib.msg}”</div>}
+      {(lib.prof || []).length > 0 && <div className="text-xs text-slate-400"><b className="text-slate-300">O professor já alterou no plano de vocês:</b> {lib.prof.join(" · ")}</div>}
+    </div>
+  );
+}
+
 function QuadroMercadoImpressao({ lista, regs, turma, emitidoEm }) {
   const cor = { r: "#ef4444", a: "#f59e0b", g: "#22c55e" };
   return (
@@ -15621,6 +15701,20 @@ function RelatorioMercado({ turma, dadosEquipes }) {
   const lista = useMemo(() => (dadosEquipes || []).map((it) => { try { return gerarRelatorioMercado(it); } catch (e) { return { id: it.equipe.id, nome: it.equipe.nomeNegocio, segmento: it.equipe.segmento || "", integrantes: it.equipe.integrantes || [], sem: [], cap: { titulo: "Capacidade", dem: null, cap: null, un: "", pico: "", pess: "", falta: "Não foi possível analisar esta empresa." }, acoes: [], prof: [], erro: true }; } }), [dadosEquipes]);
   const emitidoEm = new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }).replace(",", " às");
   useEffect(() => { let vivo = true; lerMercadoTurma(turma.id).then((o) => { if (vivo) { regsRef.current = o; setRegs(o); } }); return () => { vivo = false; }; }, [turma.id]);
+  const liberar = async (os) => {
+    const atual = regsRef.current || {}; const prox = { ...atual };
+    try {
+      for (const o of os) { await window.storage.set(`mercado_lib_${o.id}`, JSON.stringify(montarLiberacaoMercado(o, atual[o.id] || {})), true); prox[o.id] = { ...(atual[o.id] || {}), lib: { em: Date.now() } }; }
+      regsRef.current = prox; setRegs(prox); await gravarMercadoTurma(turma.id, prox); setMsg(os.length === 1 ? "Liberado para a equipe." : `Liberado para ${os.length} equipe(s).`);
+    } catch { setMsg("Não foi possível liberar. Tente de novo."); }
+  };
+  const recolher = async (os) => {
+    const atual = regsRef.current || {}; const prox = { ...atual };
+    try {
+      for (const o of os) { await window.storage.set(`mercado_lib_${o.id}`, JSON.stringify({ recolhido: true, em: Date.now() }), true); prox[o.id] = { ...(atual[o.id] || {}), lib: null }; }
+      regsRef.current = prox; setRegs(prox); await gravarMercadoTurma(turma.id, prox); setMsg("Liberação recolhida.");
+    } catch { setMsg("Não foi possível recolher. Tente de novo."); }
+  };
   const salvar = async (eqId, mudar) => {
     const atual = regsRef.current || {};
     const prox = { ...atual, [eqId]: mudar({ ...(atual[eqId] || {}) }) };
@@ -15675,6 +15769,11 @@ function RelatorioMercado({ turma, dadosEquipes }) {
           <textarea defaultValue={reg.notas || ""} key={sel.id} onBlur={(e) => { const v = e.target.value; if (v !== (reg.notas || "")) salvar(sel.id, (r) => ({ ...r, notas: v })); }} rows={3} className="w-full bg-slate-900 border border-slate-700 rounded-md p-2 text-sm text-slate-100" placeholder="Ex.: conferir o preço do açaí 700 ml com 3 concorrentes; trazer o projeto escrito na próxima aula." />
           <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-slate-300">
             <label className="flex items-center gap-2">Entregar até: <input type="date" value={reg.prazo || ""} onChange={(e) => salvar(sel.id, (r) => ({ ...r, prazo: e.target.value }))} className="bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-slate-100" /></label>
+            <span className="flex items-center gap-2 border-l border-slate-700 pl-3">
+              <span className={reg.lib ? "text-emerald-400" : "text-slate-400"}>{reg.lib ? `Equipe vê a versão liberada em ${new Date(reg.lib.em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : "Equipe ainda não vê este relatório"}</span>
+              <button onClick={() => { if (window.confirm(reg.lib ? "Atualizar a versão que a equipe vê com a situação de agora?" : "Liberar este relatório para a equipe? Ela verá os passos, as telas, o prazo e a mensagem do campo de observações.")) liberar([sel]); }} className="bg-emerald-600 text-white font-bold px-3 py-1 rounded-md hover:bg-emerald-500">{reg.lib ? "Atualizar versão liberada" : "Liberar para a equipe"}</button>
+              {reg.lib && <button onClick={() => { if (window.confirm("Recolher? A equipe deixa de ver o relatório.")) recolher([sel]); }} className="border border-slate-600 text-slate-200 px-3 py-1 rounded-md hover:bg-slate-800">Recolher</button>}
+            </span>
             {sit.base && <span className="text-slate-400">Último relatório impresso em {new Date(reg.ultimo.em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}: {sit.feitos} de {sit.total} resolvidos.</span>}
           </div>
         </Card>
@@ -15699,12 +15798,14 @@ function RelatorioMercado({ turma, dadosEquipes }) {
       <p className="no-print text-sm text-slate-400 mb-3">Relatório objetivo, por empresa, do que a equipe precisa revisar e fazer para adequar o plano ao mercado — com ONDE fazer, O QUE fazer, os números e a miniatura da tela. É gerado pelas regras automáticas a partir dos lançamentos atuais; <b className="text-slate-200">nenhum dado das equipes é alterado</b>. Ficam salvos, por equipe, só os seus registros: observações, prazo, passos conferidos e o último relatório impresso (para comparar o que foi resolvido). Esses registros entram no Backup geral.</p>
       <div className="no-print flex flex-wrap items-center gap-2 mb-3">
         <button onClick={() => setImp({ tipo: "folhas", lista: lista.filter((o) => !o.teste) })} className={btnP}><Printer size={14} /> Imprimir / Salvar PDF de todas as equipes</button>
+        <button onClick={() => { const alvo = lista.filter((o) => !o.teste); if (window.confirm(`Liberar o relatório para as ${alvo.length} equipe(s)? Cada equipe verá só o seu.`)) liberar(alvo); }} className="flex items-center gap-2 bg-emerald-600 text-white font-bold px-4 py-2 rounded-md hover:bg-emerald-500 text-sm">Liberar para todas as equipes</button>
+        <button onClick={() => { const alvo = lista.filter((o) => regs[o.id]?.lib); if (alvo.length && window.confirm(`Recolher a liberação de ${alvo.length} equipe(s)?`)) recolher(alvo); }} className="flex items-center gap-2 border border-slate-600 text-slate-200 font-semibold px-4 py-2 rounded-md hover:bg-slate-800 text-sm">Recolher todas</button>
         <button onClick={() => setImp({ tipo: "quadro" })} className="flex items-center gap-2 border border-slate-600 text-slate-200 font-semibold px-4 py-2 rounded-md hover:bg-slate-800 text-sm"><Printer size={14} /> Imprimir quadro da turma</button>
         {msg && <span className="text-xs text-emerald-400">{msg}</span>}
       </div>
       <Card className="no-print overflow-x-auto">
         <table className="w-full text-sm">
-          <thead><tr>{["Empresa", "Capacidade", "Pessoal", "Preços", "Custos", "Retorno", "Pendências", "Resolvidos", ""].map((h) => <th key={h} className="py-2 px-3 text-left text-[11px] uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40">{h}</th>)}</tr></thead>
+          <thead><tr>{["Empresa", "Capacidade", "Pessoal", "Preços", "Custos", "Retorno", "Pendências", "Resolvidos", "Equipe vê", ""].map((h) => <th key={h} className="py-2 px-3 text-left text-[11px] uppercase text-slate-500 border-b border-slate-700 bg-slate-900/40">{h}</th>)}</tr></thead>
           <tbody>
             {lista.map((o) => {
               const sit = situacaoMercado(o, regs[o.id]);
@@ -15714,6 +15815,7 @@ function RelatorioMercado({ turma, dadosEquipes }) {
                   {(o.sem.length ? o.sem : [1, 2, 3, 4, 5].map(() => ({ k: "a" }))).map((s, i) => <td key={i} className="py-2 px-3"><span className={`inline-block w-3.5 h-3.5 rounded-full ${dot[s.k]}`} title={s.d || ""} /></td>)}
                   <td className="py-2 px-3 text-slate-300">{sit.pend.filter((a) => a.p === "A").length} alta(s) · {sit.pend.filter((a) => a.p === "M").length} média(s)</td>
                   <td className="py-2 px-3 text-slate-300">{sit.base ? `${sit.feitos} de ${sit.total}` : "—"}</td>
+                  <td className="py-2 px-3 text-xs">{regs[o.id]?.lib ? <span className="text-emerald-400">liberado {new Date(regs[o.id].lib.em).toLocaleDateString("pt-BR")}</span> : <span className="text-slate-500">não</span>}</td>
                   <td className="py-2 px-3"><button onClick={() => setSelId(o.id)} className="text-xs font-semibold border border-slate-600 text-slate-200 px-2.5 py-1.5 rounded-md hover:bg-slate-800">Abrir</button></td>
                 </tr>
               );

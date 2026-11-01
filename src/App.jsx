@@ -1,4 +1,4 @@
-// build: 20261101_12h23m Capacidade: aba 4 Condicoes do segmento (pesquisar e formulas por segmento)
+// build: 20261101_13h01m Realismo de mercado: o que mexer em cada indicador, ajuste sozinho, investimento e quadro final
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -9104,9 +9104,10 @@ const PA = (() => {
   const LISTAS = [["R|giro", giro], ["R|imp", imposto], ["R|coe", coerencia], ["R|cus", custosFaltantes], ["R|pro", proLabore], ["R|fin", financiamento], ["R|prc", precoMinimo], ["R|arr", arranque]];
 
   // ---- Realismo de mercado: aproxima a empresa das faixas típicas do segmento (só corrige o que está "bom demais") ----
-  const MERC_MAX = { cmv: 150, mo: 1e9, div: 1e9, preco: 40, qtd: 50 };
+  const MERC_MAX = { cmv: 150, mo: 1e9, div: 1e9, preco: 40, qtd: 50, inv: 100 };
   function mercadoSim(L, m) {
     const X = clone(L);
+    if (m.inv > 0) X.m1.itens = X.m1.itens.map((x) => ({ ...x, valorUnit: r2((Number(x.valorUnit) || 0) * (1 + m.inv / 100)) }));
     if (m.cmv > 0) { const f = 1 + m.cmv / 100; const cu = {}; Object.keys(X.m8.custosUnit || {}).forEach((k) => { cu[k] = r2((Number(X.m8.custosUnit[k]) || 0) * f); }); X.m8.custosUnit = cu; X.m6.itens = X.m6.itens.map((x) => ({ ...x, custoUnit: Math.round((Number(x.custoUnit) || 0) * f * 10000) / 10000 })); }
     if (m.mo > 0) { const dm = detalheMaoDeObra(X.m9); const pc = dm.modo === "grupos" ? dm.pctGrupos : 0; X.m9.itens = [...X.m9.itens, { id: uid(), funcao: "Reforço de equipe (realismo de mercado)", qtd: 1, salario: r2(m.mo / (1 + pc / 100)), vt: 0, vr: 0, ...(dm.modo === "grupos" ? {} : { pctEncargos: 0 }) }]; }
     if (m.div > 0) X.m11.itens = [...X.m11.itens, { id: uid(), desc: "Divulgação e marketing (realismo de mercado)", valor: r2(m.div) }];
@@ -9149,6 +9150,44 @@ const PA = (() => {
       { rot: "CMV (custo da mercadoria)", hoje: `${fmtNum(cmvP, 0)}%`, faixa: fx(R.cmvMin, cmvMax, "%"), sit: c.cmv > 0 ? sit(cmvP, R.cmvMin, cmvMax) : "—", depois: `${fmtNum((depois.cmv / depois.faturamento) * 100, 0)}%` },
       { rot: "Mão de obra", hoje: `${fmtNum(moP, 0)}%`, faixa: fx(R.moMin, moMax, "%"), sit: sit(moP, R.moMin, moMax), depois: `${fmtNum((depois.maoDeObra / depois.faturamento) * 100, 0)}%` },
     ];
+    // ---- "o que mexer" em cada indicador, valor de cada ajuste sozinho e simulação das escolhas atuais ----
+    const CH = { preco: "Preços ↓ (M5)", qtd: "Quantidades ↓ (M5)", cmv: "Custo dos produtos ↑ (M8)", mo: "Mão de obra ↑ (M9)", div: "Divulgação ↑ (M11)", inv: "Investimento ↑ (M1)" };
+    const FORA = "Aumentar o resultado: fora deste ajuste (use Viabilidade ou o Ajuste manual)";
+    const mexerDe = (rot, sit2) => {
+      if (sit2 === "ok" || sit2 === "—") return [];
+      if (rot === "Lucratividade") return sit2 === "acima" ? [CH.preco, CH.qtd, CH.cmv, CH.mo, CH.div] : [FORA];
+      if (rot === "Rentabilidade ao ano") return sit2 === "acima" ? [CH.preco, CH.qtd, CH.cmv, CH.mo, CH.div, CH.inv] : [FORA];
+      if (rot.startsWith("Prazo")) return sit2 === "curto demais" ? [CH.preco, CH.qtd, CH.cmv, CH.mo, CH.div, CH.inv] : [FORA];
+      if (rot.startsWith("CMV")) return sit2 === "abaixo" ? [CH.cmv] : ["Conferir preços e custos (M5 e M8): sem ajuste automático"];
+      return sit2 === "abaixo" ? [CH.mo] : ["Conferir a equipe (M9): sem ajuste automático"];
+    };
+    tabela.forEach((r) => { r.mexer = mexerDe(r.rot, r.sit); });
+    const indic = (k) => ({ luc: k.lucratividade, rent: k.rentabilidade, pay: k.prazoRetorno, cmvP: k.faturamento > 0 ? (k.cmv / k.faturamento) * 100 : 0, moP: k.faturamento > 0 ? (k.maoDeObra / k.faturamento) * 100 : 0, inv: k.investimentoTotal, res: k.resultadoOperacional, fat: k.faturamento });
+    const hojeInd = indic(c);
+    const sim = (m) => indic(calcular(mercadoSim(L, m)));
+    const quadro = (m) => {
+      const k = calcular(mercadoSim(L, m || {})); const d = indic(k);
+      return [
+        { rot: "Lucratividade", valor: `${fmtNum(d.luc, 1)}%`, sit: sit(d.luc, R.lucMin, R.lucMax), faixa: fx(R.lucMin, R.lucMax, "%") },
+        { rot: "Rentabilidade ao ano", valor: `${fmtNum(d.rent, 1)}%`, sit: sit(d.rent, R.rentMin, R.rentMax), faixa: fx(R.rentMin, R.rentMax, "%") },
+        { rot: "Prazo de retorno", valor: pay(k), sit: k.prazoRetorno == null ? "—" : d.rent > R.rentMax ? "curto demais" : d.rent < R.rentMin ? "longo" : "ok", faixa: `${fmtNum(100 / R.rentMax, 1)} a ${fmtNum(100 / R.rentMin, 1)} anos` },
+        { rot: "CMV", valor: `${fmtNum(d.cmvP, 0)}%`, sit: k.cmv > 0 ? sit(d.cmvP, R.cmvMin, cmvMax) : "—", faixa: fx(R.cmvMin, cmvMax, "%") },
+        { rot: "Mão de obra", valor: `${fmtNum(d.moP, 0)}%`, sit: sit(d.moP, R.moMin, moMax), faixa: fx(R.moMin, moMax, "%") },
+      ];
+    };
+    let solo = null;
+    if (fl.luc || fl.rent) {
+      const okS = (m) => { const k = calcular(mercadoSim(L, m)); return k.lucratividade <= R.lucMax && k.rentabilidade <= R.rentMax; };
+      const alvos = [["preco", "preços −%", "Módulo 5", MERC_MAX.preco, "%"], ["qtd", "quantidades −%", "Módulo 5", MERC_MAX.qtd, "%"], ["cmv", "custo dos produtos +%", "Módulos 8 e 6", MERC_MAX.cmv, "%"], ["mo", "mão de obra +R$/mês", "Módulo 9", Math.max(F, 1000), "R$"], ["div", "divulgação +R$/mês", "Módulo 11", Math.max(F, 1000), "R$"], ["inv", "investimento +%", "Módulo 1", MERC_MAX.inv, "%"]];
+      solo = alvos.map(([k, rot, onde, max, un]) => {
+        if (!okS({ [k]: max })) return { k, rot, onde, un, valor: null };
+        let lo = 0, hi = max; for (let i = 0; i < 28; i++) { const mid = (lo + hi) / 2; if (okS({ [k]: mid })) hi = mid; else lo = mid; }
+        const passo = un === "%" ? 0.5 : 10; let v = Math.ceil(hi / passo) * passo; if (!okS({ [k]: v })) v = Math.min(max, v + passo);
+        const d = sim({ [k]: v });
+        const nota = k === "cmv" ? `CMV iria a ${fmtNum(d.cmvP, 0)}%${d.cmvP > cmvMax ? " (passa da faixa)" : ""}` : k === "mo" ? `mão de obra iria a ${fmtNum(d.moP, 0)}%${d.moP > moMax ? " (passa da faixa)" : ""}` : k === "div" ? `${fmtNum((v / F) * 100, 1)}% do faturamento${v / F > 0.05 ? " (acima do usual)" : ""}` : k === "inv" ? `investimento total iria a ${fmtBRL(d.inv)}` : "";
+        return { k, rot, onde, un, valor: v, depois: d, nota };
+      });
+    }
     const sugDiv = r2(F * 0.02);
     const temDiv = (L.m11.itens || []).some((x) => /divulg|marketing|propaganda|publicidade|an[uú]ncio|tr[aá]fego|impulsion/.test(normTxt(x.desc || "")));
     const params = [
@@ -9157,18 +9196,23 @@ const PA = (() => {
       { k: "div", rotulo: "divulgação R$/mês", padrao: pl.div, max: MERC_MAX.div, dica: temDiv ? "Módulo 11: já há item de divulgação" : `Módulo 11: sem verba de divulgação; sugestão de 2% = ${fmtBRL(sugDiv)}` },
       { k: "preco", rotulo: "preços −%", padrao: pl.preco, max: MERC_MAX.preco, dica: "Módulo 5: aproxima o preço do praticado no segmento" },
       { k: "qtd", rotulo: "quantidades −%", padrao: pl.qtd, max: MERC_MAX.qtd, dica: "Módulo 5: volume mais realista para o início da empresa" },
+      { k: "inv", rotulo: "investimento +%", padrao: 0, max: MERC_MAX.inv, dica: "Módulo 1: aumenta o valor unitário dos itens de investimento (use se o investimento estiver subestimado)" },
     ];
+    const ATUA = { cmv: "CMV · Lucratividade · Rentabilidade · Prazo de retorno", mo: "Mão de obra · Lucratividade · Rentabilidade · Prazo de retorno", div: "Lucratividade · Rentabilidade · Prazo de retorno", preco: "Lucratividade · Rentabilidade · Prazo de retorno", qtd: "Lucratividade · Rentabilidade · Prazo de retorno", inv: "Rentabilidade · Prazo de retorno" };
+    params.forEach((pr) => { pr.atua = ATUA[pr.k]; });
     const inviavel = depois.resultadoOperacional <= 0 || depois.prazoRetorno == null || depois.prazoRetorno > (R.retornoMax ?? 5);
     const resumo = `Realismo de mercado (${ctx.segmento || "segmento"}): lucratividade ${fmtNum(c.lucratividade, 1)}% → ${fmtNum(depois.lucratividade, 1)}%, rentabilidade ${fmtNum(c.rentabilidade, 1)}% → ${fmtNum(depois.rentabilidade, 1)}% ao ano, retorno ${pay(c)} → ${pay(depois)}.`;
-    return { chave: "R|mer", grupo: "Mercado", mods: ["m5", "m6", "m8", "m9", "m11"], rotulo: "Realismo de mercado", tabela, params, inviavel, resumo, padrao: "manter",
+    // resumo do que foi REALMENTE aplicado (o texto `resumo` descreve só o cenário sugerido)
+    const resumoDe = (Ld) => { const d = calcular(Ld); return `Realismo de mercado (${ctx.segmento || "segmento"}): lucratividade ${fmtNum(c.lucratividade, 1)}% → ${fmtNum(d.lucratividade, 1)}%, rentabilidade ${fmtNum(c.rentabilidade, 1)}% → ${fmtNum(d.rentabilidade, 1)}% ao ano, retorno ${pay(c)} → ${pay(d)}.`; };
+    return { chave: "R|mer", grupo: "Mercado", mods: ["m1", "m5", "m6", "m8", "m9", "m11"], rotulo: "Realismo de mercado", tabela, params, inviavel, resumo, padrao: "manter", resumoDe, solo, sim, quadro, hojeInd,
       opcoes: [{ id: "manter", rotulo: "Deixar como está" }, { id: "realista", rotulo: "Cenário realista sugerido (editável)", recomendado: true, params }],
       aplicar: (Lx, opt, v, Xx) => {
         if (opt !== "realista") return;
         const m = {}; let alguma = false;
         params.forEach((pr) => { const n = Math.min(pr.max, Number(v?.[pr.k] ?? pr.padrao)); if (n > 0) { m[pr.k] = n; alguma = true; } });
         if (!alguma) return;
-        const nova = mercadoSim(Lx, m); ["m5", "m6", "m8", "m9", "m11"].forEach((k) => { Lx[k] = nova[k]; });
-        const txt = { cmv: "custo dos produtos +", mo: "mão de obra +R$ ", div: "divulgação R$ ", preco: "preços −", qtd: "quantidades −" };
+        const nova = mercadoSim(Lx, m); ["m1", "m5", "m6", "m8", "m9", "m11"].forEach((k) => { Lx[k] = nova[k]; });
+        const txt = { cmv: "custo dos produtos +", mo: "mão de obra +R$ ", div: "divulgação R$ ", preco: "preços −", qtd: "quantidades −", inv: "investimento +" };
         Xx.linhas.push(`Realismo de mercado — ${Object.keys(m).map((k) => `${txt[k]}${fmtNum(m[k], 1)}${["mo", "div"].includes(k) ? "/mês" : "%"}`).join(" · ")}`);
       } };
   }
@@ -9209,7 +9253,7 @@ const PA = (() => {
       if (mp && mp.opcoes.some((o) => o.id === em.opt)) {
         const aL = JSON.stringify(L); const n0 = X.linhas.length;
         mp.aplicar(L, em.opt, em.v, X);
-        if (JSON.stringify(L) !== aL) { aplicados.push("R|mer"); X.linhas.splice(n0, 0, mp.resumo); }
+        if (JSON.stringify(L) !== aL) { aplicados.push("R|mer"); X.linhas.splice(n0, 0, mp.resumoDe(L)); }
       }
     }
     // Viabilidade: por último, sobre o cenário já corrigido (e com a capacidade já decidida)
@@ -9727,6 +9771,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
   const [paEq, setPaEq] = useState("");          // equipe escolhida para os Pontos de atenção
   const [paPontos, setPaPontos] = useState(null);  // pontos encontrados (sem funções) + dados lidos
   const [paEsc, setPaEsc] = useState({});         // { [chave]: { opt, v } }
+  const [mercOutros, setMercOutros] = useState(false);   // Realismo de mercado: mostrar os ajustes sem sugestão
   const [histAberto, setHistAberto] = useState(false); // "4. Ajustes feitos" fica recolhido; clique para abrir
   const [prEq, setPrEq] = useState("");          // equipe escolhida para os preços sugeridos
   const [prEd, setPrEd] = useState(null);         // { equipeId, d, lanc, margem, usar, edit, motivo }
@@ -10344,12 +10389,23 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
               const mp = paResultado.merPt; const e = paEsc["R|mer"] || { opt: "manter", v: {} };
               const setV = (k, val) => paEscolher("R|mer", { v: { ...(e.v || {}), [k]: val } });
               const cor = (s) => (s === "ok" ? "bg-emerald-900/40 text-emerald-300" : s === "—" ? "bg-slate-800 text-slate-400" : "bg-rose-900/40 text-rose-300");
+              const valorEscolhido = (pr) => { const vv = e.v || {}; const dig = vv["_d" + pr.k] === true; const nao = !dig && vv[pr.k] !== undefined && Number(vv[pr.k]) === 0; return nao ? 0 : Math.min(pr.max, Number(vv[pr.k] ?? pr.padrao) || 0); };
+              const paramsVis = (L2) => L2.filter((pr) => mercOutros || pr.padrao > 0 || (e.v || {})[pr.k] !== undefined || (e.v || {})["_d" + pr.k] === true);
+              const chip = (t2, i2) => <span key={i2} className="inline-block bg-indigo-900/60 text-indigo-200 rounded px-1.5 py-0.5 mr-1 my-0.5">{t2}</span>;
               return (
                 <div className="border-2 border-violet-500/60 rounded-xl p-3 bg-slate-900/60">
                   <div className="text-sm font-bold text-slate-100 mb-1">🌎 Realismo de mercado <span className="text-[11px] font-normal text-slate-400">· {paPontos.ctx.segmento || "segmento não escolhido"}</span></div>
                   <div className="text-xs text-slate-400 mb-2">O sistema comparou a empresa com as faixas típicas do segmento (referência didática, editável em Referências por segmento) e propõe o cenário mais próximo da realidade. Você marca o que quer aplicar.</div>
-                  <div className="overflow-x-auto"><table className="w-full text-xs mb-2"><thead><tr className="text-slate-500 text-left"><th className="py-1 pr-2">Indicador</th><th className="pr-2">Hoje</th><th className="pr-2">Faixa do segmento</th><th className="pr-2">Situação</th><th>Cenário sugerido</th></tr></thead>
-                    <tbody>{mp.tabela.map((r) => <tr key={r.rot} className="border-t border-slate-700 text-slate-200"><td className="py-1 pr-2">{r.rot}</td><td className="pr-2">{r.hoje}</td><td className="pr-2 text-slate-400">{r.faixa}</td><td className="pr-2"><span className={`text-[10.5px] font-bold rounded-full px-2 py-0.5 ${cor(r.sit)}`}>{r.sit}</span></td><td className="font-bold">{r.depois}</td></tr>)}</tbody></table></div>
+                  <div className="overflow-x-auto"><table className="w-full text-xs mb-2"><thead><tr className="text-slate-500 text-left"><th className="py-1 pr-2">Indicador</th><th className="pr-2">Hoje</th><th className="pr-2">Faixa do segmento</th><th className="pr-2">Situação</th><th className="pr-2">Cenário sugerido</th><th>O que mexer para chegar à faixa</th></tr></thead>
+                    <tbody>{mp.tabela.map((r) => <tr key={r.rot} className="border-t border-slate-700 text-slate-200 align-top"><td className="py-1 pr-2">{r.rot}</td><td className="pr-2">{r.hoje}</td><td className="pr-2 text-slate-400">{r.faixa}</td><td className="pr-2"><span className={`text-[10.5px] font-bold rounded-full px-2 py-0.5 ${cor(r.sit)}`}>{r.sit}</span></td><td className="font-bold pr-2">{r.depois}</td><td className="text-[11px]">{r.mexer.length ? r.mexer.map(chip) : <span className="text-slate-500">nada a fazer</span>}</td></tr>)}</tbody></table></div>
+                  {mp.solo && (
+                    <div className="rounded-lg border border-slate-600 bg-slate-950/50 p-2.5 mb-2">
+                      <div className="text-xs font-bold text-slate-100 mb-1">Quanto cada ajuste precisaria mudar, sozinho, para a lucratividade e a rentabilidade entrarem na faixa</div>
+                      <div className="overflow-x-auto"><table className="w-full text-xs"><thead><tr className="text-slate-500 text-left"><th className="py-1 pr-2">Ajuste</th><th className="pr-2">Onde</th><th className="pr-2">Valor necessário</th><th className="pr-2">Rentabilidade depois</th><th>Retorno depois</th></tr></thead>
+                        <tbody>{mp.solo.map((x) => <tr key={x.k} className="border-t border-slate-800 text-slate-200"><td className="py-1 pr-2">{x.rot}</td><td className="pr-2 text-slate-400">{x.onde}</td>
+                          {x.valor == null ? <td colSpan={3} className="text-slate-500">não resolve sozinho (limite do ajuste)</td> : <><td className="pr-2"><b>{x.un === "%" ? `${fmtNum(x.valor, 1)}%` : fmtBRL(x.valor)}</b>{x.nota ? <span className="text-slate-500"> · {x.nota}</span> : null}</td><td className="pr-2 text-emerald-300">{fmtNum(x.depois.rent, 1)}% ✓</td><td className="text-emerald-300">{x.depois.pay == null ? "não se paga" : `${fmtNum(x.depois.pay, 1)} anos`} ✓</td></>}</tr>)}</tbody></table></div>
+                      <div className="text-[11px] text-slate-500 mt-1">Qualquer um sozinho resolve; o cenário sugerido abaixo reparte o esforço. Se o investimento estiver subestimado, o ajuste "investimento +%" (Módulo 1) também reduz a rentabilidade.</div>
+                    </div>)}
                   {mp.inviavel && <div className="text-xs text-amber-300 bg-amber-950/30 border border-amber-800/50 rounded-lg p-2 mb-2">⚠ Com este cenário realista o resultado fica fraco ou o retorno passa do prazo: o plano de viabilidade (abaixo) mostra como equilibrar.</div>}
                   <div className="space-y-1.5">
                     {mp.opcoes.map((op) => (
@@ -10357,7 +10413,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
                         <input type="radio" className="mt-0.5" name="R|mer" checked={e.opt === op.id} onChange={() => paEscolher("R|mer", { opt: op.id, v: {} })} />
                         <span className="flex-1 text-slate-300"><b>{op.rotulo}</b>
                           {op.id === "realista" && e.opt === "realista" && (
-                            <span className="mt-1 block space-y-1.5">{op.params.map((pr) => {
+                            <span className="mt-1 block space-y-1.5">{paramsVis(op.params).map((pr) => {
                               const vv = e.v || {}; const dig = vv["_d" + pr.k] === true; const nao = !dig && vv[pr.k] !== undefined && Number(vv[pr.k]) === 0;
                               const modo = dig ? "dig" : nao ? "nao" : "ace"; const un = ["mo", "div"].includes(pr.k) ? "R$/mês" : "%";
                               const setModo = (m) => { const n = { ...vv }; delete n["_d" + pr.k]; if (m === "ace") delete n[pr.k]; else if (m === "nao") n[pr.k] = 0; else { n[pr.k] = vv[pr.k] > 0 ? vv[pr.k] : pr.padrao; n["_d" + pr.k] = true; } paEscolher("R|mer", { v: n }); };
@@ -10370,14 +10426,25 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
                                     {modo === "dig" && <input type="number" step="0.5" min="0" max={pr.max < 1e8 ? pr.max : undefined} value={vv[pr.k] ?? ""} onChange={(ev) => paEscolher("R|mer", { v: { ...vv, [pr.k]: ev.target.value, ["_d" + pr.k]: true } })} className="w-24 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100" />}
                                     {modo === "dig" && <span className="text-[11px] text-slate-400">{un}</span>}</span>
                                   <span className="block text-[11px] text-slate-500 mt-0.5">{pr.dica}</span>
+                                  <span className="block text-[11px] text-indigo-300 mt-0.5">Atua em: {pr.atua}{(() => { const vlr = valorEscolhido(pr); if (!(vlr > 0)) return null; const dd = mp.sim({ [pr.k]: vlr }); return <> · efeito deste ajuste sozinho: rentabilidade {fmtNum(mp.hojeInd.rent, 1)}% → {fmtNum(dd.rent, 1)}%</>; })()}</span>
                                 </span>);
                             })}
+                            {op.params.some((pr) => !paramsVis(op.params).includes(pr)) || mercOutros ? <button type="button" onClick={() => setMercOutros((v) => !v)} className="block text-[11px] text-slate-400 underline">{mercOutros ? "esconder os ajustes sem sugestão" : `mostrar outros ajustes (sem sugestão agora): ${op.params.filter((pr) => !(pr.padrao > 0)).map((pr) => pr.rotulo.replace(/ [+−].*$/, "")).join(", ")}`}</button> : null}
                               <span className="block text-[11px] text-slate-500">Para cada ajuste: aceite a sugestão, digite o seu valor ou não aplique.</span>
                             </span>)}
                         </span>
                       </label>
                     ))}
                   </div>
+                  {(() => {
+                    const mm = {}; if (e.opt === "realista") mp.params.forEach((pr) => { const n = valorEscolhido(pr); if (n > 0) mm[pr.k] = n; });
+                    const q = mp.quadro(mm);
+                    return (
+                      <div className="rounded-lg border border-slate-600 bg-slate-950/50 p-2.5 mt-2">
+                        <div className="text-xs font-bold text-slate-100 mb-1">Como ficam os indicadores com as escolhas atuais {e.opt !== "realista" ? <span className="font-normal text-slate-500">(escolha "Cenário realista" para simular; nada é alterado até aplicar)</span> : null}</div>
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">{q.map((x) => <div key={x.rot} className={`rounded-md border px-2 py-1 text-[11px] ${x.sit === "ok" ? "border-emerald-700/60" : x.sit === "—" ? "border-slate-700" : "border-rose-700/70"}`}><div className="text-slate-400">{x.rot}</div><div className="text-sm font-bold text-slate-100">{x.valor} <span className={x.sit === "ok" ? "text-emerald-300" : "text-rose-300"}>{x.sit === "ok" ? "✓" : x.sit === "—" ? "" : "✗"}</span></div><div className="text-slate-500">faixa {x.faixa}{x.sit !== "ok" && x.sit !== "—" ? ` · ${x.sit}` : ""}</div></div>)}</div>
+                      </div>);
+                  })()}
                 </div>
               );
             })()}

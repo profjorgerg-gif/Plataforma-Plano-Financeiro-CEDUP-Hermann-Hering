@@ -1,4 +1,4 @@
-// build: 20261102_19h36m Word e apresentação com fórmulas, cálculo da capacidade e perguntas da banca
+// build: 20261102_19h40m Word: Introdução com referencial teórico (varia por equipe) e Referências ABNT; fórmulas e capacidade
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -4769,6 +4769,55 @@ function graficoPng(cfg) {
 
 const PALETA_GRAFICOS = ["#c9972e", "#4f83c9", "#5c7186", "#2dd4a8", "#f87171", "#a78bfa", "#38bdf8", "#f59e0b"];
 
+// ---------------------------------------------------------------------------
+// Introdução e Referências (ABNT) do Word: o texto é montado por blocos e a combinação
+// varia de equipe para equipe (escolha fixa pelo código da equipe), então cada projeto
+// recebe uma introdução semelhante, mas não idêntica. As obras citadas viram a lista de Referências.
+// ---------------------------------------------------------------------------
+const INTRO_REFS = {
+  ASSAF: ["ASSAF NETO, Alexandre. ", "Finanças corporativas e valor", ". 7. ed. São Paulo: Atlas, 2014."],
+  CHIA: ["CHIAVENATO, Idalberto. ", "Empreendedorismo", ": dando asas ao espírito empreendedor. 4. ed. Barueri: Manole, 2012."],
+  DORN: ["DORNELAS, José. ", "Empreendedorismo", ": transformando ideias em negócios. 7. ed. Rio de Janeiro: Empreende, 2018."],
+  GITM: ["GITMAN, Lawrence J. ", "Princípios de administração financeira", ". 12. ed. São Paulo: Pearson Prentice Hall, 2010."],
+  HISR: ["HISRICH, Robert D.; PETERS, Michael P.; SHEPHERD, Dean A. ", "Empreendedorismo", ". 9. ed. Porto Alegre: AMGH, 2014."],
+  SEBR: ["SERVIÇO BRASILEIRO DE APOIO ÀS MICRO E PEQUENAS EMPRESAS (SEBRAE). ", "Como elaborar um plano de negócios", ". Brasília: SEBRAE, 2013."],
+};
+const INTRO_B1 = [
+  { r: ["GITM"], t: "O planejamento financeiro é o processo que transforma as intenções do empreendedor em números que podem ser analisados: quanto investir, quanto vender, quanto gastar e quando o dinheiro retorna. Segundo Gitman (2010), ele orienta as decisões da empresa ao projetar resultados e necessidades de caixa, o que permite antecipar problemas antes que eles aconteçam." },
+  { r: ["GITM"], t: "Planejar financeiramente é antecipar o futuro do negócio em números. Para Gitman (2010), o planejamento financeiro dá direção e controle à empresa, pois reúne em um só lugar as projeções de vendas, custos e necessidades de recursos. Sem ele, o empreendedor decide pela intuição e descobre os problemas apenas quando o caixa já está comprometido." },
+  { r: ["CHIA"], t: "O planejamento financeiro é uma das etapas mais importantes da criação de uma empresa, pois mostra se a ideia de negócio se sustenta quando confrontada com custos e investimentos reais. De acordo com Chiavenato (2012), o empreendedor precisa ir além da boa ideia e organizar os recursos necessários para transformá-la em um negócio que se mantenha ao longo do tempo." },
+  { r: ["ASSAF"], t: "Todo negócio começa com uma ideia, mas só se torna sustentável quando essa ideia é traduzida em números. É essa a função do planejamento financeiro: estimar o capital necessário, prever receitas e despesas e verificar se o resultado compensa o risco assumido. Para Assaf Neto (2014), a análise financeira deve buscar o equilíbrio entre retorno e risco, orientando a empresa na criação de valor." },
+];
+const INTRO_B2 = [
+  { r: ["DORN", "SEBR"], t: "No plano de negócio, a parte financeira é a que traduz todas as demais em valores. Dornelas (2018) destaca que o plano é uma ferramenta para validar a ideia e comunicar o negócio a sócios, financiadores e parceiros, e o Sebrae (2013) o apresenta como o instrumento que reduz riscos antes da abertura da empresa. Seus objetivos principais são: dimensionar o investimento inicial, estimar receitas, custos e despesas, apurar o resultado e avaliar se o retorno justifica o capital aplicado." },
+  { r: ["HISR", "SEBR"], t: "Nesse sentido, o plano de negócio cumpre dois papéis. Hisrich, Peters e Shepherd (2014) o descrevem como o documento que organiza a oportunidade e mostra a viabilidade a quem pretende investir; já o Sebrae (2013) o trata como a principal forma de testar a ideia no papel antes de assumir riscos reais. Na parte financeira, os objetivos são: levantar o investimento necessário, projetar o faturamento e os custos, calcular o resultado esperado e medir o tempo de recuperação do capital." },
+  { r: ["SEBR"], t: "O plano de negócio reúne esse trabalho em um documento estruturado. Conforme o Sebrae (2013), ele permite conhecer o mercado, definir a operação e, principalmente, calcular o retorno do investimento. Entre os objetivos da parte financeira estão: identificar quanto dinheiro é necessário para abrir e manter a empresa, estimar a receita e os custos mensais, encontrar o ponto de equilíbrio e avaliar a viabilidade do empreendimento." },
+  { r: ["DORN", "HISR"], t: "O plano de negócio é o instrumento que organiza essa análise. Dornelas (2018) o define como a ferramenta que descreve e testa a viabilidade da empresa, e Hisrich, Peters e Shepherd (2014) apontam que ele é também o cartão de visitas diante de investidores e instituições de crédito. Os objetivos da parte financeira são: calcular o investimento inicial, projetar o faturamento, apurar custos e despesas, determinar o resultado e medir o prazo de retorno." },
+];
+const INTRO_B3 = [
+  { r: ["ASSAF"], t: "Para essa avaliação, o plano utiliza indicadores como o ponto de equilíbrio, a lucratividade, a rentabilidade e o prazo de retorno (payback), além de uma análise do capital de giro, tema central em Assaf Neto (2014) para a sobrevivência da empresa no curto prazo." },
+  { r: ["ASSAF"], t: "Assaf Neto (2014) lembra que a gestão do capital de giro é decisiva para a continuidade das empresas, pois é ela que garante que haja dinheiro para pagar fornecedores e despesas enquanto as vendas ainda não viraram caixa." },
+  { r: ["DORN", "GITM"], t: "Dornelas (2018) reforça que os números do plano precisam ser coerentes entre si e compreensíveis para quem os analisa. Gitman (2010), por sua vez, ressalta o papel das projeções de resultado e de caixa na tomada de decisão." },
+  { r: ["GITM"], t: "Gitman (2010) destaca ainda a importância do fluxo de caixa, que mostra mês a mês quando o dinheiro entra e sai, e do capital de giro, que sustenta a operação nos primeiros meses de atividade." },
+];
+function introducaoPlano(equipe, comCapacidade) {
+  const id = String(equipe?.id || equipe?.nomeNegocio || "x");
+  let h = 7; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  const pick = (arr, k) => arr[(h >>> (k * 3)) % arr.length];
+  const b = [pick(INTRO_B1, 0), pick(INTRO_B2, 1), pick(INTRO_B3, 2)];
+  const nome = equipe?.nomeNegocio || "A empresa";
+  const seg = equipe?.segmento ? ` no segmento de ${String(equipe.segmento).toLowerCase()}` : "";
+  const fecha = [
+    `${nome} atua${seg}, em que o planejamento dos custos e da estrutura é decisivo para o resultado. ${comCapacidade ? "Além das projeções financeiras, este documento apresenta a capacidade de produção e atendimento e as fórmulas usadas em cada cálculo, para que os resultados possam ser conferidos e defendidos. " : "Este documento apresenta as projeções financeiras e as fórmulas usadas em cada cálculo, para que os resultados possam ser conferidos e defendidos. "}Ele segue a ordem: investimento inicial, receitas e custos, estrutura de custos fixos, resultados e viabilidade, fluxo de caixa${comCapacidade ? ", capacidade" : ""} e cenários.`,
+    `Este documento reúne o plano financeiro de ${nome}, empresa que atua${seg}. ${comCapacidade ? "Ele une a análise financeira ao cálculo de capacidade, mostrando se o faturamento planejado cabe na estrutura prevista, " : "Ele apresenta as projeções da empresa "}e traz as fórmulas de cada indicador, de modo que cada valor possa ser explicado na defesa do projeto. A apresentação começa pelo investimento inicial e segue até a análise de cenários.`,
+    `${nome}${seg ? ` atua${seg}` : ""} e apresenta a seguir o seu plano financeiro. Os valores partem do que a equipe lançou nos módulos da plataforma e são acompanhados da fórmula e da conta de cada resultado${comCapacidade ? ", inclusive da capacidade de atendimento e produção" : ""}, para que possam ser conferidos pela banca avaliadora.`,
+  ];
+  const f = fecha[(h >>> 9) % fecha.length];
+  const chaves = [...new Set(b.flatMap((x) => x.r))];
+  const refs = chaves.map((k) => INTRO_REFS[k]).sort((a, c) => a[0].localeCompare(c[0], "pt-BR"));
+  return { paras: [...b.map((x) => x.t), f], refs };
+}
+
 async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, taxaCrescimento, tmaAnual, historico, capCalc }) {
   const D = await carregarScriptCDN(DOCXJS_URL, "docx");
   const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, ShadingType, BorderStyle, Footer, Header, PageNumber, HeadingLevel, ImageRun } = D;
@@ -4840,6 +4889,7 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
   filhos.push(para(`Gerado pela Plataforma do Plano Financeiro em ${new Date().toLocaleDateString("pt-BR")}`, { color: GRAY, size: 18 }));
   filhos.push(esp());
   filhos.push(tabela(["Conteúdo", "Módulos / análises"], [
+    ["Introdução", "Importância do planejamento financeiro, objetivos do plano de negócio e referencial teórico"],
     ["1. Investimento inicial", "Módulo 1 (Investimentos Fixos) · 2 (Capital de Giro) · 3 (Pré-Operacionais) · 4 (Investimento Total e Fontes)"],
     ["2. Receitas e custos variáveis", "Módulo 5 (Faturamento) · 6 (Matéria-prima) · 7 (Comercialização) · 8 (Custo Unitário e CMV)"],
     ["3. Estrutura de custos fixos", "Módulo 9 (Mão de Obra) · 10 (Depreciação) · 11 (Custos Fixos)"],
@@ -4848,9 +4898,15 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
     ["6. Fluxo de Caixa Anual", "Projeção mês a mês do primeiro ano, VPL e TIR"],
     ["7. Capacidade de produção e atendimento", "Se a estrutura da empresa comporta o plano de vendas, com as fórmulas e as contas"],
     ["8. Análise de Cenários", "Simulações \"e se\" da equipe"],
+    ["Referências", "Obras citadas na Introdução, conforme a ABNT NBR 6023"],
   ], [2.4, 5.6]));
   filhos.push(esp());
   filhos.push(tabela(["Como usar este documento"], [["Cada módulo traz uma tabela e um texto descritivo prontos para copiar e colar na parte \"Plano Financeiro\" do Plano de Negócio. Os números vêm do que a equipe lançou nos módulos da plataforma; se algo mudar lá, baixem o documento de novo. Os textos descrevem os números — a análise e as conclusões devem ser escritas pela equipe, com as próprias palavras."]], [1]));
+
+  // ================= Introdução =================
+  const intro = introducaoPlano(equipe, !!capCalc);
+  filhos.push(h1("Introdução"));
+  intro.paras.forEach((t) => filhos.push(new Paragraph({ spacing: { after: 120, line: 360 }, alignment: AlignmentType.JUSTIFIED, indent: { firstLine: 709 }, children: [run(t)] })));
 
   // ================= 1. Investimento inicial =================
   filhos.push(h1("1. Investimento inicial"));
@@ -5126,6 +5182,10 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
     filhos.push(tabela(["Cenário", "Δ Fat.", "Δ C. var.", "Δ C. fixo", "Faturamento/mês", "Resultado/mês", "Ponto de equilíbrio", "Lucrat."], linhasC, [1.8, 0.8, 0.9, 0.9, 1.5, 1.4, 1.6, 0.9], [1, 2, 3, 4, 5, 6, 7], false, 15));
     filhos.push(imagem({ tipo: "barras", titulo: "Comparativo de cenários — resultado operacional mensal", categorias: ["Base (atual)", ...cens.map((c, i) => c.nome || `Cenário ${i + 1}`)], valores: [calc.resultadoOperacional, ...cens.map((c) => calcularCenario(calc, c).resultadoOperacional)], cores: ["#64748b", ...cens.map((c, i) => CENARIO_CORES[i % CENARIO_CORES.length])], alt: 260 }));
   }
+
+  // ================= Referências (ABNT NBR 6023) =================
+  filhos.push(h1("Referências"));
+  intro.refs.forEach((r) => filhos.push(new Paragraph({ spacing: { after: 160, line: 276 }, alignment: AlignmentType.LEFT, children: [run(r[0]), new TextRun({ text: r[1], font: FONT, size: 21, bold: true }), run(r[2])] })));
 
   const doc = new Document({
     creator: "CEDUP Hermann Hering", title: `Plano Financeiro — ${equipe.nomeNegocio}`,

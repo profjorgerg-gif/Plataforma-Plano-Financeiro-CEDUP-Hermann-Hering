@@ -1,4 +1,4 @@
-// build: 20261102_19h45m Apresentação com 11 slides: investimento e fontes, produtos, cenários/VPL/TIR; Word com fórmulas, capacidade e introdução
+// build: 20261102_19h50m Word: Conclusão analítica com parecer; apresentação com 11 slides; fórmulas, capacidade, introdução e referências
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -4959,6 +4959,7 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
     ["6. Fluxo de Caixa Anual", "Projeção mês a mês do primeiro ano, VPL e TIR"],
     ["7. Capacidade de produção e atendimento", "Se a estrutura da empresa comporta o plano de vendas, com as fórmulas e as contas"],
     ["8. Análise de Cenários", "Simulações \"e se\" da equipe"],
+    ["Conclusão analítica", "Síntese dos resultados, viabilidade, caixa, capacidade, parecer e recomendações"],
     ["Referências", "Obras citadas na Introdução, conforme a ABNT NBR 6023"],
   ], [2.4, 5.6]));
   filhos.push(esp());
@@ -5242,6 +5243,72 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
     const linhasC = [["Base (atual)", "—", "—", "—", brl(calc.faturamento), brl(calc.resultadoOperacional), calc.pontoEquilibrio != null ? brl(calc.pontoEquilibrio) : "—", pc(calc.lucratividade)], ...cens.map((c, i) => { const r = calcularCenario(calc, c); return [c.nome || `Cenário ${i + 1}`, `${num(c.variacaoFaturamento, 0)}%`, `${num(c.variacaoCustoVariavel, 0)}%`, `${num(c.variacaoCustoFixo, 0)}%`, brl(r.faturamento), brl(r.resultadoOperacional), r.pontoEquilibrio != null ? brl(r.pontoEquilibrio) : "—", pc(r.lucratividade)]; })];
     filhos.push(tabela(["Cenário", "Δ Fat.", "Δ C. var.", "Δ C. fixo", "Faturamento/mês", "Resultado/mês", "Ponto de equilíbrio", "Lucrat."], linhasC, [1.8, 0.8, 0.9, 0.9, 1.5, 1.4, 1.6, 0.9], [1, 2, 3, 4, 5, 6, 7], false, 15));
     filhos.push(imagem({ tipo: "barras", titulo: "Comparativo de cenários — resultado operacional mensal", categorias: ["Base (atual)", ...cens.map((c, i) => c.nome || `Cenário ${i + 1}`)], valores: [calc.resultadoOperacional, ...cens.map((c) => calcularCenario(calc, c).resultadoOperacional)], cores: ["#64748b", ...cens.map((c, i) => CENARIO_CORES[i % CENARIO_CORES.length])], alt: 260 }));
+  }
+
+  // ================= Conclusão analítica =================
+  filhos.push(h1("Conclusão analítica"));
+  if (!temDados || !temInvest) filhos.push(vazio("Disponível quando investimento e faturamento forem preenchidos."));
+  else {
+    const nome = equipe.nomeNegocio || "A empresa";
+    const segTxt = equipe.segmento ? `, no segmento de ${String(equipe.segmento).toLowerCase()},` : "";
+    const lucrat = calc.lucratividade;
+    const terc = 100 - pPro;
+    const pos = fluxo.find((m) => m.mes > 0 && m.saldo >= 0);
+    const neg = fluxo.filter((m) => m.mes > 0 && m.resultado < 0).length;
+    const saldo12 = fluxo[12] ? fluxo[12].saldo : 0;
+    const tmaN = Number(tmaAnual); const temTma = Number.isFinite(tmaN) && tmaAnual !== "" && tmaAnual != null;
+    let vplV = null, tirA = null;
+    if (temTma) { vplV = calcularVPL(fluxo, Math.pow(1 + tmaN / 100, 1 / 12) - 1); const tm = calcularTIRMensal(fluxo); tirA = tm !== null ? (Math.pow(1 + tm, 12) - 1) * 100 : null; }
+    const abaixoPE = calc.pontoEquilibrio != null && calc.receitaAnual < calc.pontoEquilibrio;
+    const capR = !!(capCalc && capCalc.res && capCalc.res.k === "r");
+    const paybackLongo = calc.prazoRetorno != null && calc.prazoRetorno > 5;
+    const semRetorno = calc.prazoRetorno == null;
+    const parecer = (calc.resultadoOperacional < 0 || abaixoPE || semRetorno) ? "r" : (paybackLongo || !pos || capR) ? "a" : "g";
+    const pj = (t) => new Paragraph({ spacing: { after: 120, line: 330 }, alignment: AlignmentType.JUSTIFIED, indent: { firstLine: 709 }, children: [run(t)] });
+
+    filhos.push(h2("1. Síntese dos resultados"));
+    filhos.push(pj(`${nome}${segTxt} projeta um faturamento mensal de ${brl(f)} e um ${calc.resultadoOperacional >= 0 ? "resultado operacional" : "resultado operacional negativo"} de ${brl(calc.resultadoOperacional)} por mês (${pc(lucrat, 1)} do faturamento). O investimento total é de ${brl(calc.investimentoTotal)}, dos quais ${pc(pPro, 0)} (${brl((calc.investimentoTotal * pPro) / 100)}) são recursos próprios e ${pc(terc, 0)} (${brl((calc.investimentoTotal * terc) / 100)}) são recursos de terceiros. O capital de giro representa ${pc((calc.capitalGiroTotal / calc.investimentoTotal) * 100, 0)} desse investimento.`));
+
+    filhos.push(h2("2. Viabilidade econômica"));
+    const ptoEq = calc.pontoEquilibrio != null ? `O ponto de equilíbrio é de ${brl(calc.pontoEquilibrio)} por ano, frente a uma receita anual projetada de ${brl(calc.receitaAnual)}${abaixoPE ? `, ou seja, ${pc((1 - calc.receitaAnual / calc.pontoEquilibrio) * 100, 1)} abaixo do necessário para cobrir os custos` : `, ou seja, ${pc((calc.receitaAnual / calc.pontoEquilibrio - 1) * 100, 1)} acima, com margem de segurança de ${pc((1 - calc.pontoEquilibrio / calc.receitaAnual) * 100, 1)}`}.` : "Não foi possível calcular o ponto de equilíbrio, pois a margem de contribuição não cobre os custos variáveis.";
+    const interp = parecer === "r" ? "Com esses números, a empresa ainda não cobre seus custos e o investimento não se paga." : paybackLongo || lucrat < 8 ? "Isso indica que a empresa cobre seus custos, mas com folga pequena e retorno lento do capital investido." : "Isso indica que a empresa cobre seus custos com folga e recupera o investimento em prazo razoável.";
+    filhos.push(pj(`${ptoEq} A rentabilidade é de ${pc(calc.rentabilidade, 1)} ao ano${calc.prazoRetorno != null ? ` e o prazo de retorno (payback) é de ${num(calc.prazoRetorno, 1)} anos` : ", e o lucro atual não recupera o investimento"}. ${interp}`));
+
+    filhos.push(h2("3. Caixa e risco financeiro"));
+    filhos.push(pj(`No fluxo de caixa dos 12 primeiros meses, ${neg === 0 ? "nenhum mês tem resultado negativo" : `${neg} ${neg === 1 ? "mês tem" : "meses têm"} resultado negativo`} e o saldo acumulado ao final do mês 12 é de ${brl(saldo12)}${pos ? `; o caixa acumulado fica positivo no ${pos.label.toLowerCase()}` : "; o caixa acumulado não fica positivo dentro do primeiro ano"}.${temTma ? ` O VPL, calculado com TMA de ${num(tmaN, 1)}% ao ano, é de ${brl(vplV)}${vplV >= 0 ? ", o que indica que o negócio gera valor além do retorno mínimo exigido" : ", o que significa que, no primeiro ano, o negócio não gera valor suficiente para cobrir o retorno mínimo exigido"}${tirA !== null ? `; a TIR é de ${num(tirA, 1)}% ao ano` : ""}.` : ""}${!pos ? " A empresa depende, portanto, de recursos para sustentar o caixa até que as vendas se consolidem." : ""}`));
+
+    filhos.push(h2("4. Capacidade de produção e atendimento"));
+    if (!capCalc) filhos.push(pj("A capacidade de produção e atendimento ainda não foi analisada na plataforma; recomenda-se preenchê-la para confirmar que a estrutura comporta o plano de vendas."));
+    else {
+      const gs = capCalc.grupos.filter((g) => g.cap != null && g.usoPico != null);
+      const gp = [...gs].sort((a, b) => b.usoPico - a.usoPico)[0];
+      if (!gp) filhos.push(pj("A análise de capacidade está incompleta (faltam quantidades ou tempos); ela deve ser concluída para confirmar que a estrutura comporta o plano."));
+      else filhos.push(pj(`A capacidade de ${gp.titulo.toLowerCase()} é de ${num(gp.cap)} ${capCalc.un} por mês, contra uma demanda planejada de ${num(gp.dem)} (uso de ${num(gp.uso * 100)}%). No pico de movimento (fator ${num(capCalc.func.pico, 1)}), a demanda chega a ${num(gp.dem * capCalc.func.pico)} e o uso a ${num(gp.usoPico * 100)}%${gp.usoPico > 1 ? ", o que a estrutura atual não comporta. Para atender o pico, é preciso ampliar a estrutura ou reduzir o plano de vendas, conforme detalhado na seção 7" : gp.usoPico >= 0.9 ? ", o que deixa pouca folga" : ", o que a estrutura comporta com folga"}.`));
+    }
+
+    filhos.push(h2("5. Conclusão e recomendações"));
+    const rotulo = { g: "VIÁVEL", a: "VIÁVEL COM RESSALVAS", r: "AINDA NÃO VIÁVEL" }[parecer];
+    const motivo = {
+      g: "o plano é lucrativo, o investimento se recupera em prazo adequado, o caixa fica positivo no primeiro ano e a estrutura comporta o pico.",
+      a: `o plano ${calc.resultadoOperacional > 0 ? "é lucrativo" : "tem resultado"}, mas ${[paybackLongo ? "o retorno é lento" : null, !pos ? "o caixa não fica positivo em 12 meses" : null, capR ? "a capacidade não atende o pico" : null].filter(Boolean).join(", ")}.`,
+      r: "o resultado atual não cobre os custos ou não recupera o investimento; é preciso revisar o plano antes de seguir.",
+    }[parecer];
+    const cor = { g: ["DCFCE7", "16A34A"], a: ["FEF3C7", "D97706"], r: ["FEE2E2", "DC2626"] }[parecer];
+    const sb = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
+    filhos.push(new Table({ width: { size: CW, type: WidthType.DXA }, columnWidths: [CW], rows: [new TableRow({ cantSplit: true, children: [new TableCell({ width: { size: CW, type: WidthType.DXA }, borders: { top: sb, bottom: sb, right: sb, left: { style: BorderStyle.SINGLE, size: 36, color: cor[1] } }, shading: { type: ShadingType.CLEAR, fill: cor[0], color: "auto" }, margins: { top: 100, bottom: 100, left: 180, right: 140 }, children: [new Paragraph({ children: [run(`Parecer: ${rotulo} — ${motivo}`, { bold: true })] })] })] })] }));
+    filhos.push(esp());
+    const rec = [];
+    if (parecer === "r") rec.push("Rever os preços (Módulo 5) e os custos (Módulos 7 a 11) até que o resultado seja positivo e a receita supere o ponto de equilíbrio.");
+    if (parecer !== "r" && (paybackLongo || lucrat < 8)) rec.push("Elevar a margem: rever preços ou reduzir o custo das mercadorias e os custos fixos, para encurtar o prazo de retorno.");
+    if (capR) rec.push("Reforçar a estrutura de produção ou atendimento, ou limitar o plano de vendas ao que a estrutura comporta no pico.");
+    if (!pos) rec.push("Garantir o capital de giro e a fonte de financiamento para cobrir os meses de caixa negativo.");
+    if (parecer === "g") rec.push("Acompanhar mensalmente os números reais e compará-los com o plano, ajustando preços e custos quando houver desvio.");
+    if (!capCalc) rec.push("Preencher a Capacidade na plataforma para confirmar que a estrutura comporta as vendas planejadas.");
+    if (!rec.length) rec.push("Manter o acompanhamento dos indicadores e revisar o plano sempre que houver mudança de preços ou custos.");
+    rec.forEach((t) => filhos.push(new Paragraph({ numbering: { reference: "marcadores", level: 0 }, spacing: { after: 60, line: 300 }, children: [run(t)] })));
+    const bd = { style: BorderStyle.DASHED, size: 6, color: "94A3B8" };
+    filhos.push(esp());
+    filhos.push(new Table({ width: { size: CW, type: WidthType.DXA }, columnWidths: [CW], rows: [new TableRow({ cantSplit: true, children: [new TableCell({ width: { size: CW, type: WidthType.DXA }, borders: { top: bd, bottom: bd, left: bd, right: bd }, margins: { top: 140, bottom: 600, left: 160, right: 160 }, children: [new Paragraph({ children: [run("Considerações finais da equipe: [ complementem, com as próprias palavras, o que aprenderam com o plano e o que fariam diferente ]", { italics: true, color: GRAY })] })] })] })] }));
   }
 
   // ================= Referências (ABNT NBR 6023) =================

@@ -1,4 +1,4 @@
-// build: 20261102_19h40m Word: Introdução com referencial teórico (varia por equipe) e Referências ABNT; fórmulas e capacidade
+// build: 20261102_19h45m Apresentação com 11 slides: investimento e fontes, produtos, cenários/VPL/TIR; Word com fórmulas, capacidade e introdução
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -4489,7 +4489,7 @@ function nomeArquivoSeguro(txt) {
   return String(txt || "empresa").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "empresa";
 }
 
-async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc }) {
+async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cenarios, tmaAnual }) {
   const PptxGenJS = await carregarScriptCDN(PPTXGENJS_URL, "PptxGenJS");
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE"; // 13,33 x 7,5 pol — mesmo formato do modelo
@@ -4499,6 +4499,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc }) {
   const NAVY = "0F172A", AMBER = "F59E0B", SLATE = "64748B", GREEN = "059669", RED = "DC2626", LIGHT = "F8FAFC", BORDER = "CBD5E1", BROWN = "78350F";
   const money0 = (n) => (Number(n) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
   const pct = (n, d = 1) => `${(Number(n) || 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d })}%`;
+  const money2 = (n) => (Number(n) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   const rodape = `CEDUP Hermann Hering · Plataforma do Plano Financeiro · ${equipe.nomeNegocio}`;
   const X = 0.7, Y = 1.7, W = 11.9, H = 5.0;
 
@@ -4550,8 +4551,25 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc }) {
     }
   }
 
+  // 2b · Investimento e fontes de recursos
+  const sI = base("2 · Quanto Precisa e de Onde Vem", "Investimento inicial e fontes de recursos", 3, ["O valor total e o que ele compra", "Quanto é dos sócios e quanto é de terceiros", "Por que o capital de giro pesa no investimento"]);
+  if (!temInvest) aviso(sI, "Esta parte ainda não pode ser montada: preencham os Módulos 1 a 3 (investimentos) e baixem a apresentação de novo.");
+  else {
+    const pPro = Math.min(100, Math.max(0, Number(lanc?.m4?.pctProprio) || 0));
+    const fontesT = (lanc?.m4?.fontesTerceiros || []).filter((x) => x && x.fonte).map((x) => x.fonte);
+    const w4 = (W - 0.45) / 4;
+    kpi(sI, X, Y, w4, 1.1, "Investimentos fixos", money0(calc.investFixo), "máquinas, móveis e equipamentos");
+    kpi(sI, X + (w4 + 0.15), Y, w4, 1.1, "Capital de giro", money0(calc.capitalGiroTotal), `${pct(calc.investimentoTotal > 0 ? (calc.capitalGiroTotal / calc.investimentoTotal) * 100 : 0, 0)} do investimento`);
+    kpi(sI, X + 2 * (w4 + 0.15), Y, w4, 1.1, "Pré-operacionais", money0(calc.investPreOp), "gastos antes de abrir");
+    kpi(sI, X + 3 * (w4 + 0.15), Y, w4, 1.1, "Investimento total", money0(calc.investimentoTotal), "soma dos três");
+    const wc = (W - 0.3) / 2;
+    const fat = [["Investimentos fixos", calc.investFixo], ["Capital de giro", calc.capitalGiroTotal], ["Pré-operacionais", calc.investPreOp]].filter((x) => x[1] > 0);
+    if (fat.length) sI.addChart(pptx.charts.PIE, [{ name: "Investimento", labels: fat.map((x) => x[0]), values: fat.map((x) => Math.round(x[1])) }], { x: X, y: Y + 1.25, w: wc, h: H - 1.3, chartColors: [AMBER, "3B82F6", "64748B"], showLegend: true, legendPos: "b", legendFontSize: 11, showPercent: true, showValue: false, dataLabelColor: "FFFFFF", dataLabelFontSize: 11, showTitle: true, title: "O que o investimento compra", titleFontSize: 12, titleColor: NAVY });
+    sI.addChart(pptx.charts.PIE, [{ name: "Fontes", labels: ["Recursos próprios", "Recursos de terceiros"], values: [Math.round((calc.investimentoTotal * pPro) / 100), Math.round((calc.investimentoTotal * (100 - pPro)) / 100)] }], { x: X + wc + 0.3, y: Y + 1.25, w: wc, h: H - 1.3, chartColors: [GREEN, RED], showLegend: true, legendPos: "b", legendFontSize: 11, showPercent: true, showValue: false, dataLabelColor: "FFFFFF", dataLabelFontSize: 11, showTitle: true, title: `De onde vem o dinheiro${fontesT.length ? " (terceiros: " + fontesT.join(", ") + ")" : ""}`, titleFontSize: 12, titleColor: NAVY });
+  }
+
   // 3 · DRE
-  const s3 = base("2 · Como Chegamos Até Aqui", "Demonstrativo de Resultados — o detalhamento", 3, ["Receita", "Custos variáveis", "Custos fixos", "Como esses números formam o resultado apresentado no slide anterior"]);
+  const s3 = base("3 · Como Chegamos Até Aqui", "Demonstrativo de Resultados — o detalhamento", 4, ["Receita", "Custos variáveis", "Custos fixos", "Como esses números formam o resultado apresentado no slide anterior"]);
   if (!temDados) aviso(s3, "Esta parte ainda não pode ser montada: o faturamento (Módulo 5) ainda não foi preenchido.");
   else {
     const f = calc.faturamento;
@@ -4575,8 +4593,25 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc }) {
     s3.addText(`Resultado projetado: ${ok ? "LUCRO" : "PREJUÍZO"} de ${Math.abs(calc.resultadoOperacional).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} por mês`, { x: X, y: Y + 3.95, w: W, h: 0.85, fontFace: "Cambria", fontSize: 18, bold: true, color: ok ? GREEN : RED, align: "center", valign: "middle" });
   }
 
+  // 3b · Produtos mais lucrativos
+  const sP = base("4 · O Que Sustenta o Resultado", "Produtos e serviços mais lucrativos — margem de contribuição", 5, ["Quais itens geram mais margem", "Se há dependência de poucos produtos", "Itens com margem baixa ou negativa"]);
+  const rk = calc.produtosRanking || [];
+  if (!rk.length || calc.cmv <= 0) aviso(sP, "Esta parte ainda não pode ser montada: preencham o faturamento (Módulo 5) e os custos unitários (Módulo 8) e baixem a apresentação de novo.");
+  else {
+    const top = rk.slice(0, 8);
+    const hdP = (t, al) => ({ text: t, options: { bold: true, color: "FFFFFF", fill: { color: NAVY }, fontSize: 12, align: al } });
+    const cP = (t, i, o = {}) => ({ text: String(t), options: { fontSize: 12, color: o.neg ? RED : NAVY, fill: { color: i % 2 ? "FFFFFF" : LIGHT }, align: o.al, bold: o.b } });
+    sP.addTable([[hdP("#", "center"), hdP("Produto/serviço", "left"), hdP("Preço", "right"), hdP("Custo unit.", "right"), hdP("Margem unit.", "right"), hdP("Margem %", "right"), hdP("Margem total/mês", "right"), hdP("% da margem", "right")],
+      ...top.map((x, i) => [cP(i + 1, i, { al: "center" }), cP(x.nome, i, { b: true }), cP(money2(x.preco), i, { al: "right" }), cP(money2(x.custoUnit), i, { al: "right" }), cP(money2(x.margemUnit), i, { al: "right", neg: x.margemUnit < 0 }), cP(pct(x.margemPct), i, { al: "right" }), cP(money0(x.margemTotal), i, { al: "right", neg: x.margemTotal < 0, b: true }), cP(pct(x.pctDaMargem), i, { al: "right" })])],
+      { x: X, y: Y, w: W, colW: [W * 0.05, W * 0.27, W * 0.1, W * 0.1, W * 0.11, W * 0.1, W * 0.15, W * 0.12], rowH: 0.36, fontFace: "Calibri", border: { type: "solid", pt: 0.5, color: BORDER }, valign: "middle" });
+    const n3 = Math.min(3, rk.length); const p3 = rk.slice(0, n3).reduce((a, x) => a + x.pctDaMargem, 0); const negs = rk.filter((x) => x.margemTotal < 0).length;
+    const yb2 = Y + 0.36 * (top.length + 1) + 0.2;
+    sP.addShape(pptx.ShapeType.roundRect, { x: X, y: yb2, w: W, h: 0.75, fill: { color: "FFFBEB" }, line: { color: AMBER, width: 1 }, rectRadius: 0.06 });
+    sP.addText(`Leitura: ${n3 === 1 ? "o principal item gera" : `os ${n3} primeiros itens geram`} ${pct(p3, 0)} da margem de contribuição${p3 >= 70 ? " — alta dependência de poucos produtos" : ""}.${negs ? ` Atenção: ${negs} ite${negs > 1 ? "ns dão" : "m dá"} prejuízo.` : ""}${rk.length > top.length ? ` (exibidos os ${top.length} maiores de ${rk.length})` : ""}`, { x: X + 0.2, y: yb2, w: W - 0.4, h: 0.75, fontFace: "Calibri", fontSize: 13, bold: true, color: BROWN, align: "center", valign: "middle" });
+  }
+
   // 4 · Indicadores
-  const s4 = base("3 · O Negócio É Viável?", "Indicadores de Viabilidade — o veredito", 4, ["Ponto de Equilíbrio", "Lucratividade", "Rentabilidade", "Prazo de Retorno (Payback)"]);
+  const s4 = base("5 · O Negócio É Viável?", "Indicadores de Viabilidade — o veredito", 6, ["Ponto de Equilíbrio", "Lucratividade", "Rentabilidade", "Prazo de Retorno (Payback)"]);
   if (!temDados || !temInvest) aviso(s4, "Esta parte ainda não pode ser montada: faltam investimento e faturamento (Módulos 1 a 5) para calcular os indicadores.");
   else {
     const cw = (W - 0.15) / 2, ch = 1.45;
@@ -4599,7 +4634,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc }) {
   }
 
   // 5 · Fluxo de caixa
-  const s5 = base("4 · Qual a Trajetória", "Fluxo de Caixa Anual — a evolução no tempo", 5, ["Em qual mês o caixa fica positivo", "Como o investimento se recupera ao longo do primeiro ano"]);
+  const s5 = base("6 · Qual a Trajetória", "Fluxo de Caixa Anual — a evolução no tempo", 7, ["Em qual mês o caixa fica positivo", "Como o investimento se recupera ao longo do primeiro ano"]);
   if (!temDados || !temInvest) aviso(s5, "Esta parte ainda não pode ser montada: faltam investimento e faturamento (Módulos 1 a 5) para projetar o caixa.");
   else {
     const pos = fluxo.find((m) => m.mes > 0 && m.saldo >= 0);
@@ -4615,8 +4650,33 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc }) {
     });
   }
 
+  // 5b · Cenários, VPL e TIR
+  const sN = base("7 · E Se Algo Mudar?", "Cenários, VPL e TIR — a análise de risco", 8, ["Resultado nos cenários da equipe", "VPL e TIR: o investimento supera o retorno mínimo?", "Preparar a resposta para: e se as vendas caírem?"]);
+  if (!temDados || !temInvest) aviso(sN, "Esta parte ainda não pode ser montada: faltam investimento e faturamento (Módulos 1 a 5).");
+  else {
+    const tma = Number.isFinite(Number(tmaAnual)) && tmaAnual !== "" && tmaAnual != null ? Number(tmaAnual) : 12;
+    const tmaM = Math.pow(1 + tma / 100, 1 / 12) - 1; const vpl = calcularVPL(fluxo, tmaM); const tirM = calcularTIRMensal(fluxo); const tirA = tirM !== null ? (Math.pow(1 + tirM, 12) - 1) * 100 : null;
+    const w3n = (W - 0.3) / 3;
+    kpi(sN, X, Y, w3n, 1.1, `VPL (TMA de ${pct(tma, 1)} ao ano)`, money0(vpl), vpl >= 0 ? "gera valor além do mínimo exigido" : "não cobre a TMA em 12 meses", vpl >= 0 ? GREEN : RED);
+    kpi(sN, X + w3n + 0.15, Y, w3n, 1.1, "TIR (ao ano)", tirA !== null ? pct(tirA, 1) : "Não recupera em 12 meses", tirA !== null ? (tirA >= tma ? "acima da TMA" : "abaixo da TMA") : "o saldo não zera no ano", tirA !== null && tirA >= tma ? GREEN : RED);
+    kpi(sN, X + 2 * (w3n + 0.15), Y, w3n, 1.1, "Resultado mensal (base)", money0(calc.resultadoOperacional), calc.resultadoOperacional >= 0 ? "lucro" : "prejuízo", calc.resultadoOperacional >= 0 ? GREEN : RED);
+    const cens = (cenarios || []).filter((c) => c).slice(0, 4);
+    const hdN = (t, al) => ({ text: t, options: { bold: true, color: "FFFFFF", fill: { color: NAVY }, fontSize: 12, align: al } });
+    const cN = (t, i, o = {}) => ({ text: String(t), options: { fontSize: 12, color: o.neg ? RED : NAVY, fill: { color: i % 2 ? "FFFFFF" : LIGHT }, align: o.al, bold: o.b } });
+    if (!cens.length) {
+      sN.addShape(pptx.ShapeType.roundRect, { x: X, y: Y + 1.35, w: W, h: 2.2, fill: { color: LIGHT }, line: { color: BORDER, width: 1.25, dashType: "dash" }, rectRadius: 0.08 });
+      sN.addText("A equipe ainda não criou cenários na plataforma. Criem um cenário pessimista (ex.: vendas –10%) e um otimista, e baixem a apresentação de novo.", { x: X + 0.4, y: Y + 1.35, w: W - 0.8, h: 2.2, fontFace: "Calibri", fontSize: 15, italic: true, color: SLATE, align: "center", valign: "middle" });
+    } else {
+      const linhas = [["Base (atual)", "—", "—", "—", calc.faturamento, calc.resultadoOperacional, calc.pontoEquilibrio, calc.lucratividade], ...cens.map((c, i) => { const r = calcularCenario(calc, c); return [c.nome || `Cenário ${i + 1}`, `${(Number(c.variacaoFaturamento) || 0).toLocaleString("pt-BR")}%`, `${(Number(c.variacaoCustoVariavel) || 0).toLocaleString("pt-BR")}%`, `${(Number(c.variacaoCustoFixo) || 0).toLocaleString("pt-BR")}%`, r.faturamento, r.resultadoOperacional, r.pontoEquilibrio, r.lucratividade]; })];
+      sN.addTable([[hdN("Cenário", "left"), hdN("Δ Faturamento", "right"), hdN("Δ C. variável", "right"), hdN("Δ C. fixo", "right"), hdN("Faturamento/mês", "right"), hdN("Resultado/mês", "right"), hdN("Ponto de equilíbrio", "right"), hdN("Lucratividade", "right")],
+        ...linhas.map((l, i) => [cN(l[0], i, { b: true }), cN(l[1], i, { al: "right" }), cN(l[2], i, { al: "right" }), cN(l[3], i, { al: "right" }), cN(money0(l[4]), i, { al: "right" }), cN(money0(l[5]), i, { al: "right", neg: l[5] < 0, b: true }), cN(l[6] != null ? money0(l[6]) : "—", i, { al: "right" }), cN(pct(l[7]), i, { al: "right" })])],
+        { x: X, y: Y + 1.3, w: W, colW: [W * 0.19, W * 0.11, W * 0.11, W * 0.09, W * 0.13, W * 0.13, W * 0.14, W * 0.1], rowH: 0.42, fontFace: "Calibri", border: { type: "solid", pt: 0.5, color: BORDER }, valign: "middle" });
+    }
+    sN.addText("VPL = Σ resultado do mês ÷ (1 + TMA mensal)^mês, com o investimento no mês 0. TIR = taxa que zera o VPL.", { x: X, y: Y + H - 0.4, w: W, h: 0.35, fontFace: "Calibri", fontSize: 11, italic: true, color: SLATE, margin: 0 });
+  }
+
   // 6 · Capacidade
-  const sC = base("5 · Dá Conta de Atender?", "Capacidade de produção e atendimento — o negócio comporta o plano?", 6, ["Qual é o gargalo da empresa", "Como a capacidade foi calculada, passo a passo", "O que a equipe fará se o pico não couber"]);
+  const sC = base("8 · Dá Conta de Atender?", "Capacidade de produção e atendimento — o negócio comporta o plano?", 9, ["Qual é o gargalo da empresa", "Como a capacidade foi calculada, passo a passo", "O que a equipe fará se o pico não couber"]);
   if (!capCalc) aviso(sC, "Esta parte ainda não pode ser montada: preencham a Capacidade da empresa (passos 1 a 3) na plataforma e baixem a apresentação de novo.");
   else {
     const gs = capCalc.grupos.filter((g) => g.cap != null);
@@ -4642,7 +4702,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc }) {
   }
 
   // 7 · Como chegamos aos números (apoio à banca)
-  const sF = base("6 · Como Chegamos Aos Números", "As fórmulas por trás dos resultados — apoio para a defesa", 7, ["Cada fórmula com os números da própria empresa", "Perguntas que a banca pode fazer"]);
+  const sF = base("9 · Como Chegamos Aos Números", "As fórmulas por trás dos resultados — apoio para a defesa", 10, ["Cada fórmula com os números da própria empresa", "Perguntas que a banca pode fazer"]);
   if (!temDados) aviso(sF, "Esta parte ainda não pode ser montada: o faturamento (Módulo 5) ainda não foi preenchido.");
   else {
     const hdF = (t, al) => ({ text: t, options: { bold: true, color: "FFFFFF", fill: { color: NAVY }, fontSize: 12, align: al } });
@@ -4670,8 +4730,9 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc }) {
   }
 
   // 8 · Conclusão (sempre em branco: é a equipe quem escreve)
-  const s6 = base("7 · Conclusão da Equipe", "O que vocês concluem sobre a viabilidade do negócio", 8, null);
-  aviso(s6, "[ Escrevam aqui, com as próprias palavras, a conclusão da equipe: o negócio é viável? Por quê? O que vocês fariam diferente? ]");
+  const s6 = base("10 · Conclusão da Equipe", "O que vocês concluem sobre a viabilidade do negócio", 11, null);
+  aviso(s6, "[ Escrevam aqui, com as próprias palavras, a conclusão da equipe: o negócio é viável? Por quê? Qual o principal risco? O que vocês fariam diferente? ]");
+  s6.addNotes("ROTEIRO PARA A CONCLUSÃO (respondam com as palavras da equipe):\n• O negócio é viável? Apoiem a resposta nos indicadores (ponto de equilíbrio, payback, rentabilidade, VPL/TIR).\n• Por quê? Cite os números que sustentam a conclusão.\n• Qual o principal risco (capacidade no pico, caixa negativo, dependência de poucos produtos, capital de giro)?\n• O que a equipe faria diferente ou ajustaria no plano?");
 
   await pptx.writeFile({ fileName: `Apresentacao-Plano-Financeiro-${nomeArquivoSeguro(equipe.nomeNegocio)}.pptx` });
 }
@@ -5958,7 +6019,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
 
   const acaoBaixarPpt = async () => {
     setErroPpt(""); setGerandoPpt(true);
-    try { await gerarApresentacaoEquipe({ equipe, calc, fluxo: projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0, dados?.curvaFluxo), capCalc: capCalcParaDocumentos(equipe, dados) }); }
+    try { await gerarApresentacaoEquipe({ equipe, calc, fluxo: projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0, dados?.curvaFluxo), capCalc: capCalcParaDocumentos(equipe, dados), lanc, cenarios: dados?.cenarios || [], tmaAnual: dados?.tmaAnualFluxo ?? 12 }); }
     catch { setErroPpt("Não foi possível gerar agora — confira a conexão com a internet e tente de novo."); }
     finally { setGerandoPpt(false); }
   };
@@ -6054,7 +6115,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
                     disabled={gerandoPpt}
                     onClick={async () => {
                       setErroPpt(""); setGerandoPpt(true);
-                      try { await gerarApresentacaoEquipe({ equipe, calc, fluxo: projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0, dados?.curvaFluxo), capCalc: capCalcParaDocumentos(equipe, dados) }); setMenuAberto(false); }
+                      try { await gerarApresentacaoEquipe({ equipe, calc, fluxo: projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0, dados?.curvaFluxo), capCalc: capCalcParaDocumentos(equipe, dados), lanc, cenarios: dados?.cenarios || [], tmaAnual: dados?.tmaAnualFluxo ?? 12 }); setMenuAberto(false); }
                       catch { setErroPpt("Não foi possível gerar agora — confira a conexão com a internet e tente de novo."); }
                       finally { setGerandoPpt(false); }
                     }}

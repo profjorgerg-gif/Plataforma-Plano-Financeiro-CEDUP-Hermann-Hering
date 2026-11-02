@@ -1,4 +1,4 @@
-// build: 20261102_19h50m Word: Conclusão analítica com parecer; apresentação com 11 slides; fórmulas, capacidade, introdução e referências
+// build: 20261102_20h24m Parecer do Word: caixa negativo até 6 meses é normal; conclusão analítica, introdução, fórmulas, capacidade e apresentação com 11 slides
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -4474,9 +4474,8 @@ function pontosAtencaoDocumento(calc, fluxo, capCalc) {
   if (calc.prazoRetorno == null && calc.investimentoTotal > 0 && calc.faturamento > 0) extra.push("O lucro atual não recupera o investimento: o payback não pode ser calculado.");
   if (fluxo && fluxo.length > 12) {
     const neg = fluxo.filter((m) => m.mes > 0 && m.resultado < 0).length;
-    const pos = fluxo.find((m) => m.mes > 0 && m.saldo >= 0);
-    if (!pos) extra.push(`O caixa acumulado não fica positivo nos 12 primeiros meses (saldo de ${brlx(fluxo[12].saldo)} ao final do mês 12). É preciso explicar como o investimento será financiado até lá.`);
-    if (neg > 0) extra.push(`${neg} dos 12 primeiros meses têm resultado negativo, por causa da curva de arranque e da sazonalidade.`);
+    if (neg > 6) extra.push(`${neg} dos 12 primeiros meses têm resultado negativo. É normal começar com caixa negativo, mas o ideal é que isso dure no máximo 6 meses e depois haja recuperação.`);
+    if (fluxo[12] && fluxo[12].resultado < 0) extra.push("O resultado do mês 12 ainda é negativo: o caixa não mostra recuperação ao final do primeiro ano.");
   }
   if (calc.investimentoTotal > 0 && calc.capitalGiroTotal / calc.investimentoTotal > 0.5) extra.push(`O capital de giro (${brlx(calc.capitalGiroTotal)}) representa ${nx((calc.capitalGiroTotal / calc.investimentoTotal) * 100, 0)}% do investimento total: grande parte do dinheiro fica parada no estoque e no caixa mínimo.`);
   if (capCalc && capCalc.res && capCalc.res.k === "r") extra.push(`Capacidade: ${capCalc.res.txt}. A estrutura atual não atende o pico de movimento (veja a seção de Capacidade).`);
@@ -4720,7 +4719,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
     sF.addTable([[hdF("Indicador", "left"), hdF("Fórmula", "left"), hdF("Resultado da empresa", "right")], ...fx.map((r, i) => [ce(r[0], i, { bold: true }), ce(r[1], i), ce(r[2], i, { align: "right", bold: true })])], { x: X, y: Y, w: W, colW: [W * 0.28, W * 0.44, W * 0.28], rowH: 0.33, fontFace: "Calibri", border: { type: "solid", pt: 0.5, color: BORDER }, valign: "middle" });
     const q = [];
     if (calc.prazoRetorno != null && calc.prazoRetorno > 5) q.push(`Por que o retorno leva ${calc.prazoRetorno.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} anos e como encurtá-lo?`);
-    if (fluxo && fluxo.length > 12 && !fluxo.find((m) => m.mes > 0 && m.saldo >= 0)) q.push("Como o caixa se sustenta enquanto o saldo acumulado não fica positivo?");
+    if (fluxo && fluxo.length > 12 && fluxo.filter((m) => m.mes > 0 && m.resultado < 0).length > 0) q.push("Por que o caixa começa negativo e em quantos meses ele se recupera?");
     if (capCalc && capCalc.res && capCalc.res.k === "r") q.push("A estrutura atende o pico de movimento? O que será feito se não atender?");
     q.push("O que muda se o faturamento cair 10%?");
     const yq = Y + 0.33 * (fx.length + 1) + 0.2;
@@ -5255,6 +5254,7 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
     const terc = 100 - pPro;
     const pos = fluxo.find((m) => m.mes > 0 && m.saldo >= 0);
     const neg = fluxo.filter((m) => m.mes > 0 && m.resultado < 0).length;
+    const caixaRuim = neg > 6 || !!(fluxo[12] && fluxo[12].resultado < 0); // até 6 meses negativos com recuperação é o esperado
     const saldo12 = fluxo[12] ? fluxo[12].saldo : 0;
     const tmaN = Number(tmaAnual); const temTma = Number.isFinite(tmaN) && tmaAnual !== "" && tmaAnual != null;
     let vplV = null, tirA = null;
@@ -5263,7 +5263,7 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
     const capR = !!(capCalc && capCalc.res && capCalc.res.k === "r");
     const paybackLongo = calc.prazoRetorno != null && calc.prazoRetorno > 5;
     const semRetorno = calc.prazoRetorno == null;
-    const parecer = (calc.resultadoOperacional < 0 || abaixoPE || semRetorno) ? "r" : (paybackLongo || !pos || capR) ? "a" : "g";
+    const parecer = (calc.resultadoOperacional < 0 || abaixoPE || semRetorno) ? "r" : (paybackLongo || caixaRuim || capR) ? "a" : "g";
     const pj = (t) => new Paragraph({ spacing: { after: 120, line: 330 }, alignment: AlignmentType.JUSTIFIED, indent: { firstLine: 709 }, children: [run(t)] });
 
     filhos.push(h2("1. Síntese dos resultados"));
@@ -5275,7 +5275,7 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
     filhos.push(pj(`${ptoEq} A rentabilidade é de ${pc(calc.rentabilidade, 1)} ao ano${calc.prazoRetorno != null ? ` e o prazo de retorno (payback) é de ${num(calc.prazoRetorno, 1)} anos` : ", e o lucro atual não recupera o investimento"}. ${interp}`));
 
     filhos.push(h2("3. Caixa e risco financeiro"));
-    filhos.push(pj(`No fluxo de caixa dos 12 primeiros meses, ${neg === 0 ? "nenhum mês tem resultado negativo" : `${neg} ${neg === 1 ? "mês tem" : "meses têm"} resultado negativo`} e o saldo acumulado ao final do mês 12 é de ${brl(saldo12)}${pos ? `; o caixa acumulado fica positivo no ${pos.label.toLowerCase()}` : "; o caixa acumulado não fica positivo dentro do primeiro ano"}.${temTma ? ` O VPL, calculado com TMA de ${num(tmaN, 1)}% ao ano, é de ${brl(vplV)}${vplV >= 0 ? ", o que indica que o negócio gera valor além do retorno mínimo exigido" : ", o que significa que, no primeiro ano, o negócio não gera valor suficiente para cobrir o retorno mínimo exigido"}${tirA !== null ? `; a TIR é de ${num(tirA, 1)}% ao ano` : ""}.` : ""}${!pos ? " A empresa depende, portanto, de recursos para sustentar o caixa até que as vendas se consolidem." : ""}`));
+    filhos.push(pj(`No fluxo de caixa dos 12 primeiros meses, ${neg === 0 ? "nenhum mês tem resultado negativo" : `${neg} ${neg === 1 ? "mês tem" : "meses têm"} resultado negativo`} e o saldo acumulado ao final do mês 12 é de ${brl(saldo12)}${pos ? `; o caixa acumulado fica positivo no ${pos.label.toLowerCase()}` : "; o caixa acumulado não fica positivo dentro do primeiro ano"}.${temTma ? ` O VPL, calculado com TMA de ${num(tmaN, 1)}% ao ano, é de ${brl(vplV)}${vplV >= 0 ? ", o que indica que o negócio gera valor além do retorno mínimo exigido" : ", o que significa que, no primeiro ano, o negócio não gera valor suficiente para cobrir o retorno mínimo exigido"}${tirA !== null ? `; a TIR é de ${num(tirA, 1)}% ao ano` : ""}.` : ""}${caixaRuim ? " Esse comportamento preocupa: o ideal é que o caixa fique negativo por no máximo 6 meses e depois se recupere, e a empresa depende de recursos para sustentá-lo até que as vendas se consolidem." : neg > 0 ? " Esse comportamento é esperado em um negócio novo: o caixa pressiona nos primeiros meses e se recupera ao longo do ano." : ""}`));
 
     filhos.push(h2("4. Capacidade de produção e atendimento"));
     if (!capCalc) filhos.push(pj("A capacidade de produção e atendimento ainda não foi analisada na plataforma; recomenda-se preenchê-la para confirmar que a estrutura comporta o plano de vendas."));
@@ -5289,8 +5289,8 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
     filhos.push(h2("5. Conclusão e recomendações"));
     const rotulo = { g: "VIÁVEL", a: "VIÁVEL COM RESSALVAS", r: "AINDA NÃO VIÁVEL" }[parecer];
     const motivo = {
-      g: "o plano é lucrativo, o investimento se recupera em prazo adequado, o caixa fica positivo no primeiro ano e a estrutura comporta o pico.",
-      a: `o plano ${calc.resultadoOperacional > 0 ? "é lucrativo" : "tem resultado"}, mas ${[paybackLongo ? "o retorno é lento" : null, !pos ? "o caixa não fica positivo em 12 meses" : null, capR ? "a capacidade não atende o pico" : null].filter(Boolean).join(", ")}.`,
+      g: "o plano é lucrativo, o investimento se recupera em prazo adequado, o caixa se recupera após o início e a estrutura comporta o pico.",
+      a: `o plano ${calc.resultadoOperacional > 0 ? "é lucrativo" : "tem resultado"}, mas ${[paybackLongo ? "o retorno é lento" : null, caixaRuim ? "o caixa fica negativo por muito tempo ou não se recupera no primeiro ano" : null, capR ? "a capacidade não atende o pico" : null].filter(Boolean).join(", ")}.`,
       r: "o resultado atual não cobre os custos ou não recupera o investimento; é preciso revisar o plano antes de seguir.",
     }[parecer];
     const cor = { g: ["DCFCE7", "16A34A"], a: ["FEF3C7", "D97706"], r: ["FEE2E2", "DC2626"] }[parecer];
@@ -5301,7 +5301,7 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
     if (parecer === "r") rec.push("Rever os preços (Módulo 5) e os custos (Módulos 7 a 11) até que o resultado seja positivo e a receita supere o ponto de equilíbrio.");
     if (parecer !== "r" && (paybackLongo || lucrat < 8)) rec.push("Elevar a margem: rever preços ou reduzir o custo das mercadorias e os custos fixos, para encurtar o prazo de retorno.");
     if (capR) rec.push("Reforçar a estrutura de produção ou atendimento, ou limitar o plano de vendas ao que a estrutura comporta no pico.");
-    if (!pos) rec.push("Garantir o capital de giro e a fonte de financiamento para cobrir os meses de caixa negativo.");
+    if (caixaRuim) rec.push("Garantir o capital de giro e a fonte de financiamento para cobrir os meses de caixa negativo e rever o crescimento das vendas, para que o caixa se recupere em até 6 meses.");
     if (parecer === "g") rec.push("Acompanhar mensalmente os números reais e compará-los com o plano, ajustando preços e custos quando houver desvio.");
     if (!capCalc) rec.push("Preencher a Capacidade na plataforma para confirmar que a estrutura comporta as vendas planejadas.");
     if (!rec.length) rec.push("Manter o acompanhamento dos indicadores e revisar o plano sempre que houver mudança de preços ou custos.");

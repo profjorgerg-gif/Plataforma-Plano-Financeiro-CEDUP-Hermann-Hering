@@ -1,4 +1,4 @@
-// build: 20261102_20h24m Parecer do Word: caixa negativo até 6 meses é normal; conclusão analítica, introdução, fórmulas, capacidade e apresentação com 11 slides
+// build: 20261106_23h01m Painéis de ajuste: rótulos Faturamento bruto e Resultado líquido
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -9352,7 +9352,7 @@ const PA = (() => {
     const tabela = [
       { rot: "Forma de cálculo", hoje: modo === "simples" ? "Tabela do Simples" : "Percentual manual", faixa: "Simples Nacional", sit: modo === "simples" ? "ok" : "abaixo", depois: "Tabela do Simples" },
       { rot: "Alíquota de impostos", hoje: `${fmtNum(pctAtual, 2)}%`, faixa: efetiva(tipo || tipoSug) != null ? `${fmtNum(efetiva(tipo || tipoSug), 2)}%` : "—", sit: efetiva(tipo || tipoSug) != null && Math.abs(efetiva(tipo || tipoSug) - pctAtual) > 0.05 ? "abaixo" : "ok", depois: `${fmtNum(Number(dep.m7.pctImpostos) || 0, 2)}%` },
-      { rot: "Resultado mensal", hoje: fmtBRL(c.resultadoOperacional), faixa: "—", sit: "—", depois: fmtBRL(cd.resultadoOperacional) },
+      { rot: "Resultado líquido (mensal)", hoje: fmtBRL(c.resultadoOperacional), faixa: "—", sit: "—", depois: fmtBRL(cd.resultadoOperacional) },
     ];
     return montarLista("R|imp", "Mercado", "Impostos e regime tributário (Módulo 7)", ["m7"], tabela, itens, "Impostos", { resumo: `Impostos: resultado mensal ${fmtBRL(c.resultadoOperacional)} → ${fmtBRL(cd.resultadoOperacional)}.` });
   }
@@ -9450,7 +9450,7 @@ const PA = (() => {
     if (top && c.produtosRanking.length > 1 && top.pctDaMargem > 60) itens.push({ id: "conc", info: true, texto: `"${top.nome}" sustenta ${fmtNum(top.pctDaMargem, 0)}% da margem total: o plano fica arriscado se esse produto vender menos.` });
     if (!itens.length) return null;
     const dep = mercadoAplicaLista(L, itens); const cd = calcular(dep);
-    const tabela = [{ rot: "Faturamento mensal", hoje: fmtBRL(c.faturamento), faixa: "—", sit: "—", depois: fmtBRL(cd.faturamento) }, { rot: "Resultado mensal", hoje: fmtBRL(c.resultadoOperacional), faixa: "—", sit: "—", depois: fmtBRL(cd.resultadoOperacional) }];
+    const tabela = [{ rot: "Faturamento bruto (mensal)", hoje: fmtBRL(c.faturamento), faixa: "—", sit: "—", depois: fmtBRL(cd.faturamento) }, { rot: "Resultado líquido (mensal)", hoje: fmtBRL(c.resultadoOperacional), faixa: "—", sit: "—", depois: fmtBRL(cd.resultadoOperacional) }];
     return montarLista("R|prc", "Mercado", "Preço mínimo por produto (Módulo 5)", ["m5"], tabela, itens, "Preço mínimo", { resumo: `Preço mínimo: faturamento ${fmtBRL(c.faturamento)} → ${fmtBRL(cd.faturamento)}.` });
   }
 
@@ -9939,8 +9939,8 @@ function ImpactoAjuste({ a, b }) {
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {caixa("Faturamento mensal", a.fat, b.fat, fmtBRL)}
-        {caixa("Resultado mensal", a.res, b.res, fmtBRL)}
+        {caixa("Faturamento bruto (mensal)", a.fat, b.fat, fmtBRL)}
+        {caixa("Resultado líquido (mensal)", a.res, b.res, fmtBRL)}
         {caixa("Mão de obra", a.mdo, b.mdo, fmtBRL)}
         {caixa("Retorno do investimento", a.pr, b.pr, prTxt)}
       </div>
@@ -10842,7 +10842,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
                   <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 mb-2">O sistema olhou a empresa inteira e calculou quanto cada alavanca precisa mudar para o investimento se pagar em até
                     <input type="number" min="0.5" step="0.5" value={paEsc["V|via"]?.alvo ?? I.alvo} onChange={(ev) => paEscolher("V|via", { alvo: ev.target.value })} className="w-16 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100" /> anos.</div>
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-2 text-xs">
-                    <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Resultado mensal</div><b className={I.res <= 0 ? "text-rose-300" : ""}>{fmtBRL(I.res)}</b></div>
+                    <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Resultado líquido (mensal)</div><b className={I.res <= 0 ? "text-rose-300" : ""}>{fmtBRL(I.res)}</b></div>
                     <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Faturamento</div><b>{fmtBRL(I.fat)}</b></div>
                     <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Ponto de equilíbrio</div><b>{I.pe ? fmtBRL(I.pe) : "—"}</b></div>
                     <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Investimento</div><b>{fmtBRL(I.invest)}</b></div>
@@ -12422,8 +12422,8 @@ function RelatorioAjustesLista({ relatos, vazio }) {
             <ul className="text-xs text-slate-300 space-y-0.5">{(r.linhas || []).map((l, i) => <li key={i}>• {l}</li>)}</ul>
             {a && b && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 text-xs">
-                <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Faturamento mensal</div>{R(a.fat)} → <b>{R(b.fat)}</b></div>
-                <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Resultado mensal</div>{R(a.res)} → <b>{R(b.res)}</b></div>
+                <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Faturamento bruto (mensal)</div>{R(a.fat)} → <b>{R(b.fat)}</b></div>
+                <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Resultado líquido (mensal)</div>{R(a.res)} → <b>{R(b.res)}</b></div>
                 <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Retorno do investimento</div>{prTxt(a.pr)} → <b>{prTxt(b.pr)}</b></div>
                 <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Nota</div><b>sem desconto · sem devolução</b></div>
               </div>

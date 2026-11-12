@@ -1,4 +1,4 @@
-// build: 20261112_14h10m Fluxo de caixa até o retorno do investimento (anual e mensal), Word e PPT
+// build: 20261112_14h45m Slide de conclusão do PPT resumido a partir do Word; textos do caixa ajustados
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1360,6 +1360,7 @@ const VERSOES = [
     "Fluxo de Caixa até o retorno do investimento: em vez de parar no mês 12, a projeção segue até o ano em que o caixa fica positivo (até 10 anos). Há duas visões: anual (receita, custos, resultado e saldo de cada ano) e mensal (com os anos que abrem e fecham, até o mês do retorno). Se o negócio não se paga, mostra 10 anos com aviso.",
     "Fim da inconsistência entre telas: o Fluxo, o VPL e a TIR passam a valer para todo o período projetado, então um negócio que volta em 3 ou 8 anos não aparece mais como \"não recupera em 12 meses\". O crescimento mensal e o arranque valem só no 1º ano; depois o resultado se mantém no nível do mês 12 e a sazonalidade se repete.",
     "A meta de 5 anos do curso continua como aviso em amarelo, mas não gera mais erro: quando o retorno passa de 5 anos, o fluxo mostra todo o caminho. Quando o mês do retorno difere do prazo do Módulo 13 (que divide o investimento pelo lucro de um mês normal), a tela explica o motivo.",
+    "Apresentação (PowerPoint): o slide final \"Conclusão da Equipe\" não vem mais em branco; traz a conclusão resumida do Plano Financeiro (Word) — parecer, resultado, viabilidade, caixa e risco, capacidade e recomendações — para os alunos apresentarem, mais uma caixa para as considerações finais da equipe.",
     "Word e PowerPoint de cada equipe: o Fluxo de Caixa ganha o bloco anual até o retorno (tabela e gráfico), o gráfico de recuperação do investimento passa a ir até o ano do retorno (não mais fixo em 5 anos), e VPL, TIR e parecer usam o período completo.",
   ] },
   { versao: "3.7", data: "30/10/2026", itens: [
@@ -4591,6 +4592,53 @@ function nomeArquivoSeguro(txt) {
   return String(txt || "empresa").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "empresa";
 }
 
+
+// Conclusão resumida (slide final da apresentação): mesmo parecer, mesmos critérios e mesmas recomendações da "Conclusão analítica" do Word,
+// em frases curtas para os alunos apresentarem.
+function conclusaoResumo({ equipe, calc, fluxo, fluxoL, capCalc, tmaAnual, pPro }) {
+  const RL = resumoFluxoLongo(fluxoL); const horiz = `${RL.anos} ${RL.anos === 1 ? "ano" : "anos"}`;
+  const brl = (n) => (Number(n) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+  const num = (n, d = 0) => (Number(n) || 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+  const f = calc.faturamento || 0; const lucrat = calc.lucratividade;
+  const posL = fluxoL.find((m) => m.mes > 0 && m.saldo >= 0);
+  const neg = fluxo.filter((m) => m.mes > 0 && m.resultado < 0).length;
+  const caixaRuim = neg > 6 || !!(fluxo[12] && fluxo[12].resultado < 0);
+  const tmaN = Number(tmaAnual); const temTma = Number.isFinite(tmaN) && tmaAnual !== "" && tmaAnual != null;
+  let vplV = null, tirA = null;
+  if (temTma) { vplV = calcularVPL(fluxoL, Math.pow(1 + tmaN / 100, 1 / 12) - 1); const tm = calcularTIRMensal(fluxoL); tirA = tm !== null ? (Math.pow(1 + tm, 12) - 1) * 100 : null; }
+  const abaixoPE = calc.pontoEquilibrio != null && calc.receitaAnual < calc.pontoEquilibrio;
+  const capR = !!(capCalc && capCalc.res && capCalc.res.k === "r");
+  const paybackLongo = calc.prazoRetorno != null && calc.prazoRetorno > 5;
+  const semRetorno = calc.prazoRetorno == null;
+  const parecer = (calc.resultadoOperacional < 0 || abaixoPE || semRetorno) ? "r" : (paybackLongo || caixaRuim || capR) ? "a" : "g";
+  const rotulo = { g: "VIÁVEL", a: "VIÁVEL COM RESSALVAS", r: "AINDA NÃO VIÁVEL" }[parecer];
+  const motivo = {
+    g: "o plano é lucrativo, o investimento se recupera em prazo adequado, o caixa se recupera após o início e a estrutura comporta o pico.",
+    a: `o plano ${calc.resultadoOperacional > 0 ? "é lucrativo" : "tem resultado"}, mas ${[paybackLongo ? "o retorno é lento" : null, caixaRuim ? "o caixa fica negativo por muito tempo ou não se recupera no primeiro ano" : null, capR ? "a capacidade não atende o pico" : null].filter(Boolean).join(", ")}.`,
+    r: "o resultado atual não cobre os custos ou não recupera o investimento; é preciso revisar o plano antes de seguir.",
+  }[parecer];
+  const sec = [];
+  sec.push(["Resultado", `Faturamento de ${brl(f)}/mês e resultado de ${brl(calc.resultadoOperacional)}/mês (${num(lucrat, 1)}% do faturamento). Investimento de ${brl(calc.investimentoTotal)}, com ${num(pPro)}% de recursos próprios.`]);
+  sec.push(["Viabilidade", `${calc.pontoEquilibrio != null ? `Ponto de equilíbrio de ${brl(calc.pontoEquilibrio)}/ano contra receita de ${brl(calc.receitaAnual)} (${abaixoPE ? "abaixo" : "acima"}). ` : ""}Rentabilidade de ${num(calc.rentabilidade, 1)}% ao ano${calc.prazoRetorno != null ? ` e retorno em ${num(calc.prazoRetorno, 1)} anos` : "; o lucro atual não recupera o investimento"}.`]);
+  sec.push(["Caixa e risco", `${neg === 0 ? "Nenhum mês negativo no 1º ano" : `${neg} ${neg === 1 ? "mês negativo" : "meses negativos"} no 1º ano`}; ${posL ? `o caixa fica positivo no mês ${posL.mes}${posL.mes > 12 ? ` (${RL.anoRet}º ano)` : ""}` : `o caixa não fica positivo nem em ${horiz}`}.${temTma ? ` VPL de ${brl(vplV)}${tirA !== null ? ` e TIR de ${num(tirA, 1)}% ao ano` : ""} (TMA de ${num(tmaN, 1)}%).` : ""}`]);
+  let capTxt = "Capacidade ainda não analisada na plataforma.";
+  if (capCalc) {
+    const gp = [...capCalc.grupos.filter((g) => g.cap != null && g.usoPico != null)].sort((a, b) => b.usoPico - a.usoPico)[0];
+    if (gp) capTxt = `Uso de ${num(gp.uso * 100)}% da capacidade e ${num(gp.usoPico * 100)}% no pico${gp.usoPico > 1 ? ": a estrutura não comporta" : gp.usoPico >= 0.9 ? ": pouca folga" : ": estrutura comporta com folga"}.`;
+    else capTxt = "Análise de capacidade incompleta.";
+  }
+  sec.push(["Capacidade", capTxt]);
+  const rec = [];
+  if (parecer === "r") rec.push("Rever preços (Módulo 5) e custos (Módulos 7 a 11) até o resultado ficar positivo e a receita superar o ponto de equilíbrio.");
+  if (parecer !== "r" && (paybackLongo || lucrat < 8)) rec.push("Elevar a margem (preços, custo das mercadorias, custos fixos) para encurtar o retorno.");
+  if (capR) rec.push("Reforçar a estrutura ou limitar as vendas ao que ela comporta no pico.");
+  if (caixaRuim) rec.push("Garantir capital de giro e financiamento para os meses de caixa negativo.");
+  if (parecer === "g") rec.push("Acompanhar mensalmente os números reais e ajustar preços e custos quando houver desvio.");
+  if (!capCalc) rec.push("Preencher a Capacidade na plataforma.");
+  if (!rec.length) rec.push("Manter o acompanhamento dos indicadores e revisar o plano quando preços ou custos mudarem.");
+  return { parecer, rotulo, motivo, sec, rec: rec.slice(0, 3) };
+}
+
 async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cenarios, tmaAnual }) {
   const fluxoL = fluxo; fluxo = fluxo.filter((m) => m.mes <= 12); const RL = resumoFluxoLongo(fluxoL); const horiz = `${RL.anos} ${RL.anos === 1 ? "ano" : "anos"}`;
   const posL = fluxoL.find((m) => m.mes > 0 && m.saldo >= 0); const rotRet = posL ? `Mês ${posL.mes}${posL.mes > 12 ? ` (Ano ${RL.anoRet})` : ""}` : `Não se recupera em ${horiz}`;
@@ -4833,10 +4881,29 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
     sF.addText([{ text: "Perguntas que a banca pode fazer", options: { bold: true, breakLine: true } }, ...q.slice(0, 3).map((t) => ({ text: t, options: { bullet: true, breakLine: true } }))], { x: X + 0.2, y: yq + 0.08, w: W - 0.4, h: hq - 0.12, fontFace: "Calibri", fontSize: 12, color: BROWN, valign: "top", margin: 0 });
   }
 
-  // 8 · Conclusão (sempre em branco: é a equipe quem escreve)
-  const s6 = base("10 · Conclusão da Equipe", "O que vocês concluem sobre a viabilidade do negócio", 11, null);
-  aviso(s6, "[ Escrevam aqui, com as próprias palavras, a conclusão da equipe: o negócio é viável? Por quê? Qual o principal risco? O que vocês fariam diferente? ]");
-  s6.addNotes("ROTEIRO PARA A CONCLUSÃO (respondam com as palavras da equipe):\n• O negócio é viável? Apoiem a resposta nos indicadores (ponto de equilíbrio, payback, rentabilidade, VPL/TIR).\n• Por quê? Cite os números que sustentam a conclusão.\n• Qual o principal risco (capacidade no pico, caixa negativo, dependência de poucos produtos, capital de giro)?\n• O que a equipe faria diferente ou ajustaria no plano?");
+  // 10 · Conclusão: resumo da "Conclusão analítica" do Word, para a equipe apresentar (pode ser editada no PowerPoint)
+  const s6 = base("10 · Conclusão da Equipe", "O que concluímos sobre a viabilidade do negócio", 11, null);
+  if (!temDados || !temInvest) aviso(s6, "[ Escrevam aqui, com as próprias palavras, a conclusão da equipe: o negócio é viável? Por quê? Qual o principal risco? O que vocês fariam diferente? ]");
+  else {
+    const C = conclusaoResumo({ equipe, calc, fluxo, fluxoL, capCalc, tmaAnual, pPro: Math.min(100, Math.max(0, Number(lanc?.m4?.pctProprio) || 0)) });
+    const cor = { g: ["DCFCE7", "16A34A"], a: ["FEF3C7", "D97706"], r: ["FEE2E2", "DC2626"] }[C.parecer];
+    s6.addShape(pptx.ShapeType.rect, { x: X, y: 1.65, w: W, h: 0.95, fill: { color: cor[0] }, line: { color: cor[0], width: 0 } });
+    s6.addShape(pptx.ShapeType.rect, { x: X, y: 1.65, w: 0.1, h: 0.95, fill: { color: cor[1] }, line: { color: cor[1], width: 0 } });
+    s6.addText([{ text: `Parecer: ${C.rotulo}`, options: { bold: true, fontSize: 16, color: NAVY, breakLine: true } }, { text: C.motivo, options: { fontSize: 13.5, color: NAVY } }], { x: X + 0.25, y: 1.65, w: W - 0.4, h: 0.95, fontFace: "Calibri", valign: "middle", margin: 0 });
+    const cw = (W - 0.2) / 2, ch = 1.25;
+    C.sec.forEach((it, i) => {
+      const x = X + (i % 2) * (cw + 0.2), y = 2.75 + Math.floor(i / 2) * (ch + 0.12);
+      s6.addShape(pptx.ShapeType.roundRect, { x, y, w: cw, h: ch, fill: { color: LIGHT }, line: { color: BORDER, width: 1 }, rectRadius: 0.06 });
+      s6.addText(it[0].toUpperCase(), { x: x + 0.15, y: y + 0.07, w: cw - 0.3, h: 0.26, fontFace: "Calibri", fontSize: 10.5, bold: true, color: SLATE, margin: 0 });
+      s6.addText(it[1], { x: x + 0.15, y: y + 0.33, w: cw - 0.3, h: ch - 0.4, fontFace: "Calibri", fontSize: 13, color: NAVY, valign: "top", margin: 0 });
+    });
+    const yr = 2.75 + 2 * (ch + 0.12);
+    s6.addText("O QUE RECOMENDAMOS", { x: X, y: yr, w: W, h: 0.28, fontFace: "Calibri", fontSize: 10, bold: true, color: BROWN, margin: 0 });
+    s6.addText(C.rec.map((t, i) => ({ text: t, options: { bullet: true, breakLine: i < C.rec.length - 1 } })), { x: X, y: yr + 0.3, w: W, h: Math.min(1.2, 0.36 * C.rec.length + 0.1), fontFace: "Calibri", fontSize: 13, color: NAVY, valign: "top", margin: 0 });
+    s6.addShape(pptx.ShapeType.roundRect, { x: X, y: 6.35, w: W, h: 0.6, fill: { color: "FFFFFF" }, line: { color: BORDER, width: 1, dashType: "dash" }, rectRadius: 0.05 });
+    s6.addText("[ Considerações finais da equipe: o que aprendemos com o plano e o que faríamos diferente ]", { x: X + 0.15, y: 6.35, w: W - 0.3, h: 0.6, fontFace: "Calibri", fontSize: 11.5, italic: true, color: SLATE, valign: "middle", margin: 0 });
+  }
+  s6.addNotes("ROTEIRO PARA APRESENTAR A CONCLUSÃO (usem as palavras da equipe):\n• Este slide resume a \"Conclusão analítica\" do Plano Financeiro (Word): o parecer, os resultados e as recomendações.\n• Comecem pelo parecer e digam por quê, citando os números.\n• Mostrem o principal risco (capacidade no pico, caixa negativo, retorno lento, capital de giro).\n• Fechem dizendo o que a equipe faria diferente ou ajustaria no plano.\n• Se algum número mudar no sistema, baixem a apresentação de novo.");
 
   await pptx.writeFile({ fileName: `Apresentacao-Plano-Financeiro-${nomeArquivoSeguro(equipe.nomeNegocio)}.pptx` });
 }
@@ -5391,7 +5458,7 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
     filhos.push(pj(`${ptoEq} A rentabilidade é de ${pc(calc.rentabilidade, 1)} ao ano${calc.prazoRetorno != null ? ` e o prazo de retorno (payback) é de ${num(calc.prazoRetorno, 1)} anos` : ", e o lucro atual não recupera o investimento"}. ${interp}`));
 
     filhos.push(h2("3. Caixa e risco financeiro"));
-    filhos.push(pj(`No fluxo de caixa dos 12 primeiros meses, ${neg === 0 ? "nenhum mês tem resultado negativo" : `${neg} ${neg === 1 ? "mês tem" : "meses têm"} resultado negativo`} e o saldo acumulado ao final do mês 12 é de ${brl(saldo12)}${posL ? `; o caixa acumulado fica positivo no mês ${posL.mes}${posL.mes > 12 ? ` (${RL.anoRet}º ano)` : ""}` : RL.longo ? `; o caixa acumulado não fica positivo nem em ${horiz}` : "; o caixa acumulado não fica positivo dentro do primeiro ano"}.${temTma ? ` O VPL, calculado com TMA de ${num(tmaN, 1)}% ao ano, é de ${brl(vplV)}${vplV >= 0 ? ", o que indica que o negócio gera valor além do retorno mínimo exigido" : ", o que significa que, no primeiro ano, o negócio não gera valor suficiente para cobrir o retorno mínimo exigido"}${tirA !== null ? `; a TIR é de ${num(tirA, 1)}% ao ano` : ""}.` : ""}${caixaRuim ? " Esse comportamento preocupa: o ideal é que o caixa fique negativo por no máximo 6 meses e depois se recupere, e a empresa depende de recursos para sustentá-lo até que as vendas se consolidem." : neg > 0 ? " Esse comportamento é esperado em um negócio novo: o caixa pressiona nos primeiros meses e se recupera ao longo do ano." : ""}`));
+    filhos.push(pj(`No fluxo de caixa dos 12 primeiros meses, ${neg === 0 ? "nenhum mês tem resultado negativo" : `${neg} ${neg === 1 ? "mês tem" : "meses têm"} resultado negativo`} e o saldo acumulado ao final do mês 12 é de ${brl(saldo12)}${posL ? `; o caixa acumulado fica positivo no mês ${posL.mes}${posL.mes > 12 ? ` (${RL.anoRet}º ano)` : ""}` : RL.longo ? `; o caixa acumulado não fica positivo nem em ${horiz}` : "; o caixa acumulado não fica positivo dentro do primeiro ano"}.${temTma ? ` O VPL, calculado com TMA de ${num(tmaN, 1)}% ao ano, é de ${brl(vplV)}${vplV >= 0 ? ", o que indica que o negócio gera valor além do retorno mínimo exigido" : ", o que significa que, no período projetado, o negócio não gera valor suficiente para cobrir o retorno mínimo exigido"}${tirA !== null ? `; a TIR é de ${num(tirA, 1)}% ao ano` : ""}.` : ""}${caixaRuim ? " Esse comportamento preocupa: o ideal é que o caixa fique negativo por no máximo 6 meses e depois se recupere, e a empresa depende de recursos para sustentá-lo até que as vendas se consolidem." : neg > 0 ? (posL && posL.mes > 12 ? ` Caixa negativo no início é esperado em um negócio novo, mas aqui o investimento só é recuperado no mês ${posL.mes}: o plano exige paciência e capital para sustentar o negócio até lá.` : " Esse comportamento é esperado em um negócio novo: o caixa pressiona nos primeiros meses e se recupera ao longo do ano.") : ""}`));
 
     filhos.push(h2("4. Capacidade de produção e atendimento"));
     if (!capCalc) filhos.push(pj("A capacidade de produção e atendimento ainda não foi analisada na plataforma; recomenda-se preenchê-la para confirmar que a estrutura comporta o plano de vendas."));

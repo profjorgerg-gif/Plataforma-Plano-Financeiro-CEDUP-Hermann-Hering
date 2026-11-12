@@ -1,4 +1,4 @@
-// build: 20261112_16h20m Conferência dos documentos (Word/PPT x tela) em Encerrar projeto e carimbo nos arquivos
+// build: 20261112_20h50m Sugestões automáticas na Conferência dos documentos (levar ao Ajuste geral)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1361,6 +1361,7 @@ const VERSOES = [
     "Fim da inconsistência entre telas: o Fluxo, o VPL e a TIR passam a valer para todo o período projetado, então um negócio que volta em 3 ou 8 anos não aparece mais como \"não recupera em 12 meses\". O crescimento mensal e o arranque valem só no 1º ano; depois o resultado se mantém no nível do mês 12 e a sazonalidade se repete.",
     "A meta de 5 anos do curso continua como aviso em amarelo, mas não gera mais erro: quando o retorno passa de 5 anos, o fluxo mostra todo o caminho. Quando o mês do retorno difere do prazo do Módulo 13 (que divide o investimento pelo lucro de um mês normal), a tela explica o motivo.",
     "Gestão → Encerrar projeto: nova \"Conferência dos documentos\". O sistema gera o Word e o PowerPoint de cada equipe em segundo plano, lê os números que saíram nos arquivos e compara com os da tela (investimento, faturamento, resultado, ponto de equilíbrio, rentabilidade, retorno, mês do caixa positivo, saldo, VPL, TIR, parecer e capacidade). Cada divergência diz a origem: \"Dado da equipe\" (com o botão Corrigir, que leva ao Ajuste geral) ou \"Falha do sistema\" (com Copiar resumo). Depois de corrigir, \"Conferir de novo\".",
+    "Conferência dos documentos com sugestões automáticas: quando a divergência é de dado da equipe (resultado negativo, sem retorno, caixa fraco no 1º ano), o sistema simula as opções da Viabilidade do Ajuste geral — combinação equilibrada, só preços, só custos — e mostra, para cada uma, o resultado, o retorno, o mês do caixa positivo e o parecer antes e depois. Nada é gravado: o botão \"Levar ao Ajuste geral\" abre a equipe já selecionada e a opção marcada, com antes × depois, confirmação e Desfazer; depois é só clicar em \"Conferir de novo\". O botão \"Corrigir\" também passa a abrir o Ajuste geral já na equipe certa.",
     "Encerrar marcadas passa a conferir antes: equipes sem divergência de dados são encerradas; as com divergência só encerram por exceção, com motivo registrado. Word e PowerPoint ganharam carimbo no rodapé (data, hora e código dos dados), que muda quando os dados da equipe mudam.",
     "Apresentação (PowerPoint): o slide final \"Conclusão da Equipe\" não vem mais em branco; traz a conclusão resumida do Plano Financeiro (Word) — parecer, resultado, viabilidade, caixa e risco, capacidade e recomendações — para os alunos apresentarem, mais uma caixa para as considerações finais da equipe.",
     "Word e PowerPoint de cada equipe: o Fluxo de Caixa ganha o bloco anual até o retorno (tabela e gráfico), o gráfico de recuperação do investimento passa a ir até o ano do retorno (não mais fixo em 5 anos), e VPL, TIR e parecer usam o período completo.",
@@ -9492,6 +9493,25 @@ const PA = (() => {
       } };
   }
 
+  // ---- Sugestões automáticas para a Conferência dos documentos: opções da Viabilidade já simuladas (nada é gravado) ----
+  function sugestoes(L, ctx, alvoIn) {
+    const v = viabilidade(L, ctx, undefined, alvoIn); if (!v) return null;
+    const TX = { preco: "preços +", qtd: "quantidades +", cmv: "custo dos produtos −", fixas: "outras despesas fixas −" };
+    const ONDE = { preco: "Módulo 5", qtd: "Módulo 5", cmv: "Módulos 6 e 8", fixas: "Módulo 11" };
+    const mk = (id, rotulo, m, extra) => {
+      const mud = Object.keys(m).filter((k) => m[k] > 0).map((k) => ({ k, pct: m[k], txt: `${TX[k]}${fmtNum(m[k], 1)}%`, onde: ONDE[k] }));
+      return { id, rotulo, mud, lancSim: simular(L, m), ...extra };
+    };
+    const cards = [];
+    const comb = v.opcoes.find((o) => o.id === "combinado");
+    if (comb && comb.params && comb.params.length) { const m = {}; comb.params.forEach((pr) => { m[pr.k] = pr.padrao; }); cards.push(mk("combinado", comb.atingeAlvo ? "Combinação equilibrada" : "Combinação no limite", m, { recomendado: !!comb.atingeAlvo, optId: "combinado" })); }
+    const NOME1 = { preco: "Só preços", qtd: "Só quantidades", cmv: "Só custo dos produtos", fixas: "Só despesas fixas" };
+    const unicas = ["preco", "cmv", "fixas", "qtd"].map((k) => v.opcoes.find((o) => o.id === k)).filter((o) => o && !o.naoAplica);
+    unicas.slice(0, 2).forEach((o) => cards.push(mk(o.id, NOME1[o.id], { [o.id]: o.params[0].padrao }, { optId: o.id })));
+    if (!unicas.length) cards.push(mk("preco", "Só preços (no limite)", { preco: LIM_VIA.preco }, { optId: null }));
+    return { alvo: v.alvo, info: v.info, cards };
+  }
+
   // ---- Listas de verificação (giro, impostos, coerência): cada item é marcado/desmarcado pelo professor ----
   const VIDA_TIP = { "Máquinas": 10, "Móveis": 10, "Equipamentos de Informática": 5, "Utensílios": 5, "Veículos": 5, "Edificações": 25 };
   const refsX = (ctx) => ({ ...MERC_GERAL, ...REFS_PADRAO, ...mercPadraoSeg(ctx?.segmento), ...(ctx?.refs || {}) });
@@ -9878,7 +9898,7 @@ const PA = (() => {
     return { nota: Math.max(0, 100 - pen), pend };
   }
   const CHAVES_EXTRA = ["H|cap", "R|giro", "R|imp", "R|coe", "R|cus", "R|pro", "R|fin", "R|prc", "R|arr", "R|mer", "V|via"];
-  return { analisar, aplicar, capacidade, viabilidade, mercado, mercadoSim, giro, imposto, coerencia, LISTAS, CHAVES_EXTRA, estresse, pontuacao };
+  return { analisar, aplicar, capacidade, viabilidade, sugestoes, mercado, mercadoSim, giro, imposto, coerencia, LISTAS, CHAVES_EXTRA, estresse, pontuacao };
 })();
 
 // ===== Ajuste geral (menu Gestão → Ajuste geral) =====
@@ -10362,6 +10382,8 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
   const [prEd, setPrEd] = useState(null);         // { equipeId, d, lanc, margem, usar, edit, motivo }
   const [cpEq, setCpEq] = useState("");          // equipe escolhida para preencher a Capacidade
   const [cpEd, setCpEd] = useState(null);         // { equipeId, d, lanc, base, draft, motivo, ajM5 }
+  const [pedido] = useState(() => lerPedidoAjuste(turma.id));   // vindo da Conferência dos documentos (equipe e opção sugerida)
+  const [pedidoFeito, setPedidoFeito] = useState(false);
 
   // Quem está editando agora: só quem assumiu a gestão consegue alterar dados, e esse sinal é gravado a cada 60 s.
   const lerGestores = async () => {
@@ -10387,6 +10409,16 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
   };
   useEffect(() => { carregar(); /* eslint-disable-next-line */ }, [turma.id]);
   useEffect(() => { const t = setInterval(() => setAgora(Date.now()), 1000); return () => clearInterval(t); }, []);
+  // Pedido da Conferência: seleciona a equipe e, estando bloqueada e pronta, analisa sozinho (só leitura; nada é gravado).
+  useEffect(() => {
+    if (!pedido || pedidoFeito || !aval) return;
+    const eq = equipes.find((x) => x.id === pedido.equipeId);
+    if (!eq) { setPedidoFeito(true); limparPedidoAjuste(); return; }
+    if (paEq !== pedido.equipeId) { setPaEq(pedido.equipeId); return; }
+    if (equipePronta(aval, pedido.equipeId, agora)) { if (!ocupado) { setPedidoFeito(true); paAnalisar(); } }
+    else if (!aviso) setAviso({ tipo: "erro", texto: `Vindo da Conferência: ${eq.nomeNegocio} precisa estar bloqueada para avaliação (seção 1) e pronta (${AVALIACAO_ESPERA_MS / 1000} segundos). Assim que estiver, a análise abre sozinha${pedido.rotulo ? ` com a sugestão «${pedido.rotulo}» já marcada` : ""}.` });
+    // eslint-disable-next-line
+  }, [pedido, pedidoFeito, aval, paEq, agora, ocupado]);
 
   const nomeEq = (id) => equipes.find((e) => e.id === id)?.nomeNegocio || id;
   const bloqueadas = equipes.filter((e) => equipeEmAvaliacao(aval, e.id));
@@ -10493,7 +10525,14 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
       const ctx = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [], refs: refsDoSegmento(refsCfg, segEq), capacidade: d.capacidade || null, curva: d.curvaFluxo || null, segmento: segEq, nSocios: (equipes.find((e) => e.id === paEq)?.integrantes || []).length || 0 };
       const pts = PA.analisar(lanc, null, ctx);
       const esc = {}; pts.forEach((pt) => { esc[pt.chave] = { opt: pt.padrao || "manter", v: "" }; });
+      const pd = lerPedidoAjuste(turma.id);
+      if (pd && pd.equipeId === paEq && pd.opt) esc["V|via"] = { opt: pd.opt, v: {} };
       setPaPontos({ equipeId: paEq, lanc, pts, dados: d, ctx }); setPaEsc(esc);
+      if (pd && pd.equipeId === paEq) {
+        limparPedidoAjuste();
+        setAviso({ tipo: "ok", texto: `Análise aberta para ${nomeEq(paEq)}${pd.opt ? `, com a sugestão «${pd.rotulo || pd.opt}» já marcada em “Viabilidade”` : ""}. Confira o antes × depois, ajuste os percentuais se quiser e clique em Aplicar. Depois volte em Encerrar projeto e clique em “Conferir de novo”.` });
+        setTimeout(() => { try { document.getElementById("ajuste-pontos")?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch { /* sem rolagem */ } }, 400);
+      }
     } catch (e) { falhar(e); }
     setOcupado(false);
   };
@@ -10568,7 +10607,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
       const coment = { modulo: "Geral", texto: textoAvisoAjuste(professorNome, linhas, "Correções feitas pelo professor nos pontos de atenção do seu plano."), autor: professorNome, timestamp: Date.now(), tipo: "ajuste", lote: id };
       await gravarModulosEquipe(turma.id, eqId, mods, esperado, coment, montarRelato({ id, por: professorNome, tipo: "pontos", motivo: "Pontos de atenção (correções escolhidas pelo professor).", linhas, lancAntes: lanc, lancDepois, mods: modsRel }), Object.keys(extras).length ? extras : undefined);
       setPaPontos(null); setPaEsc({}); await carregar();
-      setAviso({ tipo: "ok", texto: `Correções aplicadas em ${nomeEq(eqId)} (${Object.keys(mods).map((m) => "M" + m.slice(1)).join(", ")}). A equipe recebe o aviso na aba Feedback e você pode desfazer no histórico.` });
+      setAviso({ tipo: "ok", texto: `Correções aplicadas em ${nomeEq(eqId)} (${Object.keys(mods).map((m) => "M" + m.slice(1)).join(", ")}). A equipe recebe o aviso na aba Feedback e você pode desfazer no histórico. Se veio da Conferência dos documentos, volte em Encerrar projeto e clique em “Conferir de novo”.` });
     } catch (e) { if (registrado) await limparRegistroAjuste(turma.id, id, null); falhar(e); await carregar(); }
     setOcupado(false);
   };
@@ -10871,7 +10910,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
       </Card>
 
       <Card className="p-4">
-        <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2 mb-1"><AlertTriangle size={15} className="text-amber-400" /> 2b. Pontos de atenção e correções (uma equipe por vez)</h3>
+        <h3 id="ajuste-pontos" className="text-sm font-bold text-slate-100 flex items-center gap-2 mb-1"><AlertTriangle size={15} className="text-amber-400" /> 2b. Pontos de atenção e correções (uma equipe por vez)</h3>
         <p className="text-xs text-slate-400 mb-3">O sistema aponta o que merece atenção nos lançamentos. Para cada ponto você escolhe o que fazer (ou deixa como está); o ajuste é calculado e mostrado antes de gravar. Vale só para equipe bloqueada e pronta, não gera devolução nem desconto de nota, e pode ser desfeito.</p>
         <details className="text-xs text-slate-400 mb-3 bg-slate-900/60 border border-slate-700 rounded-lg p-3"><summary className="cursor-pointer text-sky-300 font-bold">Sequência sugerida para analisar uma empresa</summary>
           <ol className="list-decimal pl-5 mt-2 space-y-0.5"><li><b>Pontos de atenção</b> (erros e inconsistências dos lançamentos).</li><li><b>Capacidade</b> (a estrutura aguenta a demanda?).</li><li><b>Giro, impostos, coerência, custos que faltam, pró-labore, financiamento e preço mínimo</b> (realismo de cada módulo).</li><li><b>Arranque e sazonalidade</b> (só afeta o Fluxo de caixa).</li><li><b>Realismo de mercado</b> (aproxima os indicadores da faixa do segmento).</li><li><b>Viabilidade</b> (se o retorno ainda passar do prazo) e o <b>Teste de estresse</b> (só leitura).</li></ol>
@@ -11225,7 +11264,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
 }
 
 function GestaoAjusteGeralView({ turmas, professorNome }) {
-  const [turmaSelId, setTurmaSelId] = useState(turmas.length === 1 ? turmas[0].id : null);
+  const [turmaSelId, setTurmaSelId] = useState(() => (PEDIDO_AJUSTE && turmas.some((t) => t.id === PEDIDO_AJUSTE.turmaId) ? PEDIDO_AJUSTE.turmaId : turmas.length === 1 ? turmas[0].id : null));
   const turmaSel = turmas.find((t) => t.id === turmaSelId) || null;
   const [equipes] = useSharedList(turmaSel ? "equipes_" + turmaSel.id : "equipes_sem_turma");
   const reais = (equipes || []).filter((e) => !e.teste);
@@ -11672,7 +11711,30 @@ function pendenciasDados(T) {
   if (neg > 6 || (fluxo12[12] && fluxo12[12].resultado < 0)) out.push({ rot: "Caixa no 1º ano", msg: `${neg} meses com resultado negativo${fluxo12[12] && fluxo12[12].resultado < 0 ? " e o mês 12 ainda negativo" : ""}`, onde: "Módulos 5 a 11 e arranque do fluxo" });
   return out;
 }
-async function conferirDocumentosEquipe(equipe, dados) {
+// Pedido de ajuste vindo da Conferência (Encerrar projeto → Ajuste geral): guarda a equipe e a opção sugerida. Nada é gravado.
+let PEDIDO_AJUSTE = null;
+const pedirAjuste = (p) => { PEDIDO_AJUSTE = p; };
+const lerPedidoAjuste = (turmaId) => (PEDIDO_AJUSTE && PEDIDO_AJUSTE.turmaId === turmaId ? PEDIDO_AJUSTE : null);
+const limparPedidoAjuste = () => { PEDIDO_AJUSTE = null; };
+const ROT_VIAB = ["Resultado operacional", "Ponto de equilíbrio", "Retorno do investimento", "Caixa no 1º ano"];
+// Simula as opções da Viabilidade (as mesmas do Ajuste geral) e mostra hoje × depois de cada uma.
+function montarSugestoes(equipe, dados, T, refs, X) {
+  try {
+    const ctx = { taxaCrescimento: dados.taxaCrescimentoFluxo ?? 0, historico: dados.historico || [], refs, capacidade: dados.capacidade || null, curva: dados.curvaFluxo || null, segmento: equipe.segmento, nSocios: (equipe.integrantes || []).length || 0 };
+    const s = PA.sugestoes(X.lanc, ctx); if (!s) return null;
+    const taxa = dados.taxaCrescimentoFluxo ?? 0;
+    const avaliar = (lx) => {
+      const c = calcular(lx); const fl = fluxoAteRetorno(c, taxa, dados.curvaFluxo); const f12 = fl.filter((m) => m.mes <= 12);
+      const pos = fl.find((m) => m.mes > 0 && m.saldo >= 0); const neg = f12.filter((m) => m.mes > 0 && m.resultado < 0).length;
+      const caixaOk = !(neg > 6 || (f12[12] && f12[12].resultado < 0));
+      const parecer = conclusaoResumo({ equipe, calc: c, fluxo: f12, fluxoL: fl, capCalc: X.capCalc, tmaAnual: X.tmaAnual, pPro: X.pPro }).rotulo;
+      const alvoOk = c.prazoRetorno != null && c.prazoRetorno <= s.alvo;
+      return { res: c.resultadoOperacional, prazo: c.prazoRetorno, mes: pos ? pos.mes : null, caixaOk, parecer, alvoOk, resolve: c.resultadoOperacional > 0 && alvoOk && caixaOk };
+    };
+    return { alvo: s.alvo, usoPico: T.usoPico ?? null, hoje: { res: T.calc.resultadoOperacional, prazo: T.calc.prazoRetorno, mes: T.posL ? T.posL.mes : null, parecer: T.parecer }, cards: s.cards.map(({ lancSim, ...k }) => ({ ...k, depois: avaliar(lancSim) })) };
+  } catch { return null; }
+}
+async function conferirDocumentosEquipe(equipe, dados, refs) {
   const lanc = mergeLancamentos(dados.lancamentos || {}); const calc = calcular(lanc);
   if (!((calc.faturamento || 0) > 0 && (calc.investimentoTotal || 0) > 0)) return { semDados: true, itens: [], dados: [], avisos: [], em: Date.now() };
   const taxa = dados.taxaCrescimentoFluxo ?? 0; const fluxoL = fluxoAteRetorno(calc, taxa, dados.curvaFluxo); const fluxo12 = fluxoL.filter((m) => m.mes <= 12);
@@ -11692,7 +11754,9 @@ async function conferirDocumentosEquipe(equipe, dados) {
   const itens = compararDocumentos(T, tokW, tokP);
   const avisos = [];
   if (calc.prazoRetorno != null && calc.prazoRetorno > 5) avisos.push(`O retorno (${nC(calc.prazoRetorno, 1)} anos) passa da meta de 5 anos do curso; o plano segue válido, só com aviso.`);
-  return { itens, dados: pendenciasDados(T), avisos, em: Date.now(), codigo: codigoDados([lanc, cenarios, tmaAnual, fluxoL.map((m) => Math.round(m.saldo)), capResumoCodigo(capCalc)]) };
+  const pend = pendenciasDados(T);
+  const sugestoes = pend.some((x) => ROT_VIAB.includes(x.rot)) ? montarSugestoes(equipe, dados, T, refs, { lanc, capCalc, tmaAnual, pPro }) : null;
+  return { itens, dados: pend, sugestoes, avisos, em: Date.now(), codigo: codigoDados([lanc, cenarios, tmaAnual, fluxoL.map((m) => Math.round(m.saldo)), capResumoCodigo(capCalc)]) };
 }
 const divSistema = (c) => (c && c.itens ? c.itens.filter((i) => !i.okW || !i.okP) : []);
 function resumoDivergencias(eq, c) {
@@ -11712,6 +11776,7 @@ function EncerrarProjetoTurma({ turma, equipes, professorNome, onIrPara }) {
   const [conf, setConf] = useState({});
   const [aberto, setAberto] = useState(null);
   const [excecao, setExcecao] = useState(null);
+  const [detSug, setDetSug] = useState(null);
   const carregar = async () => {
     try {
       const e = await lerEncerramento(turma.id);
@@ -11731,9 +11796,10 @@ function EncerrarProjetoTurma({ turma, equipes, professorNome, onIrPara }) {
     if (!ids.length) return {};
     setConf((c) => { const n = { ...c }; ids.forEach((id) => { n[id] = { carregando: true }; }); return n; });
     const res = {};
+    const refsCfg = await window.storage.get(`refs_segmento_${turma.professorUid}`, true).then((x) => (x ? JSON.parse(x.value) : null)).catch(() => null);
     for (const id of ids) {
       const eq = equipes.find((x) => x.id === id);
-      try { const d = await lerDadosEstrito(id); res[id] = await conferirDocumentosEquipe(eq, d); }
+      try { const d = await lerDadosEstrito(id); res[id] = await conferirDocumentosEquipe(eq, d, refsDoSegmento(refsCfg, eq.segmento)); }
       catch (e) { res[id] = { erro: e.message || "falha ao conferir", itens: [], dados: [], avisos: [], em: Date.now() }; }
       setConf((c) => ({ ...c, [id]: res[id] }));
     }
@@ -11815,9 +11881,50 @@ function EncerrarProjetoTurma({ turma, equipes, professorNome, onIrPara }) {
                       <div key={k} className="mt-2 flex flex-wrap items-center gap-2 bg-amber-950/30 border border-amber-800/50 rounded-lg px-3 py-2">
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300">Dado da equipe</span>
                         <span className="text-xs text-amber-100 flex-1 min-w-[200px]"><b>{d.rot}:</b> {d.msg}. Onde corrigir: {d.onde}.</span>
-                        <button onClick={() => { setAviso({ tipo: "ok", texto: `Abra o Ajuste geral, escolha ${e.nomeNegocio} e corrija: ${d.rot} (${d.onde}). Depois volte aqui e clique em “Conferir de novo”.` }); if (onIrPara) onIrPara("ajusteGeral"); }} className="bg-amber-500 text-slate-900 text-[11px] font-bold px-3 py-1 rounded-md">Corrigir</button>
+                        <button onClick={() => { pedirAjuste({ turmaId: turma.id, equipeId: e.id, opt: null }); if (onIrPara) onIrPara("ajusteGeral"); }} className="bg-amber-500 text-slate-900 text-[11px] font-bold px-3 py-1 rounded-md">Corrigir</button>
                       </div>
                     ))}
+                    {c.sugestoes && (() => {
+                      const S = c.sugestoes; const H = S.hoje; const algum = S.cards.some((k) => k.depois.resolve);
+                      const pz = (v) => (v == null ? "não recupera" : `${nC(v, 1)} anos`);
+                      const levar = (k) => { pedirAjuste({ turmaId: turma.id, equipeId: e.id, opt: k.optId, rotulo: k.rotulo }); if (onIrPara) onIrPara("ajusteGeral"); };
+                      return (
+                        <div className="mt-3 border border-emerald-700/60 bg-emerald-950/20 rounded-xl p-3">
+                          <div className="flex flex-wrap items-center gap-2"><span className="text-sm font-bold text-slate-100">💡 Sugestões automáticas para resolver as divergências</span><span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">simuladas · nada foi gravado</span></div>
+                          <p className="text-[11px] text-slate-400 mt-1">O sistema testou combinações dentro dos limites do Ajuste geral (retorno em até {nC(S.alvo, 1)} anos) e mostra o que cada uma resolveria. A equipe e o professor escolhem; o sistema não altera nada sozinho.</p>
+                          <div className="grid md:grid-cols-3 gap-2 mt-2">
+                            {S.cards.map((k) => {
+                              const D = k.depois; const chave = `${e.id}|${k.id}`;
+                              return (
+                                <div key={k.id} className={`rounded-lg border p-2.5 bg-slate-900/60 ${k.recomendado ? "border-emerald-600" : "border-slate-700"}`}>
+                                  <div className="text-xs font-bold text-slate-100">{k.recomendado && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 mr-1">Recomendada</span>}{k.rotulo}</div>
+                                  <div className="text-[11px] text-slate-400 mt-0.5">{k.mud.map((m) => m.txt).join(" · ")}</div>
+                                  <table className="w-full text-[11px] mt-1.5">
+                                    <thead><tr className="text-left text-[10px] text-slate-500"><th className="py-0.5 pr-1">Indicador</th><th className="pr-1">Hoje</th><th>Depois</th></tr></thead>
+                                    <tbody>
+                                      <tr className="border-t border-slate-800"><td className="py-0.5 pr-1 text-slate-400">Resultado mensal</td><td className="pr-1 text-rose-300">{brlC(H.res)}</td><td className={D.res > 0 ? "text-emerald-300" : "text-rose-300"}>{brlC(D.res)}</td></tr>
+                                      <tr className="border-t border-slate-800"><td className="py-0.5 pr-1 text-slate-400">Retorno (payback)</td><td className="pr-1 text-rose-300">{pz(H.prazo)}</td><td className={D.alvoOk ? "text-emerald-300" : D.prazo == null ? "text-rose-300" : "text-amber-300"}>{pz(D.prazo)}</td></tr>
+                                      <tr className="border-t border-slate-800"><td className="py-0.5 pr-1 text-slate-400">Caixa positivo a partir do</td><td className="pr-1 text-rose-300">{H.mes == null ? "—" : `mês ${H.mes}`}</td><td className={D.mes != null && D.mes <= 12 ? "text-emerald-300" : D.mes != null ? "text-amber-300" : "text-rose-300"}>{D.mes == null ? "—" : `mês ${D.mes}`}</td></tr>
+                                      <tr className="border-t border-slate-800"><td className="py-0.5 pr-1 text-slate-400">Parecer</td><td className="pr-1 text-rose-300">{H.parecer}</td><td className={/AINDA NÃO/.test(D.parecer) ? "text-rose-300" : "text-emerald-300"}>{D.parecer}</td></tr>
+                                    </tbody>
+                                  </table>
+                                  <div className={`text-[11px] mt-1.5 ${D.resolve ? "text-emerald-300" : D.res > 0 ? "text-amber-300" : "text-rose-300"}`}>{D.resolve ? "✔ Resolve as divergências" : D.res > 0 ? "◐ Resolve em parte" : "✖ Sozinha não resolve"}</div>
+                                  {S.usoPico != null && S.usoPico >= 100 && k.mud.some((m) => m.k === "qtd") && <div className="text-[10.5px] text-amber-300 mt-1">⚠ Inclui aumento de quantidades, mas a capacidade no pico já está em {nC(S.usoPico, 0)}%: resolva a Capacidade antes.</div>}
+                                  <div className="flex flex-wrap gap-1.5 mt-2">
+                                    {k.optId && <button onClick={() => levar(k)} className={`text-[11px] font-bold px-2.5 py-1 rounded-md ${D.resolve ? "bg-amber-500 text-slate-900" : "border border-slate-500 text-slate-200"}`}>Levar ao Ajuste geral</button>}
+                                    <button onClick={() => setDetSug(detSug === chave ? null : chave)} className="border border-slate-600 text-slate-300 text-[11px] px-2.5 py-1 rounded-md">{detSug === chave ? "Ocultar detalhe" : "Ver detalhe"}</button>
+                                  </div>
+                                  {detSug === chave && <ul className="mt-2 text-[11px] text-slate-300 space-y-0.5 list-disc pl-4">{k.mud.map((m) => <li key={m.k}>{m.txt} — {m.onde}</li>)}<li>Saldo e caixa: {D.caixaOk ? "caixa dentro do esperado no 1º ano" : "caixa do 1º ano ainda fraco (revise o arranque e o capital de giro)"}</li></ul>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {!algum && <div className="mt-2 text-[11px] text-amber-200 bg-amber-950/30 border border-amber-800/50 rounded-lg px-3 py-2">Nenhuma combinação dentro dos limites resolve tudo: a equipe precisa rever o modelo (investimento, mão de obra ou preços-base) antes de encerrar.</div>}
+                          <div className="mt-2 text-[11px] text-emerald-100 bg-emerald-950/30 border border-emerald-800/50 rounded-lg px-3 py-2"><b>Como funciona o “Levar ao Ajuste geral”:</b> abre o Ajuste geral com a equipe e a opção já escolhidas, mostrando antes × depois. O professor confere e confirma (fica registrado e com Desfazer). Depois volte aqui, clique em <b>Conferir de novo</b> e, estando tudo igual, encerre. A equipe precisa estar bloqueada para avaliação.</div>
+                        </div>
+                      );
+                    })()}
+                    {!c.sugestoes && c.dados.some((x) => x.rot === "Caixa no 1º ano") && <div className="mt-2 text-[11px] text-sky-200 bg-sky-950/30 border border-sky-800/50 rounded-lg px-3 py-2">Sem simulação automática: o retorno já está dentro da meta e o ponto fraco é o caixa do 1º ano. Reveja o arranque do fluxo e o capital de giro (Módulo 2) com a equipe.</div>}
                     {c.itens.length > 0 && divSistema(c).length > 0 && (
                       <div className="mt-2 flex flex-wrap items-center gap-2 bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2">
                         <span className="text-xs text-slate-300 flex-1 min-w-[200px]">Há número diferente entre a tela e o documento: isso é falha do sistema e não depende da equipe. Não impede o encerramento. Copie o resumo e envie ao Claude para corrigir.</span>

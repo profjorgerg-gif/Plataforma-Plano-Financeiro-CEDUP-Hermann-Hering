@@ -1,4 +1,4 @@
-// build: 20261112_20h55m Manuais atualizados; sugestões automáticas na Conferência dos documentos (levar ao Ajuste geral)
+// build: 20261112_21h40m Aplicar sugestão direto na Conferência; manuais atualizados na Conferência dos documentos (levar ao Ajuste geral)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1361,7 +1361,7 @@ const VERSOES = [
     "Fim da inconsistência entre telas: o Fluxo, o VPL e a TIR passam a valer para todo o período projetado, então um negócio que volta em 3 ou 8 anos não aparece mais como \"não recupera em 12 meses\". O crescimento mensal e o arranque valem só no 1º ano; depois o resultado se mantém no nível do mês 12 e a sazonalidade se repete.",
     "A meta de 5 anos do curso continua como aviso em amarelo, mas não gera mais erro: quando o retorno passa de 5 anos, o fluxo mostra todo o caminho. Quando o mês do retorno difere do prazo do Módulo 13 (que divide o investimento pelo lucro de um mês normal), a tela explica o motivo.",
     "Gestão → Encerrar projeto: nova \"Conferência dos documentos\". O sistema gera o Word e o PowerPoint de cada equipe em segundo plano, lê os números que saíram nos arquivos e compara com os da tela (investimento, faturamento, resultado, ponto de equilíbrio, rentabilidade, retorno, mês do caixa positivo, saldo, VPL, TIR, parecer e capacidade). Cada divergência diz a origem: \"Dado da equipe\" (com o botão Corrigir, que leva ao Ajuste geral) ou \"Falha do sistema\" (com Copiar resumo). Depois de corrigir, \"Conferir de novo\".",
-    "Conferência dos documentos com sugestões automáticas: quando a divergência é de dado da equipe (resultado negativo, sem retorno, caixa fraco no 1º ano), o sistema simula as opções da Viabilidade do Ajuste geral — combinação equilibrada, só preços, só custos — e mostra, para cada uma, o resultado, o retorno, o mês do caixa positivo e o parecer antes e depois. Nada é gravado: o botão \"Levar ao Ajuste geral\" abre a equipe já selecionada e a opção marcada, com antes × depois, confirmação e Desfazer; depois é só clicar em \"Conferir de novo\". O botão \"Corrigir\" também passa a abrir o Ajuste geral já na equipe certa.",
+    "Conferência dos documentos com sugestões automáticas: quando a divergência é de dado da equipe (resultado negativo, sem retorno, caixa fraco no 1º ano), o sistema simula as opções da Viabilidade do Ajuste geral — combinação equilibrada, só preços, só custos — e mostra, para cada uma, o resultado, o retorno, o mês do caixa positivo e o parecer antes e depois. Nada é gravado: o botão \"Levar ao Ajuste geral\" abre a equipe já selecionada e a opção marcada, com antes × depois, confirmação e Desfazer; depois é só clicar em \"Conferir de novo\". O botão \"Corrigir\" também passa a abrir o Ajuste geral já na equipe certa. Novo botão \"Aplicar esta sugestão\": abre uma janela com os percentuais editáveis (dentro dos limites) e o antes × depois; ao confirmar (com Backup geral marcado e motivo), o sistema bloqueia a equipe se preciso, aguarda os 20 segundos, grava só os módulos alterados, registra no Relatório de ajustes (com Desfazer), avisa a equipe no Feedback, libera de novo (se foi ele que bloqueou) e roda a Conferência de novo.",
     "Manuais em PDF (Professor, Aluno e Guia Pedagógico) atualizados: trazem os capítulos de outubro (projeto aberto, Capacidade, Ajuste geral, realismo do plano) e as novidades de novembro (Fluxo de Caixa até o retorno, documentos finais e Conferência dos documentos com sugestões automáticas). Onde os capítulos antigos dizem \"13 módulos\", leia 11 módulos de lançamento mais 2 análises; a revisão completa dos manuais fica para 2027.",
     "Encerrar marcadas passa a conferir antes: equipes sem divergência de dados são encerradas; as com divergência só encerram por exceção, com motivo registrado. Word e PowerPoint ganharam carimbo no rodapé (data, hora e código dos dados), que muda quando os dados da equipe mudam.",
     "Apresentação (PowerPoint): o slide final \"Conclusão da Equipe\" não vem mais em branco; traz a conclusão resumida do Plano Financeiro (Word) — parecer, resultado, viabilidade, caixa e risco, capacidade e recomendações — para os alunos apresentarem, mais uma caixa para as considerações finais da equipe.",
@@ -9499,17 +9499,17 @@ const PA = (() => {
     const v = viabilidade(L, ctx, undefined, alvoIn); if (!v) return null;
     const TX = { preco: "preços +", qtd: "quantidades +", cmv: "custo dos produtos −", fixas: "outras despesas fixas −" };
     const ONDE = { preco: "Módulo 5", qtd: "Módulo 5", cmv: "Módulos 6 e 8", fixas: "Módulo 11" };
-    const mk = (id, rotulo, m, extra) => {
-      const mud = Object.keys(m).filter((k) => m[k] > 0).map((k) => ({ k, pct: m[k], txt: `${TX[k]}${fmtNum(m[k], 1)}%`, onde: ONDE[k] }));
+    const mk = (id, rotulo, m, extra, maxes) => {
+      const mud = Object.keys(m).filter((k) => m[k] > 0).map((k) => ({ k, pct: m[k], max: (maxes && maxes[k]) || m[k], txt: `${TX[k]}${fmtNum(m[k], 1)}%`, onde: ONDE[k] }));
       return { id, rotulo, mud, lancSim: simular(L, m), ...extra };
     };
     const cards = [];
     const comb = v.opcoes.find((o) => o.id === "combinado");
-    if (comb && comb.params && comb.params.length) { const m = {}; comb.params.forEach((pr) => { m[pr.k] = pr.padrao; }); cards.push(mk("combinado", comb.atingeAlvo ? "Combinação equilibrada" : "Combinação no limite", m, { recomendado: !!comb.atingeAlvo, optId: "combinado" })); }
+    if (comb && comb.params && comb.params.length) { const m = {}; const mx = {}; comb.params.forEach((pr) => { m[pr.k] = pr.padrao; mx[pr.k] = pr.max; }); cards.push(mk("combinado", comb.atingeAlvo ? "Combinação equilibrada" : "Combinação no limite", m, { recomendado: !!comb.atingeAlvo, optId: "combinado" }, mx)); }
     const NOME1 = { preco: "Só preços", qtd: "Só quantidades", cmv: "Só custo dos produtos", fixas: "Só despesas fixas" };
     const unicas = ["preco", "cmv", "fixas", "qtd"].map((k) => v.opcoes.find((o) => o.id === k)).filter((o) => o && !o.naoAplica);
-    unicas.slice(0, 2).forEach((o) => cards.push(mk(o.id, NOME1[o.id], { [o.id]: o.params[0].padrao }, { optId: o.id })));
-    if (!unicas.length) cards.push(mk("preco", "Só preços (no limite)", { preco: LIM_VIA.preco }, { optId: null }));
+    unicas.slice(0, 2).forEach((o) => cards.push(mk(o.id, NOME1[o.id], { [o.id]: o.params[0].padrao }, { optId: o.id }, { [o.id]: o.params[0].max })));
+    if (!unicas.length) cards.push(mk("preco", "Só preços (no limite)", { preco: LIM_VIA.preco }, { optId: null }, { preco: LIM_VIA.preco }));
     return { alvo: v.alvo, info: v.info, cards };
   }
 
@@ -9899,7 +9899,7 @@ const PA = (() => {
     return { nota: Math.max(0, 100 - pen), pend };
   }
   const CHAVES_EXTRA = ["H|cap", "R|giro", "R|imp", "R|coe", "R|cus", "R|pro", "R|fin", "R|prc", "R|arr", "R|mer", "V|via"];
-  return { analisar, aplicar, capacidade, viabilidade, sugestoes, mercado, mercadoSim, giro, imposto, coerencia, LISTAS, CHAVES_EXTRA, estresse, pontuacao };
+  return { analisar, aplicar, capacidade, viabilidade, sugestoes, simular, mercado, mercadoSim, giro, imposto, coerencia, LISTAS, CHAVES_EXTRA, estresse, pontuacao };
 })();
 
 // ===== Ajuste geral (menu Gestão → Ajuste geral) =====
@@ -11719,19 +11719,74 @@ const lerPedidoAjuste = (turmaId) => (PEDIDO_AJUSTE && PEDIDO_AJUSTE.turmaId ===
 const limparPedidoAjuste = () => { PEDIDO_AJUSTE = null; };
 const ROT_VIAB = ["Resultado operacional", "Ponto de equilíbrio", "Retorno do investimento", "Caixa no 1º ano"];
 // Simula as opções da Viabilidade (as mesmas do Ajuste geral) e mostra hoje × depois de cada uma.
+// Avalia um cenário (lançamentos simulados): resultado, retorno, mês do caixa positivo, parecer e se resolve as divergências.
+function avaliarCenario(equipe, dados, lx, alvo, X) {
+  const taxa = dados.taxaCrescimentoFluxo ?? 0;
+  const c = calcular(lx); const fl = fluxoAteRetorno(c, taxa, dados.curvaFluxo); const f12 = fl.filter((m) => m.mes <= 12);
+  const pos = fl.find((m) => m.mes > 0 && m.saldo >= 0); const neg = f12.filter((m) => m.mes > 0 && m.resultado < 0).length;
+  const caixaOk = !(neg > 6 || (f12[12] && f12[12].resultado < 0));
+  const parecer = conclusaoResumo({ equipe, calc: c, fluxo: f12, fluxoL: fl, capCalc: X.capCalc, tmaAnual: X.tmaAnual, pPro: X.pPro }).rotulo;
+  const alvoOk = c.prazoRetorno != null && c.prazoRetorno <= alvo;
+  return { fat: c.faturamento, res: c.resultadoOperacional, prazo: c.prazoRetorno, mes: pos ? pos.mes : null, caixaOk, parecer, alvoOk, resolve: c.resultadoOperacional > 0 && alvoOk && caixaOk };
+}
+function contextoSugestao(equipe, dados) {
+  const lanc = mergeLancamentos(dados.lancamentos || {});
+  return { lanc, capCalc: capCalcParaDocumentos(equipe, dados), tmaAnual: dados.tmaAnualFluxo ?? 12, pPro: Math.min(100, Math.max(0, Number(lanc?.m4?.pctProprio) || 0)) };
+}
+const LAB_ALAVANCA = { preco: "Preços de venda (Módulo 5) +", qtd: "Quantidades vendidas (Módulo 5) +", cmv: "Custo dos produtos (Módulos 6 e 8) −", fixas: "Outras despesas fixas (Módulo 11) −" };
+// Aplica a sugestão escolhida pelo professor numa equipe: bloqueia (se preciso), grava só os módulos alterados, registra (Desfazer), avisa a equipe e libera.
+async function aplicarSugestaoDireta({ turma, equipe, professorNome, pcts, maximos, motivo, progresso }) {
+  const say = (t) => { try { if (progresso) progresso(t); } catch { /* só texto de apoio */ } };
+  const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+  let aval = await lerAvaliacao(turma.id); let bloqueouAgora = false;
+  const id = `aj_${Date.now()}`; let registrado = false;
+  try {
+    if (!equipeEmAvaliacao(aval, equipe.id)) {
+      say("Bloqueando a equipe para avaliação…");
+      await definirBloqueioAvaliacao(turma.id, [equipe.id], true, professorNome, MSG_AVALIACAO_PADRAO); bloqueouAgora = true;
+      aval = await lerAvaliacao(turma.id);
+      if (!equipeEmAvaliacao(aval, equipe.id)) throw new Error("não foi possível bloquear a equipe");
+    }
+    while (!equipePronta(aval, equipe.id, Date.now())) {
+      const b = aval.equipes?.[equipe.id]; if (!b || !b.ativo) throw new Error("a equipe deixou de estar bloqueada");
+      const resta = Math.max(0, AVALIACAO_ESPERA_MS - (Date.now() - (b.desde || 0)));
+      say(`Aguardando ${Math.ceil(resta / 1000)} s para os alunos terminarem de salvar…`);
+      await esperar(Math.min(1000, resta + 50)); aval = await lerAvaliacao(turma.id);
+    }
+    say("Lendo os dados atuais e gravando…");
+    const d = await lerDadosEstrito(equipe.id); const lanc = mergeLancamentos(d.lancamentos);
+    const m = {}; Object.keys(pcts || {}).forEach((k) => { const n = Math.min(Number(maximos?.[k]) || Infinity, Number(pcts[k]) || 0); if (n > 0) m[k] = n; });
+    if (!Object.keys(m).length) throw new Error("nenhum percentual informado");
+    const lancDepois = PA.simular(lanc, m);
+    const mods = {}; const esperado = {}; const linhas = []; const mudancas = [];
+    const TXL = { preco: "preços +", qtd: "quantidades +", cmv: "custo dos produtos −", fixas: "outras despesas fixas −" };
+    linhas.push(`Viabilidade (sugestão automática) — ${Object.keys(m).map((k) => `${TXL[k]}${fmtNum(m[k], 1)}%`).join(" · ")}`);
+    MODS_PONTOS.forEach((md) => {
+      if (JSON.stringify(lanc[md]) === JSON.stringify(lancDepois[md])) return;
+      mods[md] = lancDepois[md]; esperado[md] = jsonModulo(d.lancamentos, md);
+      linhas.push(...linhasDiffModulo(Number(md.slice(1)), lanc[md], lancDepois[md]));
+      mudancas.push({ equipeId: equipe.id, equipeNome: equipe.nomeNegocio, modId: md, antes: lanc[md], depois: lancDepois[md] });
+    });
+    if (!mudancas.length) throw new Error("nenhuma alteração resultou dos percentuais");
+    const mot = `Sugestão automática da Conferência dos documentos${motivo ? ` — ${motivo}` : ""}`;
+    await registrarAjusteProf(turma.id, { id, em: Date.now(), por: professorNome, tipo: "pontos", motivo: mot, mudancas, desfeito: false });
+    registrado = true;
+    const coment = { modulo: "Geral", texto: textoAvisoAjuste(professorNome, linhas, `Ajuste de viabilidade feito pelo professor${motivo ? `: ${motivo}` : "."}`), autor: professorNome, timestamp: Date.now(), tipo: "ajuste", lote: id };
+    await gravarModulosEquipe(turma.id, equipe.id, mods, esperado, coment, montarRelato({ id, por: professorNome, tipo: "pontos", motivo: mot, linhas, lancAntes: lanc, lancDepois, mods }));
+    return { ok: true, linhas, mods: Object.keys(mods), antes: calcular(lanc), depois: calcular(lancDepois), bloqueouAgora };
+  } catch (e) {
+    if (registrado) await limparRegistroAjuste(turma.id, id, null);
+    throw e;
+  } finally {
+    if (bloqueouAgora) { try { await definirBloqueioAvaliacao(turma.id, [equipe.id], false, professorNome); } catch { /* o professor pode liberar no Ajuste geral */ } }
+  }
+}
 function montarSugestoes(equipe, dados, T, refs, X) {
   try {
     const ctx = { taxaCrescimento: dados.taxaCrescimentoFluxo ?? 0, historico: dados.historico || [], refs, capacidade: dados.capacidade || null, curva: dados.curvaFluxo || null, segmento: equipe.segmento, nSocios: (equipe.integrantes || []).length || 0 };
     const s = PA.sugestoes(X.lanc, ctx); if (!s) return null;
     const taxa = dados.taxaCrescimentoFluxo ?? 0;
-    const avaliar = (lx) => {
-      const c = calcular(lx); const fl = fluxoAteRetorno(c, taxa, dados.curvaFluxo); const f12 = fl.filter((m) => m.mes <= 12);
-      const pos = fl.find((m) => m.mes > 0 && m.saldo >= 0); const neg = f12.filter((m) => m.mes > 0 && m.resultado < 0).length;
-      const caixaOk = !(neg > 6 || (f12[12] && f12[12].resultado < 0));
-      const parecer = conclusaoResumo({ equipe, calc: c, fluxo: f12, fluxoL: fl, capCalc: X.capCalc, tmaAnual: X.tmaAnual, pPro: X.pPro }).rotulo;
-      const alvoOk = c.prazoRetorno != null && c.prazoRetorno <= s.alvo;
-      return { res: c.resultadoOperacional, prazo: c.prazoRetorno, mes: pos ? pos.mes : null, caixaOk, parecer, alvoOk, resolve: c.resultadoOperacional > 0 && alvoOk && caixaOk };
-    };
+    const avaliar = (lx) => avaliarCenario(equipe, dados, lx, s.alvo, X);
     return { alvo: s.alvo, usoPico: T.usoPico ?? null, hoje: { res: T.calc.resultadoOperacional, prazo: T.calc.prazoRetorno, mes: T.posL ? T.posL.mes : null, parecer: T.parecer }, cards: s.cards.map(({ lancSim, ...k }) => ({ ...k, depois: avaliar(lancSim) })) };
   } catch { return null; }
 }
@@ -11778,6 +11833,7 @@ function EncerrarProjetoTurma({ turma, equipes, professorNome, onIrPara }) {
   const [aberto, setAberto] = useState(null);
   const [excecao, setExcecao] = useState(null);
   const [detSug, setDetSug] = useState(null);
+  const [apl, setApl] = useState(null);   // janela "Aplicar esta sugestão"
   const carregar = async () => {
     try {
       const e = await lerEncerramento(turma.id);
@@ -11805,6 +11861,29 @@ function EncerrarProjetoTurma({ turma, equipes, professorNome, onIrPara }) {
       setConf((c) => ({ ...c, [id]: res[id] }));
     }
     return res;
+  };
+  const abrirAplicar = async (eq, k, S) => {
+    try {
+      const d = await lerDadosEstrito(eq.id); const aval = await lerAvaliacao(turma.id); const X = contextoSugestao(eq, d);
+      const pcts = {}; const maxes = {}; k.mud.forEach((m) => { pcts[m.k] = m.pct; maxes[m.k] = m.max || m.pct; });
+      const g = d.gestor; const editando = g && g.nome && Date.now() - (g.ultimoPing || 0) < GESTOR_EDITANDO_MS ? g.nome : null;
+      setApl({ eq, k, d, X, alvo: S.alvo, usoPico: S.usoPico, pcts, maxes, motivo: "Ajuste para viabilidade antes do encerramento do projeto", backup: false, fase: "editando", msg: "", editando, bloqueada: equipeEmAvaliacao(aval, eq.id) });
+    } catch (e) { setAviso({ tipo: "erro", texto: `Não foi possível abrir a janela (${e.message}). Nada foi alterado.` }); }
+  };
+  const aplicarSugestao = async () => {
+    const A = apl; if (!A || A.fase === "aplicando") return;
+    const pc = {}; Object.keys(A.pcts).forEach((k) => { pc[k] = Math.min(A.maxes[k], Math.max(0, Number(A.pcts[k]) || 0)); });
+    if (A.editando && !A.bloqueada && !window.confirm(`${A.editando} está editando agora a empresa ${A.eq.nomeNegocio}. O bloqueio passa a valer na tela dele em poucos segundos (o que estiver digitando é salvo antes). Continuar?`)) return;
+    setApl({ ...A, fase: "aplicando", msg: "Iniciando…" });
+    try {
+      const r = await aplicarSugestaoDireta({ turma, equipe: A.eq, professorNome, pcts: pc, maximos: A.maxes, motivo: A.motivo.trim(), progresso: (t) => setApl((x) => (x ? { ...x, msg: t } : x)) });
+      setApl(null);
+      setAviso({ tipo: "ok", texto: `Sugestão aplicada em ${A.eq.nomeNegocio}: resultado mensal ${brlC(r.antes.resultadoOperacional)} → ${brlC(r.depois.resultadoOperacional)}. A equipe recebeu o aviso no Feedback e dá para desfazer em Ajuste geral → “4. Ajustes feitos”. Conferindo de novo…` });
+      const res = await conferir([A.eq.id]); const c = res[A.eq.id];
+      const txt = !c ? "" : c.erro ? `Não foi possível conferir de novo (${c.erro}).` : c.dados.length ? `Conferido de novo: ainda há ${c.dados.length} divergência(s) de dados.` : "Conferido de novo: sem divergências de dados.";
+      setAviso({ tipo: c && !c.erro && !c.dados.length ? "ok" : "erro", texto: `Sugestão aplicada em ${A.eq.nomeNegocio}. ${txt}` });
+      await carregar();
+    } catch (e) { setApl((x) => (x ? { ...x, fase: "erro", msg: e.message || "erro" } : x)); }
   };
   const statusConf = (id) => { const c = conf[id]; if (!c) return null; if (c.carregando) return "carregando"; if (c.erro) return "erro"; if (c.semDados) return "semdados"; if (c.dados.length) return "dados"; if (divSistema(c).length) return "sistema"; return "ok"; };
   const encerrarComConferencia = async (idsPedidos) => {
@@ -11912,7 +11991,8 @@ function EncerrarProjetoTurma({ turma, equipes, professorNome, onIrPara }) {
                                   <div className={`text-[11px] mt-1.5 ${D.resolve ? "text-emerald-300" : D.res > 0 ? "text-amber-300" : "text-rose-300"}`}>{D.resolve ? "✔ Resolve as divergências" : D.res > 0 ? "◐ Resolve em parte" : "✖ Sozinha não resolve"}</div>
                                   {S.usoPico != null && S.usoPico >= 100 && k.mud.some((m) => m.k === "qtd") && <div className="text-[10.5px] text-amber-300 mt-1">⚠ Inclui aumento de quantidades, mas a capacidade no pico já está em {nC(S.usoPico, 0)}%: resolva a Capacidade antes.</div>}
                                   <div className="flex flex-wrap gap-1.5 mt-2">
-                                    {k.optId && <button onClick={() => levar(k)} className={`text-[11px] font-bold px-2.5 py-1 rounded-md ${D.resolve ? "bg-amber-500 text-slate-900" : "border border-slate-500 text-slate-200"}`}>Levar ao Ajuste geral</button>}
+                                    {k.optId && <button disabled={ocupado} onClick={() => abrirAplicar(e, k, S)} className={`text-[11px] font-bold px-2.5 py-1 rounded-md disabled:opacity-40 ${D.resolve ? "bg-amber-500 text-slate-900" : "border border-slate-500 text-slate-200"}`}>⚡ Aplicar esta sugestão</button>}
+                                    {k.optId && <button onClick={() => levar(k)} className="border border-slate-500 text-slate-200 text-[11px] px-2.5 py-1 rounded-md">Levar ao Ajuste geral</button>}
                                     <button onClick={() => setDetSug(detSug === chave ? null : chave)} className="border border-slate-600 text-slate-300 text-[11px] px-2.5 py-1 rounded-md">{detSug === chave ? "Ocultar detalhe" : "Ver detalhe"}</button>
                                   </div>
                                   {detSug === chave && <ul className="mt-2 text-[11px] text-slate-300 space-y-0.5 list-disc pl-4">{k.mud.map((m) => <li key={m.k}>{m.txt} — {m.onde}</li>)}<li>Saldo e caixa: {D.caixaOk ? "caixa dentro do esperado no 1º ano" : "caixa do 1º ano ainda fraco (revise o arranque e o capital de giro)"}</li></ul>}
@@ -11960,6 +12040,52 @@ function EncerrarProjetoTurma({ turma, equipes, professorNome, onIrPara }) {
             </div>
           </div>
         )}
+        {apl && (() => {
+          const A = apl; const X = A.X; const pc = {}; Object.keys(A.pcts).forEach((k) => { pc[k] = Math.min(A.maxes[k], Math.max(0, Number(A.pcts[k]) || 0)); });
+          const A0 = avaliarCenario(A.eq, A.d, X.lanc, A.alvo, X); const lxD = PA.simular(X.lanc, pc); const A1 = avaliarCenario(A.eq, A.d, lxD, A.alvo, X);
+          const noLimite = Object.keys(pc).filter((k) => pc[k] >= A.maxes[k]); const pz = (v) => (v == null ? "não recupera" : `${nC(v, 1)} anos`);
+          const ocup = A.fase === "aplicando"; const pode = !ocup && A.backup && A.motivo.trim().length >= 5 && Object.values(pc).some((v) => v > 0);
+          return (
+            <div className="fixed inset-0 z-50 bg-black/70 flex items-start sm:items-center justify-center p-3 overflow-y-auto">
+              <div className="w-full max-w-3xl bg-slate-900 border-2 border-amber-500 rounded-2xl p-4 sm:p-5 my-4">
+                <div className="text-lg font-bold text-slate-100">⚡ Aplicar sugestão em {A.eq.nomeNegocio}</div>
+                <div className="text-xs text-slate-400 mt-0.5 mb-3">{A.k.rotulo} · altera os Módulos 5, 6, 8 e 11 · fica registrado e pode ser desfeito</div>
+                <div className="text-sm font-bold text-slate-200 mb-1">Percentuais (pode editar)</div>
+                <div className="space-y-1.5">
+                  {A.k.mud.map((m) => (
+                    <div key={m.k} className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                      <span className="w-72">{LAB_ALAVANCA[m.k]}</span>
+                      <input type="number" step="0.5" min="0" max={A.maxes[m.k]} disabled={ocup} value={A.pcts[m.k]} onChange={(ev) => setApl({ ...A, pcts: { ...A.pcts, [m.k]: ev.target.value } })} className="w-20 bg-slate-950 border border-slate-600 rounded px-2 py-1 text-right text-slate-100" />%
+                      <span className="text-slate-500">limite {nC(A.maxes[m.k], 1)}%{m.k === "qtd" && A.usoPico != null ? ` · capacidade no pico ${nC(A.usoPico, 0)}%` : ""}</span>
+                    </div>))}
+                </div>
+                <table className="w-full text-xs mt-3">
+                  <thead><tr className="text-left text-[10px] text-slate-500 uppercase border-b border-slate-700"><th className="py-1">Como ficará</th><th>Hoje</th><th>Depois (atualiza ao editar)</th></tr></thead>
+                  <tbody>
+                    <tr className="border-b border-slate-800"><td className="py-1 text-slate-300">Faturamento mensal</td><td>{brlC(A0.fat)}</td><td>{brlC(A1.fat)}</td></tr>
+                    <tr className="border-b border-slate-800"><td className="py-1 text-slate-300">Resultado mensal</td><td className="text-rose-300">{brlC(A0.res)}</td><td className={A1.res > 0 ? "text-emerald-300" : "text-rose-300"}>{brlC(A1.res)}</td></tr>
+                    <tr className="border-b border-slate-800"><td className="py-1 text-slate-300">Retorno do investimento</td><td className="text-rose-300">{pz(A0.prazo)}</td><td className={A1.alvoOk ? "text-emerald-300" : "text-amber-300"}>{pz(A1.prazo)}</td></tr>
+                    <tr className="border-b border-slate-800"><td className="py-1 text-slate-300">Caixa positivo a partir do</td><td>{A0.mes == null ? "—" : `mês ${A0.mes}`}</td><td>{A1.mes == null ? "—" : `mês ${A1.mes}`}</td></tr>
+                    <tr><td className="py-1 text-slate-300">Parecer</td><td className="text-rose-300">{A0.parecer}</td><td className={/AINDA NÃO/.test(A1.parecer) ? "text-rose-300" : "text-emerald-300"}>{A1.parecer}</td></tr>
+                  </tbody>
+                </table>
+                {noLimite.length > 0 && <div className="mt-3 text-xs text-amber-100 bg-amber-950/40 border border-amber-700/60 rounded-lg px-3 py-2">⚠ <b>Sugestão no limite:</b> {noLimite.map((k) => LAB_ALAVANCA[k].replace(/ [+−]$/, "")).join(", ")} no máximo. Mude os números se achar forte demais.</div>}
+                {!A1.resolve && <div className="mt-2 text-xs text-rose-200 bg-rose-950/40 border border-rose-700/60 rounded-lg px-3 py-2">Com estes percentuais ainda há divergência: {A1.res <= 0 ? "o resultado continua negativo" : !A1.alvoOk ? `o retorno passa de ${nC(A.alvo, 1)} anos` : "o caixa do 1º ano segue fraco"}. Você pode aplicar mesmo assim e conferir de novo.</div>}
+                <div className="mt-3 text-xs text-slate-300 bg-slate-800/70 border border-slate-600 rounded-lg px-3 py-2"><b>Situação da equipe:</b> {A.bloqueada ? <span className="text-emerald-300">já está bloqueada para avaliação (continua assim ao final).</span> : <span className="text-amber-300">não está bloqueada → ao aplicar, o sistema bloqueia a equipe, aguarda {AVALIACAO_ESPERA_MS / 1000} s, grava e libera de novo.</span>}{A.editando && !A.bloqueada ? <span className="text-rose-300"> ⚠ {A.editando} está editando agora.</span> : null}</div>
+                <div className="mt-3 text-xs text-slate-300">Motivo (aparece no Relatório de ajustes e no aviso à equipe):
+                  <input type="text" disabled={ocup} value={A.motivo} onChange={(ev) => setApl({ ...A, motivo: ev.target.value })} className="w-full mt-1 bg-slate-950 border border-slate-600 rounded px-2 py-1.5 text-slate-100" /></div>
+                <label className="flex items-center gap-2 mt-3 text-xs text-slate-200"><input type="checkbox" disabled={ocup} checked={A.backup} onChange={(ev) => setApl({ ...A, backup: ev.target.checked })} /> Já fiz o <b>Backup geral</b> hoje</label>
+                <div className="mt-3 text-[11px] text-emerald-100 bg-emerald-950/30 border border-emerald-800/50 rounded-lg px-3 py-2">Ao confirmar: grava só os módulos alterados · registra no Relatório de ajustes (com <b>Desfazer</b>) · avisa a equipe na aba Feedback · roda <b>Conferir de novo</b>. Sem devolução nem desconto de nota.</div>
+                {A.fase === "aplicando" && <div className="mt-3 text-xs text-sky-200 bg-sky-950/40 border border-sky-800/50 rounded-lg px-3 py-2">⏳ {A.msg}</div>}
+                {A.fase === "erro" && <div className="mt-3 text-xs text-rose-200 bg-rose-950/40 border border-rose-700/60 rounded-lg px-3 py-2">Não foi possível aplicar: {A.msg}. Nada foi gravado além do que está indicado; se a equipe foi bloqueada por este botão, ela já foi liberada.</div>}
+                <div className="flex flex-wrap justify-end gap-2 mt-4">
+                  <button disabled={ocup} onClick={() => setApl(null)} className="border border-slate-600 text-slate-200 text-sm px-4 py-2 rounded-md disabled:opacity-40">Cancelar</button>
+                  <button disabled={!pode} onClick={() => (A.fase === "erro" ? setApl({ ...A, fase: "editando", msg: "" }) : aplicarSugestao())} className="bg-emerald-600 disabled:opacity-40 text-white text-sm font-bold px-4 py-2 rounded-md">{A.fase === "erro" ? "Voltar e tentar de novo" : "Aplicar e conferir de novo"}</button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </Card>
     </div>
   );

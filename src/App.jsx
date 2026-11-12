@@ -1,4 +1,4 @@
-// build: 20261106_23h01m Painéis de ajuste: rótulos Faturamento bruto e Resultado líquido
+// build: 20261112_14h10m Fluxo de caixa até o retorno do investimento (anual e mensal), Word e PPT
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -843,12 +843,12 @@ const MANUAL_ALUNO_PASSOS = [
   { titulo: "Os módulos são liberados um a um", texto: "No início, só o Módulo 1 vem liberado — os demais aparecem na lista, mas travados. Preencham o módulo atual e cliquem em \"Enviar para correção\": ele trava para edição e o(a) professor(a) libera o seguinte depois de corrigir. Fiquem de olho no Prazo de Entrega de cada módulo — entregas fora do prazo têm desconto de 2,0 pontos por pontualidade, e um módulo com prazo vencido sem envio só é reaberto pelo(a) professor(a)." },
   { titulo: "Leiam a teoria antes de lançar dados", texto: "Todo módulo tem uma caixa \"Teoria do módulo\" — abram-na antes de preencher. Ela traz o conceito e a fórmula que a plataforma está usando nos cálculos.", imagem: "aluno_theory" },
   { titulo: "Acompanhem a Análise do Negócio", texto: "A cada rodada de ajustes, confiram os gráficos, os alertas automáticos e o ranking \"Produtos Mais Lucrativos\" — essa aba reúne o que foi lançado em todos os módulos e mostra quais produtos/serviços mais contribuem para o resultado." },
-  { titulo: "Explorem a Análise de Cenários e o Fluxo de Caixa", texto: "Na aba \"Análise de Cenários\", criem até 3 simulações de \"e se\" (ex.: preço 10% maior, custo de matéria-prima 5% mais caro) sem alterar nada do que já foi lançado. No Fluxo de Caixa Anual, vejam a projeção mês a mês do primeiro ano — e, se quiserem se aprofundar, o VPL e a TIR, indicadores opcionais que avaliam o investimento levando em conta o valor do dinheiro no tempo." },
+  { titulo: "Explorem a Análise de Cenários e o Fluxo de Caixa", texto: "Na aba \"Análise de Cenários\", criem até 3 simulações de \"e se\" (ex.: preço 10% maior, custo de matéria-prima 5% mais caro) sem alterar nada do que já foi lançado. No Fluxo de Caixa Anual, vejam a projeção ano a ano e mês a mês até o ano em que o investimento volta (até 10 anos, se o negócio demorar) — e, se quiserem se aprofundar, o VPL e a TIR, indicadores opcionais que avaliam o investimento levando em conta o valor do dinheiro no tempo." },
   { titulo: "Informem o segmento do negócio", texto: "Na aba \"Segmento do negócio\", escolham o segmento da empresa (ex.: padaria, restaurante, estética, semijoias). O botão \"Sugerir itens\" traz exemplos de itens típicos do segmento para orientar os lançamentos — são apenas sugestões, cada equipe lança os seus próprios dados." },
   { titulo: "Lancem a folha de pagamento (Módulo 9)", texto: "No Módulo 9, cadastrem as funções, a quantidade, o salário, VT/VR e os encargos (grupos A/B/C/D). O pró-labore dos sócios entra no mesmo módulo. Usem \"ver composição\" para conferir como o custo total de cada função foi calculado." },
   { titulo: "Salvem versões ao longo do projeto", texto: "Sempre que fizerem um ajuste relevante (novo preço, novo custo, nova equipe de trabalho), cliquem em \"Salvar versão\" na Análise do Negócio. Isso registra a evolução do projeto para vocês e para o professor.", imagem: "aluno_versions" },
   { titulo: "Leiam o feedback do professor", texto: "Verifiquem regularmente a aba \"Feedback do Professor\": além dos comentários organizados por módulo, é lá que aparece a nota final ponderada (média dos módulos + Módulo 13 + Cenários/Fluxo de Caixa + Apresentação) assim que todos os componentes forem lançados." },
-  { titulo: "Baixem a Apresentação e o Plano Financeiro (Word)", texto: "No menu do aluno, \"Baixar Apresentação (dados da equipe)\" gera um PowerPoint já preenchido com Visão Geral, DRE, Indicadores e Fluxo de Caixa (a conclusão fica em branco para a equipe escrever). \"Baixar Plano Financeiro (Word)\" gera o documento com os 13 módulos, a Análise do Negócio, o Fluxo de Caixa e os Cenários, com 15 gráficos, para copiar no Plano de Negócio. Os arquivos são gerados na hora, exigem internet no clique e avisam quando faltar algum dado. O link \"Modelo em branco\" continua disponível." },
+  { titulo: "Baixem a Apresentação e o Plano Financeiro (Word)", texto: "No menu do aluno, \"Baixar Apresentação (dados da equipe)\" gera um PowerPoint já preenchido com Visão Geral, DRE, Indicadores e Fluxo de Caixa até o retorno do investimento (a conclusão fica em branco para a equipe escrever). \"Baixar Plano Financeiro (Word)\" gera o documento com os 13 módulos, a Análise do Negócio, o Fluxo de Caixa (mensal no 1º ano e anual até o retorno do investimento) e os Cenários, com 15 gráficos, para copiar no Plano de Negócio. Os arquivos são gerados na hora, exigem internet no clique e avisam quando faltar algum dado. O link \"Modelo em branco\" continua disponível." },
   { titulo: "Finalizem o projeto", texto: "O plano financeiro está concluído quando os 13 módulos estiverem preenchidos, enviados e corrigidos, o resultado operacional analisado e pelo menos duas versões salvas mostrando a evolução dos ajustes feitos pela equipe.", imagem: "aluno_finish" },
 ];
 
@@ -1356,6 +1356,12 @@ function chamadoPassaFiltro(c, filtro) {
 // Lista do mais recente para o mais antigo — o primeiro item é a versão vigente.
 // ============================================================================
 const VERSOES = [
+  { versao: "3.8", data: "12/11/2026", itens: [
+    "Fluxo de Caixa até o retorno do investimento: em vez de parar no mês 12, a projeção segue até o ano em que o caixa fica positivo (até 10 anos). Há duas visões: anual (receita, custos, resultado e saldo de cada ano) e mensal (com os anos que abrem e fecham, até o mês do retorno). Se o negócio não se paga, mostra 10 anos com aviso.",
+    "Fim da inconsistência entre telas: o Fluxo, o VPL e a TIR passam a valer para todo o período projetado, então um negócio que volta em 3 ou 8 anos não aparece mais como \"não recupera em 12 meses\". O crescimento mensal e o arranque valem só no 1º ano; depois o resultado se mantém no nível do mês 12 e a sazonalidade se repete.",
+    "A meta de 5 anos do curso continua como aviso em amarelo, mas não gera mais erro: quando o retorno passa de 5 anos, o fluxo mostra todo o caminho. Quando o mês do retorno difere do prazo do Módulo 13 (que divide o investimento pelo lucro de um mês normal), a tela explica o motivo.",
+    "Word e PowerPoint de cada equipe: o Fluxo de Caixa ganha o bloco anual até o retorno (tabela e gráfico), o gráfico de recuperação do investimento passa a ir até o ano do retorno (não mais fixo em 5 anos), e VPL, TIR e parecer usam o período completo.",
+  ] },
   { versao: "3.7", data: "30/10/2026", itens: [
     "Ajuste geral — Realismo: novos cards que aproximam a empresa da realidade do segmento, todos com o mesmo sistema seguro (bloqueio, relatório e Desfazer): Realismo de mercado (lucratividade, rentabilidade, CMV e mão de obra contra a faixa do segmento, com aceitar sugestão ou digitar), Capital de giro e prazos, Impostos, Coerência entre módulos, Custos que costumam faltar, Pró-labore, Financiamento, Preço mínimo por produto e Arranque e sazonalidade (só Fluxo de caixa). As faixas são tabelas didáticas editáveis em Gestão → Referências por segmento.",
     "Ajuste geral: Teste de estresse (só leitura, com margem de segurança), guia com a sequência sugerida de análise e, em Gestão, o novo item \"Realismo da turma\" (nota de 0 a 100 por empresa e principais pendências). A tela Capacidade do aluno ganhou clientes por dia, clientes para empatar e o \"faturamento máximo teórico\".",
@@ -3633,15 +3639,16 @@ const CENARIO_CORES = ["#38bdf8", "#f59e0b", "#a78bfa"];
 // constante — é assim que cada um se comporta por definição.
 // `curva` (opcional, aplicada pelo professor): { arranque: [fração do mês 1, 2, 3…], sazonal: [12 fatores jan–dez], mesInicio: 1–12 }.
 // Só muda o Fluxo de caixa (saldo, VPL, TIR); os indicadores mensais médios dos módulos 12 e 13 não mudam.
-function projetarFluxoCaixa(calc, taxaCrescimentoMensal, curva) {
+function projetarFluxoCaixa(calc, taxaCrescimentoMensal, curva, nMeses = 12) {
   const taxa = (Number(taxaCrescimentoMensal) || 0) / 100;
   const arr = Array.isArray(curva?.arranque) ? curva.arranque : [];
   const saz = Array.isArray(curva?.sazonal) && curva.sazonal.length === 12 ? curva.sazonal : null;
   const m0 = (Number(curva?.mesInicio) || 1) - 1;
   const meses = [{ mes: 0, label: "Investimento", receita: 0, custoVariavel: 0, custoFixo: 0, resultado: -calc.investimentoTotal, saldo: -calc.investimentoTotal }];
   let saldo = -calc.investimentoTotal;
-  for (let i = 1; i <= 12; i++) {
-    const fator = Math.pow(1 + taxa, i - 1) * (Number(arr[i - 1]) > 0 ? Number(arr[i - 1]) : 1) * (saz ? Number(saz[(m0 + i - 1) % 12]) || 1 : 1);
+  for (let i = 1; i <= nMeses; i++) {
+    // crescimento e arranque valem só no 1º ano; depois o nível do mês 12 se mantém (a sazonalidade se repete)
+    const fator = Math.pow(1 + taxa, Math.min(i, 12) - 1) * (Number(arr[i - 1]) > 0 ? Number(arr[i - 1]) : 1) * (saz ? Number(saz[(m0 + i - 1) % 12]) || 1 : 1);
     const receita = calc.faturamento * fator;
     const custoVariavel = calc.custoVariavelTotal * fator;
     const custoFixo = calc.custoFixoTotal;
@@ -3650,6 +3657,33 @@ function projetarFluxoCaixa(calc, taxaCrescimentoMensal, curva) {
     meses.push({ mes: i, label: `Mês ${i}`, receita, custoVariavel, custoFixo, resultado, saldo });
   }
   return meses;
+}
+
+
+// Fluxo de caixa até o retorno do investimento: projeta mês a mês (até 10 anos) e devolve os meses até o fim do ano em que o caixa
+// fica positivo (no mínimo 12 meses). Se o negócio não se paga, devolve os 10 anos.
+const META_RETORNO_ANOS = 5, MAX_FLUXO_ANOS = 10;
+function fluxoAteRetorno(calc, taxaCrescimentoMensal, curva) {
+  const lim = MAX_FLUXO_ANOS * 12;
+  const todo = projetarFluxoCaixa(calc, taxaCrescimentoMensal, curva, lim);
+  const p = todo.find((m) => m.mes > 0 && m.saldo >= 0);
+  const n = p ? Math.max(12, Math.ceil(p.mes / 12) * 12) : lim;
+  return todo.slice(0, n + 1);
+}
+// Resumo do fluxo longo: mês e ano do retorno (null se não se paga), nº de anos exibidos.
+function resumoFluxoLongo(fl) {
+  const p = fl.find((m) => m.mes > 0 && m.saldo >= 0);
+  return { mesRet: p ? p.mes : null, anoRet: p ? Math.ceil(p.mes / 12) : null, anos: Math.round((fl.length - 1) / 12), longo: fl.length > 13 };
+}
+// Agrupa o fluxo mensal em anos: receita, custos, resultado e saldo ao final do ano.
+function fluxoPorAno(fl) {
+  const out = [];
+  for (let a = 1; a * 12 < fl.length + 11 && (a - 1) * 12 + 1 < fl.length; a++) {
+    const ms = fl.filter((m) => m.mes > (a - 1) * 12 && m.mes <= a * 12);
+    if (!ms.length) break;
+    out.push({ ano: a, receita: ms.reduce((x, m) => x + m.receita, 0), custos: ms.reduce((x, m) => x + m.custoVariavel + m.custoFixo, 0), resultado: ms.reduce((x, m) => x + m.resultado, 0), saldo: ms[ms.length - 1].saldo, meses: ms });
+  }
+  return out;
 }
 
 // VPL (Valor Presente Líquido): traz cada resultado mensal do fluxo de
@@ -3686,14 +3720,23 @@ function calcularTIRMensal(fluxo) {
 }
 
 function FluxoCaixaAnual({ calc, taxaCrescimento, onSetTaxaCrescimento, tmaAnual, onSetTmaAnual, readOnly, curva }) {
-  const fluxo = projetarFluxoCaixa(calc, taxaCrescimento, curva);
-  const mesPayback = fluxo.find((m) => m.mes > 0 && m.saldo >= 0);
+  const [aba, setAba] = useState("anual");
+  const [anosAbertos, setAnosAbertos] = useState({ 1: true });
+  const fluxoL = fluxoAteRetorno(calc, taxaCrescimento, curva);
+  const fluxo = fluxoL.slice(0, 13);
+  const RL = resumoFluxoLongo(fluxoL);
+  const mesPayback = fluxoL.find((m) => m.mes > 0 && m.saldo >= 0);
   const mesesDeficit = fluxo.filter((m) => m.mes > 0 && m.resultado < 0).length;
+  const limMes = RL.mesRet ?? fluxoL.length - 1;
+  const porAno = fluxoPorAno(fluxoL);
+  const dadosAnual = [{ label: "Início", saldo: fluxoL[0].saldo }, ...porAno.map((y) => ({ label: `Ano ${y.ano}`, saldo: y.saldo }))];
+  const dadosMensal = fluxoL.filter((m) => m.mes <= limMes);
+  const horizonte = `${RL.anos} ${RL.anos === 1 ? "ano" : "anos"}`;
 
   const tmaAnualNum = Number(tmaAnual) || 0;
   const tmaMensal = Math.pow(1 + tmaAnualNum / 100, 1 / 12) - 1;
-  const vpl = calcularVPL(fluxo, tmaMensal);
-  const tirMensal = calcularTIRMensal(fluxo);
+  const vpl = calcularVPL(fluxoL, tmaMensal);
+  const tirMensal = calcularTIRMensal(fluxoL);
   const tirAnual = tirMensal !== null ? (Math.pow(1 + tirMensal, 12) - 1) * 100 : null;
 
 
@@ -3707,11 +3750,15 @@ function FluxoCaixaAnual({ calc, taxaCrescimento, onSetTaxaCrescimento, tmaAnual
         {curva && (Array.isArray(curva.arranque) || Array.isArray(curva.sazonal)) && <div className="mt-3 text-xs text-sky-200 bg-sky-950/30 border border-sky-800/50 rounded-lg p-3">O professor aplicou ao fluxo {Array.isArray(curva.arranque) && curva.arranque.length > 0 ? <>uma <b>curva de arranque</b> ({curva.arranque.map((x) => `${fmtNum(x * 100, 0)}%`).join(" → ")} do faturamento nos primeiros meses)</> : null}{Array.isArray(curva.arranque) && curva.arranque.length > 0 && Array.isArray(curva.sazonal) ? " e " : ""}{Array.isArray(curva.sazonal) ? <>a <b>sazonalidade</b> típica do segmento (abertura em {["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"][(Number(curva.mesInicio) || 1) - 1]})</> : null}. Isso só afeta o Fluxo de caixa; os indicadores dos módulos continuam usando o faturamento médio mensal.</div>}
       </Card>
 
-      <div className="grid sm:grid-cols-3 gap-3 mb-4">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
         <StatCard label="Saldo ao final do Mês 12" value={fmtBRL(fluxo[12].saldo)} tone={fluxo[12].saldo >= 0 ? "gold" : "slate"} small />
-        <StatCard label="Mês em que o caixa fica positivo" value={mesPayback ? mesPayback.label : "Não ocorre em 12 meses"} tone={mesPayback ? "blue" : "slate"} small />
-        <StatCard label="Meses com resultado negativo" value={`${mesesDeficit} de 12`} tone={mesesDeficit > 0 ? "slate" : "gold"} small />
+        <StatCard label="Mês em que o caixa fica positivo" value={mesPayback ? `Mês ${mesPayback.mes} (Ano ${RL.anoRet})` : `Não se recupera em ${horizonte}`} tone={mesPayback ? "blue" : "slate"} small />
+        <StatCard label="Meses negativos no 1º ano" value={`${mesesDeficit} de 12`} tone={mesesDeficit > 0 ? "slate" : "gold"} small />
+        <StatCard label="Horizonte exibido" value={`${horizonte} · ${fluxoL.length - 1} meses`} tone="slate" small />
       </div>
+      {mesPayback && mesPayback.mes > META_RETORNO_ANOS * 12 && <div className="text-sm text-amber-200 bg-amber-950/30 border border-amber-800/50 rounded-lg p-3 mb-4">⚠ O investimento volta em {fmtNum(mesPayback.mes / 12, 1)} anos, acima da meta de {META_RETORNO_ANOS} anos do curso. O fluxo mostra todo o caminho até o retorno; para encurtá-lo, revisem preços, custos ou investimento.</div>}
+      {mesPayback && calc.prazoRetorno != null && Math.abs(mesPayback.mes - calc.prazoRetorno * 12) >= 6 && <div className="text-xs text-sky-200 bg-sky-950/30 border border-sky-800/50 rounded-lg p-3 mb-4">Por que o prazo do Módulo 13 ({fmtNum(calc.prazoRetorno, 1)} anos) é diferente do mês do retorno aqui? O Módulo 13 divide o investimento pelo lucro de um mês normal. O fluxo considera também o que muda no 1º ano (arranque, crescimento e sazonalidade), por isso o retorno costuma sair um pouco depois.</div>}
+      {!mesPayback && <div className="text-sm text-rose-200 bg-rose-950/30 border border-rose-800/50 rounded-lg p-3 mb-4">⚠ Com os números atuais o negócio não recupera o investimento nem em {horizonte}. Revejam preços, custos e investimento.</div>}
 
       <Card className="p-5 mb-4">
         <SectionTitle icon={Target} sub="Indicadores mais avançados, que levam em conta o valor do dinheiro no tempo — opcionais, para equipes que querem aprofundar a análise de investimento.">VPL e TIR</SectionTitle>
@@ -3720,59 +3767,115 @@ function FluxoCaixaAnual({ calc, taxaCrescimento, onSetTaxaCrescimento, tmaAnual
         </Field>
         <div className="grid sm:grid-cols-2 gap-3 mt-3">
           <StatCard label="VPL (Valor Presente Líquido)" value={fmtBRL(vpl)} tone={vpl >= 0 ? "emerald" : "rose"} />
-          <StatCard label="TIR (Taxa Interna de Retorno, ao ano)" value={tirAnual !== null ? `${fmtNum(tirAnual, 1)}%` : "Não recupera em 12 meses"} tone={tirAnual !== null && tirAnual >= tmaAnualNum ? "emerald" : "rose"} />
+          <StatCard label="TIR (Taxa Interna de Retorno, ao ano)" value={tirAnual !== null ? `${fmtNum(tirAnual, 1)}%` : `Não recupera em ${horizonte}`} tone={tirAnual !== null && tirAnual >= tmaAnualNum ? "emerald" : "rose"} />
         </div>
         <p className="text-xs text-slate-500 mt-3">
           {vpl >= 0
             ? `VPL positivo: descontando a TMA de ${fmtNum(tmaAnualNum, 1)}% ao ano, o negócio ainda gera ${fmtBRL(vpl)} de valor além do que os sócios exigiam como retorno mínimo.`
-            : `VPL negativo: nos 12 meses projetados, o negócio não gera valor suficiente para cobrir a TMA de ${fmtNum(tmaAnualNum, 1)}% ao ano exigida pelos sócios.`}
+            : `VPL negativo: nos ${horizonte} projetados, o negócio não gera valor suficiente para cobrir a TMA de ${fmtNum(tmaAnualNum, 1)}% ao ano exigida pelos sócios.`}
           {" "}{tirAnual !== null
-            ? (tirAnual >= tmaAnualNum ? "A TIR está acima da TMA, o que também indica um investimento vantajoso nesse horizonte de 12 meses." : "A TIR está abaixo da TMA, o que também indica que o investimento não se paga nesse horizonte de 12 meses.")
-            : "Sem TIR calculável: o negócio não chega a recuperar o investimento dentro dos 12 meses projetados, então não existe uma taxa de retorno nesse período."}
+            ? (tirAnual >= tmaAnualNum ? `A TIR está acima da TMA, o que também indica um investimento vantajoso nesse horizonte de ${horizonte}.` : `A TIR está abaixo da TMA, o que também indica que o investimento não se paga nesse horizonte de ${horizonte}.`)
+            : `Sem TIR calculável: o negócio não chega a recuperar o investimento dentro dos ${horizonte} projetados, então não existe uma taxa de retorno nesse período.`}
         </p>
       </Card>
 
+      <div className="flex flex-wrap gap-2 mb-3">
+        {[["anual", "Visão anual"], ["mensal", RL.longo ? "Visão mensal (até o retorno)" : "Visão mensal"]].map(([k, t]) => (
+          <button key={k} onClick={() => setAba(k)} className={`px-4 py-2 rounded-md text-sm font-semibold border ${aba === k ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-300 hover:bg-slate-800"}`}>{t}</button>
+        ))}
+      </div>
+
       <Card className="p-5 mb-4">
-        <SectionTitle icon={TrendingUp} sub="A linha cruzando o zero mostra o mês em que o negócio recupera o investimento inicial.">Evolução do saldo de caixa</SectionTitle>
+        <SectionTitle icon={TrendingUp} sub={aba === "anual" ? "Saldo no fim de cada ano. A linha cruzando o zero mostra o ano em que o negócio recupera o investimento inicial." : "A linha cruzando o zero mostra o mês em que o negócio recupera o investimento inicial."}>{aba === "anual" ? "Evolução do saldo de caixa por ano" : "Evolução do saldo de caixa por mês"}</SectionTitle>
         <ResponsiveContainer width="100%" height={260}>
-          <LineChart data={fluxo}>
+          <LineChart data={aba === "anual" ? dadosAnual : dadosMensal}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-            <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} />
+            <XAxis dataKey="label" stroke="#94a3b8" fontSize={10} interval={aba === "mensal" && dadosMensal.length > 24 ? Math.floor(dadosMensal.length / 12) : 0} />
             <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(v) => fmtBRL(v)} />
             <Tooltip formatter={(v) => fmtBRL(v)} contentStyle={{ background: "#0f172a", border: "1px solid #334155" }} />
             <ReferenceLine y={0} stroke="#64748b" strokeDasharray="4 4" />
-            <Line type="monotone" dataKey="saldo" stroke="#f59e0b" strokeWidth={2.5} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="saldo" stroke="#f59e0b" strokeWidth={2.5} dot={{ r: aba === "mensal" && dadosMensal.length > 24 ? 0 : 3 }} />
           </LineChart>
         </ResponsiveContainer>
       </Card>
 
-      <Card className="p-5 overflow-x-auto">
-        <SectionTitle icon={ClipboardList}>Tabela mês a mês</SectionTitle>
-        <table className="w-full text-sm min-w-[640px]">
-          <thead>
-            <tr className="text-left text-xs text-slate-500 uppercase tracking-wide border-b border-slate-700">
-              <th className="py-2 pr-3">Mês</th>
-              <th className="py-2 pr-3 text-right">Receita</th>
-              <th className="py-2 pr-3 text-right">Custo Variável</th>
-              <th className="py-2 pr-3 text-right">Custo Fixo</th>
-              <th className="py-2 pr-3 text-right">Resultado do mês</th>
-              <th className="py-2 text-right">Saldo acumulado</th>
-            </tr>
-          </thead>
-          <tbody>
-            {fluxo.map((m) => (
-              <tr key={m.mes} className="border-b border-slate-800">
-                <td className="py-2 pr-3 text-slate-300">{m.label}</td>
-                <td className="py-2 pr-3 text-right text-slate-300">{m.mes === 0 ? "—" : fmtBRL(m.receita)}</td>
-                <td className="py-2 pr-3 text-right text-slate-300">{m.mes === 0 ? "—" : fmtBRL(m.custoVariavel)}</td>
-                <td className="py-2 pr-3 text-right text-slate-300">{m.mes === 0 ? "—" : fmtBRL(m.custoFixo)}</td>
-                <td className={`py-2 pr-3 text-right font-semibold ${m.resultado >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{fmtBRL(m.resultado)}</td>
-                <td className={`py-2 text-right font-bold ${m.saldo >= 0 ? "text-amber-400" : "text-slate-400"}`}>{fmtBRL(m.saldo)}</td>
+      {aba === "anual" ? (
+        <Card className="p-5 overflow-x-auto">
+          <SectionTitle icon={ClipboardList}>Tabela ano a ano</SectionTitle>
+          <table className="w-full text-sm min-w-[640px]">
+            <thead>
+              <tr className="text-left text-xs text-slate-500 uppercase tracking-wide border-b border-slate-700">
+                <th className="py-2 pr-3">Período</th>
+                <th className="py-2 pr-3 text-right">Receita</th>
+                <th className="py-2 pr-3 text-right">Custos e despesas</th>
+                <th className="py-2 pr-3 text-right">Resultado</th>
+                <th className="py-2 text-right">Saldo acumulado</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+            </thead>
+            <tbody>
+              <tr className="border-b border-slate-800"><td className="py-2 pr-3 text-slate-300">Início</td><td colSpan={3} className="py-2 pr-3 text-slate-500">Investimento inicial</td><td className="py-2 text-right font-bold text-slate-400">{fmtBRL(fluxoL[0].saldo)}</td></tr>
+              {porAno.map((y) => (
+                <tr key={y.ano} className={`border-b border-slate-800 ${RL.anoRet === y.ano ? "bg-emerald-950/30" : ""}`}>
+                  <td className="py-2 pr-3 text-slate-300">Ano {y.ano}{RL.anoRet === y.ano ? <span className="ml-2 text-xs text-emerald-400 font-bold">✔ retorno no mês {RL.mesRet}</span> : null}</td>
+                  <td className="py-2 pr-3 text-right text-slate-300">{fmtBRL(y.receita)}</td>
+                  <td className="py-2 pr-3 text-right text-slate-300">{fmtBRL(y.custos)}</td>
+                  <td className={`py-2 pr-3 text-right font-semibold ${y.resultado >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{fmtBRL(y.resultado)}</td>
+                  <td className={`py-2 text-right font-bold ${y.saldo >= 0 ? "text-amber-400" : "text-slate-400"}`}>{fmtBRL(y.saldo)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      ) : (
+        <Card className="p-5 overflow-x-auto">
+          <SectionTitle icon={ClipboardList} sub={RL.longo ? "Clique no ano para abrir ou fechar os meses. A tabela vai até o mês do retorno." : undefined}>Tabela mês a mês</SectionTitle>
+          <table className="w-full text-sm min-w-[640px]">
+            <thead>
+              <tr className="text-left text-xs text-slate-500 uppercase tracking-wide border-b border-slate-700">
+                <th className="py-2 pr-3">Mês</th>
+                <th className="py-2 pr-3 text-right">Receita</th>
+                <th className="py-2 pr-3 text-right">Custo Variável</th>
+                <th className="py-2 pr-3 text-right">Custo Fixo</th>
+                <th className="py-2 pr-3 text-right">Resultado do mês</th>
+                <th className="py-2 text-right">Saldo acumulado</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-b border-slate-800"><td className="py-2 pr-3 text-slate-300">Investimento</td><td className="py-2 pr-3 text-right text-slate-300">—</td><td className="py-2 pr-3 text-right text-slate-300">—</td><td className="py-2 pr-3 text-right text-slate-300">—</td><td className={`py-2 pr-3 text-right font-semibold text-rose-400`}>{fmtBRL(fluxoL[0].resultado)}</td><td className="py-2 text-right font-bold text-slate-400">{fmtBRL(fluxoL[0].saldo)}</td></tr>
+              {porAno.map((y) => {
+                const meses = y.meses.filter((m) => m.mes <= limMes);
+                if (!meses.length) return null;
+                const aberto = !RL.longo || !!anosAbertos[y.ano];
+                const ult = meses[meses.length - 1];
+                return (
+                  <Fragment key={y.ano}>
+                    {RL.longo && (
+                      <tr onClick={() => setAnosAbertos({ ...anosAbertos, [y.ano]: !anosAbertos[y.ano] })} className="border-b border-slate-800 bg-slate-800/40 cursor-pointer hover:bg-slate-800">
+                        <td className="py-2 pr-3 text-slate-200 font-semibold">{aberto ? "▾" : "▸"} Ano {y.ano}</td>
+                        <td className="py-2 pr-3 text-right text-slate-400">{fmtBRL(meses.reduce((x, m) => x + m.receita, 0))}</td>
+                        <td className="py-2 pr-3 text-right text-slate-400">{fmtBRL(meses.reduce((x, m) => x + m.custoVariavel, 0))}</td>
+                        <td className="py-2 pr-3 text-right text-slate-400">{fmtBRL(meses.reduce((x, m) => x + m.custoFixo, 0))}</td>
+                        <td className={`py-2 pr-3 text-right font-semibold ${meses.reduce((x, m) => x + m.resultado, 0) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{fmtBRL(meses.reduce((x, m) => x + m.resultado, 0))}</td>
+                        <td className={`py-2 text-right font-bold ${ult.saldo >= 0 ? "text-amber-400" : "text-slate-400"}`}>{fmtBRL(ult.saldo)}</td>
+                      </tr>
+                    )}
+                    {aberto && meses.map((m) => (
+                      <tr key={m.mes} className={`border-b border-slate-800 ${RL.mesRet === m.mes ? "bg-emerald-950/30" : ""}`}>
+                        <td className="py-2 pr-3 text-slate-300">{RL.longo ? "\u00a0\u00a0" : ""}{m.label}{RL.mesRet === m.mes ? <span className="ml-2 text-xs text-emerald-400 font-bold">✔ retorno</span> : null}</td>
+                        <td className="py-2 pr-3 text-right text-slate-300">{fmtBRL(m.receita)}</td>
+                        <td className="py-2 pr-3 text-right text-slate-300">{fmtBRL(m.custoVariavel)}</td>
+                        <td className="py-2 pr-3 text-right text-slate-300">{fmtBRL(m.custoFixo)}</td>
+                        <td className={`py-2 pr-3 text-right font-semibold ${m.resultado >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{fmtBRL(m.resultado)}</td>
+                        <td className={`py-2 text-right font-bold ${m.saldo >= 0 ? "text-amber-400" : "text-slate-400"}`}>{fmtBRL(m.saldo)}</td>
+                      </tr>
+                    ))}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      )}
     </div>
   );
 }
@@ -4489,6 +4592,8 @@ function nomeArquivoSeguro(txt) {
 }
 
 async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cenarios, tmaAnual }) {
+  const fluxoL = fluxo; fluxo = fluxo.filter((m) => m.mes <= 12); const RL = resumoFluxoLongo(fluxoL); const horiz = `${RL.anos} ${RL.anos === 1 ? "ano" : "anos"}`;
+  const posL = fluxoL.find((m) => m.mes > 0 && m.saldo >= 0); const rotRet = posL ? `Mês ${posL.mes}${posL.mes > 12 ? ` (Ano ${RL.anoRet})` : ""}` : `Não se recupera em ${horiz}`;
   const PptxGenJS = await carregarScriptCDN(PPTXGENJS_URL, "PptxGenJS");
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE"; // 13,33 x 7,5 pol — mesmo formato do modelo
@@ -4633,18 +4738,18 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   }
 
   // 5 · Fluxo de caixa
-  const s5 = base("6 · Qual a Trajetória", "Fluxo de Caixa Anual — a evolução no tempo", 7, ["Em qual mês o caixa fica positivo", "Como o investimento se recupera ao longo do primeiro ano"]);
+  const s5 = base("6 · Qual a Trajetória", "Fluxo de Caixa Anual — a evolução no tempo", 7, ["Em qual mês (e ano) o caixa fica positivo", "Como o investimento se recupera ao longo do tempo"]);
   if (!temDados || !temInvest) aviso(s5, "Esta parte ainda não pode ser montada: faltam investimento e faturamento (Módulos 1 a 5) para projetar o caixa.");
   else {
     const pos = fluxo.find((m) => m.mes > 0 && m.saldo >= 0);
     const neg = fluxo.filter((m) => m.mes > 0 && m.resultado < 0).length;
     const w3 = (W - 0.3) / 3;
     kpi(s5, X, Y, w3, 1.05, "Saldo ao final do mês 12", money0(fluxo[12].saldo), "", fluxo[12].saldo >= 0 ? GREEN : SLATE);
-    kpi(s5, X + w3 + 0.15, Y, w3, 1.05, "Caixa fica positivo em", pos ? pos.label : "Não ocorre em 12 meses", "");
+    kpi(s5, X + w3 + 0.15, Y, w3, 1.05, "Caixa fica positivo em", rotRet, RL.longo && RL.mesRet ? `retorno em ${fmtNum(RL.mesRet / 12, 1)} anos` : "");
     kpi(s5, X + 2 * (w3 + 0.15), Y, w3, 1.05, "Meses com resultado negativo", `${neg} de 12`, "");
-    s5.addChart(pptx.charts.LINE, [{ name: "Saldo de caixa acumulado", labels: fluxo.map((m) => (m.mes > 0 ? m.label : "Início")), values: fluxo.map((m) => Math.round(m.saldo * 100) / 100) }], {
+    s5.addChart(pptx.charts.LINE, [{ name: "Saldo de caixa acumulado", labels: RL.longo ? ["Início", ...fluxoPorAno(fluxoL).map((y) => `Ano ${y.ano}`)] : fluxo.map((m) => (m.mes > 0 ? m.label : "Início")), values: RL.longo ? [fluxoL[0].saldo, ...fluxoPorAno(fluxoL).map((y) => y.saldo)].map((v) => Math.round(v * 100) / 100) : fluxo.map((m) => Math.round(m.saldo * 100) / 100) }], {
       x: X, y: Y + 1.2, w: W, h: H - 1.2, chartColors: [AMBER], lineSize: 3, lineDataSymbolSize: 7, showLegend: false,
-      showTitle: true, title: "Evolução do saldo de caixa (investimento no mês 0)", titleFontSize: 12, titleFontFace: "Calibri", titleColor: NAVY,
+      showTitle: true, title: RL.longo ? `Saldo de caixa no fim de cada ano (investimento no início) · ${horiz}` : "Evolução do saldo de caixa (investimento no mês 0)", titleFontSize: 12, titleFontFace: "Calibri", titleColor: NAVY,
       valAxisLabelFormatCode: "R$ #,##0", valAxisLabelFontSize: 9, catAxisLabelFontSize: 9, catAxisLabelPos: "low", valGridLine: { color: "E2E8F0", size: 0.75 },
     });
   }
@@ -4654,10 +4759,10 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   if (!temDados || !temInvest) aviso(sN, "Esta parte ainda não pode ser montada: faltam investimento e faturamento (Módulos 1 a 5).");
   else {
     const tma = Number.isFinite(Number(tmaAnual)) && tmaAnual !== "" && tmaAnual != null ? Number(tmaAnual) : 12;
-    const tmaM = Math.pow(1 + tma / 100, 1 / 12) - 1; const vpl = calcularVPL(fluxo, tmaM); const tirM = calcularTIRMensal(fluxo); const tirA = tirM !== null ? (Math.pow(1 + tirM, 12) - 1) * 100 : null;
+    const tmaM = Math.pow(1 + tma / 100, 1 / 12) - 1; const vpl = calcularVPL(fluxoL, tmaM); const tirM = calcularTIRMensal(fluxoL); const tirA = tirM !== null ? (Math.pow(1 + tirM, 12) - 1) * 100 : null;
     const w3n = (W - 0.3) / 3;
-    kpi(sN, X, Y, w3n, 1.1, `VPL (TMA de ${pct(tma, 1)} ao ano)`, money0(vpl), vpl >= 0 ? "gera valor além do mínimo exigido" : "não cobre a TMA em 12 meses", vpl >= 0 ? GREEN : RED);
-    kpi(sN, X + w3n + 0.15, Y, w3n, 1.1, "TIR (ao ano)", tirA !== null ? pct(tirA, 1) : "Não recupera em 12 meses", tirA !== null ? (tirA >= tma ? "acima da TMA" : "abaixo da TMA") : "o saldo não zera no ano", tirA !== null && tirA >= tma ? GREEN : RED);
+    kpi(sN, X, Y, w3n, 1.1, `VPL (TMA de ${pct(tma, 1)} ao ano)`, money0(vpl), vpl >= 0 ? "gera valor além do mínimo exigido" : `não cobre a TMA em ${horiz}`, vpl >= 0 ? GREEN : RED);
+    kpi(sN, X + w3n + 0.15, Y, w3n, 1.1, "TIR (ao ano)", tirA !== null ? pct(tirA, 1) : `Não recupera em ${horiz}`, tirA !== null ? (tirA >= tma ? "acima da TMA" : "abaixo da TMA") : `o saldo não zera em ${horiz}`, tirA !== null && tirA >= tma ? GREEN : RED);
     kpi(sN, X + 2 * (w3n + 0.15), Y, w3n, 1.1, "Resultado mensal (base)", money0(calc.resultadoOperacional), calc.resultadoOperacional >= 0 ? "lucro" : "prejuízo", calc.resultadoOperacional >= 0 ? GREEN : RED);
     const cens = (cenarios || []).filter((c) => c).slice(0, 4);
     const hdN = (t, al) => ({ text: t, options: { bold: true, color: "FFFFFF", fill: { color: NAVY }, fontSize: 12, align: al } });
@@ -4879,6 +4984,8 @@ function introducaoPlano(equipe, comCapacidade) {
 }
 
 async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, taxaCrescimento, tmaAnual, historico, capCalc }) {
+  const fluxoL = fluxo; fluxo = fluxo.filter((m) => m.mes <= 12); const RL = resumoFluxoLongo(fluxoL); const horiz = `${RL.anos} ${RL.anos === 1 ? "ano" : "anos"}`;
+  const posL = fluxoL.find((m) => m.mes > 0 && m.saldo >= 0); const rotRet = posL ? `Mês ${posL.mes}${posL.mes > 12 ? ` (Ano ${RL.anoRet})` : ""}` : `Não se recupera em ${horiz}`;
   const D = await carregarScriptCDN(DOCXJS_URL, "docx");
   const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, ShadingType, BorderStyle, Footer, Header, PageNumber, HeadingLevel, ImageRun } = D;
   const brl = (n) => (Number(n) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -4955,7 +5062,7 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
     ["3. Estrutura de custos fixos", "Módulo 9 (Mão de Obra) · 10 (Depreciação) · 11 (Custos Fixos)"],
     ["4. Resultados e viabilidade", "Módulo 12 (Demonstrativo de Resultados) · 13 (Indicadores de Viabilidade)"],
     ["5. Análise do Negócio", "Panorama, pontos de atenção, gráficos, produtos mais lucrativos e evolução dos ajustes"],
-    ["6. Fluxo de Caixa Anual", "Projeção mês a mês do primeiro ano, VPL e TIR"],
+    ["6. Fluxo de Caixa Anual", "Projeção mês a mês no 1º ano e ano a ano até o retorno, VPL e TIR"],
     ["7. Capacidade de produção e atendimento", "Se a estrutura da empresa comporta o plano de vendas, com as fórmulas e as contas"],
     ["8. Análise de Cenários", "Simulações \"e se\" da equipe"],
     ["Conclusão analítica", "Síntese dos resultados, viabilidade, caixa, capacidade, parecer e recomendações"],
@@ -5140,7 +5247,8 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
       `Payback = investimento total ÷ lucro anual = ${brl(calc.investimentoTotal)} ÷ ${brl(calc.lucroAnual)} = ${calc.prazoRetorno != null ? num(calc.prazoRetorno, 1) + " anos" : "não recupera"}`,
     ]));
     filhos.push(imagem({ tipo: "barras", titulo: "Receita anual x ponto de equilíbrio", categorias: ["Receita anual projetada", "Ponto de equilíbrio (anual)", "Lucro anual", "Investimento total"], valores: [calc.receitaAnual, calc.pontoEquilibrio || 0, calc.lucroAnual, calc.investimentoTotal], cores: ["#4f83c9", "#c9972e", calc.lucroAnual >= 0 ? "#2dd4a8" : "#f87171", "#5c7186"], alt: 290 }));
-    filhos.push(imagem({ tipo: "linhas", titulo: "Recuperação do investimento ao longo de 5 anos (lucro anual constante)", categorias: ["Início", "Ano 1", "Ano 2", "Ano 3", "Ano 4", "Ano 5"], series: [{ nome: "Saldo acumulado", valores: [0, 1, 2, 3, 4, 5].map((a) => -calc.investimentoTotal + calc.lucroAnual * a), cor: "#2dd4a8" }], alt: 280 }));
+    const nAnosGraf = calc.prazoRetorno != null ? Math.min(MAX_FLUXO_ANOS, Math.max(5, Math.ceil(calc.prazoRetorno))) : 5;
+    filhos.push(imagem({ tipo: "linhas", titulo: `Recuperação do investimento ao longo de ${nAnosGraf} anos (lucro anual constante)`, categorias: ["Início", ...Array.from({ length: nAnosGraf }, (_, k) => `Ano ${k + 1}`)], series: [{ nome: "Saldo acumulado", valores: Array.from({ length: nAnosGraf + 1 }, (_, a) => -calc.investimentoTotal + calc.lucroAnual * a), cor: "#2dd4a8" }], alt: 280 }));
   }
 
   // ================= 5. Análise do Negócio =================
@@ -5173,8 +5281,8 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
   else {
     const pos = fluxo.find((m) => m.mes > 0 && m.saldo >= 0);
     const neg = fluxo.filter((m) => m.mes > 0 && m.resultado < 0).length;
-    filhos.push(para(`A projeção parte do investimento total no mês 0 (${brl(-calc.investimentoTotal)})${Number(taxaCrescimento) ? ` e considera crescimento mensal do faturamento de ${num(taxaCrescimento, 1)}%` : fluxo.slice(1).some((m) => Math.abs(m.receita - calc.faturamento) > 0.5) ? ` e ajusta o faturamento de cada mês (base de ${brl(calc.faturamento)}) pela curva de arranque e pela sazonalidade definidas para o negócio` : " e repete o mesmo faturamento todos os meses"}. ${pos ? `O caixa acumulado fica positivo no ${pos.label.toLowerCase()}.` : `Ao final do mês 12 o saldo acumulado é de ${brl(fluxo[12].saldo)}, ou seja, o investimento ainda não é totalmente recuperado dentro do primeiro ano.`}`));
-    filhos.push(tabela(["Resumo", "Resultado"], [["Saldo ao final do mês 12", brl(fluxo[12].saldo)], ["Mês em que o caixa fica positivo", pos ? pos.label : "Não ocorre em 12 meses"], ["Meses com resultado negativo", `${neg} de 12`]], [3, 2], [1]));
+    filhos.push(para(`A projeção parte do investimento total no mês 0 (${brl(-calc.investimentoTotal)})${Number(taxaCrescimento) ? ` e considera crescimento mensal do faturamento de ${num(taxaCrescimento, 1)}%` : fluxo.slice(1).some((m) => Math.abs(m.receita - calc.faturamento) > 0.5) ? ` e ajusta o faturamento de cada mês (base de ${brl(calc.faturamento)}) pela curva de arranque e pela sazonalidade definidas para o negócio` : " e repete o mesmo faturamento todos os meses"}. ${posL ? `O caixa acumulado fica positivo no mês ${posL.mes}${posL.mes > 12 ? ` (${RL.anoRet}º ano, ou ${num(posL.mes / 12, 1)} anos após o início)` : ""}.` : `Ao final do mês 12 o saldo acumulado é de ${brl(fluxo[12].saldo)}${RL.longo ? ` e, mesmo projetando ${horiz}, o investimento não é recuperado` : ", ou seja, o investimento ainda não é totalmente recuperado dentro do primeiro ano"}.`}`));
+    filhos.push(tabela(["Resumo", "Resultado"], [["Saldo ao final do mês 12", brl(fluxo[12].saldo)], ["Mês em que o caixa fica positivo", rotRet], ["Meses com resultado negativo (1º ano)", `${neg} de 12`]], [3, 2], [1]));
     filhos.push(comoCalc([
       `Receita do mês = faturamento mensal × fator do mês (crescimento, arranque e sazonalidade) = ${brl(calc.faturamento)} × fator`,
       `Custo variável do mês = custo variável mensal × o mesmo fator; custo fixo = ${brl(calc.custoFixoTotal)} por mês`,
@@ -5183,17 +5291,25 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
     ]));
     filhos.push(imagem({ tipo: "linhas", titulo: "Evolução do saldo de caixa", categorias: fluxo.map((m) => (m.mes === 0 ? "Início" : `M${m.mes}`)), series: [{ nome: "Saldo de caixa acumulado", valores: fluxo.map((m) => m.saldo), cor: "#c9972e" }], alt: 280 }));
     filhos.push(tabela(["Mês", "Receita", "Custo variável", "Custo fixo", "Resultado", "Saldo acumulado"], fluxo.map((m) => [m.mes === 0 ? "Investimento" : m.label, m.mes === 0 ? "—" : brl(m.receita), m.mes === 0 ? "—" : brl(m.custoVariavel), m.mes === 0 ? "—" : brl(m.custoFixo), brl(m.resultado), brl(m.saldo)]), [1.5, 1.6, 1.7, 1.6, 1.6, 1.9], [1, 2, 3, 4, 5], false, 17));
+    if (RL.longo) {
+      const pa = fluxoPorAno(fluxoL);
+      filhos.push(h2(`Fluxo de caixa anual até o retorno (${horiz})`));
+      filhos.push(para(`${RL.mesRet ? `O investimento é recuperado no mês ${RL.mesRet}, ou seja, no ${RL.anoRet}º ano (${num(RL.mesRet / 12, 1)} anos). ${RL.mesRet > META_RETORNO_ANOS * 12 ? `O prazo supera a meta de ${META_RETORNO_ANOS} anos do curso e deve ser discutido na conclusão: o que a equipe faria para encurtá-lo (preços, custos ou investimento)? ` : ""}` : `Mesmo projetando ${horiz}, o saldo acumulado continua negativo: com os números atuais o investimento não é recuperado. `}A tabela resume cada ano e o saldo acumulado ao final dele; o crescimento e o arranque do primeiro ano não se repetem nos anos seguintes (o resultado se mantém no nível do mês 12).`));
+      if (RL.mesRet && calc.prazoRetorno != null && Math.abs(RL.mesRet - calc.prazoRetorno * 12) >= 6) filhos.push(para(`Observação: o prazo de retorno do Módulo 13 (${num(calc.prazoRetorno, 1)} anos) divide o investimento pelo lucro de um mês normal; o fluxo considera também o arranque, o crescimento e a sazonalidade do primeiro ano, por isso o retorno aqui (${num(RL.mesRet / 12, 1)} anos) pode ser um pouco posterior.`));
+      filhos.push(imagem({ tipo: "linhas", titulo: "Saldo de caixa no fim de cada ano", categorias: ["Início", ...pa.map((y) => `Ano ${y.ano}`)], series: [{ nome: "Saldo de caixa acumulado", valores: [fluxoL[0].saldo, ...pa.map((y) => y.saldo)], cor: "#c9972e" }], alt: 280 }));
+      filhos.push(tabela(["Período", "Receita", "Custos e despesas", "Resultado", "Saldo acumulado"], [["Início", "—", "—", brl(fluxoL[0].resultado), brl(fluxoL[0].saldo)], ...pa.map((y) => [`Ano ${y.ano}${RL.anoRet === y.ano ? " (retorno)" : ""}`, brl(y.receita), brl(y.custos), brl(y.resultado), brl(y.saldo)])], [1.8, 1.9, 2, 1.8, 2], [1, 2, 3, 4], false, 17));
+    }
     const tma = Number(tmaAnual); 
     if (Number.isFinite(tma)) {
       const tmaM = Math.pow(1 + tma / 100, 1 / 12) - 1;
-      const vpl = calcularVPL(fluxo, tmaM); const tirM = calcularTIRMensal(fluxo); const tirA = tirM !== null ? (Math.pow(1 + tirM, 12) - 1) * 100 : null;
+      const vpl = calcularVPL(fluxoL, tmaM); const tirM = calcularTIRMensal(fluxoL); const tirA = tirM !== null ? (Math.pow(1 + tirM, 12) - 1) * 100 : null;
       filhos.push(h2("VPL e TIR (indicadores opcionais)"));
-      filhos.push(para(`Considerando a Taxa Mínima de Atratividade (TMA) de ${num(tma, 1)}% ao ano, o VPL do fluxo de 12 meses é de ${brl(vpl)}${vpl >= 0 ? ", ou seja, o negócio gera valor além do retorno mínimo exigido pelos sócios" : ", ou seja, nos 12 meses projetados o negócio não gera valor suficiente para cobrir a TMA"}. ${tirA !== null ? `A TIR é de ${num(tirA, 1)}% ao ano.` : "Não há TIR calculável: o investimento não é recuperado dentro dos 12 meses."}`));
-      filhos.push(tabela(["Indicador", "Resultado"], [["TMA (taxa mínima de atratividade, ao ano)", pc(tma, 1)], ["VPL (valor presente líquido)", brl(vpl)], ["TIR (taxa interna de retorno, ao ano)", tirA !== null ? pc(tirA, 1) : "Não recupera em 12 meses"]], [3, 2], [1]));
+      filhos.push(para(`Considerando a Taxa Mínima de Atratividade (TMA) de ${num(tma, 1)}% ao ano, o VPL do fluxo de ${horiz === "1 ano" ? "12 meses" : horiz} é de ${brl(vpl)}${vpl >= 0 ? ", ou seja, o negócio gera valor além do retorno mínimo exigido pelos sócios" : ", ou seja, nos ${horiz} projetados o negócio não gera valor suficiente para cobrir a TMA"}. ${tirA !== null ? `A TIR é de ${num(tirA, 1)}% ao ano.` : `Não há TIR calculável: o investimento não é recuperado dentro de ${horiz}.`}`));
+      filhos.push(tabela(["Indicador", "Resultado"], [["TMA (taxa mínima de atratividade, ao ano)", pc(tma, 1)], ["VPL (valor presente líquido)", brl(vpl)], ["TIR (taxa interna de retorno, ao ano)", tirA !== null ? pc(tirA, 1) : `Não recupera em ${horiz}`]], [3, 2], [1]));
       filhos.push(comoCalc([
         `TMA mensal = (1 + TMA anual)^(1/12) – 1 = (1 + ${num(tma, 1)}%)^(1/12) – 1 = ${num(tmaM * 100, 3)}% ao mês`,
         `VPL = Σ resultado do mês t ÷ (1 + TMA mensal)^t, com o investimento no mês 0 = ${brl(vpl)}`,
-        `TIR = taxa mensal que torna o VPL igual a zero${tirA !== null ? `; anualizada: (1 + TIR mensal)^12 – 1 = ${pc(tirA, 1)}` : "; não existe neste fluxo de 12 meses"}`,
+        `TIR = taxa mensal que torna o VPL igual a zero${tirA !== null ? `; anualizada: (1 + TIR mensal)^12 – 1 = ${pc(tirA, 1)}` : `; não existe neste fluxo de ${horiz}`}`,
       ]));
     }
   }
@@ -5258,7 +5374,7 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
     const saldo12 = fluxo[12] ? fluxo[12].saldo : 0;
     const tmaN = Number(tmaAnual); const temTma = Number.isFinite(tmaN) && tmaAnual !== "" && tmaAnual != null;
     let vplV = null, tirA = null;
-    if (temTma) { vplV = calcularVPL(fluxo, Math.pow(1 + tmaN / 100, 1 / 12) - 1); const tm = calcularTIRMensal(fluxo); tirA = tm !== null ? (Math.pow(1 + tm, 12) - 1) * 100 : null; }
+    if (temTma) { vplV = calcularVPL(fluxoL, Math.pow(1 + tmaN / 100, 1 / 12) - 1); const tm = calcularTIRMensal(fluxoL); tirA = tm !== null ? (Math.pow(1 + tm, 12) - 1) * 100 : null; }
     const abaixoPE = calc.pontoEquilibrio != null && calc.receitaAnual < calc.pontoEquilibrio;
     const capR = !!(capCalc && capCalc.res && capCalc.res.k === "r");
     const paybackLongo = calc.prazoRetorno != null && calc.prazoRetorno > 5;
@@ -5275,7 +5391,7 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
     filhos.push(pj(`${ptoEq} A rentabilidade é de ${pc(calc.rentabilidade, 1)} ao ano${calc.prazoRetorno != null ? ` e o prazo de retorno (payback) é de ${num(calc.prazoRetorno, 1)} anos` : ", e o lucro atual não recupera o investimento"}. ${interp}`));
 
     filhos.push(h2("3. Caixa e risco financeiro"));
-    filhos.push(pj(`No fluxo de caixa dos 12 primeiros meses, ${neg === 0 ? "nenhum mês tem resultado negativo" : `${neg} ${neg === 1 ? "mês tem" : "meses têm"} resultado negativo`} e o saldo acumulado ao final do mês 12 é de ${brl(saldo12)}${pos ? `; o caixa acumulado fica positivo no ${pos.label.toLowerCase()}` : "; o caixa acumulado não fica positivo dentro do primeiro ano"}.${temTma ? ` O VPL, calculado com TMA de ${num(tmaN, 1)}% ao ano, é de ${brl(vplV)}${vplV >= 0 ? ", o que indica que o negócio gera valor além do retorno mínimo exigido" : ", o que significa que, no primeiro ano, o negócio não gera valor suficiente para cobrir o retorno mínimo exigido"}${tirA !== null ? `; a TIR é de ${num(tirA, 1)}% ao ano` : ""}.` : ""}${caixaRuim ? " Esse comportamento preocupa: o ideal é que o caixa fique negativo por no máximo 6 meses e depois se recupere, e a empresa depende de recursos para sustentá-lo até que as vendas se consolidem." : neg > 0 ? " Esse comportamento é esperado em um negócio novo: o caixa pressiona nos primeiros meses e se recupera ao longo do ano." : ""}`));
+    filhos.push(pj(`No fluxo de caixa dos 12 primeiros meses, ${neg === 0 ? "nenhum mês tem resultado negativo" : `${neg} ${neg === 1 ? "mês tem" : "meses têm"} resultado negativo`} e o saldo acumulado ao final do mês 12 é de ${brl(saldo12)}${posL ? `; o caixa acumulado fica positivo no mês ${posL.mes}${posL.mes > 12 ? ` (${RL.anoRet}º ano)` : ""}` : RL.longo ? `; o caixa acumulado não fica positivo nem em ${horiz}` : "; o caixa acumulado não fica positivo dentro do primeiro ano"}.${temTma ? ` O VPL, calculado com TMA de ${num(tmaN, 1)}% ao ano, é de ${brl(vplV)}${vplV >= 0 ? ", o que indica que o negócio gera valor além do retorno mínimo exigido" : ", o que significa que, no primeiro ano, o negócio não gera valor suficiente para cobrir o retorno mínimo exigido"}${tirA !== null ? `; a TIR é de ${num(tirA, 1)}% ao ano` : ""}.` : ""}${caixaRuim ? " Esse comportamento preocupa: o ideal é que o caixa fique negativo por no máximo 6 meses e depois se recupere, e a empresa depende de recursos para sustentá-lo até que as vendas se consolidem." : neg > 0 ? " Esse comportamento é esperado em um negócio novo: o caixa pressiona nos primeiros meses e se recupera ao longo do ano." : ""}`));
 
     filhos.push(h2("4. Capacidade de produção e atendimento"));
     if (!capCalc) filhos.push(pj("A capacidade de produção e atendimento ainda não foi analisada na plataforma; recomenda-se preenchê-la para confirmar que a estrutura comporta o plano de vendas."));
@@ -6086,13 +6202,13 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
 
   const acaoBaixarPpt = async () => {
     setErroPpt(""); setGerandoPpt(true);
-    try { await gerarApresentacaoEquipe({ equipe, calc, fluxo: projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0, dados?.curvaFluxo), capCalc: capCalcParaDocumentos(equipe, dados), lanc, cenarios: dados?.cenarios || [], tmaAnual: dados?.tmaAnualFluxo ?? 12 }); }
+    try { await gerarApresentacaoEquipe({ equipe, calc, fluxo: fluxoAteRetorno(calc, dados?.taxaCrescimentoFluxo ?? 0, dados?.curvaFluxo), capCalc: capCalcParaDocumentos(equipe, dados), lanc, cenarios: dados?.cenarios || [], tmaAnual: dados?.tmaAnualFluxo ?? 12 }); }
     catch { setErroPpt("Não foi possível gerar agora — confira a conexão com a internet e tente de novo."); }
     finally { setGerandoPpt(false); }
   };
   const acaoBaixarDoc = async () => {
     setErroPpt(""); setGerandoDoc(true);
-    try { await gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo: projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0, dados?.curvaFluxo), cenarios: dados?.cenarios || [], taxaCrescimento: dados?.taxaCrescimentoFluxo ?? 0, tmaAnual: dados?.tmaAnualFluxo ?? 12, historico: dados?.historico || [], capCalc: capCalcParaDocumentos(equipe, dados) }); }
+    try { await gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo: fluxoAteRetorno(calc, dados?.taxaCrescimentoFluxo ?? 0, dados?.curvaFluxo), cenarios: dados?.cenarios || [], taxaCrescimento: dados?.taxaCrescimentoFluxo ?? 0, tmaAnual: dados?.tmaAnualFluxo ?? 12, historico: dados?.historico || [], capCalc: capCalcParaDocumentos(equipe, dados) }); }
     catch { setErroPpt("Não foi possível gerar agora — confira a conexão com a internet e tente de novo."); }
     finally { setGerandoDoc(false); }
   };
@@ -6182,7 +6298,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
                     disabled={gerandoPpt}
                     onClick={async () => {
                       setErroPpt(""); setGerandoPpt(true);
-                      try { await gerarApresentacaoEquipe({ equipe, calc, fluxo: projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0, dados?.curvaFluxo), capCalc: capCalcParaDocumentos(equipe, dados), lanc, cenarios: dados?.cenarios || [], tmaAnual: dados?.tmaAnualFluxo ?? 12 }); setMenuAberto(false); }
+                      try { await gerarApresentacaoEquipe({ equipe, calc, fluxo: fluxoAteRetorno(calc, dados?.taxaCrescimentoFluxo ?? 0, dados?.curvaFluxo), capCalc: capCalcParaDocumentos(equipe, dados), lanc, cenarios: dados?.cenarios || [], tmaAnual: dados?.tmaAnualFluxo ?? 12 }); setMenuAberto(false); }
                       catch { setErroPpt("Não foi possível gerar agora — confira a conexão com a internet e tente de novo."); }
                       finally { setGerandoPpt(false); }
                     }}
@@ -6195,7 +6311,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
                     disabled={gerandoDoc}
                     onClick={async () => {
                       setErroPpt(""); setGerandoDoc(true);
-                      try { await gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo: projetarFluxoCaixa(calc, dados?.taxaCrescimentoFluxo ?? 0, dados?.curvaFluxo), cenarios: dados?.cenarios || [], taxaCrescimento: dados?.taxaCrescimentoFluxo ?? 0, tmaAnual: dados?.tmaAnualFluxo ?? 12, historico: dados?.historico || [], capCalc: capCalcParaDocumentos(equipe, dados) }); setMenuAberto(false); }
+                      try { await gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo: fluxoAteRetorno(calc, dados?.taxaCrescimentoFluxo ?? 0, dados?.curvaFluxo), cenarios: dados?.cenarios || [], taxaCrescimento: dados?.taxaCrescimentoFluxo ?? 0, tmaAnual: dados?.tmaAnualFluxo ?? 12, historico: dados?.historico || [], capCalc: capCalcParaDocumentos(equipe, dados) }); setMenuAberto(false); }
                       catch { setErroPpt("Não foi possível gerar agora — confira a conexão com a internet e tente de novo."); }
                       finally { setGerandoDoc(false); }
                     }}

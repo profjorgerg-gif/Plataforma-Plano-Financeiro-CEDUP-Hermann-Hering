@@ -1,4 +1,4 @@
-// build: 20261112_14h45m Slide de conclusão do PPT resumido a partir do Word; textos do caixa ajustados
+// build: 20261112_16h20m Conferência dos documentos (Word/PPT x tela) em Encerrar projeto e carimbo nos arquivos
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1360,6 +1360,8 @@ const VERSOES = [
     "Fluxo de Caixa até o retorno do investimento: em vez de parar no mês 12, a projeção segue até o ano em que o caixa fica positivo (até 10 anos). Há duas visões: anual (receita, custos, resultado e saldo de cada ano) e mensal (com os anos que abrem e fecham, até o mês do retorno). Se o negócio não se paga, mostra 10 anos com aviso.",
     "Fim da inconsistência entre telas: o Fluxo, o VPL e a TIR passam a valer para todo o período projetado, então um negócio que volta em 3 ou 8 anos não aparece mais como \"não recupera em 12 meses\". O crescimento mensal e o arranque valem só no 1º ano; depois o resultado se mantém no nível do mês 12 e a sazonalidade se repete.",
     "A meta de 5 anos do curso continua como aviso em amarelo, mas não gera mais erro: quando o retorno passa de 5 anos, o fluxo mostra todo o caminho. Quando o mês do retorno difere do prazo do Módulo 13 (que divide o investimento pelo lucro de um mês normal), a tela explica o motivo.",
+    "Gestão → Encerrar projeto: nova \"Conferência dos documentos\". O sistema gera o Word e o PowerPoint de cada equipe em segundo plano, lê os números que saíram nos arquivos e compara com os da tela (investimento, faturamento, resultado, ponto de equilíbrio, rentabilidade, retorno, mês do caixa positivo, saldo, VPL, TIR, parecer e capacidade). Cada divergência diz a origem: \"Dado da equipe\" (com o botão Corrigir, que leva ao Ajuste geral) ou \"Falha do sistema\" (com Copiar resumo). Depois de corrigir, \"Conferir de novo\".",
+    "Encerrar marcadas passa a conferir antes: equipes sem divergência de dados são encerradas; as com divergência só encerram por exceção, com motivo registrado. Word e PowerPoint ganharam carimbo no rodapé (data, hora e código dos dados), que muda quando os dados da equipe mudam.",
     "Apresentação (PowerPoint): o slide final \"Conclusão da Equipe\" não vem mais em branco; traz a conclusão resumida do Plano Financeiro (Word) — parecer, resultado, viabilidade, caixa e risco, capacidade e recomendações — para os alunos apresentarem, mais uma caixa para as considerações finais da equipe.",
     "Word e PowerPoint de cada equipe: o Fluxo de Caixa ganha o bloco anual até o retorno (tabela e gráfico), o gráfico de recuperação do investimento passa a ir até o ano do retorno (não mais fixo em 5 anos), e VPL, TIR e parecer usam o período completo.",
   ] },
@@ -4559,6 +4561,19 @@ function carregarScriptCDN(url, globalName) {
   });
 }
 
+
+const capResumoCodigo = (c) => (c && c.grupos ? c.grupos.map((g) => [g.titulo, Math.round(g.cap || 0), Math.round(g.dem || 0)]) : null);
+// Carimbo dos documentos baixados: data/hora da geração e um código curto dos dados usados (muda quando os dados da equipe mudam).
+function codigoDados(partes) {
+  let h = 2166136261; let t = ""; try { t = JSON.stringify(partes); } catch { t = String(Date.now()); }
+  for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return "#" + h.toString(16).toUpperCase().padStart(8, "0").slice(0, 4);
+}
+function carimboDocumento(partes) {
+  const d = new Date(); const p = (n) => String(n).padStart(2, "0");
+  return `Gerado em ${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} às ${p(d.getHours())}:${p(d.getMinutes())} · Código dos dados: ${codigoDados(partes)}`;
+}
+
 // Cálculo da capacidade para os documentos baixados (Word e apresentação). Nunca derruba o download.
 function capCalcParaDocumentos(equipe, dados) {
   try {
@@ -4639,7 +4654,7 @@ function conclusaoResumo({ equipe, calc, fluxo, fluxoL, capCalc, tmaAnual, pPro 
   return { parecer, rotulo, motivo, sec, rec: rec.slice(0, 3) };
 }
 
-async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cenarios, tmaAnual }) {
+async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cenarios, tmaAnual, modoConferir }) {
   const fluxoL = fluxo; fluxo = fluxo.filter((m) => m.mes <= 12); const RL = resumoFluxoLongo(fluxoL); const horiz = `${RL.anos} ${RL.anos === 1 ? "ano" : "anos"}`;
   const posL = fluxoL.find((m) => m.mes > 0 && m.saldo >= 0); const rotRet = posL ? `Mês ${posL.mes}${posL.mes > 12 ? ` (Ano ${RL.anoRet})` : ""}` : `Não se recupera em ${horiz}`;
   const PptxGenJS = await carregarScriptCDN(PPTXGENJS_URL, "PptxGenJS");
@@ -4652,7 +4667,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   const money0 = (n) => (Number(n) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
   const pct = (n, d = 1) => `${(Number(n) || 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d })}%`;
   const money2 = (n) => (Number(n) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  const rodape = `CEDUP Hermann Hering · Plataforma do Plano Financeiro · ${equipe.nomeNegocio}`;
+  const rodape = `CEDUP Hermann Hering · Plataforma do Plano Financeiro · ${equipe.nomeNegocio} · ${carimboDocumento([lanc, cenarios, tmaAnual, fluxoL.map((m) => Math.round(m.saldo)), capResumoCodigo(capCalc)])}`;
   const X = 0.7, Y = 1.7, W = 11.9, H = 5.0;
 
   const temDados = (calc.faturamento || 0) > 0;
@@ -4662,7 +4677,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
     const s = pptx.addSlide(); s.background = { color: "FFFFFF" };
     s.addText(titulo, { x: 0.7, y: 0.5, w: 11.9, h: 0.7, fontFace: "Cambria", fontSize: 30, bold: true, color: NAVY, margin: 0 });
     s.addText(subtitulo, { x: 0.7, y: 1.15, w: 11.9, h: 0.4, fontFace: "Calibri", fontSize: 13.5, italic: true, color: SLATE, margin: 0 });
-    s.addText(rodape, { x: 0.5, y: 7.08, w: 9, h: 0.3, fontFace: "Calibri", fontSize: 9, color: SLATE, margin: 0 });
+    s.addText(rodape, { x: 0.5, y: 7.08, w: 11.6, h: 0.3, fontFace: "Calibri", fontSize: 9, color: SLATE, margin: 0 });
     s.addText(String(n), { x: 12.3, y: 7.08, w: 0.5, h: 0.3, fontFace: "Calibri", fontSize: 9, color: SLATE, align: "right", margin: 0 });
     if (destaques) s.addNotes("O QUE DESTACAR NA APRESENTAÇÃO:\n" + destaques.map((t) => "• " + t).join("\n"));
     return s;
@@ -4684,7 +4699,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   c.addText(equipe.nomeNegocio, { x: 0.7, y: 2.8, w: 11.5, h: 1.1, fontFace: "Cambria", fontSize: 40, bold: true, color: "FFFFFF", margin: 0 });
   c.addText("Apresentação do Plano Financeiro", { x: 0.7, y: 4.0, w: 11.5, h: 0.5, fontFace: "Calibri", fontSize: 20, color: "E2E8F0", margin: 0 });
   c.addText((equipe.integrantes || []).join(" · ") || "Integrantes da equipe", { x: 0.7, y: 4.7, w: 11.5, h: 0.9, fontFace: "Calibri", fontSize: 14, italic: true, color: "94A3B8", valign: "top", margin: 0 });
-  c.addText(rodape, { x: 0.5, y: 7.08, w: 9, h: 0.3, fontFace: "Calibri", fontSize: 9, color: "64748B", margin: 0 });
+  c.addText(rodape, { x: 0.5, y: 7.08, w: 11.6, h: 0.3, fontFace: "Calibri", fontSize: 9, color: "64748B", margin: 0 });
 
   // 2 · Visão geral
   const s2 = base("1 · Visão Geral", "Análise do Negócio — o panorama do negócio", 2, ["Quanto foi investido", "Quanto a empresa fatura por mês", "Qual o resultado operacional"]);
@@ -4905,6 +4920,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   }
   s6.addNotes("ROTEIRO PARA APRESENTAR A CONCLUSÃO (usem as palavras da equipe):\n• Este slide resume a \"Conclusão analítica\" do Plano Financeiro (Word): o parecer, os resultados e as recomendações.\n• Comecem pelo parecer e digam por quê, citando os números.\n• Mostrem o principal risco (capacidade no pico, caixa negativo, retorno lento, capital de giro).\n• Fechem dizendo o que a equipe faria diferente ou ajustaria no plano.\n• Se algum número mudar no sistema, baixem a apresentação de novo.");
 
+  if (modoConferir) return await pptx.write({ outputType: "arraybuffer" });
   await pptx.writeFile({ fileName: `Apresentacao-Plano-Financeiro-${nomeArquivoSeguro(equipe.nomeNegocio)}.pptx` });
 }
 
@@ -5050,7 +5066,7 @@ function introducaoPlano(equipe, comCapacidade) {
   return { paras: [...b.map((x) => x.t), f], refs };
 }
 
-async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, taxaCrescimento, tmaAnual, historico, capCalc }) {
+async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, taxaCrescimento, tmaAnual, historico, capCalc, modoConferir }) {
   const fluxoL = fluxo; fluxo = fluxo.filter((m) => m.mes <= 12); const RL = resumoFluxoLongo(fluxoL); const horiz = `${RL.anos} ${RL.anos === 1 ? "ano" : "anos"}`;
   const posL = fluxoL.find((m) => m.mes > 0 && m.saldo >= 0); const rotRet = posL ? `Mês ${posL.mes}${posL.mes > 12 ? ` (Ano ${RL.anoRet})` : ""}` : `Não se recupera em ${horiz}`;
   const D = await carregarScriptCDN(DOCXJS_URL, "docx");
@@ -5505,11 +5521,12 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
     sections: [{
       properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } },
       headers: { default: new Header({ children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [run(`${equipe.nomeNegocio} · Plano Financeiro`, { size: 16, color: GRAY })] })] }) },
-      footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [run("CEDUP Hermann Hering · Plataforma do Plano Financeiro · página ", { size: 16, color: GRAY }), new TextRun({ children: [PageNumber.CURRENT], font: FONT, size: 16, color: GRAY })] })] }) },
+      footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [run("CEDUP Hermann Hering · Plataforma do Plano Financeiro · página ", { size: 16, color: GRAY }), new TextRun({ children: [PageNumber.CURRENT], font: FONT, size: 16, color: GRAY })] }), new Paragraph({ alignment: AlignmentType.CENTER, children: [run(carimboDocumento([lanc, cenarios, tmaAnual, fluxoL.map((m) => Math.round(m.saldo)), capResumoCodigo(capCalc)]), { size: 14, color: GRAY })] })] }) },
       children: filhos,
     }],
   });
   const blob = await Packer.toBlob(doc);
+  if (modoConferir) return blob;
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = `Plano-Financeiro-${nomeArquivoSeguro(equipe.nomeNegocio)}.docx`;
@@ -11561,23 +11578,140 @@ async function lerEncerramento(turmaId) {
   const r = await window.storage.get(chaveEncerramento(turmaId), true);
   return r ? JSON.parse(r.value) : { equipes: {} };
 }
-async function definirEncerramento(turmaId, ids, ligar, por, mensagem) {
+async function definirEncerramento(turmaId, ids, ligar, por, mensagem, excecoes) {
   const a = await lerEncerramento(turmaId);
   const eqs = { ...(a.equipes || {}) };
-  ids.forEach((id) => { if (ligar) eqs[id] = { ativo: true, desde: Date.now(), por, mensagem: mensagem || MSG_ENCERRAMENTO_PADRAO }; else delete eqs[id]; });
+  ids.forEach((id) => { if (ligar) eqs[id] = { ativo: true, desde: Date.now(), por, mensagem: mensagem || MSG_ENCERRAMENTO_PADRAO, ...(excecoes && excecoes[id] ? { excecao: excecoes[id] } : {}) }; else delete eqs[id]; });
   await window.storage.set(chaveEncerramento(turmaId), JSON.stringify({ ...a, equipes: eqs }), true);
   const conf = await lerEncerramento(turmaId);
   ids.forEach((id) => { if (!!conf.equipes?.[id]?.ativo !== !!ligar) throw new Error("a gravação não foi confirmada na leitura de conferência"); });
   return conf.equipes;
 }
 
-function EncerrarProjetoTurma({ turma, equipes, professorNome }) {
+
+// ================= Conferência dos documentos (Gestão → Encerrar projeto) =================
+// Gera o Word e o PowerPoint da equipe em segundo plano (sem baixar), lê os números que saíram nos arquivos e compara com os da tela.
+const JSZIP_URL = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+const decXml = (t) => t.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+async function tokensDoArquivo(dados, tipo) {
+  const JSZip = await carregarScriptCDN(JSZIP_URL, "JSZip");
+  const z = await JSZip.loadAsync(dados);
+  const nomes = tipo === "word" ? ["word/document.xml"] : Object.keys(z.files).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n)).sort((a, b) => Number(a.match(/(\d+)\.xml/)[1]) - Number(b.match(/(\d+)\.xml/)[1]));
+  const re = tipo === "word" ? /<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g : /<a:t>([^<]*)<\/a:t>/g;
+  const tokens = [];
+  for (const n of nomes) { const x = await z.file(n).async("string"); let m; while ((m = re.exec(x))) tokens.push(decXml(m[1]).trim()); }
+  return tokens.filter((t) => t !== "");
+}
+const numBR = (t) => { if (t == null || /^\s*(Não|—)/.test(String(t))) return null; const x = String(t).replace(/[^\d,.\-]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", "."); const n = parseFloat(x); return Number.isFinite(n) && /\d/.test(String(t)) ? n : null; };
+const aposRot = (tokens, rot, ini) => {
+  const alvo = rot.toLowerCase();
+  for (let i = 0; i < tokens.length - 1; i++) {
+    const t = tokens[i].toLowerCase();
+    if (ini ? t.startsWith(alvo) : t === alvo) { const v = tokens[i + 1]; if (v && /\d|—|Não|n\/d/i.test(v)) return v; }
+  }
+  return undefined;
+};
+const reTxt = (tokens, re) => { const m = tokens.join(" ").match(re); return m ? m[1] : undefined; };
+const brlC = (n) => (Number(n) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+const nC = (n, d = 1) => (Number(n) || 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+
+// Itens conferidos: como ler cada número no Word e no PPT e como obtê-lo na tela (mesmas contas do sistema).
+function itensConferencia(T) {
+  const { calc, fluxoL, posL, vpl, tirA, parecer, usoPico } = T;
+  return [
+    { id: "inv", rot: "Investimento total", t: "brl", tela: calc.investimentoTotal, w: (k) => aposRot(k, "Investimento total"), p: (k) => aposRot(k, "INVESTIMENTO TOTAL") },
+    { id: "fat", rot: "Faturamento mensal", t: "brl", tela: calc.faturamento, w: (k) => reTxt(k, /faturamento mensal de (R\$[\s\u00a0]+[\d.,]+)/i), p: (k) => aposRot(k, "FATURAMENTO MENSAL") },
+    { id: "res", rot: "Resultado operacional mensal", t: "brl", tela: calc.resultadoOperacional, w: (k) => aposRot(k, "5. Resultado operacional", true), p: (k) => aposRot(k, "RESULTADO OPERACIONAL/MÊS") },
+    { id: "pe", rot: "Ponto de equilíbrio (anual)", t: "brl", tela: calc.pontoEquilibrio, w: (k) => aposRot(k, "Ponto de equilíbrio (anual)"), p: (k) => aposRot(k, "PONTO DE EQUILÍBRIO (ANUAL)") },
+    { id: "rent", rot: "Rentabilidade (ao ano)", t: "pct", tela: calc.rentabilidade, w: (k) => aposRot(k, "Rentabilidade (ao ano)"), p: (k) => aposRot(k, "RENTABILIDADE (AO ANO)") },
+    { id: "pay", rot: "Retorno do investimento (payback)", t: "anos", tela: calc.prazoRetorno, w: (k) => aposRot(k, "Prazo de retorno (payback)"), p: (k) => aposRot(k, "PRAZO DE RETORNO (PAYBACK)") },
+    { id: "mes", rot: "Mês em que o caixa fica positivo", t: "mes", tela: posL ? posL.mes : null, w: (k) => aposRot(k, "Mês em que o caixa fica positivo"), p: (k) => aposRot(k, "CAIXA FICA POSITIVO EM") },
+    { id: "s12", rot: "Saldo ao final do mês 12", t: "brl", tela: fluxoL[12] ? fluxoL[12].saldo : null, w: (k) => aposRot(k, "Saldo ao final do mês 12"), p: (k) => aposRot(k, "SALDO AO FINAL DO MÊS 12") },
+    ...(vpl != null ? [
+      { id: "vpl", rot: "VPL", t: "brl", tela: vpl, w: (k) => aposRot(k, "VPL (valor presente líquido)"), p: (k) => aposRot(k, "VPL (TMA DE", true) },
+      { id: "tir", rot: "TIR (ao ano)", t: "pct", tela: tirA, w: (k) => aposRot(k, "TIR (taxa interna de retorno, ao ano)"), p: (k) => aposRot(k, "TIR (AO ANO)") },
+    ] : []),
+    { id: "par", rot: "Parecer", t: "txt", tela: parecer, w: (k) => reTxt(k, /Parecer: (VIÁVEL COM RESSALVAS|AINDA NÃO VIÁVEL|VIÁVEL)/), p: (k) => reTxt(k, /Parecer: (VIÁVEL COM RESSALVAS|AINDA NÃO VIÁVEL|VIÁVEL)/) },
+    ...(usoPico != null ? [{ id: "cap", rot: "Capacidade (uso no pico)", t: "pct0", tela: usoPico, w: (k) => reTxt(k, /o uso a (\d+)%/), p: (k) => aposRot(k, "USO NO PICO") }] : []),
+  ];
+}
+function fmtConf(t, v) {
+  if (v === undefined) return "não consta";
+  if (v === null) return "—";
+  if (t === "brl") return brlC(v); if (t === "pct") return nC(v, 1) + "%"; if (t === "pct0") return nC(v, 0) + "%"; if (t === "anos") return nC(v, 1) + " anos"; if (t === "mes") return "Mês " + v; return String(v);
+}
+function lerDoc(t, bruto) {
+  if (bruto === undefined) return undefined;
+  if (t === "txt") return bruto;
+  if (t === "mes") { const m = String(bruto).match(/Mês (\d+)/); return m ? Number(m[1]) : null; }
+  return numBR(bruto);
+}
+function iguaisConf(t, a, b) {
+  if (a === undefined || b === undefined) return false;
+  if (a === null || b === null) return a === b;
+  if (t === "txt" || t === "mes") return a === b;
+  const tol = t === "brl" ? 1.01 : t === "anos" ? 0.06 : t === "pct0" ? 0.51 : 0.11;
+  return Math.abs(a - b) <= tol;
+}
+// Compara os números lidos nos arquivos (tokens) com os da tela. Função pura (testável).
+function compararDocumentos(T, tokW, tokP) {
+  return itensConferencia(T).map((it) => {
+    const tela = it.t === "txt" ? it.tela : (it.tela == null ? null : Number(it.tela));
+    const w = lerDoc(it.t, it.w(tokW)); const p = lerDoc(it.t, it.p(tokP));
+    return { id: it.id, rot: it.rot, t: it.t, tela, word: w, ppt: p, okW: iguaisConf(it.t, tela, w), okP: iguaisConf(it.t, tela, p) };
+  });
+}
+// Pendências de dados da equipe (vistas na própria tela, independentes dos arquivos).
+function pendenciasDados(T) {
+  const { calc, fluxo12, usoPico } = T; const out = [];
+  if (calc.resultadoOperacional <= 0) out.push({ rot: "Resultado operacional", msg: `o resultado mensal está em ${brlC(calc.resultadoOperacional)}`, onde: "Módulos 5 a 11 (preços, quantidades e custos)" });
+  else if (calc.pontoEquilibrio != null && calc.receitaAnual < calc.pontoEquilibrio) out.push({ rot: "Ponto de equilíbrio", msg: "a receita anual fica abaixo do ponto de equilíbrio", onde: "Módulos 5 a 11" });
+  if (calc.prazoRetorno == null && calc.investimentoTotal > 0 && calc.faturamento > 0) out.push({ rot: "Retorno do investimento", msg: "o lucro atual não recupera o investimento", onde: "Módulos 5, 6 e 11" });
+  if (usoPico != null && usoPico > 100) out.push({ rot: "Capacidade no pico", msg: `a estrutura não comporta o plano de vendas (${nC(usoPico, 0)}% no pico)`, onde: "Capacidade (Ajuste geral)" });
+  const neg = fluxo12.filter((m) => m.mes > 0 && m.resultado < 0).length;
+  if (neg > 6 || (fluxo12[12] && fluxo12[12].resultado < 0)) out.push({ rot: "Caixa no 1º ano", msg: `${neg} meses com resultado negativo${fluxo12[12] && fluxo12[12].resultado < 0 ? " e o mês 12 ainda negativo" : ""}`, onde: "Módulos 5 a 11 e arranque do fluxo" });
+  return out;
+}
+async function conferirDocumentosEquipe(equipe, dados) {
+  const lanc = mergeLancamentos(dados.lancamentos || {}); const calc = calcular(lanc);
+  if (!((calc.faturamento || 0) > 0 && (calc.investimentoTotal || 0) > 0)) return { semDados: true, itens: [], dados: [], avisos: [], em: Date.now() };
+  const taxa = dados.taxaCrescimentoFluxo ?? 0; const fluxoL = fluxoAteRetorno(calc, taxa, dados.curvaFluxo); const fluxo12 = fluxoL.filter((m) => m.mes <= 12);
+  const capCalc = capCalcParaDocumentos(equipe, dados); const tmaAnual = dados.tmaAnualFluxo ?? 12; const cenarios = dados.cenarios || [];
+  const posL = fluxoL.find((m) => m.mes > 0 && m.saldo >= 0);
+  const tmaN = Number(tmaAnual); const temTma = Number.isFinite(tmaN) && tmaAnual !== "" && tmaAnual != null;
+  let vpl = null, tirA = null;
+  if (temTma) { vpl = calcularVPL(fluxoL, Math.pow(1 + tmaN / 100, 1 / 12) - 1); const tm = calcularTIRMensal(fluxoL); tirA = tm !== null ? (Math.pow(1 + tm, 12) - 1) * 100 : null; }
+  let usoPico = null; if (capCalc) { const gs = capCalc.grupos.filter((g) => g.cap != null && g.usoPico != null); if (gs.length) usoPico = Math.round(Math.max(...gs.map((g) => g.usoPico)) * 100); }
+  const pPro = Math.min(100, Math.max(0, Number(lanc?.m4?.pctProprio) || 0));
+  const parecer = conclusaoResumo({ equipe, calc, fluxo: fluxo12, fluxoL, capCalc, tmaAnual, pPro }).rotulo;
+  const T = { calc, fluxoL, fluxo12, posL, capCalc, vpl: temTma ? vpl : null, tirA, parecer, usoPico };
+  const comum = { equipe, calc, fluxo: fluxoL, capCalc, lanc, cenarios, tmaAnual, modoConferir: true };
+  const wBlob = await gerarPlanoFinanceiroWord({ ...comum, taxaCrescimento: taxa, historico: dados.historico || [] });
+  const pBuf = await gerarApresentacaoEquipe(comum);
+  const tokW = await tokensDoArquivo(wBlob, "word"); const tokP = await tokensDoArquivo(pBuf, "ppt");
+  const itens = compararDocumentos(T, tokW, tokP);
+  const avisos = [];
+  if (calc.prazoRetorno != null && calc.prazoRetorno > 5) avisos.push(`O retorno (${nC(calc.prazoRetorno, 1)} anos) passa da meta de 5 anos do curso; o plano segue válido, só com aviso.`);
+  return { itens, dados: pendenciasDados(T), avisos, em: Date.now(), codigo: codigoDados([lanc, cenarios, tmaAnual, fluxoL.map((m) => Math.round(m.saldo)), capResumoCodigo(capCalc)]) };
+}
+const divSistema = (c) => (c && c.itens ? c.itens.filter((i) => !i.okW || !i.okP) : []);
+function resumoDivergencias(eq, c) {
+  const L = [`Conferência dos documentos — ${eq.nomeNegocio} (${new Date(c.em).toLocaleString("pt-BR")})`];
+  divSistema(c).forEach((i) => L.push(`- ${i.rot}: tela ${fmtConf(i.t, i.tela)} · Word ${fmtConf(i.t, i.word)} · PPT ${fmtConf(i.t, i.ppt)}`));
+  c.dados.forEach((d) => L.push(`- (dado da equipe) ${d.rot}: ${d.msg}`));
+  return L.join("\n");
+}
+
+function EncerrarProjetoTurma({ turma, equipes, professorNome, onIrPara }) {
   const [enc, setEnc] = useState(null);
   const [info, setInfo] = useState({});
   const [sel, setSel] = useState(new Set());
   const [msg, setMsg] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [aviso, setAviso] = useState(null);
+  const [conf, setConf] = useState({});
+  const [aberto, setAberto] = useState(null);
+  const [excecao, setExcecao] = useState(null);
   const carregar = async () => {
     try {
       const e = await lerEncerramento(turma.id);
@@ -11593,13 +11727,36 @@ function EncerrarProjetoTurma({ turma, equipes, professorNome }) {
   };
   useEffect(() => { carregar(); /* eslint-disable-next-line */ }, [turma.id]);
   const alternar = (id) => { const n = new Set(sel); n.has(id) ? n.delete(id) : n.add(id); setSel(n); };
-  const aplicar = async (ids, ligar) => {
+  const conferir = async (ids) => {
+    if (!ids.length) return {};
+    setConf((c) => { const n = { ...c }; ids.forEach((id) => { n[id] = { carregando: true }; }); return n; });
+    const res = {};
+    for (const id of ids) {
+      const eq = equipes.find((x) => x.id === id);
+      try { const d = await lerDadosEstrito(id); res[id] = await conferirDocumentosEquipe(eq, d); }
+      catch (e) { res[id] = { erro: e.message || "falha ao conferir", itens: [], dados: [], avisos: [], em: Date.now() }; }
+      setConf((c) => ({ ...c, [id]: res[id] }));
+    }
+    return res;
+  };
+  const statusConf = (id) => { const c = conf[id]; if (!c) return null; if (c.carregando) return "carregando"; if (c.erro) return "erro"; if (c.semDados) return "semdados"; if (c.dados.length) return "dados"; if (divSistema(c).length) return "sistema"; return "ok"; };
+  const encerrarComConferencia = async (idsPedidos) => {
+    const ids = idsPedidos.filter((id) => !(enc.equipes?.[id]?.ativo)); if (!ids.length) return;
+    setOcupado(true); setAviso(null);
+    const novos = await conferir(ids.filter((id) => !conf[id] || conf[id].carregando || conf[id].erro));
+    const getC = (id) => novos[id] || conf[id];
+    const bloqueadas = ids.filter((id) => { const c = getC(id); return c && !c.semDados && (c.erro || c.dados.length); });
+    setOcupado(false);
+    if (bloqueadas.length) { setExcecao({ ids, bloqueadas, motivo: "" }); return; }
+    await aplicar(ids, true);
+  };
+  const aplicar = async (ids, ligar, excecoes) => {
     if (!ids.length) return;
     const pend = ids.filter((id) => (info[id]?.enviados || 0) > 0 || (info[id]?.semEnvio || 0) > 0);
     const txt = `${ligar ? "ENCERRAR" : "REABRIR"} ${ids.length} empresa(s)?\n\n${ligar ? "Os alunos passam a ver tudo só para leitura, com a mensagem de projeto encerrado. Você pode reabrir quando quiser." : "Os alunos voltam a poder editar e enviar módulos."}${ligar && pend.length ? `\n\nAtenção: ${pend.length} dessas empresas ainda têm módulo enviado aguardando avaliação ou alteração não enviada.` : ""}`;
     if (!window.confirm(txt)) return;
     setOcupado(true); setAviso(null);
-    try { await definirEncerramento(turma.id, ids, ligar, professorNome, msg.trim()); setAviso({ tipo: "ok", texto: `${ligar ? "Projeto encerrado" : "Projeto reaberto"} em ${ids.length} empresa(s).` }); setSel(new Set()); }
+    try { await definirEncerramento(turma.id, ids, ligar, professorNome, msg.trim(), excecoes); setAviso({ tipo: "ok", texto: `${ligar ? "Projeto encerrado" : "Projeto reaberto"} em ${ids.length} empresa(s).` }); setSel(new Set()); }
     catch (e) { setAviso({ tipo: "erro", texto: `Não foi possível gravar: ${e.message}.` }); }
     await carregar(); setOcupado(false);
   };
@@ -11610,29 +11767,97 @@ function EncerrarProjetoTurma({ turma, equipes, professorNome }) {
       {aviso && <div className={`text-sm rounded-md px-3 py-2 border ${aviso.tipo === "ok" ? "bg-emerald-950/40 border-emerald-700/60 text-emerald-200" : "bg-rose-950/40 border-rose-700/60 text-rose-200"}`}>{aviso.texto}</div>}
       <Card className="p-4">
         <p className="text-xs text-slate-400 mb-3">Enquanto o projeto está <b>aberto</b>, todos os módulos ficam disponíveis para a equipe: só travam enquanto aguardam sua avaliação. Ao <b>encerrar</b>, a empresa passa a ver tudo somente para leitura. Dá para reabrir a qualquer momento.</p>
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <button disabled={ocupado} onClick={() => conferir(equipes.map((e) => e.id))} className="bg-amber-500 disabled:opacity-40 text-slate-900 text-xs font-bold px-3 py-1.5 rounded-md">🔍 Conferir documentos (todas)</button>
+          <button disabled={ocupado || !sel.size} onClick={() => conferir([...sel])} className="border border-slate-600 disabled:opacity-40 text-slate-200 text-xs px-3 py-1.5 rounded-md">Conferir só as marcadas</button>
+          <span className="text-[11px] text-slate-500">Gera o Word e o PowerPoint em segundo plano e compara os números com a tela (alguns segundos por equipe).</span>
+        </div>
         <div className="space-y-1.5">
-          {equipes.map((e) => (
-            <label key={e.id} className="flex items-center gap-3 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 flex-wrap">
-              <input type="checkbox" checked={sel.has(e.id)} onChange={() => alternar(e.id)} />
-              <span className="flex-1 min-w-[160px] text-sm font-semibold text-slate-100">{e.nomeNegocio}</span>
-              <span className="text-[11px] text-slate-400">{info[e.id] ? `${info[e.id].aprovados}/11 aprovados${info[e.id].enviados ? ` · ${info[e.id].enviados} aguardando você` : ""}${info[e.id].semEnvio ? ` · ${info[e.id].semEnvio} alterado(s) sem envio` : ""}` : "—"}</span>
-              {encerrada(e.id) ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-600/40 text-slate-200">🔒 encerrado</span> : <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">aberto</span>}
-            </label>
-          ))}
+          {equipes.map((e) => {
+            const st = statusConf(e.id); const c = conf[e.id];
+            const nSis = c && c.itens ? divSistema(c).length : 0; const nDad = c && c.dados ? c.dados.length : 0;
+            const total = c && c.itens ? c.itens.length : 0; const iguais = c && c.itens ? c.itens.filter((i) => i.okW && i.okP).length : 0;
+            return (
+              <div key={e.id} className="bg-slate-900 border border-slate-700 rounded-lg">
+                <div className="flex items-center gap-3 px-3 py-2 flex-wrap">
+                  <input type="checkbox" checked={sel.has(e.id)} onChange={() => alternar(e.id)} />
+                  <span className="flex-1 min-w-[160px] text-sm font-semibold text-slate-100">{e.nomeNegocio}</span>
+                  <span className="text-[11px] text-slate-400">{info[e.id] ? `${info[e.id].aprovados}/11 aprovados${info[e.id].enviados ? ` · ${info[e.id].enviados} aguardando você` : ""}${info[e.id].semEnvio ? ` · ${info[e.id].semEnvio} alterado(s) sem envio` : ""}` : "—"}</span>
+                  {c && !c.carregando && !c.erro && !c.semDados && <span className="text-[11px] text-slate-500">{iguais} de {total} itens iguais{c.codigo ? ` · código ${c.codigo}` : ""}</span>}
+                  {st === "carregando" && <span className="text-[11px] text-slate-400">conferindo…</span>}
+                  {st === "ok" && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">✔ conferido</span>}
+                  {st === "sistema" && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-600/40 text-slate-200">✔ pode encerrar · {nSis} falha(s) do sistema</span>}
+                  {st === "dados" && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300">⚠ {nDad + nSis} divergência(s)</span>}
+                  {st === "semdados" && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-600/40 text-slate-300">sem dados para conferir</span>}
+                  {st === "erro" && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300">não foi possível conferir</span>}
+                  {encerrada(e.id) ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-600/40 text-slate-200">🔒 encerrado{enc.equipes[e.id].excecao ? " (com exceção)" : ""}</span> : <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">aberto</span>}
+                  {c && !c.carregando && (c.itens.length > 0 || c.erro) && <button onClick={() => setAberto(aberto === e.id ? null : e.id)} className="text-[11px] text-sky-300 underline">{aberto === e.id ? "ocultar detalhe" : "ver detalhe"}</button>}
+                </div>
+                {aberto === e.id && c && (
+                  <div className="px-3 pb-3 border-t border-slate-800">
+                    {c.erro && <div className="text-xs text-rose-300 mt-2">Não foi possível conferir: {c.erro}. Nada foi alterado.</div>}
+                    {c.itens.length > 0 && (
+                      <div className="overflow-x-auto mt-2">
+                        <table className="w-full text-xs min-w-[560px]">
+                          <thead><tr className="text-left text-[10px] text-slate-500 uppercase border-b border-slate-700"><th className="py-1 pr-2">Item</th><th className="py-1 pr-2">Tela</th><th className="py-1 pr-2">Word</th><th className="py-1 pr-2">PPT</th><th className="py-1"></th></tr></thead>
+                          <tbody>{c.itens.map((i) => (
+                            <tr key={i.id} className="border-b border-slate-800">
+                              <td className="py-1 pr-2 text-slate-300">{i.rot}</td>
+                              <td className="py-1 pr-2 text-slate-200">{fmtConf(i.t, i.tela)}</td>
+                              <td className={`py-1 pr-2 ${i.okW ? "text-slate-300" : "text-amber-300 font-bold"}`}>{fmtConf(i.t, i.word)}</td>
+                              <td className={`py-1 pr-2 ${i.okP ? "text-slate-300" : "text-amber-300 font-bold"}`}>{fmtConf(i.t, i.ppt)}</td>
+                              <td className="py-1">{i.okW && i.okP ? "✔" : <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-600/40 text-slate-200">Falha do sistema</span>}</td>
+                            </tr>))}</tbody>
+                        </table>
+                      </div>
+                    )}
+                    {c.dados.map((d, k) => (
+                      <div key={k} className="mt-2 flex flex-wrap items-center gap-2 bg-amber-950/30 border border-amber-800/50 rounded-lg px-3 py-2">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300">Dado da equipe</span>
+                        <span className="text-xs text-amber-100 flex-1 min-w-[200px]"><b>{d.rot}:</b> {d.msg}. Onde corrigir: {d.onde}.</span>
+                        <button onClick={() => { setAviso({ tipo: "ok", texto: `Abra o Ajuste geral, escolha ${e.nomeNegocio} e corrija: ${d.rot} (${d.onde}). Depois volte aqui e clique em “Conferir de novo”.` }); if (onIrPara) onIrPara("ajusteGeral"); }} className="bg-amber-500 text-slate-900 text-[11px] font-bold px-3 py-1 rounded-md">Corrigir</button>
+                      </div>
+                    ))}
+                    {c.itens.length > 0 && divSistema(c).length > 0 && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2">
+                        <span className="text-xs text-slate-300 flex-1 min-w-[200px]">Há número diferente entre a tela e o documento: isso é falha do sistema e não depende da equipe. Não impede o encerramento. Copie o resumo e envie ao Claude para corrigir.</span>
+                        <button onClick={() => { try { navigator.clipboard.writeText(resumoDivergencias(e, c)); setAviso({ tipo: "ok", texto: "Resumo copiado." }); } catch { setAviso({ tipo: "erro", texto: "Não foi possível copiar." }); } }} className="border border-slate-500 text-slate-200 text-[11px] px-3 py-1 rounded-md">Copiar resumo</button>
+                      </div>
+                    )}
+                    {c.avisos && c.avisos.map((a, k) => <div key={k} className="mt-2 text-[11px] text-sky-200 bg-sky-950/30 border border-sky-800/50 rounded-lg px-3 py-2">{a}</div>)}
+                    <div className="mt-2"><button disabled={ocupado} onClick={() => conferir([e.id])} className="bg-amber-500 disabled:opacity-40 text-slate-900 text-[11px] font-bold px-3 py-1 rounded-md">↻ Conferir de novo ({e.nomeNegocio})</button></div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
         <textarea value={msg} onChange={(e) => setMsg(e.target.value)} rows={2} placeholder="Mensagem para os alunos (opcional). Se vazio, usa o texto padrão de projeto encerrado." className="w-full mt-3 bg-slate-900 border border-slate-700 rounded-md p-2 text-xs text-slate-100" />
         <div className="flex flex-wrap gap-2 mt-3">
           <button disabled={ocupado} onClick={() => setSel(new Set(equipes.map((e) => e.id)))} className="border border-slate-600 text-slate-200 text-xs px-3 py-1.5 rounded-md">Marcar todas</button>
-          <button disabled={ocupado || !sel.size} onClick={() => aplicar([...sel].filter((id) => !encerrada(id)), true)} className="bg-slate-600 disabled:opacity-40 text-white text-xs font-bold px-3 py-1.5 rounded-md">Encerrar marcadas</button>
+          <button disabled={ocupado || !sel.size} onClick={() => encerrarComConferencia([...sel])} className="bg-slate-600 disabled:opacity-40 text-white text-xs font-bold px-3 py-1.5 rounded-md">Encerrar marcadas</button>
           <button disabled={ocupado || !sel.size} onClick={() => aplicar([...sel].filter((id) => encerrada(id)), false)} className="bg-emerald-600 disabled:opacity-40 text-white text-xs font-bold px-3 py-1.5 rounded-md">Reabrir marcadas</button>
           <button disabled={ocupado} onClick={carregar} className="border border-slate-600 text-slate-300 text-xs px-3 py-1.5 rounded-md flex items-center gap-1.5"><RefreshCw size={12} /> Atualizar</button>
         </div>
+        {excecao && (
+          <div className="mt-3 border border-amber-700/60 bg-amber-950/30 rounded-lg p-3">
+            <div className="text-sm font-bold text-amber-200">⚠ {excecao.bloqueadas.length} equipe(s) ainda com divergência de dados</div>
+            <ul className="text-xs text-amber-100 mt-1 list-disc pl-5">{excecao.bloqueadas.map((id) => { const c = conf[id]; const eq = equipes.find((x) => x.id === id); return <li key={id}>{eq?.nomeNegocio}: {c?.erro ? `não foi possível conferir (${c.erro})` : (c?.dados || []).map((d) => d.rot).join(", ")}</li>; })}</ul>
+            <p className="text-xs text-slate-300 mt-2">O ideal é corrigir (Ajuste geral) e conferir de novo. Para encerrar mesmo assim, escreva o motivo (fica registrado no encerramento da equipe).</p>
+            <textarea value={excecao.motivo} onChange={(e) => setExcecao({ ...excecao, motivo: e.target.value })} rows={2} placeholder="Motivo para encerrar mesmo assim" className="w-full mt-2 bg-slate-900 border border-slate-700 rounded-md p-2 text-xs text-slate-100" />
+            <div className="flex flex-wrap gap-2 mt-2">
+              <button onClick={() => setExcecao(null)} className="border border-slate-600 text-slate-200 text-xs px-3 py-1.5 rounded-md">Cancelar</button>
+              <button onClick={() => { const { ids, bloqueadas, motivo } = excecao; setExcecao(null); const ex = {}; bloqueadas.forEach((id) => { ex[id] = { motivo: motivo.trim(), itens: (conf[id]?.dados || []).map((d) => d.rot), em: Date.now() }; }); aplicar(ids, true, ex); }} disabled={excecao.motivo.trim().length < 5} className="bg-amber-500 disabled:opacity-40 text-slate-900 text-xs font-bold px-3 py-1.5 rounded-md">Encerrar mesmo assim</button>
+              <button onClick={() => { const { ids, bloqueadas } = excecao; setExcecao(null); const ok = ids.filter((id) => !bloqueadas.includes(id)); if (ok.length) aplicar(ok, true); }} className="border border-slate-600 text-slate-200 text-xs px-3 py-1.5 rounded-md">Encerrar só as sem divergência</button>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );
 }
 
-function GestaoEncerrarProjetoView({ turmas, professorNome }) {
+function GestaoEncerrarProjetoView({ turmas, professorNome, onIrPara }) {
   const [turmaSelId, setTurmaSelId] = useState(turmas.length === 1 ? turmas[0].id : null);
   const turmaSel = turmas.find((t) => t.id === turmaSelId) || null;
   const [equipes] = useSharedList(turmaSel ? "equipes_" + turmaSel.id : "equipes_sem_turma");
@@ -11644,7 +11869,7 @@ function GestaoEncerrarProjetoView({ turmas, professorNome }) {
         <SectionTitle icon={Lock} sub={`Turma: ${turmaSel.nome} · módulos abertos até você encerrar o projeto de cada empresa.`}>Encerrar projeto</SectionTitle>
         {equipes === null ? <div className="text-sm text-slate-500">Carregando empresas…</div>
           : reais.length === 0 ? <Card className="p-8 text-center text-slate-500">Esta turma ainda não tem empresas.</Card>
-          : <EncerrarProjetoTurma key={turmaSel.id} turma={turmaSel} equipes={reais} professorNome={professorNome} />}
+          : <EncerrarProjetoTurma key={turmaSel.id} turma={turmaSel} equipes={reais} professorNome={professorNome} onIrPara={onIrPara} />}
       </div>
     );
   }
@@ -18237,7 +18462,7 @@ function ProfessorDashboard({ user, onSair, ultimaVersaoVista, onVerNovidades })
         {aba === "refsSegmento" && <GestaoReferenciasSegmentoView user={user} turmas={turmas} />}
         {aba === "realismoTurma" && <GestaoRealismoTurmaView user={user} turmas={turmas} />}
         {aba === "capacidadeTurma" && <GestaoCapacidadeTurmaView user={user} turmas={turmas} onAbrir={() => irPara("capacidade")} />}
-        {aba === "encerrar" && <GestaoEncerrarProjetoView turmas={turmas} professorNome={user.nome} />}
+        {aba === "encerrar" && <GestaoEncerrarProjetoView turmas={turmas} professorNome={user.nome} onIrPara={irPara} />}
         {aba === "notasAuto" && <GestaoNotasAutoView turmas={turmas} professorNome={user.nome} />}
         {aba === "empresaTeste" && <GestaoEmpresaTesteView turmas={turmas} onEntrar={(t, eq) => setTesteAtivo({ turmaId: t.id, equipeId: eq.id, turmaNome: t.nome })} onAbrirCorrecao={abrirCorrecao} />}
         {aba === "backup" && <GestaoBackupView turmas={turmas} onExcluir={removerTurmaDaLista} />}

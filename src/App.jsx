@@ -1,4 +1,4 @@
-// build: 20261112_21h15m Correção: tela em branco ao conferir de novo com o detalhe aberto na Conferência dos documentos (levar ao Ajuste geral)
+// build: 20261113_06h20m Canais de venda (loja + online): custo do online, prazo de recebimento, capacidade por canal e Vendas por canal no Word e no PowerPoint
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1117,6 +1117,17 @@ function defaultLancamentos() {
   };
 }
 
+// Canais de venda (opcional, guardado em m7.canalOnline). Padrão 0% online: sem o campo, nada muda nas contas.
+// pct = % do faturamento vendido online; plataformaPct e fretePct = custos extras do online (% do faturamento online);
+// prazoDias = prazo médio de recebimento do online; pecasPedido e minPedido alimentam a Capacidade (expedição).
+function canalOnlineInfo(l) {
+  const c = (l && l.m7 && l.m7.canalOnline) || {};
+  const n = (v) => { const x = Number(v); return Number.isFinite(x) && x > 0 ? x : 0; };
+  const pct = Math.min(100, n(c.pct));
+  const custoPct = n(c.plataformaPct) + n(c.fretePct);
+  return { pct, p: pct / 100, plataformaPct: n(c.plataformaPct), fretePct: n(c.fretePct), custoPct, extraPct: (pct * custoPct) / 100, prazoDias: n(c.prazoDias), pecasPedido: n(c.pecasPedido), minPedido: n(c.minPedido), ativo: pct > 0 };
+}
+
 function mergeLancamentos(loaded) {
   const base = defaultLancamentos();
   if (!loaded) return base;
@@ -1137,7 +1148,10 @@ function calcular(lanc) {
   const investFixo = l.m1.itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.valorUnit) || 0), 0);
   const investPreOp = l.m3.itens.reduce((s, it) => s + (Number(it.valor) || 0), 0);
   const faturamento = l.m5.itens.reduce((s, it) => s + (Number(it.qtd) || 0) * (Number(it.precoUnit) || 0), 0);
-  const custoComercializacao = faturamento * ((Number(l.m7.pctImpostos) || 0) + (Number(l.m7.pctComissao) || 0)) / 100;
+  const canal = canalOnlineInfo(l);
+  const custoComercializacao = faturamento * ((Number(l.m7.pctImpostos) || 0) + (Number(l.m7.pctComissao) || 0) + canal.extraPct) / 100;
+  const faturamentoOnline = faturamento * canal.p;
+  const custoCanalOnline = faturamento * canal.extraPct / 100;
 
   // Análise por produto/serviço: margem de contribuição unitária e total de
   // cada item do Módulo 5, usando o custo unitário do Módulo 8 e as taxas
@@ -1151,7 +1165,7 @@ function calcular(lanc) {
     const qtd = Number(it.qtd) || 0;
     const custoUnit = Number(l.m8.custosUnit?.[it.id]) || 0;
     const impostoUnit = (preco * pctImpostos) / 100;
-    const despVarUnit = (preco * pctComissao) / 100;
+    const despVarUnit = (preco * (pctComissao + canal.extraPct)) / 100;
     const precoLiquido = preco - impostoUnit - despVarUnit;
     const margemUnit = precoLiquido - custoUnit;
     const margemPct = preco > 0 ? (margemUnit / preco) * 100 : 0;
@@ -1189,8 +1203,10 @@ function calcular(lanc) {
   const resultadoOperacional = margemContribuicao - custoFixoTotal;
 
   // Capital de giro
+  const prazoVendasLoja = Number(l.m2.prazoVendasDias) || 0;
+  const prazoVendasEfetivo = canal.ativo ? (1 - canal.p) * prazoVendasLoja + canal.p * canal.prazoDias : prazoVendasLoja;
   const necessidadeLiquidaDias =
-    (Number(l.m2.prazoVendasDias) || 0) + (Number(l.m2.prazoEstoqueDias) || 0) - (Number(l.m2.prazoComprasDias) || 0);
+    prazoVendasEfetivo + (Number(l.m2.prazoEstoqueDias) || 0) - (Number(l.m2.prazoComprasDias) || 0);
   const custoTotalDiario = (custoFixoTotal + custoVariavelTotal) / 30;
   const caixaMinimo = Math.max(0, custoTotalDiario * necessidadeLiquidaDias);
   const estoqueInicial = Number(l.m2.estoqueInicial) || 0;
@@ -1241,6 +1257,7 @@ function calcular(lanc) {
     indiceMargemContribuicao, pontoEquilibrio, lucratividade, rentabilidade, prazoRetorno,
     progresso, preenchidos,
     pctImpostos, pctComissao, produtosAnalise, produtosRanking, margemTotalGeral,
+    canal, faturamentoOnline, custoCanalOnline, pctCanalExtra: canal.extraPct, prazoVendasEfetivo, prazoVendasLoja,
   };
 }
 
@@ -1362,6 +1379,7 @@ const VERSOES = [
     "A meta de 5 anos do curso continua como aviso em amarelo, mas não gera mais erro: quando o retorno passa de 5 anos, o fluxo mostra todo o caminho. Quando o mês do retorno difere do prazo do Módulo 13 (que divide o investimento pelo lucro de um mês normal), a tela explica o motivo.",
     "Gestão → Encerrar projeto: nova \"Conferência dos documentos\". O sistema gera o Word e o PowerPoint de cada equipe em segundo plano, lê os números que saíram nos arquivos e compara com os da tela (investimento, faturamento, resultado, ponto de equilíbrio, rentabilidade, retorno, mês do caixa positivo, saldo, VPL, TIR, parecer e capacidade). Cada divergência diz a origem: \"Dado da equipe\" (com o botão Corrigir, que leva ao Ajuste geral) ou \"Falha do sistema\" (com Copiar resumo). Depois de corrigir, \"Conferir de novo\".",
     "Conferência dos documentos com sugestões automáticas: quando a divergência é de dado da equipe (resultado negativo, sem retorno, caixa fraco no 1º ano), o sistema simula as opções da Viabilidade do Ajuste geral — combinação equilibrada, só preços, só custos — e mostra, para cada uma, o resultado, o retorno, o mês do caixa positivo e o parecer antes e depois. Nada é gravado: o botão \"Levar ao Ajuste geral\" abre a equipe já selecionada e a opção marcada, com antes × depois, confirmação e Desfazer; depois é só clicar em \"Conferir de novo\". O botão \"Corrigir\" também passa a abrir o Ajuste geral já na equipe certa. Novo botão \"Aplicar esta sugestão\": abre uma janela com os percentuais editáveis (dentro dos limites) e o antes × depois; ao confirmar (com Backup geral marcado e motivo), o sistema bloqueia a equipe se preciso, aguarda os 20 segundos, grava só os módulos alterados, registra no Relatório de ajustes (com Desfazer), avisa a equipe no Feedback, libera de novo (se foi ele que bloqueou) e roda a Conferência de novo.",
+    "Canais de venda (opcional): na Capacidade, passo 2, a equipe informa quanto do faturamento é vendido online. A loja passa a atender só a parte presencial, entra o recurso \"expedição de pedidos online\", e as contas passam a considerar o custo do online (plataforma e frete, em % das vendas online) e o prazo de recebimento do online (média ponderada com a loja, no capital de giro). Word, PowerPoint (slide 8b), DRE, fluxo, VPL/TIR, preço mínimo e Conferência usam os novos valores. Com 0% (padrão) nada muda: equipes e dados antigos continuam iguais.",
     "Manuais em PDF (Professor, Aluno e Guia Pedagógico) atualizados: trazem os capítulos de outubro (projeto aberto, Capacidade, Ajuste geral, realismo do plano) e as novidades de novembro (Fluxo de Caixa até o retorno, documentos finais e Conferência dos documentos com sugestões automáticas). Onde os capítulos antigos dizem \"13 módulos\", leia 11 módulos de lançamento mais 2 análises; a revisão completa dos manuais fica para 2027.",
     "Encerrar marcadas passa a conferir antes: equipes sem divergência de dados são encerradas; as com divergência só encerram por exceção, com motivo registrado. Word e PowerPoint ganharam carimbo no rodapé (data, hora e código dos dados), que muda quando os dados da equipe mudam.",
     "Apresentação (PowerPoint): o slide final \"Conclusão da Equipe\" não vem mais em branco; traz a conclusão resumida do Plano Financeiro (Word) — parecer, resultado, viabilidade, caixa e risco, capacidade e recomendações — para os alunos apresentarem, mais uma caixa para as considerações finais da equipe.",
@@ -2693,6 +2711,7 @@ function M2Form({ data, update, calc }) {
         <Field label="Prazo médio de vendas (dias)" hint="Em média, quantos dias os clientes levam para pagar">
           <NumInput value={data.prazoVendasDias} onChange={(v) => update({ ...data, prazoVendasDias: v })} suffix="dias" />
         </Field>
+        {calc?.canal?.ativo && <div className="text-[11px] text-sky-200 bg-sky-950/30 border border-sky-800/50 rounded-lg p-2 -mt-2 mb-3">Este prazo vale para a <b>loja</b>. Como {fmtNum(calc.canal.pct, 0)}% das vendas são online (recebimento em {fmtNum(calc.canal.prazoDias, 0)} dias), as contas usam a média ponderada de <b>{fmtNum(calc.prazoVendasEfetivo, 1)} dias</b>. O canal online é informado na Capacidade › Canais de venda.</div>}
         <Field label="Prazo médio de compras (dias)" hint="Em média, quantos dias os fornecedores concedem para pagamento">
           <NumInput value={data.prazoComprasDias} onChange={(v) => update({ ...data, prazoComprasDias: v })} suffix="dias" />
         </Field>
@@ -3079,7 +3098,8 @@ function M7Form({ data, update, faturamento }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modoImposto, tipoAtividade, rbt12]);
 
-  const pct = (Number(data.pctImpostos) || 0) + (Number(data.pctComissao) || 0);
+  const canalM7 = canalOnlineInfo({ m7: data });
+  const pct = (Number(data.pctImpostos) || 0) + (Number(data.pctComissao) || 0) + canalM7.extraPct;
   const total = (faturamento * pct) / 100;
 
   return (
@@ -3121,6 +3141,7 @@ function M7Form({ data, update, faturamento }) {
         )}
 
         <Field label="Comissões / gastos com vendas (comissão, propaganda, taxa de cartão)"><NumInput value={data.pctComissao} onChange={(v) => update({ ...data, pctComissao: v })} suffix="%" /></Field>
+        {canalM7.ativo && <div className="text-[11px] text-sky-200 bg-sky-950/30 border border-sky-800/50 rounded-lg p-2 -mt-2 mb-3">Canal online: {fmtNum(canalM7.pct, 0)}% das vendas × {fmtNum(canalM7.custoPct, 2)}% (plataforma + frete) = <b>{fmtNum(canalM7.extraPct, 2)}% do faturamento</b>, já somados ao total. Informado na Capacidade › Canais de venda.</div>}
       </div>
       <div className="space-y-3">
         {modoImposto === "simples" && simples && (
@@ -4162,7 +4183,7 @@ function AnaliseNegocio({ calc, historico, onSalvarVersao, readOnly, progressoAp
         </Card>
       </div>
 
-      <ProdutosMaisLucrativos ranking={calc.produtosRanking} pctImpostos={calc.pctImpostos} pctComissao={calc.pctComissao} />
+      <ProdutosMaisLucrativos ranking={calc.produtosRanking} pctImpostos={calc.pctImpostos} pctComissao={calc.pctComissao + (calc.pctCanalExtra || 0)} />
 
       <Card className="p-4">
         <div className="flex items-center justify-between">
@@ -4870,6 +4891,23 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
     if (capCalc.caber.length) sC.addText(`Para caber no pico: ${capCalc.caber[0].a.replace(/\s*Depois, lançar nos Módulos 1 e 9\./, "")}`.slice(0, 260), { x: X, y: Y + H - 0.5, w: W, h: 0.5, fontFace: "Calibri", fontSize: 11.5, italic: true, color: BROWN, margin: 0, valign: "top" });
   }
 
+  // 8b · Vendas por canal (só aparece quando a equipe informou vendas online)
+  if (temDados && calc.canal && calc.canal.ativo) {
+    const sV = base("8b · Vendas por Canal", "Loja e online — faturamento, custos e prazo de recebimento", "9b", ["Quanto do faturamento vem de cada canal", "O custo extra do online e o efeito no resultado", "O prazo de recebimento do online pesa no capital de giro"]);
+    const cn = capCalc && capCalc.canal; const f = calc.faturamento;
+    const hdV = (t, al) => ({ text: t, options: { bold: true, color: "FFFFFF", fill: { color: NAVY }, fontSize: 12, align: al } });
+    const cV = (t, i, o = {}) => ({ text: String(t), options: { fontSize: 12, color: NAVY, fill: { color: i % 2 ? "FFFFFF" : LIGHT }, align: o.al, bold: o.b } });
+    const rowsV = [[hdV("Canal", "left"), hdV("Faturamento/mês", "right"), hdV("Clientes / pedidos", "right"), hdV("Uso da capacidade", "right")],
+      [cV("Loja (presencial)", 0, { b: true }), cV(money0(f - calc.faturamentoOnline), 0, { al: "right" }), cV(cn ? `${Math.round(cn.demPres)} clientes` : "—", 0, { al: "right" }), cV(cn && cn.usoLoja != null ? `${Math.round(cn.usoLoja * 100)}%` : "—", 0, { al: "right" })],
+      [cV("Online", 1, { b: true }), cV(money0(calc.faturamentoOnline), 1, { al: "right" }), cV(cn ? `${Math.round(cn.pedidos)} pedidos` : "—", 1, { al: "right" }), cV(cn && cn.usoExped != null ? `${Math.round(cn.usoExped * 100)}% (expedição)` : "—", 1, { al: "right" })]];
+    sV.addTable(rowsV, { x: X, y: Y, w: W, colW: [W * 0.28, W * 0.24, W * 0.24, W * 0.24], rowH: 0.42, fontFace: "Calibri", border: { type: "none" }, valign: "middle" });
+    const w3 = (W - 0.3) / 3;
+    kpi(sV, X, Y + 1.7, w3, 1.1, "Custo do canal online", money0(calc.custoCanalOnline), `${pct(calc.canal.custoPct, 1)} das vendas online (plataforma + frete)`, RED);
+    kpi(sV, X + w3 + 0.15, Y + 1.7, w3, 1.1, "Prazo médio de recebimento", `${(Math.round(calc.prazoVendasEfetivo * 10) / 10).toLocaleString("pt-BR")} dias`, `loja ${Math.round(calc.prazoVendasLoja)} d · online ${Math.round(calc.canal.prazoDias)} d`);
+    kpi(sV, X + 2 * (w3 + 0.15), Y + 1.7, w3, 1.1, "Resultado mensal", money0(calc.resultadoOperacional), "já com o custo do canal online", calc.resultadoOperacional >= 0 ? GREEN : RED);
+    sV.addText("O online amplia o alcance, mas custa mais por venda (plataforma e frete) e demora mais para virar caixa. Quando a capacidade tem folga, o limite do negócio passa a ser a demanda, não a estrutura.", { x: X, y: Y + 3.1, w: W, h: 1.2, fontFace: "Calibri", fontSize: 14, italic: true, color: SLATE, margin: 0 });
+  }
+
   // 7 · Como chegamos aos números (apoio à banca)
   const sF = base("9 · Como Chegamos Aos Números", "As fórmulas por trás dos resultados — apoio para a defesa", 10, ["Cada fórmula com os números da própria empresa", "Perguntas que a banca pode fazer"]);
   if (!temDados) aviso(sF, "Esta parte ainda não pode ser montada: o faturamento (Módulo 5) ainda não foi preenchido.");
@@ -5172,14 +5210,14 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
       [4, 2.4, 1, 1.9, 1.9], [2, 3, 4], true));
   }
   filhos.push(mod(2, "Capital de Giro"));
-  filhos.push(para(`O capital de giro é o dinheiro necessário para manter a empresa funcionando enquanto as vendas ainda não viram caixa. Considerando o estoque inicial de ${brl(calc.estoqueInicial)} e um prazo médio de ${num(lanc.m2.prazoVendasDias)} dia(s) para receber das vendas, ${num(lanc.m2.prazoEstoqueDias)} dia(s) de estoque e ${num(lanc.m2.prazoComprasDias)} dia(s) para pagar os fornecedores, a necessidade líquida de giro é de ${num(calc.necessidadeLiquidaDias)} dia(s)${calc.necessidadeLiquidaDias < 0 ? " (negativa: os fornecedores financiam o giro, então não é preciso reservar caixa mínimo)" : ""} e o capital de giro total é de ${brl(calc.capitalGiroTotal)}.`));
+  filhos.push(para(`O capital de giro é o dinheiro necessário para manter a empresa funcionando enquanto as vendas ainda não viram caixa. Considerando o estoque inicial de ${brl(calc.estoqueInicial)} e um prazo médio de ${num(calc.prazoVendasEfetivo)} dia(s) para receber das vendas, ${num(lanc.m2.prazoEstoqueDias)} dia(s) de estoque e ${num(lanc.m2.prazoComprasDias)} dia(s) para pagar os fornecedores, a necessidade líquida de giro é de ${num(calc.necessidadeLiquidaDias)} dia(s)${calc.necessidadeLiquidaDias < 0 ? " (negativa: os fornecedores financiam o giro, então não é preciso reservar caixa mínimo)" : ""} e o capital de giro total é de ${brl(calc.capitalGiroTotal)}.`));
   filhos.push(tabela(["Item", "Valor"], [
-    ["Estoque inicial", brl(calc.estoqueInicial)], ["Prazo médio de vendas", `${num(lanc.m2.prazoVendasDias)} dias`], ["Prazo médio de estoque", `${num(lanc.m2.prazoEstoqueDias)} dias`], ["Prazo médio de compras", `${num(lanc.m2.prazoComprasDias)} dias`],
+    ["Estoque inicial", brl(calc.estoqueInicial)], [calc.canal && calc.canal.ativo ? `Prazo médio de vendas (loja ${num(calc.prazoVendasLoja)} d; online ${num(calc.canal.prazoDias)} d; média ponderada)` : "Prazo médio de vendas", `${num(calc.prazoVendasEfetivo)} dias`], ["Prazo médio de estoque", `${num(lanc.m2.prazoEstoqueDias)} dias`], ["Prazo médio de compras", `${num(lanc.m2.prazoComprasDias)} dias`],
     ["Necessidade líquida de giro", `${num(calc.necessidadeLiquidaDias)} dias`], ["Caixa mínimo", brl(calc.caixaMinimo)], ["Capital de giro total", brl(calc.capitalGiroTotal)],
   ], [3, 2], [1], true));
   filhos.push(comoCalc([
     `Necessidade líquida = prazo de vendas + prazo de estoque – prazo de compras`,
-    `= ${num(lanc.m2.prazoVendasDias)} + ${num(lanc.m2.prazoEstoqueDias)} – ${num(lanc.m2.prazoComprasDias)} = ${num(calc.necessidadeLiquidaDias)} dias`,
+    `= ${num(calc.prazoVendasEfetivo)} + ${num(lanc.m2.prazoEstoqueDias)} – ${num(lanc.m2.prazoComprasDias)} = ${num(calc.necessidadeLiquidaDias)} dias`,
     `Custo total diário = (custos fixos + custos variáveis) ÷ 30 = (${brl(calc.custoFixoTotal)} + ${brl(calc.custoVariavelTotal)}) ÷ 30 = ${brl(calc.custoTotalDiario)}`,
     `Caixa mínimo = custo total diário × necessidade líquida = ${brl(calc.custoTotalDiario)} × ${num(calc.necessidadeLiquidaDias)} = ${brl(calc.caixaMinimo)}`,
     `Capital de giro = estoque inicial + caixa mínimo = ${brl(calc.estoqueInicial)} + ${brl(calc.caixaMinimo)} = ${brl(calc.capitalGiroTotal)}`,
@@ -5231,12 +5269,27 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
   const regime = lanc.m7.modoImposto === "simples" && lanc.m7.tipoAtividade && TABELA_SIMPLES[lanc.m7.tipoAtividade] ? `Simples Nacional — ${TABELA_SIMPLES[lanc.m7.tipoAtividade].nome} (${TABELA_SIMPLES[lanc.m7.tipoAtividade].anexo})` : "informado manualmente";
   if (!temDados && !calc.pctImpostos && !calc.pctComissao) filhos.push(vazio("Módulo 7 ainda não preenchido."));
   else {
-    filhos.push(para(`Sobre cada venda incidem impostos e outras despesas variáveis. Enquadramento: ${regime}, com alíquota de ${pc(calc.pctImpostos, 2)} sobre o faturamento, mais ${pc(calc.pctComissao, 2)} de comissões/taxas, o que representa ${brl(calc.custoComercializacao)} por mês.`));
-    filhos.push(tabela(["Item", "Percentual", "Valor mensal"], [["Impostos sobre vendas", pc(calc.pctImpostos, 2), brl((f * calc.pctImpostos) / 100)], ["Comissões e taxas (ex.: cartão)", pc(calc.pctComissao, 2), brl((f * calc.pctComissao) / 100)], ["Total de custos de comercialização", pc(calc.pctImpostos + calc.pctComissao, 2), brl(calc.custoComercializacao)]], [3.5, 1.5, 2], [1, 2], true));
+    filhos.push(para(`Sobre cada venda incidem impostos e outras despesas variáveis. Enquadramento: ${regime}, com alíquota de ${pc(calc.pctImpostos, 2)} sobre o faturamento, mais ${pc(calc.pctComissao, 2)} de comissões/taxas${calc.custoCanalOnline > 0 ? ` e ${brl(calc.custoCanalOnline)} de custos do canal online (plataforma e frete)` : ""}, o que representa ${brl(calc.custoComercializacao)} por mês.`));
+    filhos.push(tabela(["Item", "Percentual", "Valor mensal"], [["Impostos sobre vendas", pc(calc.pctImpostos, 2), brl((f * calc.pctImpostos) / 100)], ["Comissões e taxas (ex.: cartão)", pc(calc.pctComissao, 2), brl((f * calc.pctComissao) / 100)], ...(calc.custoCanalOnline > 0 ? [["Canal online (plataforma + frete, sobre as vendas online)", pc(calc.pctCanalExtra, 2), brl(calc.custoCanalOnline)]] : []), ["Total de custos de comercialização", pc(calc.pctImpostos + calc.pctComissao + (calc.pctCanalExtra || 0), 2), brl(calc.custoComercializacao)]], [3.5, 1.5, 2], [1, 2], true));
     filhos.push(comoCalc([
       `Impostos = faturamento × alíquota = ${brl(f)} × ${pc(calc.pctImpostos, 2)} = ${brl((f * calc.pctImpostos) / 100)}`,
       `Comissões e taxas = faturamento × percentual = ${brl(f)} × ${pc(calc.pctComissao, 2)} = ${brl((f * calc.pctComissao) / 100)}`,
-      `Custos de comercialização = ${brl((f * calc.pctImpostos) / 100)} + ${brl((f * calc.pctComissao) / 100)} = ${brl(calc.custoComercializacao)}`,
+      ...(calc.custoCanalOnline > 0 ? [`Canal online = vendas online × (plataforma + frete) = ${brl(calc.faturamentoOnline)} × ${pc(calc.canal.custoPct, 2)} = ${brl(calc.custoCanalOnline)}`] : []),
+      `Custos de comercialização = ${brl((f * calc.pctImpostos) / 100)} + ${brl((f * calc.pctComissao) / 100)}${calc.custoCanalOnline > 0 ? ` + ${brl(calc.custoCanalOnline)}` : ""} = ${brl(calc.custoComercializacao)}`,
+    ]));
+  }
+  if (calc.canal && calc.canal.ativo) {
+    filhos.push(h2("Vendas por canal (loja e online)"));
+    const cn = capCalc && capCalc.canal;
+    filhos.push(para(`Parte do faturamento mensal é vendida pela internet: ${pc(calc.canal.pct, 0)} (${brl(calc.faturamentoOnline)}) online e ${pc(100 - calc.canal.pct, 0)} (${brl(f - calc.faturamentoOnline)}) na loja. O canal online tem custo próprio (plataforma/pagamento e frete) e prazo de recebimento diferente, o que muda o resultado e o capital de giro.`));
+    filhos.push(tabela(["Canal", "Faturamento mensal", "Clientes / pedidos", "Uso da capacidade"], [
+      ["Loja (presencial)", brl(f - calc.faturamentoOnline), cn ? `${num(cn.demPres)} clientes` : "—", cn && cn.usoLoja != null ? `${num(cn.usoLoja * 100, 0)}%` : "—"],
+      ["Online", brl(calc.faturamentoOnline), cn ? `${num(cn.pedidos)} pedidos` : "—", cn && cn.usoExped != null ? `${num(cn.usoExped * 100, 0)}% (expedição)` : "—"],
+    ], [2.4, 2, 2, 2.2], [1], false));
+    filhos.push(comoCalc([
+      `Custo do canal online = ${brl(calc.faturamentoOnline)} × (plataforma ${pc(calc.canal.plataformaPct, 2)} + frete ${pc(calc.canal.fretePct, 2)}) = ${brl(calc.custoCanalOnline)} por mês`,
+      `Prazo médio de recebimento = loja ${num(calc.prazoVendasLoja)} d × ${pc(100 - calc.canal.pct, 0)} + online ${num(calc.canal.prazoDias)} d × ${pc(calc.canal.pct, 0)} = ${num(calc.prazoVendasEfetivo, 1)} dias`,
+      `Resultado mensal com os dois canais = ${brl(calc.resultadoOperacional)}`,
     ]));
   }
   filhos.push(mod(8, "Custo Unitário e CMV"));
@@ -6173,7 +6226,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
         {aba === "capacidade" && (
           <div>
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
-            <CapacidadeView equipe={equipe} lanc={lanc} dados={dados} setDados={setDados} somenteLeitura={souVisualizador} />
+            <CapacidadeView equipe={equipe} lanc={lanc} dados={dados} setDados={setDados} somenteLeitura={souVisualizador} onCanal={(v) => updateModulo("m7", { ...lanc.m7, canalOnline: v })} />
           </div>
         )}
         {aba === "cenarios" && (
@@ -9329,7 +9382,7 @@ const PA = (() => {
     // E) Margem muito baixa ou negativa
     (calc.produtosAnalise || []).forEach((p) => {
       if (!(p.preco > 0) || !(p.custoUnit > 0) || p.margemPct >= (ctx.refs?.margemMin ?? 5)) return;
-      const taxas = ((Number(l.m7.pctImpostos) || 0) + (Number(l.m7.pctComissao) || 0)) / 100;
+      const taxas = ((Number(l.m7.pctImpostos) || 0) + (Number(l.m7.pctComissao) || 0) + canalOnlineInfo(l).extraPct) / 100;
       pontos.push({ chave: `E|${p.id}`, grupo: "Decidir", mods: ["m5"], rotulo: p.nome,
         texto: `${p.nome}: margem de contribuição de ${fmtNum(p.margemPct)}% (mínimo do segmento: ${fmtNum(ctx.refs?.margemMin ?? 5)}%; preço ${fmtBRL(p.preco)}, custo ${fmtBRL(p.custoUnit)}).`,
         opcoes: [{ id: "manter", rotulo: "Deixar como está" }, { id: "preco", rotulo: "Ajustar o preço de venda para uma margem alvo", param: { rotulo: "Margem alvo (%)", padrao: 30 } }], padrao: "manter",
@@ -9658,7 +9711,7 @@ const PA = (() => {
   }
   function precoMinimo(L, ctx) {
     const R = refsX(ctx); const c = calcular(L); if (!(c.faturamento > 0)) return null;
-    const imp = (Number(L.m7.pctImpostos) || 0) / 100, com = (Number(L.m7.pctComissao) || 0) / 100; const alvo = R.margemAlvo / 100; const itens = [];
+    const imp = (Number(L.m7.pctImpostos) || 0) / 100, com = ((Number(L.m7.pctComissao) || 0) + canalOnlineInfo(L).extraPct) / 100; const alvo = R.margemAlvo / 100; const itens = [];
     (c.produtosAnalise || []).forEach((pr) => {
       if (!(pr.preco > 0) || !(pr.custoUnit > 0) || !(pr.qtd > 0)) return;
       if (pr.margemPct >= R.margemAlvo * 0.6) return;
@@ -10616,7 +10669,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
   // ---------- Preços sugeridos (o professor marca quais usar) ----------
   const r2p = (v) => Math.round((Number(v) || 0) * 100) / 100;
   const prCalcLinhas = (lanc, margem) => {
-    const imp = (Number(lanc.m7?.pctImpostos) || 0) / 100, com = (Number(lanc.m7?.pctComissao) || 0) / 100; const den = 1 - imp - com - (Number(margem) || 0) / 100;
+    const imp = (Number(lanc.m7?.pctImpostos) || 0) / 100, com = ((Number(lanc.m7?.pctComissao) || 0) + canalOnlineInfo(lanc).extraPct) / 100; const den = 1 - imp - com - (Number(margem) || 0) / 100;
     if (!(den > 0.05)) return { erro: `A margem desejada (${fmtNum(Number(margem) || 0, 1)}%) somada a imposto (${fmtNum(imp * 100, 1)}%) e comissão (${fmtNum(com * 100, 1)}%) passa de 95%: reduza a margem.`, linhas: [] };
     const c = calcular(lanc);
     const linhas = (c.produtosAnalise || []).filter((pr) => pr.preco > 0 && pr.custoUnit > 0).map((pr) => ({ id: pr.id, nome: pr.nome, custo: pr.custoUnit, preco: pr.preco, sug: r2p(pr.custoUnit / den) }));
@@ -10681,7 +10734,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
     setOcupado(false);
   };
   const cpMudou = cpEd ? JSON.stringify(cpEd.base ?? {}) !== JSON.stringify(cpEd.draft ?? {}) : false;
-  const cpA = cpEd ? (() => { try { return capAnalise(equipes.find((e) => e.id === cpEd.equipeId)?.segmento, cpEd.draft || {}, cpEd.lanc?.m5?.itens || []); } catch { return null; } })() : null;
+  const cpA = cpEd ? (() => { try { return capAnalise(equipes.find((e) => e.id === cpEd.equipeId)?.segmento, capComCanal(cpEd.draft || {}, cpEd.lanc), cpEd.lanc?.m5?.itens || []); } catch { return null; } })() : null;
   const cpCorta = !!(cpA && cpA.ef.corte);
   const cpAjusta = !!(cpEd && cpEd.ajM5 && cpCorta);
   const cpSalvar = async () => {
@@ -12370,8 +12423,15 @@ function capLancAjustado(lanc, A) {
 }
 // Análise completa: atendimento (todos) e produção (só quem produz), cada uma com seu gargalo.
 const CAP_DUR_AUTO = new Set(["prof", "posto", "box", "mecanicos", "elevador", "equipe"]);
+const capComCanal = (cap, lanc) => ({ ...(cap || {}), __canal: canalOnlineInfo(lanc) });
 function capAnalise(segmento, cap, itens) {
-  const base = modeloCapacidade(segmento); const modelo = capModeloAtivo(base, cap);
+  const base = modeloCapacidade(segmento); let modelo = capModeloAtivo(base, cap);
+  // Canais de venda: com % online > 0, a loja atende só a parte presencial e entra o recurso "expedição de pedidos online".
+  const canal = cap?.__canal && cap.__canal.pct > 0 ? cap.__canal : null; const pOn = canal ? Math.min(0.99, canal.p) : 0;
+  if (canal && !modelo.recursos.some((r) => r.id === "expedonline")) {
+    const cat = base.recursos.find((r) => r.id === "expedonline") || cr("expedonline", "Embalagem / expedição de pedidos online", "servico", CAP_M9, { qtd: 1, duracao: 8 }, ROT_SV("Minutos por pedido (separar, embalar, etiquetar)"), false);
+    modelo = { ...modelo, recursos: [...modelo.recursos, cat], catalogo: (modelo.catalogo || []).filter((r) => r.id !== "expedonline") };
+  }
   const its = (itens || []).filter((it) => Number(it.qtd) > 0);
   const tipoDe = (it) => capTipoItem(cap, it, segmento);
   const prodIt = its.filter((i) => tipoDe(i) === "produzo"), servIt = its.filter((i) => tipoDe(i) === "servico"), revIt = its.filter((i) => tipoDe(i) === "revenda");
@@ -12379,7 +12439,10 @@ function capAnalise(segmento, cap, itens) {
   const atendIt = principais.length ? principais : revIt;
   const soma = (l) => l.reduce((a2, it) => a2 + (Number(it.qtd) || 0), 0);
   const pecasCli = base.porCliente ? (capNum(cap?.pecasCliente) || base.porCliente) : 1;
-  const demA = Math.round(soma(atendIt) / pecasCli), demP = soma(prodIt);
+  const demTotal = Math.round(soma(atendIt) / pecasCli), demP = soma(prodIt);
+  const pecasPedido = canal ? (canal.pecasPedido || pecasCli) : pecasCli;
+  const pedidos = canal ? Math.round(soma(atendIt) * pOn / pecasPedido) : 0;
+  const demA = canal ? Math.round(demTotal * (1 - pOn)) : demTotal;
   const recA = modelo.recursos.filter((r) => capGrupo(r) === "a"), recP = modelo.recursos.filter((r) => capGrupo(r) === "p");
   const temProd = prodIt.length > 0;
   // Horas compartilhadas: duração média ponderada pelos minutos informados em cada item (preenche sozinha a duração dos recursos de serviço).
@@ -12397,6 +12460,11 @@ function capAnalise(segmento, cap, itens) {
       if (need > 0 && demP > 0) { recs[r.id] = { ...(recs[r.id] || v), __fr: need / demP, __need: need }; compart.push({ r, need, sem, unid: v.unid || "unidades do recurso" }); }
     }
   });
+  if (canal) {
+    const v = recs.expedonline || {}; const demUsada = capNum(cap?.demandaManual) > 0 ? capNum(cap.demandaManual) : demA;
+    recs.expedonline = { ...v, qtd: capNum(v.qtd) || 1, duracao: capNum(v.duracao) || canal.minPedido || 8, __fr: Math.max(1e-6, demUsada > 0 ? pedidos / demUsada : 1e-6) };
+  }
+  const canalInfo = canal ? { pct: pOn * 100, demTotal, demPres: demA, pedidos, pecasPedido } : null;
   const capCalc = { ...cap, recursos: recs };
   const RA = calcularCapacidade({ ...modelo, recursos: recA }, capCalc, demA);
   const RP = recP.length ? calcularCapacidade({ ...modelo, recursos: recP }, { ...capCalc, demandaManual: undefined }, demP) : null;
@@ -12418,7 +12486,7 @@ function capAnalise(segmento, cap, itens) {
   const fDe = (it) => { const t = tipoDe(it); return t === "produzo" ? fPrinc : t === "servico" ? fAte : (principais.length ? fPrinc : Math.min(1, fA ?? 1)); };
   const itensEf = its.map((it) => { const f2 = temF ? fDe(it) : 1; const q = Number(it.qtd) || 0; return { id: it.id, nome: it.nome, tipo: tipoDe(it), qtd: q, preco: Number(it.precoUnit) || 0, f: f2, max: f2 < 1 ? Math.max(1, Math.floor(q * f2)) : q }; });
   const ef = { fA, fP, fC, fRaw: temF ? fRaw : null, corte: temF && fPrinc < 1, cap: temF && demA > 0 ? Math.round(demA * fRaw) : null, quem: menor ? menor[1] : null, itens: itensEf };
-  return { tipoDe, ef, carga, durMedia, durAuto, compart, capCalc, base, modelo, its, prodIt, servIt, revIt, principais, atendIt, demA, demP, pecasCli, recA, recP, temProd, RA, RP, Rall, m2Auto, R, rotR: pior ? pior[0] : "Atendimento", tipoNeg: temProd && (revIt.length || servIt.length) ? "misto" : temProd ? "produz" : servIt.length ? "servico" : "revenda" };
+  return { canalInfo, demTotal, tipoDe, ef, carga, durMedia, durAuto, compart, capCalc, base, modelo, its, prodIt, servIt, revIt, principais, atendIt, demA, demP, pecasCli, recA, recP, temProd, RA, RP, Rall, m2Auto, R, rotR: pior ? pior[0] : "Atendimento", tipoNeg: temProd && (revIt.length || servIt.length) ? "misto" : temProd ? "produz" : servIt.length ? "servico" : "revenda" };
 }
 // ===== Aba 4 do assistente de Capacidade: condições específicas de cada segmento (o que pesquisar + fórmulas) =====
 // Os valores pesquisados ficam em cap.pesq[id] = { v, fonte } (campo novo; não altera nada que já existe).
@@ -12478,7 +12546,7 @@ const CAP_PESQ = {
 const capPesq = (segmento) => CAP_PESQ[segmento] || CAP_PESQ["Outro / genérico"];
 const capPesqPreenchidos = (cap, segmento) => { const L = capPesq(segmento).itens; const n = L.filter((x) => String(cap?.pesq?.[x.id]?.v ?? "").trim() !== "").length; return { n, total: L.length, semFonte: L.filter((x) => String(cap?.pesq?.[x.id]?.v ?? "").trim() !== "" && !String(cap?.pesq?.[x.id]?.fonte ?? "").trim()).length }; };
 
-function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulador, passoInicial }) {
+function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulador, passoInicial, onCanal }) {
   const segmento = equipe?.segmento;
   const cap = dados?.capacidade || {};
   const modelo = capModeloAtivo(modeloCapacidade(segmento), cap);
@@ -12492,7 +12560,7 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulad
   const PQP = capPesqPreenchidos(cap, segmento);
   const itens = (lanc?.m5?.itens || []).filter((it) => Number(it.qtd) > 0);
   const excl = cap.excluidos || {};
-  const A = capAnalise(segmento, cap, itens);
+  const A = capAnalise(segmento, capComCanal(cap, lanc), itens);
   const sugM = capSugModulos(lanc);
   const segRev = capTipoSeg(segmento) === "revenda";
   const tokUn = (nome) => { const m = String(nome || "").toLowerCase().match(/\b(kg|litros?|1\s?l|2\s?l|unid\.?|fatias?|por[cç][ãa]o|porções)\b/); return m ? m[1].replace(/\s/g, "").replace("litros", "litro").replace("fatias", "fatia") : null; };
@@ -12509,6 +12577,8 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulad
     const rec = { ...(cap.recursos || {}) }; delete rec[r.id];
     set({ recursos: rec, ativos: (cap.ativos || []).filter((x) => x !== r.id), custom: (cap.custom || []).filter((x) => x.id !== r.id) });
   };
+  const canalC = canalOnlineInfo(lanc);
+  const setCanalCampo = (k, v) => { if (onCanal && !somenteLeitura) onCanal({ ...(lanc?.m7?.canalOnline || {}), [k]: v }); };
   const setFunc = (k, v) => set({ funcionamento: { ...(cap.funcionamento || {}), [k]: v } });
   const setRec = (id, k, v) => set({ recursos: { ...(cap.recursos || {}), [id]: { ...(cap.recursos?.[id] || {}), [k]: v } } });
   const R = A.R;
@@ -12654,6 +12724,32 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulad
               <div className="text-[11px] text-slate-500 mt-1">{modelo.demandaDica}</div>
               <div className="flex items-center gap-2 mt-2 text-xs text-slate-300">Se preferir, digite outro valor ({modelo.unidade}/mês): <CapInput value={cap.demandaManual} placeholder="automático" onChange={(v) => set({ demandaManual: v })} /></div>
             </Card>
+            {(onCanal || canalC.ativo) && (
+              <Card className="p-4" id="canais-venda">
+                <h3 className="text-sm font-bold text-slate-100 mb-1">🛒 Canais de venda <span className="text-[11px] font-normal text-slate-500">(opcional · loja + online)</span></h3>
+                <div className="text-[11px] text-slate-400 mb-2">O faturamento do Módulo 5 é o total da empresa. Informe quanto dele é vendido pelo <b>online</b>: a loja passa a atender só o restante e a expedição dos pedidos entra como recurso próprio. As contas (custos, prazo de recebimento e capital de giro) também passam a considerar o canal. Vazio ou 0% = só loja, nada muda.</div>
+                <table className="w-full text-sm"><tbody>
+                  <tr><td className="py-1.5 text-slate-300">Parte das vendas feita online (%)</td><td className="text-right">{onCanal && !somenteLeitura ? <CapInput value={canalC.pct || ""} placeholder={0} onChange={(v) => setCanalCampo("pct", v)} /> : <b className="text-slate-100">{fmtNum(canalC.pct, 0)}%</b>}</td></tr>
+                  {canalC.ativo && <>
+                    <tr><td className="py-1.5 text-slate-300">Peças por pedido online <span className="text-[11px] text-slate-500">média (vazio = {fmtNum(A.pecasCli, 1)}, a mesma da loja)</span></td><td className="text-right">{onCanal && !somenteLeitura ? <CapInput value={canalC.pecasPedido || ""} placeholder={A.pecasCli} onChange={(v) => setCanalCampo("pecasPedido", v)} /> : <b className="text-slate-100">{fmtNum(canalC.pecasPedido || A.pecasCli, 1)}</b>}</td></tr>
+                    <tr><td className="py-1.5 text-slate-300">Minutos por pedido (separar, embalar, etiquetar) <span className="text-[11px] text-slate-500">cronometrar; vazio = 8</span></td><td className="text-right">{onCanal && !somenteLeitura ? <CapInput value={canalC.minPedido || ""} placeholder={8} onChange={(v) => setCanalCampo("minPedido", v)} /> : <b className="text-slate-100">{fmtNum(canalC.minPedido || 8, 0)}</b>}</td></tr>
+                    <tr><td className="py-1.5 text-slate-300">Taxa de plataforma e pagamento (% do faturamento online)</td><td className="text-right">{onCanal && !somenteLeitura ? <CapInput value={canalC.plataformaPct || ""} placeholder={0} onChange={(v) => setCanalCampo("plataformaPct", v)} /> : <b className="text-slate-100">{fmtNum(canalC.plataformaPct, 2)}%</b>}</td></tr>
+                    <tr><td className="py-1.5 text-slate-300">Frete líquido pago pela empresa (% do faturamento online)</td><td className="text-right">{onCanal && !somenteLeitura ? <CapInput value={canalC.fretePct || ""} placeholder={0} onChange={(v) => setCanalCampo("fretePct", v)} /> : <b className="text-slate-100">{fmtNum(canalC.fretePct, 2)}%</b>}</td></tr>
+                    <tr><td className="py-1.5 text-slate-300">Prazo médio para receber do online (dias)</td><td className="text-right">{onCanal && !somenteLeitura ? <CapInput value={canalC.prazoDias || ""} placeholder={0} onChange={(v) => setCanalCampo("prazoDias", v)} /> : <b className="text-slate-100">{fmtNum(canalC.prazoDias, 0)}</b>}</td></tr>
+                  </>}
+                </tbody></table>
+                {canalC.ativo && (!canalC.plataformaPct || !canalC.fretePct || !canalC.prazoDias) && <div className="text-[11px] text-amber-300 mt-2">⚠ Preencham com cotações reais (gateway/marketplace, Correios/transportadora, prazo de repasse). Campo vazio conta como zero e deixa o online mais barato e mais rápido do que é. Embalagem e anúncios já lançados no Módulo 11 não devem ser contados de novo.</div>}
+                {canalC.ativo && <>
+                  <div className="h-3 rounded-full overflow-hidden flex mt-3 bg-slate-700"><div style={{ width: `${100 - canalC.pct}%` }} className="bg-sky-500" /><div style={{ width: `${canalC.pct}%` }} className="bg-amber-500" /></div>
+                  <div className="text-[11px] text-slate-400 mt-1">■ Loja {fmtBRL(receitaCap * (1 - canalC.p))} ({fmtNum(100 - canalC.pct, 0)}%) · ■ Online {fmtBRL(receitaCap * canalC.p)} ({fmtNum(canalC.pct, 0)}%)</div>
+                  {A.canalInfo && <table className="w-full text-sm mt-2"><thead><tr className="text-[11px] text-slate-500 text-left"><th className="font-normal">Capacidade</th><th className="font-normal">Demanda</th><th className="font-normal">Uso</th></tr></thead><tbody>
+                    <tr><td className="py-1 text-slate-300">Loja (atendimento)</td><td className="text-slate-200">{fmtNum(A.canalInfo.demPres, 0)} {modelo.unidade}/mês</td><td className="text-slate-200">{(() => { const us = A.RA.linhas.filter((x) => x.r.id !== "expedonline" && x.uso != null).map((x) => x.uso); return us.length ? pct(Math.max(...us)) : "—"; })()}</td></tr>
+                    <tr><td className="py-1 text-slate-300">Online (expedição)</td><td className="text-slate-200">{fmtNum(A.canalInfo.pedidos, 0)} pedidos/mês</td><td className="text-slate-200">{(() => { const lx = A.RA.linhas.find((x) => x.r.id === "expedonline"); return lx && lx.uso != null ? pct(lx.uso) : "—"; })()}</td></tr>
+                  </tbody></table>}
+                  <div className="text-[11px] text-slate-500 mt-2">O recurso “Embalagem / expedição de pedidos online” entra sozinho nos recursos de atendimento (confira a quantidade de pessoas).</div>
+                </>}
+              </Card>
+            )}
             <Card className="p-4">
               <div className="flex flex-wrap items-center gap-2 mb-1"><h3 className="text-sm font-bold text-slate-100">Recursos de atendimento da empresa</h3><button onClick={preencherSug} className="ml-auto text-xs border border-sky-600 text-sky-200 rounded-md px-3 py-1.5">✔ Preencher quantidades com o que está nos Módulos 1 e 9</button></div>
               <div className="text-[11px] text-slate-500 mb-2">Mesas/lugares, caixa, balcão, atendentes, cadeiras, profissionais… Os números em cinza e as “sugestões” vêm dos Módulos 1 e 9 da própria equipe: <b>confiram e corrijam</b>. Se alguns clientes não usam o recurso (ex.: marmita para viagem não usa o salão), informem a <b>% da demanda que usa</b>.</div>
@@ -12949,7 +13045,7 @@ function capDemandaEquipe(modeloBase, cap, itens) {
 function capLinhaTurma(eq, d) {
   const lanc = mergeLancamentos(d?.lancamentos);
   const cap = d?.capacidade || {};
-  const A = capAnalise(eq.segmento, cap, lanc?.m5?.itens);
+  const A = capAnalise(eq.segmento, capComCanal(cap, lanc), lanc?.m5?.itens);
   const modelo = A.modelo, R = A.R, demanda = R.demanda;
   const usou = !!(d?.capacidade && Object.values(d.capacidade.recursos || {}).some((v) => capNum(v?.qtd) > 0));
   const alertas = []; let prio = 4;
@@ -13017,7 +13113,7 @@ function capRelatorioLinhas(eq, d) {
   const usou = !!(cap && Object.values(cap.recursos || {}).some((v) => capNum(v?.qtd) > 0));
   if (!usou) { out.push("Capacidade ainda não informada (pela equipe ou pelo professor): não foi possível avaliar se a estrutura atende a quantidade do Módulo 5."); return out; }
   const lanc = mergeLancamentos(d.lancamentos); const itens = (lanc?.m5?.itens || []).filter((it) => Number(it.qtd) > 0);
-  const A = capAnalise(eq.segmento, cap, itens); const modelo = A.modelo; const f = cap.funcionamento || {};
+  const A = capAnalise(eq.segmento, capComCanal(cap, lanc), itens); const modelo = A.modelo; const f = cap.funcionamento || {};
   const pc = (u) => (u == null ? "—" : `${fmtNum(u * 100, 0)}%`);
   const nome = (l) => l.slice(0, 8).map((x) => x.nome || "item").join(", ") + (l.length > 8 ? ", …" : "");
   out.push(`- Funcionamento: ${fmtNum(capNum(f.horasDia) || 8, 1)} h/dia · ${fmtNum(capNum(f.diasMes) || 26, 0)} dias/mês · eficiência ${fmtNum(capNum(f.eficiencia) || 85, 0)}% · área ${capNum(f.area) > 0 ? fmtNum(capNum(f.area), 0) + " m²" : "não informada"}${capNum(f.pico) > 1 ? ` · fator de pico ${fmtNum(capNum(f.pico), 1)}` : ""}`);
@@ -14444,7 +14540,7 @@ function dadosTabelaModulo(modId, l, calc) {
       return {
         extras: [
           ["Estoque inicial", fmtBRL(calc.estoqueInicial)],
-          ["Prazo médio de vendas", `${fmtNum(Number(l.m2.prazoVendasDias) || 0, 0)} dias`],
+          [calc.canal && calc.canal.ativo ? "Prazo médio de vendas (média ponderada loja + online)" : "Prazo médio de vendas", `${fmtNum(calc.prazoVendasEfetivo, calc.canal && calc.canal.ativo ? 1 : 0)} dias`],
           ["Prazo médio de estoque", `${fmtNum(Number(l.m2.prazoEstoqueDias) || 0, 0)} dias`],
           ["Prazo médio de compras", `${fmtNum(Number(l.m2.prazoComprasDias) || 0, 0)} dias`],
           ["Necessidade líquida de capital de giro", `${fmtNum(calc.necessidadeLiquidaDias, 0)} dias`],
@@ -14491,6 +14587,7 @@ function dadosTabelaModulo(modId, l, calc) {
           ["Impostos sobre vendas", `${fmtNum(calc.pctImpostos, 2)}%`],
           ["Comissões", `${fmtNum(calc.pctComissao, 2)}%`],
           ["Custo de comercialização (mensal)", fmtBRL(calc.custoComercializacao)],
+          ...(calc.canal && calc.canal.ativo ? [["Canal online: % das vendas", `${fmtNum(calc.canal.pct, 0)}% (${fmtBRL(calc.faturamentoOnline)} por mês)`], ["Canal online: plataforma + frete / prazo", `${fmtNum(calc.canal.custoPct, 2)}% das vendas online · ${fmtNum(calc.canal.prazoDias, 0)} dias · custo ${fmtBRL(calc.custoCanalOnline)}`]] : []),
         ],
       };
     case "m8":
@@ -16347,7 +16444,7 @@ function gerarRelatorioMercado(item) {
     add("A", "Capacidade › passos 1 a 3", "Preencher a Capacidade: horário de funcionamento, quantas pessoas produzem/atendem, equipamentos e tempos. Sem isso não dá para saber se o plano do Módulo 5 cabe na empresa.", `Plano: ${fmtNum(totUn, 0)} unidades/mês = ${fmtNum(totUn / 26, 0)} por dia, ${m5.length} itens.`);
   } else {
     let A = null;
-    try { A = capAnalise(equipe.segmento, cap, m5); } catch { A = null; }
+    try { A = capAnalise(equipe.segmento, capComCanal(cap, l), m5); } catch { A = null; }
     if (A) {
       temProdG = !!A.temProd;
       const un = A.modelo.unidade; capInfo.un = un;
@@ -16719,7 +16816,7 @@ async function lerCapCalcTurma(turmaId) { try { const x = await window.storage.g
 async function gravarCapCalcTurma(turmaId, obj) { await window.storage.set(`capcalc_${turmaId}`, JSON.stringify(obj), true); }
 function capCalcAssinatura(item) {
   const { dados, equipe } = item; const l = mergeLancamentos(dados.lancamentos); const m9 = detalheMaoDeObra(l.m9);
-  const base = JSON.stringify([dados.capacidade || null, (l.m5.itens || []).map((it) => [it.id, it.nome, it.qtd]), m9.linhas.reduce((s, r) => s + r.qtd, 0), m9.prolabore.reduce((s, r) => s + r.qtd, 0), equipe.segmento]);
+  const base = JSON.stringify([dados.capacidade || null, (l.m5.itens || []).map((it) => [it.id, it.nome, it.qtd]), m9.linhas.reduce((s, r) => s + r.qtd, 0), m9.prolabore.reduce((s, r) => s + r.qtd, 0), equipe.segmento, l.m7.canalOnline || null]);
   let h = 5381; for (let i = 0; i < base.length; i++) h = ((h * 33) ^ base.charCodeAt(i)) >>> 0;
   return h.toString(36);
 }
@@ -16732,9 +16829,13 @@ function gerarCalculoCapacidade(item) {
   const ef = Math.min(efic, 100) / 100; const minDia = horasDia * 60 * ef; const horasEf = horasDia * diasMes * ef; const minMes = horasEf * 60;
   const out = { id: equipe.id, nome: equipe.nomeNegocio, segmento: equipe.segmento || "não informado", integrantes: equipe.integrantes || [], teste: !!equipe.teste, em: Date.now(), assin: capCalcAssinatura(item),
     func: { horasDia, diasMes, efic, pico, picoInformado: capNum(f.pico) > 1, minDia, minMes, horasEf }, grupos: [], horas: null, caber: [], conferir: [], res: { k: "n", txt: "não calculada", gargalo: "" }, pessoas: { cap: capNum(cap.pessoasTrab) || 0, func: nFunc, soc: nSoc } };
-  let A = null; try { A = capAnalise(equipe.segmento, cap, m5); } catch { A = null; }
+  let A = null; try { A = capAnalise(equipe.segmento, capComCanal(cap, l), m5); } catch { A = null; }
   if (!A) { out.conferir.push("Não foi possível calcular a Capacidade desta empresa."); return out; }
   const un = A.modelo.unidade; out.un = un;
+  if (A.canalInfo) {
+    const usL = A.RA.linhas.filter((x) => x.r.id !== "expedonline" && x.uso != null).map((x) => x.uso); const lx = A.RA.linhas.find((x) => x.r.id === "expedonline");
+    out.canal = { ...A.canalInfo, usoLoja: usL.length ? Math.max(...usL) : null, usoExped: lx && lx.uso != null ? lx.uso : null };
+  }
   const pcc = (u) => `${fmtNum(u * 100, 0)}%`;
   const grupos = [["Atendimento", A.RA, A.demA]]; if (A.temProd) grupos.push(["Produção", A.RP, A.demP]);
   const recs = (A.capCalc && A.capCalc.recursos) || {};

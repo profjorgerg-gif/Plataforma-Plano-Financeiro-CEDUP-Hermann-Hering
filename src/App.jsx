@@ -1,4 +1,4 @@
-// build: 20261113_06h50m Coerência entre módulos: opção "Não se aplica a esta empresa" (zera o recurso na Capacidade, com registro e Desfazer)
+// build: 20261113_07h20m Coerência entre módulos: aviso de mercadoria lançada no Módulo 1 (mover para o estoque inicial ou só remover, com registro e Desfazer)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1381,6 +1381,7 @@ const VERSOES = [
     "Conferência dos documentos com sugestões automáticas: quando a divergência é de dado da equipe (resultado negativo, sem retorno, caixa fraco no 1º ano), o sistema simula as opções da Viabilidade do Ajuste geral — combinação equilibrada, só preços, só custos — e mostra, para cada uma, o resultado, o retorno, o mês do caixa positivo e o parecer antes e depois. Nada é gravado: o botão \"Levar ao Ajuste geral\" abre a equipe já selecionada e a opção marcada, com antes × depois, confirmação e Desfazer; depois é só clicar em \"Conferir de novo\". O botão \"Corrigir\" também passa a abrir o Ajuste geral já na equipe certa. Novo botão \"Aplicar esta sugestão\": abre uma janela com os percentuais editáveis (dentro dos limites) e o antes × depois; ao confirmar (com Backup geral marcado e motivo), o sistema bloqueia a equipe se preciso, aguarda os 20 segundos, grava só os módulos alterados, registra no Relatório de ajustes (com Desfazer), avisa a equipe no Feedback, libera de novo (se foi ele que bloqueou) e roda a Conferência de novo.",
     "Canais de venda (opcional): na Capacidade, passo 2, a equipe informa quanto do faturamento é vendido online. A loja passa a atender só a parte presencial, entra o recurso \"expedição de pedidos online\", e as contas passam a considerar o custo do online (plataforma e frete, em % das vendas online) e o prazo de recebimento do online (média ponderada com a loja, no capital de giro). Word, PowerPoint (slide 8b), DRE, fluxo, VPL/TIR, preço mínimo e Conferência usam os novos valores. Com 0% (padrão) nada muda: equipes e dados antigos continuam iguais.",
     "Ajuste geral › Coerência entre módulos: quando a Capacidade informa um recurso que não existe no Módulo 1 (ex.: caixa/ponto de pagamento em empresa só da proprietária), o professor pode marcar \"Não se aplica a esta empresa\". Ao aplicar, a quantidade do recurso na Capacidade passa a 0, nada é lançado no Módulo 1 e o ajuste fica registrado com Desfazer.",
+    "Ajuste geral › novo aviso \"Mercadoria lançada no Módulo 1\": o sistema reconhece itens que parecem estoque para revenda (blusas, calças, anéis…) lançados como investimento fixo, mostra o efeito (investimento, depreciação, resultado, retorno) e o professor escolhe, item a item, mover para o estoque inicial (Módulo 2) ou só remover. Registro com Desfazer; nada é alterado sozinho.",
     "Manuais em PDF (Professor, Aluno e Guia Pedagógico) atualizados: trazem os capítulos de outubro (projeto aberto, Capacidade, Ajuste geral, realismo do plano) e as novidades de novembro (Fluxo de Caixa até o retorno, documentos finais e Conferência dos documentos com sugestões automáticas). Onde os capítulos antigos dizem \"13 módulos\", leia 11 módulos de lançamento mais 2 análises; a revisão completa dos manuais fica para 2027.",
     "Encerrar marcadas passa a conferir antes: equipes sem divergência de dados são encerradas; as com divergência só encerram por exceção, com motivo registrado. Word e PowerPoint ganharam carimbo no rodapé (data, hora e código dos dados), que muda quando os dados da equipe mudam.",
     "Apresentação (PowerPoint): o slide final \"Conclusão da Equipe\" não vem mais em branco; traz a conclusão resumida do Plano Financeiro (Word) — parecer, resultado, viabilidade, caixa e risco, capacidade e recomendações — para os alunos apresentarem, mais uma caixa para as considerações finais da equipe.",
@@ -9631,6 +9632,36 @@ const PA = (() => {
     ];
     return montarLista("R|imp", "Mercado", "Impostos e regime tributário (Módulo 7)", ["m7"], tabela, itens, "Impostos", { resumo: `Impostos: resultado mensal ${fmtBRL(c.resultadoOperacional)} → ${fmtBRL(cd.resultadoOperacional)}.` });
   }
+  // ---- Mercadoria lançada no Módulo 1: estoque é capital de giro (Módulo 2), não investimento fixo (não se deprecia) ----
+  const MERC_PALAVRAS = new Set(["blusa", "blusas", "camisa", "camisas", "camiseta", "camisetas", "regata", "regatas", "calca", "calcas", "bermuda", "bermudas", "short", "shorts", "saia", "saias", "vestido", "vestidos", "blazer", "blazers", "casaco", "casacos", "jaqueta", "jaquetas", "colete", "coletes", "macacao", "macacoes", "agasalho", "agasalhos", "moletom", "moletons", "sueter", "sueteres", "biquini", "biquinis", "maio", "lingerie", "pijama", "pijamas", "meia", "meias", "sapato", "sapatos", "tenis", "sandalia", "sandalias", "bota", "botas", "anel", "aneis", "brinco", "brincos", "colar", "colares", "pulseira", "pulseiras", "bijuteria", "bijuterias", "semijoia", "semijoias", "alfaiataria", "estoque", "mercadoria", "mercadorias", "revenda"]);
+  const MERC_BENS = new Set(["arara", "araras", "cabide", "cabides", "manequim", "manequins", "espelho", "espelhos", "prateleira", "prateleiras", "expositor", "expositores", "balcao", "provador", "provadores", "armario", "armarios", "mesa", "mesas", "cadeira", "cadeiras", "poltrona", "poltronas", "sofa", "computador", "notebook", "impressora", "leitor", "leitora", "sistema", "vitrine", "vitrines", "busto", "bustos", "porta", "display", "suporte", "suportes", "gondola", "gondolas", "maquina", "maquinas", "costura", "etiqueta", "etiquetas"]);
+  const pareceMercadoria = (it) => { const ws = normTxt(it.desc || "").split(/[^a-z0-9]+/).filter(Boolean); return ws.some((w) => MERC_PALAVRAS.has(w)) && !ws.some((w) => MERC_BENS.has(w)); };
+  function estoqueNoM1(L) {
+    const lista = (L.m1.itens || []).filter((it) => (Number(it.qtd) || 0) > 0 && (Number(it.valorUnit) || 0) > 0 && pareceMercadoria(it));
+    if (!lista.length) return null;
+    const tot = (it) => (Number(it.qtd) || 0) * (Number(it.valorUnit) || 0);
+    const soma = lista.reduce((a, it) => a + tot(it), 0);
+    const itens = lista.map((it) => ({ id: `est_${it.id}`, mid: it.id, texto: `${it.desc} · ${it.categoria || "sem categoria"} · ${fmtNum(it.qtd, 0)} × ${fmtBRL(it.valorUnit)} = ${fmtBRL(tot(it))}`, fn: () => {} }));
+    const ef = (opt) => { const X = clone(L); X.m1.itens = X.m1.itens.filter((x) => !lista.some((y) => y.id === x.id)); if (opt === "mover") X.m2.estoqueInicial = r2((Number(X.m2.estoqueInicial) || 0) + soma); return calcular(X); };
+    const c0 = calcular(L), cm = ef("mover"), cr = ef("remover");
+    const pb = (c) => (c.prazoRetorno == null ? "sem retorno" : `${fmtNum(c.prazoRetorno, 1)} anos`);
+    const info = (id, texto) => ({ id, info: true, texto, fn: () => {} });
+    const obj = { chave: "R|est", grupo: "Mercado", rotulo: "Mercadoria lançada no Módulo 1", mods: ["m1", "m2"], tabela: null, titulo: "Mercadoria no Módulo 1", padrao: "manter",
+      itens: [info("i_exp", `Encontrei ${lista.length} item(ns) no Módulo 1 que parecem mercadoria para revenda (${fmtBRL(soma)}). Mercadoria é estoque (Módulo 2), não investimento fixo: não se desgasta e não deve ser depreciada. Desmarque o que NÃO é mercadoria.`), ...itens,
+        info("i_mov", `Mover para o estoque (todos os itens): investimento fixo ${fmtBRL(c0.investFixo)} → ${fmtBRL(cm.investFixo)} · estoque inicial ${fmtBRL(c0.estoqueInicial)} → ${fmtBRL(cm.estoqueInicial)} · depreciação ${fmtBRL(c0.depreciacaoMensal)} → ${fmtBRL(cm.depreciacaoMensal)} · resultado mensal ${fmtBRL(c0.resultadoOperacional)} → ${fmtBRL(cm.resultadoOperacional)} · retorno ${pb(c0)} → ${pb(cm)}`),
+        info("i_rem", `Só remover (o estoque do Módulo 2 já inclui): investimento total ${fmtBRL(c0.investimentoTotal)} → ${fmtBRL(cr.investimentoTotal)} · resultado mensal ${fmtBRL(c0.resultadoOperacional)} → ${fmtBRL(cr.resultadoOperacional)} · retorno ${pb(c0)} → ${pb(cr)}`)],
+      opcoes: [{ id: "manter", rotulo: "Deixar como está" }, { id: "mover", rotulo: `Mover para o estoque inicial (Módulo 2): soma ao estoque e tira do Módulo 1. Use quando o estoque do Módulo 2 (${fmtBRL(c0.estoqueInicial)}) ainda não inclui essas peças.` }, { id: "remover", rotulo: `Só remover do Módulo 1. Use quando o estoque inicial do Módulo 2 (${fmtBRL(c0.estoqueInicial)}) já inclui essas peças.` }],
+      resumo: `Mercadoria no Módulo 1: itens tirados do investimento fixo (${fmtBRL(soma)}).`,
+      aplicar: (Lx, opt, v) => {
+        if (opt !== "mover" && opt !== "remover") return;
+        const marc = itens.filter((it) => !(v && v[it.id] === false)).map((it) => it.mid); if (!marc.length) return;
+        const tirados = Lx.m1.itens.filter((x) => marc.includes(x.id)); const sm = tirados.reduce((a, x) => a + (Number(x.qtd) || 0) * (Number(x.valorUnit) || 0), 0);
+        Lx.m1.itens = Lx.m1.itens.filter((x) => !marc.includes(x.id));
+        if (opt === "mover") Lx.m2.estoqueInicial = r2((Number(Lx.m2.estoqueInicial) || 0) + sm);
+        obj.resumo = `Mercadoria no Módulo 1: ${tirados.length} item(ns) (${fmtBRL(sm)}) ${opt === "mover" ? "movidos para o estoque inicial (Módulo 2)" : "removidos do investimento fixo (o estoque do Módulo 2 já os inclui)"}.`;
+      } };
+    return obj;
+  }
   function coerencia(L, ctx) {
     const R = refsX(ctx); const itens = []; const cap = ctx?.capacidade;
     const area = capNum(cap?.funcionamento?.area);
@@ -9761,7 +9792,7 @@ const PA = (() => {
     const grafico = f1.slice(1).map((m) => (c.faturamento > 0 ? m.receita / c.faturamento : 1));
     return montarLista("R|arr", "Mercado", "Arranque e sazonalidade (Fluxo de caixa)", [], tabela, itens, "Arranque e sazonalidade", { grafico, resumo: `Arranque e sazonalidade: caixa para cobrir meses negativos ${fmtBRL(need(f0))} → ${fmtBRL(need(f1))}.` });
   }
-  const LISTAS = [["R|giro", giro], ["R|imp", imposto], ["R|coe", coerencia], ["R|cus", custosFaltantes], ["R|pro", proLabore], ["R|fin", financiamento], ["R|prc", precoMinimo], ["R|arr", arranque]];
+  const LISTAS = [["R|est", estoqueNoM1], ["R|giro", giro], ["R|imp", imposto], ["R|coe", coerencia], ["R|cus", custosFaltantes], ["R|pro", proLabore], ["R|fin", financiamento], ["R|prc", precoMinimo], ["R|arr", arranque]];
 
   // ---- Realismo de mercado: aproxima a empresa das faixas típicas do segmento (só corrige o que está "bom demais") ----
   const MERC_MAX = { cmv: 150, mo: 1e9, div: 1e9, preco: 40, qtd: 50, inv: 100 };
@@ -9941,7 +9972,7 @@ const PA = (() => {
   }
   // Pontuação de realismo (0 a 100): desconta o peso de cada análise com pendência acionável
   function pontuacao(L, ctx) {
-    const pesos = { "R|mer": 25, "R|giro": 10, "R|imp": 10, "R|coe": 8, "R|cus": 10, "R|pro": 10, "R|fin": 5, "R|prc": 7, "R|arr": 5 };
+    const pesos = { "R|mer": 25, "R|est": 6, "R|giro": 10, "R|imp": 10, "R|coe": 8, "R|cus": 10, "R|pro": 10, "R|fin": 5, "R|prc": 7, "R|arr": 5 };
     const pend = []; let pen = 0; const seguro = (fn) => { try { return fn(); } catch { return null; } };
     const pts = seguro(() => analisar(L, null, ctx)) || [];
     const norm = pts.filter((x) => !String(x.chave).startsWith("H|") && !String(x.chave).startsWith("V|"));
@@ -9952,8 +9983,8 @@ const PA = (() => {
     const v = seguro(() => viabilidade(L, ctx)); if (v) { pen += 15; pend.push("retorno do investimento"); }
     return { nota: Math.max(0, 100 - pen), pend };
   }
-  const CHAVES_EXTRA = ["H|cap", "R|giro", "R|imp", "R|coe", "R|cus", "R|pro", "R|fin", "R|prc", "R|arr", "R|mer", "V|via"];
-  return { analisar, aplicar, capacidade, viabilidade, sugestoes, simular, mercado, mercadoSim, giro, imposto, coerencia, LISTAS, CHAVES_EXTRA, estresse, pontuacao };
+  const CHAVES_EXTRA = ["H|cap", "R|est", "R|giro", "R|imp", "R|coe", "R|cus", "R|pro", "R|fin", "R|prc", "R|arr", "R|mer", "V|via"];
+  return { analisar, aplicar, capacidade, viabilidade, sugestoes, simular, mercado, mercadoSim, giro, imposto, coerencia, estoqueNoM1, LISTAS, CHAVES_EXTRA, estresse, pontuacao };
 })();
 
 // ===== Ajuste geral (menu Gestão → Ajuste geral) =====
@@ -11047,14 +11078,14 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
                     <tbody>{lp.tabela.map((r) => <tr key={r.rot} className="border-t border-slate-700 text-slate-200"><td className="py-1 pr-2">{r.rot}</td><td className="pr-2">{r.hoje}</td><td className="pr-2 text-slate-400">{r.faixa}</td><td className="pr-2"><span className={`text-[10.5px] font-bold rounded-full px-2 py-0.5 ${cor(r.sit)}`}>{r.sit}</span></td><td className="font-bold">{r.depois}</td></tr>)}</tbody></table></div>}
                   <div className="space-y-1 mb-2">{lp.itens.map((it) => (
                     <label key={it.id} className={`flex items-start gap-2 text-xs rounded-md px-2 py-1.5 border ${it.info ? "border-amber-800/50 bg-amber-950/20" : "border-slate-700"}`}>
-                      {it.info ? <span>⚠</span> : <input type="checkbox" className="mt-0.5" disabled={e.opt !== "aplicar"} checked={it.off ? (e.v || {})[it.id] === true : (e.v || {})[it.id] !== false} onChange={(ev) => paEscolher(lp.chave, { v: { ...(e.v || {}), [it.id]: ev.target.checked } })} />}
+                      {it.info ? <span>⚠</span> : <input type="checkbox" className="mt-0.5" disabled={!(e.opt === "aplicar" || e.opt === "mover" || e.opt === "remover")} checked={it.off ? (e.v || {})[it.id] === true : (e.v || {})[it.id] !== false} onChange={(ev) => paEscolher(lp.chave, { v: { ...(e.v || {}), [it.id]: ev.target.checked } })} />}
                       <span className="text-slate-300">{it.texto}{it.info ? <span className="text-slate-500"> (só aviso: não altera nada)</span> : null}
                         {it.partes && <span className="mt-1 block space-y-1">{it.partes.map((pt, i) => (
                           <span key={i} className="flex flex-wrap items-center gap-2"><b className="w-44 inline-block">{pt.nome}</b>
-                            <span>quantidade:</span><input type="number" min="0" step="1" disabled={e.opt !== "aplicar"} value={(e.v || {})[`${it.id}_q${i}`] ?? ""} placeholder={pt.q > 0 ? String(pt.q) : "0"} onChange={(ev) => paEscolher(lp.chave, { v: { ...(e.v || {}), [`${it.id}_q${i}`]: ev.target.value } })} className="w-20 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100 disabled:opacity-50" />
-                            <span>valor unitário (R$):</span><input type="number" min="0" step="any" disabled={e.opt !== "aplicar"} value={(e.v || {})[`${it.id}_v${i}`] ?? ""} onChange={(ev) => paEscolher(lp.chave, { v: { ...(e.v || {}), [`${it.id}_v${i}`]: ev.target.value } })} className="w-28 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100 disabled:opacity-50" />
+                            <span>quantidade:</span><input type="number" min="0" step="1" disabled={!(e.opt === "aplicar" || e.opt === "mover" || e.opt === "remover")} value={(e.v || {})[`${it.id}_q${i}`] ?? ""} placeholder={pt.q > 0 ? String(pt.q) : "0"} onChange={(ev) => paEscolher(lp.chave, { v: { ...(e.v || {}), [`${it.id}_q${i}`]: ev.target.value } })} className="w-20 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100 disabled:opacity-50" />
+                            <span>valor unitário (R$):</span><input type="number" min="0" step="any" disabled={!(e.opt === "aplicar" || e.opt === "mover" || e.opt === "remover")} value={(e.v || {})[`${it.id}_v${i}`] ?? ""} onChange={(ev) => paEscolher(lp.chave, { v: { ...(e.v || {}), [`${it.id}_v${i}`]: ev.target.value } })} className="w-28 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100 disabled:opacity-50" />
                             <span className="text-[11px] text-slate-500">{Number((e.v || {})[`${it.id}_v${i}`]) > 0 && (Number((e.v || {})[`${it.id}_q${i}`]) > 0 || pt.q > 0) ? "" : "sem quantidade/valor, não entra"}</span></span>))}
-                          {it.naoAplica && <span className="block mt-1"><label className="flex items-start gap-2 text-[12px] text-amber-200 cursor-pointer"><input type="checkbox" className="mt-0.5" disabled={e.opt !== "aplicar"} checked={(e.v || {})[`${it.id}_na`] === true} onChange={(ev) => paEscolher(lp.chave, { v: { ...(e.v || {}), [`${it.id}_na`]: ev.target.checked } })} /><span><b>Não se aplica a esta empresa</b> (ex.: só a proprietária atende e recebe, sem ponto separado)</span></label>{(e.v || {})[`${it.id}_na`] === true && <span className="block text-[11px] text-slate-400 ml-6">Ao aplicar, a quantidade deste recurso na Capacidade passa a 0 e ele deixa de limitar o atendimento. Nada é lançado no Módulo 1. Fica em "Ajustes feitos" com Desfazer.</span>}</span>}</span>}</span>
+                          {it.naoAplica && <span className="block mt-1"><label className="flex items-start gap-2 text-[12px] text-amber-200 cursor-pointer"><input type="checkbox" className="mt-0.5" disabled={!(e.opt === "aplicar" || e.opt === "mover" || e.opt === "remover")} checked={(e.v || {})[`${it.id}_na`] === true} onChange={(ev) => paEscolher(lp.chave, { v: { ...(e.v || {}), [`${it.id}_na`]: ev.target.checked } })} /><span><b>Não se aplica a esta empresa</b> (ex.: só a proprietária atende e recebe, sem ponto separado)</span></label>{(e.v || {})[`${it.id}_na`] === true && <span className="block text-[11px] text-slate-400 ml-6">Ao aplicar, a quantidade deste recurso na Capacidade passa a 0 e ele deixa de limitar o atendimento. Nada é lançado no Módulo 1. Fica em "Ajustes feitos" com Desfazer.</span>}</span>}</span>}</span>
                     </label>))}
                   </div>
                   <div className="space-y-1.5">{lp.opcoes.map((op) => (

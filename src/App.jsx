@@ -1,4 +1,4 @@
-// build: 20261113_09h05m Ajuste geral: Ajustar tudo e estabilizar (simula em rodadas, aplica de uma vez; retorno do investimento mostrado como é, meta de 5 anos só como referência)
+// build: 20261113_09h40m Retorno do investimento: o prazo real é o resultado; 5 anos viram referência (fora da meta é informativo)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1380,6 +1380,7 @@ const VERSOES = [
     "Gestão → Encerrar projeto: nova \"Conferência dos documentos\". O sistema gera o Word e o PowerPoint de cada equipe em segundo plano, lê os números que saíram nos arquivos e compara com os da tela (investimento, faturamento, resultado, ponto de equilíbrio, rentabilidade, retorno, mês do caixa positivo, saldo, VPL, TIR, parecer e capacidade). Cada divergência diz a origem: \"Dado da equipe\" (com o botão Corrigir, que leva ao Ajuste geral) ou \"Falha do sistema\" (com Copiar resumo). Depois de corrigir, \"Conferir de novo\".",
     "Conferência dos documentos com sugestões automáticas: quando a divergência é de dado da equipe (resultado negativo, sem retorno, caixa fraco no 1º ano), o sistema simula as opções da Viabilidade do Ajuste geral — combinação equilibrada, só preços, só custos — e mostra, para cada uma, o resultado, o retorno, o mês do caixa positivo e o parecer antes e depois. Nada é gravado: o botão \"Levar ao Ajuste geral\" abre a equipe já selecionada e a opção marcada, com antes × depois, confirmação e Desfazer; depois é só clicar em \"Conferir de novo\". O botão \"Corrigir\" também passa a abrir o Ajuste geral já na equipe certa. Novo botão \"Aplicar esta sugestão\": abre uma janela com os percentuais editáveis (dentro dos limites) e o antes × depois; ao confirmar (com Backup geral marcado e motivo), o sistema bloqueia a equipe se preciso, aguarda os 20 segundos, grava só os módulos alterados, registra no Relatório de ajustes (com Desfazer), avisa a equipe no Feedback, libera de novo (se foi ele que bloqueou) e roda a Conferência de novo.",
     "Canais de venda (opcional): na Capacidade, passo 2, a equipe informa quanto do faturamento é vendido online. A loja passa a atender só a parte presencial, entra o recurso \"expedição de pedidos online\", e as contas passam a considerar o custo do online (plataforma e frete, em % das vendas online) e o prazo de recebimento do online (média ponderada com a loja, no capital de giro). Word, PowerPoint (slide 8b), DRE, fluxo, VPL/TIR, preço mínimo e Conferência usam os novos valores. Com 0% (padrão) nada muda: equipes e dados antigos continuam iguais.",
+    "Retorno do investimento: o PPF mostra sempre em quanto tempo o negócio se paga; os 5 anos são só a referência de viabilidade. Retorno acima de 5 anos aparece como \"fora da meta\" (informativo): não reprova a sugestão da Conferência, não penaliza a nota do Realismo e o plano de viabilidade do Ajuste geral passa a ser opcional. Continuam como problema o prejuízo e o investimento que não se paga.",
     "Ajuste geral › Ajustar tudo e estabilizar: o botão \"Simular ajuste completo (estabilizar)\" aplica, em rodadas e sempre na mesma ordem, só as correções de realismo e coerência (mercadoria no Módulo 1, giro, impostos, coerência, custos, pró-labore, financiamento, preço mínimo, arranque e realismo de mercado) até nada mais mudar, evitando o ciclo de \"corrige um e aparece outro\". Nada é gravado na simulação; o professor vê as rodadas, pode desmarcar passos, compara hoje × depois e aplica tudo como UM ajuste, com Desfazer. O sistema não força preços nem quantidades para chegar a 5 anos: o retorno do investimento é mostrado como ficou, dentro ou fora da meta (a aproximação da meta é um passo opcional, desligado por padrão). Há trava de segurança (não estabilizou, faturamento +30%) e alertas de capacidade.",
     "Ajuste geral › Coerência entre módulos: quando a Capacidade informa um recurso que não existe no Módulo 1 (ex.: caixa/ponto de pagamento em empresa só da proprietária), o professor pode marcar \"Não se aplica a esta empresa\". Ao aplicar, a quantidade do recurso na Capacidade passa a 0, nada é lançado no Módulo 1 e o ajuste fica registrado com Desfazer.",
     "Ajuste geral › novo aviso \"Mercadoria lançada no Módulo 1\": o sistema reconhece itens que parecem estoque para revenda (blusas, calças, anéis…) lançados como investimento fixo, mostra o efeito (investimento, depreciação, resultado, retorno) e o professor escolhe, item a item, mover para o estoque inicial (Módulo 2) ou só remover. Uma dica compara o estoque do Módulo 2 com o valor das peças e a cobertura em dias e sugere a opção (sem marcar sozinha). Registro com Desfazer; nada é alterado sozinho.",
@@ -4615,7 +4616,7 @@ function pontosAtencaoDocumento(calc, fluxo, capCalc) {
   const brlx = (n) => (Number(n) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   const nx = (n, d = 1) => (Number(n) || 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
   const extra = [];
-  if (calc.prazoRetorno != null && calc.prazoRetorno > 5) extra.push(`O prazo de retorno (payback) é de ${nx(calc.prazoRetorno)} anos, longo para o porte do negócio. A banca pode perguntar como encurtá-lo (preço, custos ou investimento).`);
+  if (calc.prazoRetorno != null && calc.prazoRetorno > 5) extra.push(`O prazo de retorno (payback) é de ${nx(calc.prazoRetorno)} anos, fora da meta de 5 anos, que é a referência de viabilidade. A banca pode perguntar o que sustenta esse prazo e o que o encurtaria (preço, custos ou investimento).`);
   if (calc.prazoRetorno == null && calc.investimentoTotal > 0 && calc.faturamento > 0) extra.push("O lucro atual não recupera o investimento: o payback não pode ser calculado.");
   if (fluxo && fluxo.length > 12) {
     const neg = fluxo.filter((m) => m.mes > 0 && m.resultado < 0).length;
@@ -9230,7 +9231,7 @@ const REFS_ROTULOS = [
   ["margemMin", "Margem de contribuição mínima por produto (%)", "Abaixo disso o produto vira ponto de atenção."],
   ["crescMax", "Crescimento mensal máximo no Fluxo de caixa (%)", "Acima disso o crescimento vira ponto de atenção."],
   ["saltoFat", "Salto máximo do faturamento entre versões salvas (%)", "Aumento maior que isso vira ponto de atenção."],
-  ["retornoMax", "Prazo máximo de retorno do investimento (anos)", "Acima disso (ou se não se paga) o Ajuste geral propõe um plano de viabilidade."],
+  ["retornoMax", "Prazo de referência da viabilidade (anos)", "Acima disso o sistema informa \"fora da meta\" (o prazo real é sempre mostrado) e o Ajuste geral oferece, como opção, um plano para aproximar da meta."],
   ["cmvMax", "CMV máximo (% do faturamento) — referência", "Só comparação na tabela; não gera correção."],
   ["moMax", "Mão de obra máxima (% do faturamento) — referência", "Só comparação na tabela; não gera correção."],
 ];
@@ -9900,7 +9901,7 @@ const PA = (() => {
     ];
     const ATUA = { cmv: "CMV · Lucratividade · Rentabilidade · Prazo de retorno", mo: "Mão de obra · Lucratividade · Rentabilidade · Prazo de retorno", div: "Lucratividade · Rentabilidade · Prazo de retorno", preco: "Lucratividade · Rentabilidade · Prazo de retorno", qtd: "Lucratividade · Rentabilidade · Prazo de retorno", inv: "Rentabilidade · Prazo de retorno" };
     params.forEach((pr) => { pr.atua = ATUA[pr.k]; });
-    const inviavel = depois.resultadoOperacional <= 0 || depois.prazoRetorno == null || depois.prazoRetorno > (R.retornoMax ?? 5);
+    const inviavel = depois.resultadoOperacional <= 0 || depois.prazoRetorno == null;
     const resumo = `Realismo de mercado (${ctx.segmento || "segmento"}): lucratividade ${fmtNum(c.lucratividade, 1)}% → ${fmtNum(depois.lucratividade, 1)}%, rentabilidade ${fmtNum(c.rentabilidade, 1)}% → ${fmtNum(depois.rentabilidade, 1)}% ao ano, retorno ${pay(c)} → ${pay(depois)}.`;
     // resumo do que foi REALMENTE aplicado (o texto `resumo` descreve só o cenário sugerido)
     const resumoDe = (Ld) => { const d = calcular(Ld); return `Realismo de mercado (${ctx.segmento || "segmento"}): lucratividade ${fmtNum(c.lucratividade, 1)}% → ${fmtNum(d.lucratividade, 1)}%, rentabilidade ${fmtNum(c.rentabilidade, 1)}% → ${fmtNum(d.rentabilidade, 1)}% ao ano, retorno ${pay(c)} → ${pay(d)}.`; };
@@ -10029,7 +10030,7 @@ const PA = (() => {
     const cp = seguro(() => capacidade(L, ctx)); if (cp && cp.semDados) { pen += 5; pend.push("capacidade sem dados"); }
     const m = seguro(() => mercado(L, ctx)); if (m) { pen += pesos["R|mer"]; pend.push("realismo de mercado"); }
     LISTAS.forEach(([k, fn]) => { const pt = seguro(() => fn(L, ctx)); if (pt && (pt.itens || []).some((i) => !i.info)) { pen += pesos[k]; pend.push(String(pt.rotulo).replace(/ \(.*\)$/, "").toLowerCase()); } });
-    const v = seguro(() => viabilidade(L, ctx)); if (v) { pen += 15; pend.push("retorno do investimento"); }
+    const cv = seguro(() => calcular(L)); if (cv && cv.faturamento > 0 && cv.investimentoTotal > 0 && cv.prazoRetorno == null) { pen += 15; pend.push("o investimento não se paga"); }   // prazo longo (fora da meta de 5 anos) NÃO penaliza: o prazo real é o resultado do plano
     return { nota: Math.max(0, 100 - pen), pend };
   }
   const CHAVES_EXTRA = ["H|cap", "R|est", "R|giro", "R|imp", "R|coe", "R|cus", "R|pro", "R|fin", "R|prc", "R|arr", "R|mer", "V|via"];
@@ -11255,7 +11256,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
                           {x.valor == null ? <td colSpan={3} className="text-slate-500">não resolve sozinho (limite do ajuste)</td> : <><td className="pr-2"><b>{x.un === "%" ? `${fmtNum(x.valor, 1)}%` : fmtBRL(x.valor)}</b>{x.nota ? <span className="text-slate-500"> · {x.nota}</span> : null}</td><td className="pr-2 text-emerald-300">{fmtNum(x.depois.rent, 1)}% ✓</td><td className="text-emerald-300">{x.depois.pay == null ? "não se paga" : `${fmtNum(x.depois.pay, 1)} anos`} ✓</td></>}</tr>)}</tbody></table></div>
                       <div className="text-[11px] text-slate-500 mt-1">Qualquer um sozinho resolve; o cenário sugerido abaixo reparte o esforço. Se o investimento estiver subestimado, o ajuste "investimento +%" (Módulo 1) também reduz a rentabilidade.</div>
                     </div>)}
-                  {mp.inviavel && <div className="text-xs text-amber-300 bg-amber-950/30 border border-amber-800/50 rounded-lg p-2 mb-2">⚠ Com este cenário realista o resultado fica fraco ou o retorno passa do prazo: o plano de viabilidade (abaixo) mostra como equilibrar.</div>}
+                  {mp.inviavel && <div className="text-xs text-amber-300 bg-amber-950/30 border border-amber-800/50 rounded-lg p-2 mb-2">⚠ Com este cenário realista o resultado fica fraco ou o investimento não se paga: o plano de viabilidade (abaixo, opcional) mostra como equilibrar.</div>}
                   <div className="space-y-1.5">
                     {mp.opcoes.map((op) => (
                       <label key={op.id} className={`flex items-start gap-2 text-xs rounded-md px-2 py-1.5 border ${op.recomendado ? "border-emerald-600/60 bg-emerald-950/20" : "border-slate-700"}`}>
@@ -11301,9 +11302,10 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
               const vp = paResultado.viaPt; const e = paEsc["V|via"] || { opt: "manter", v: {} }; const I = vp.info;
               const setV = (k, val) => paEscolher("V|via", { v: { ...(e.v || {}), [k]: val } });
               return (
-                <div className="border-2 border-rose-500/60 rounded-xl p-3 bg-slate-900/60">
-                  <div className="text-sm font-bold text-slate-100 mb-1">📉 Viabilidade: retorno do investimento <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-rose-900 text-rose-300 ml-1">{I.prazo == null ? "não se paga" : `${fmtNum(I.prazo, 1)} anos`}</span></div>
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 mb-2">O sistema olhou a empresa inteira e calculou quanto cada alavanca precisa mudar para o investimento se pagar em até
+                <div className={`border-2 ${I.prazo == null ? "border-rose-500/60" : "border-amber-500/50"} rounded-xl p-3 bg-slate-900/60`}>
+                  <div className="text-sm font-bold text-slate-100 mb-1">{I.prazo == null ? "📉" : "📊"} Retorno do investimento <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ml-1 ${I.prazo == null ? "bg-rose-900 text-rose-300" : "bg-amber-900 text-amber-300"}`}>{I.prazo == null ? "não se paga" : `${fmtNum(I.prazo, 1)} anos · fora da meta de ${fmtNum(I.alvo, 0)}`}</span></div>
+                  {I.prazo != null && <p className="text-xs text-slate-400 mb-1">Este é o prazo em que o negócio se paga nas condições lançadas; nada precisa ser corrigido por causa dele. <b className="text-sky-300">Opcional:</b> se a equipe quiser aproximar o retorno de uma meta, use o plano abaixo (nada muda até você aplicar).</p>}
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 mb-2">{I.prazo == null ? "O sistema olhou a empresa inteira e calculou quanto cada alavanca precisa mudar para o investimento se pagar em até" : "Plano opcional: quanto cada alavanca precisaria mudar para o investimento se pagar em até"}
                     <input type="number" min="0.5" step="0.5" value={paEsc["V|via"]?.alvo ?? I.alvo} onChange={(ev) => paEscolher("V|via", { alvo: ev.target.value })} className="w-16 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100" /> anos.</div>
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-2 text-xs">
                     <div className="bg-slate-900 border border-slate-700 rounded-lg p-2"><div className="text-slate-500">Resultado líquido (mensal)</div><b className={I.res <= 0 ? "text-rose-300" : ""}>{fmtBRL(I.res)}</b></div>
@@ -11951,7 +11953,7 @@ function avaliarCenario(equipe, dados, lx, alvo, X) {
   const caixaOk = !(neg > 6 || (f12[12] && f12[12].resultado < 0));
   const parecer = conclusaoResumo({ equipe, calc: c, fluxo: f12, fluxoL: fl, capCalc: X.capCalc, tmaAnual: X.tmaAnual, pPro: X.pPro }).rotulo;
   const alvoOk = c.prazoRetorno != null && c.prazoRetorno <= alvo;
-  return { fat: c.faturamento, res: c.resultadoOperacional, prazo: c.prazoRetorno, mes: pos ? pos.mes : null, caixaOk, parecer, alvoOk, resolve: c.resultadoOperacional > 0 && alvoOk && caixaOk };
+  return { fat: c.faturamento, res: c.resultadoOperacional, prazo: c.prazoRetorno, mes: pos ? pos.mes : null, caixaOk, parecer, alvoOk, resolve: c.resultadoOperacional > 0 && c.prazoRetorno != null && caixaOk };   // o prazo real é o resultado; a meta (alvoOk) é só informativa
 }
 function contextoSugestao(equipe, dados) {
   const lanc = mergeLancamentos(dados.lancamentos || {});
@@ -12033,7 +12035,7 @@ async function conferirDocumentosEquipe(equipe, dados, refs) {
   const tokW = await tokensDoArquivo(wBlob, "word"); const tokP = await tokensDoArquivo(pBuf, "ppt");
   const itens = compararDocumentos(T, tokW, tokP);
   const avisos = [];
-  if (calc.prazoRetorno != null && calc.prazoRetorno > 5) avisos.push(`O retorno (${nC(calc.prazoRetorno, 1)} anos) passa da meta de 5 anos do curso; o plano segue válido, só com aviso.`);
+  if (calc.prazoRetorno != null && calc.prazoRetorno > 5) avisos.push(`O retorno (${nC(calc.prazoRetorno, 1)} anos) fica fora da meta de 5 anos do curso; é o prazo do plano nas condições lançadas e ele segue válido, só com aviso.`);
   const pend = pendenciasDados(T);
   const sugestoes = pend.some((x) => ROT_VIAB.includes(x.rot)) ? montarSugestoes(equipe, dados, T, refs, { lanc, capCalc, tmaAnual, pPro }) : null;
   return { itens, dados: pend, sugestoes, avisos, em: Date.now(), codigo: codigoDados([lanc, cenarios, tmaAnual, fluxoL.map((m) => Math.round(m.saldo)), capResumoCodigo(capCalc)]) };
@@ -12294,7 +12296,8 @@ function EncerrarProjetoTurma({ turma, equipes, professorNome, onIrPara }) {
                   </tbody>
                 </table>
                 {noLimite.length > 0 && <div className="mt-3 text-xs text-amber-100 bg-amber-950/40 border border-amber-700/60 rounded-lg px-3 py-2">⚠ <b>Sugestão no limite:</b> {noLimite.map((k) => LAB_ALAVANCA[k].replace(/ [+−]$/, "")).join(", ")} no máximo. Mude os números se achar forte demais.</div>}
-                {!A1.resolve && <div className="mt-2 text-xs text-rose-200 bg-rose-950/40 border border-rose-700/60 rounded-lg px-3 py-2">Com estes percentuais ainda há divergência: {A1.res <= 0 ? "o resultado continua negativo" : !A1.alvoOk ? `o retorno passa de ${nC(A.alvo, 1)} anos` : "o caixa do 1º ano segue fraco"}. Você pode aplicar mesmo assim e conferir de novo.</div>}
+                {A1.res > 0 && A1.prazo != null && !A1.alvoOk && <div className="mt-2 text-xs text-sky-200 bg-sky-950/40 border border-sky-700/60 rounded-lg px-3 py-2">ℹ Retorno em {nC(A1.prazo, 1)} anos, fora da meta de {nC(A.alvo, 1)}: é informativo. O negócio se paga nesse prazo nas condições lançadas.</div>}
+                {!A1.resolve && <div className="mt-2 text-xs text-rose-200 bg-rose-950/40 border border-rose-700/60 rounded-lg px-3 py-2">Com estes percentuais ainda há divergência: {A1.res <= 0 ? "o resultado continua negativo" : A1.prazo == null ? "o investimento continua sem se pagar" : "o caixa do 1º ano segue fraco"}. Você pode aplicar mesmo assim e conferir de novo.</div>}
                 <div className="mt-3 text-xs text-slate-300 bg-slate-800/70 border border-slate-600 rounded-lg px-3 py-2"><b>Situação da equipe:</b> {A.bloqueada ? <span className="text-emerald-300">já está bloqueada para avaliação (continua assim ao final).</span> : <span className="text-amber-300">não está bloqueada → ao aplicar, o sistema bloqueia a equipe, aguarda {AVALIACAO_ESPERA_MS / 1000} s, grava e libera de novo.</span>}{A.editando && !A.bloqueada ? <span className="text-rose-300"> ⚠ {A.editando} está editando agora.</span> : null}</div>
                 <div className="mt-3 text-xs text-slate-300">Motivo (aparece no Relatório de ajustes e no aviso à equipe):
                   <input type="text" disabled={ocup} value={A.motivo} onChange={(ev) => setApl({ ...A, motivo: ev.target.value })} className="w-full mt-1 bg-slate-950 border border-slate-600 rounded px-2 py-1.5 text-slate-100" /></div>
@@ -16737,8 +16740,8 @@ function gerarRelatorioMercado(item) {
 
   // ---------- 6. Retorno ----------
   if (calc.resultadoOperacional < 0) { sev("ret", "r", "prejuízo"); add("A", "Módulos 5, 6, 9 e 11", "O resultado mensal é negativo. Rever preços e quantidades (após fechar a capacidade) e os custos que estejam acima do necessário.", `Resultado mensal ${R(calc.resultadoOperacional)}.`); }
-  else if (calc.prazoRetorno == null || calc.prazoRetorno > 5) { sev("ret", "r", calc.prazoRetorno == null ? "não se paga" : `${fmtNum(calc.prazoRetorno, 1)} anos`); add("M", "Módulos 5, 6 e 11", "O investimento demora mais de 5 anos para voltar. Depois de fechar a capacidade e os custos, conferir de novo preços, quantidades e custos fixos.", `Retorno: ${calc.prazoRetorno == null ? "não se paga" : fmtNum(calc.prazoRetorno, 1) + " anos"} · lucratividade ${fmtPct(calc.lucratividade)}.`); }
-  else if (calc.prazoRetorno > 3) sev("ret", "a", `${fmtNum(calc.prazoRetorno, 1)} anos`);
+  else if (calc.prazoRetorno == null) { sev("ret", "r", "não se paga"); add("M", "Módulos 5, 6 e 11", "O investimento não se paga com os dados atuais. Depois de fechar a capacidade e os custos, conferir de novo preços, quantidades e custos fixos.", `Retorno: não se paga · lucratividade ${fmtPct(calc.lucratividade)}.`); }
+  else if (calc.prazoRetorno > 5) { sev("ret", "a", `${fmtNum(calc.prazoRetorno, 1)} anos · fora da meta`); add("M", "Módulos 5, 6 e 11", "O retorno fica fora da meta de referência de 5 anos. É o prazo do plano nas condições lançadas: conferir se preços, quantidades e custos refletem a realidade, sem ajustá-los só para encurtar o prazo.", `Retorno: ${fmtNum(calc.prazoRetorno, 1)} anos · lucratividade ${fmtPct(calc.lucratividade)}.`); }
   else sev("ret", "g", `${fmtNum(calc.prazoRetorno, 1)} anos`);
 
   // ---------- o que o professor já alterou ----------

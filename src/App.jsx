@@ -1,4 +1,4 @@
-// build: 20261112_21h40m Aplicar sugestão direto na Conferência; manuais atualizados na Conferência dos documentos (levar ao Ajuste geral)
+// build: 20261112_21h15m Correção: tela em branco ao conferir de novo com o detalhe aberto na Conferência dos documentos (levar ao Ajuste geral)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -11939,7 +11939,7 @@ function EncerrarProjetoTurma({ turma, equipes, professorNome, onIrPara }) {
                   {encerrada(e.id) ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-600/40 text-slate-200">🔒 encerrado{enc.equipes[e.id].excecao ? " (com exceção)" : ""}</span> : <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">aberto</span>}
                   {c && !c.carregando && (c.itens.length > 0 || c.erro) && <button onClick={() => setAberto(aberto === e.id ? null : e.id)} className="text-[11px] text-sky-300 underline">{aberto === e.id ? "ocultar detalhe" : "ver detalhe"}</button>}
                 </div>
-                {aberto === e.id && c && (
+                {aberto === e.id && c && !c.carregando && (
                   <div className="px-3 pb-3 border-t border-slate-800">
                     {c.erro && <div className="text-xs text-rose-300 mt-2">Não foi possível conferir: {c.erro}. Nada foi alterado.</div>}
                     {c.itens.length > 0 && (

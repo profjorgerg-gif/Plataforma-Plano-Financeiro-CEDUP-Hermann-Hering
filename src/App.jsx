@@ -1,4 +1,4 @@
-// build: 20261113_07h45m Mercadoria no Módulo 1: dica automática (estoque do Módulo 2 × peças, cobertura em dias) com opção sugerida
+// build: 20261113_09h05m Ajuste geral: Ajustar tudo e estabilizar (simula em rodadas, aplica de uma vez; retorno do investimento mostrado como é, meta de 5 anos só como referência)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1380,6 +1380,7 @@ const VERSOES = [
     "Gestão → Encerrar projeto: nova \"Conferência dos documentos\". O sistema gera o Word e o PowerPoint de cada equipe em segundo plano, lê os números que saíram nos arquivos e compara com os da tela (investimento, faturamento, resultado, ponto de equilíbrio, rentabilidade, retorno, mês do caixa positivo, saldo, VPL, TIR, parecer e capacidade). Cada divergência diz a origem: \"Dado da equipe\" (com o botão Corrigir, que leva ao Ajuste geral) ou \"Falha do sistema\" (com Copiar resumo). Depois de corrigir, \"Conferir de novo\".",
     "Conferência dos documentos com sugestões automáticas: quando a divergência é de dado da equipe (resultado negativo, sem retorno, caixa fraco no 1º ano), o sistema simula as opções da Viabilidade do Ajuste geral — combinação equilibrada, só preços, só custos — e mostra, para cada uma, o resultado, o retorno, o mês do caixa positivo e o parecer antes e depois. Nada é gravado: o botão \"Levar ao Ajuste geral\" abre a equipe já selecionada e a opção marcada, com antes × depois, confirmação e Desfazer; depois é só clicar em \"Conferir de novo\". O botão \"Corrigir\" também passa a abrir o Ajuste geral já na equipe certa. Novo botão \"Aplicar esta sugestão\": abre uma janela com os percentuais editáveis (dentro dos limites) e o antes × depois; ao confirmar (com Backup geral marcado e motivo), o sistema bloqueia a equipe se preciso, aguarda os 20 segundos, grava só os módulos alterados, registra no Relatório de ajustes (com Desfazer), avisa a equipe no Feedback, libera de novo (se foi ele que bloqueou) e roda a Conferência de novo.",
     "Canais de venda (opcional): na Capacidade, passo 2, a equipe informa quanto do faturamento é vendido online. A loja passa a atender só a parte presencial, entra o recurso \"expedição de pedidos online\", e as contas passam a considerar o custo do online (plataforma e frete, em % das vendas online) e o prazo de recebimento do online (média ponderada com a loja, no capital de giro). Word, PowerPoint (slide 8b), DRE, fluxo, VPL/TIR, preço mínimo e Conferência usam os novos valores. Com 0% (padrão) nada muda: equipes e dados antigos continuam iguais.",
+    "Ajuste geral › Ajustar tudo e estabilizar: o botão \"Simular ajuste completo (estabilizar)\" aplica, em rodadas e sempre na mesma ordem, só as correções de realismo e coerência (mercadoria no Módulo 1, giro, impostos, coerência, custos, pró-labore, financiamento, preço mínimo, arranque e realismo de mercado) até nada mais mudar, evitando o ciclo de \"corrige um e aparece outro\". Nada é gravado na simulação; o professor vê as rodadas, pode desmarcar passos, compara hoje × depois e aplica tudo como UM ajuste, com Desfazer. O sistema não força preços nem quantidades para chegar a 5 anos: o retorno do investimento é mostrado como ficou, dentro ou fora da meta (a aproximação da meta é um passo opcional, desligado por padrão). Há trava de segurança (não estabilizou, faturamento +30%) e alertas de capacidade.",
     "Ajuste geral › Coerência entre módulos: quando a Capacidade informa um recurso que não existe no Módulo 1 (ex.: caixa/ponto de pagamento em empresa só da proprietária), o professor pode marcar \"Não se aplica a esta empresa\". Ao aplicar, a quantidade do recurso na Capacidade passa a 0, nada é lançado no Módulo 1 e o ajuste fica registrado com Desfazer.",
     "Ajuste geral › novo aviso \"Mercadoria lançada no Módulo 1\": o sistema reconhece itens que parecem estoque para revenda (blusas, calças, anéis…) lançados como investimento fixo, mostra o efeito (investimento, depreciação, resultado, retorno) e o professor escolhe, item a item, mover para o estoque inicial (Módulo 2) ou só remover. Uma dica compara o estoque do Módulo 2 com o valor das peças e a cobertura em dias e sugere a opção (sem marcar sozinha). Registro com Desfazer; nada é alterado sozinho.",
     "Manuais em PDF (Professor, Aluno e Guia Pedagógico) atualizados: trazem os capítulos de outubro (projeto aberto, Capacidade, Ajuste geral, realismo do plano) e as novidades de novembro (Fluxo de Caixa até o retorno, documentos finais e Conferência dos documentos com sugestões automáticas). Onde os capítulos antigos dizem \"13 módulos\", leia 11 módulos de lançamento mais 2 análises; a revisão completa dos manuais fica para 2027.",
@@ -9970,6 +9971,46 @@ const PA = (() => {
     const curvaMudou = JSON.stringify(X.curva ?? null) !== JSON.stringify(ctx.curva ?? null);
     return { lancDepois: L, aplicados, taxaDepois: taxaMudou ? X.taxaCrescimentoFluxo : undefined, capacidadeDepois: capMudou ? X.capacidade : undefined, curvaDepois: curvaMudou ? X.curva : undefined, linhasExtras: X.linhas };
   }
+  // ---- Estabilizar: aplica, em ordem fixa e em rodadas, as correções de realismo e coerência até nada mais mudar (só simula; não grava) ----
+  // O retorno do investimento NÃO é forçado a 5 anos: a aproximação da meta (Viabilidade) só entra se o professor ligar (opts.viab).
+  const ESTAB_ROT = { "R|est": "Mercadoria lançada no Módulo 1", "R|giro": "Capital de giro e prazos", "R|imp": "Impostos", "R|coe": "Coerência entre módulos", "R|cus": "Custos que faltavam", "R|pro": "Pró-labore", "R|fin": "Financiamento", "R|prc": "Preço mínimo", "R|arr": "Arranque do fluxo", "R|mer": "Realismo de mercado", "V|via": "Viabilidade (aproximar da meta de anos de retorno)" };
+  function estabilizar(L0, ctx, opts) {
+    opts = opts || {}; const excl = new Set(opts.excluir || []); const alvo = opts.alvo || 5; const MAXR = 6;
+    let L = clone(L0); let cap = ctx.capacidade || null, curva = ctx.curva !== undefined ? ctx.curva : null;
+    const mk = () => ({ ...ctx, capacidade: cap, curva });
+    const resumo = (Lx, capx) => { const c = calcular(Lx); let uso = null; try { const A = capAnalise(ctx.segmento, capx || {}, (Lx.m5.itens || []).filter((i) => Number(i.qtd) > 0)); uso = A && A.R ? A.R.utilizacao : null; } catch { uso = null; } return { fat: c.faturamento, res: c.resultadoOperacional, pb: c.prazoRetorno, giro: c.capitalGiroTotal, inv: c.investimentoTotal, uso }; };
+    const antes = resumo(L0, ctx.capacidade);
+    const rodadas = []; const decisoes = []; let estavel = false, oscila = false; const vistos = new Set([JSON.stringify([L, cap, curva])]);
+    const passo = (chave, opt, extra) => {
+      const r = aplicar(L, { [chave]: { opt, v: {}, ...(extra || {}) } }, mk()); if (!r.aplicados.length) return null;
+      L = r.lancDepois; if (r.capacidadeDepois !== undefined) cap = r.capacidadeDepois; if (r.curvaDepois !== undefined) curva = r.curvaDepois;
+      return { chave, rot: ESTAB_ROT[chave] || chave, linhas: r.linhasExtras };
+    };
+    for (let n = 1; n <= MAXR; n++) {
+      const passos = [];
+      for (const [k, fn] of LISTAS) {
+        if (excl.has(k)) continue; let p = null; try { p = fn(L, mk()); } catch { p = null; }
+        if (!p || !(p.itens || []).some((i) => !i.info)) continue;
+        const o = (p.opcoes || []).find((x) => x.recomendado) || (p.opcoes || []).find((x) => x.id === "aplicar");
+        if (!o || o.id === "manter") { const dc = `${ESTAB_ROT[k] || k}: precisa de decisão sua (não há opção segura para aplicar sozinha).`; if (!decisoes.includes(dc)) decisoes.push(dc); continue; }
+        const ps = passo(k, o.id); if (ps) passos.push(ps);
+      }
+      if (!excl.has("R|mer")) { let m = null; try { m = mercado(L, mk()); } catch { m = null; } if (m && m.opcoes.some((x) => x.id === "realista")) { const ps = passo("R|mer", "realista"); if (ps) passos.push(ps); } }
+      if (opts.viab && !excl.has("V|via")) { let v = null; try { v = viabilidade(L, mk(), undefined, alvo); } catch { v = null; } if (v && v.opcoes.some((x) => x.id === "combinado" && !x.naoAplica)) { const ps = passo("V|via", "combinado", { alvo }); if (ps) passos.push(ps); } }
+      const c = calcular(L); rodadas.push({ n, passos, res: c.resultadoOperacional, pb: c.prazoRetorno });
+      if (!passos.length) { estavel = true; break; }
+      const sig = JSON.stringify([L, cap, curva]); if (vistos.has(sig)) { oscila = true; break; } vistos.add(sig);
+    }
+    const depois = resumo(L, cap); const capMudou = JSON.stringify(cap ?? null) !== JSON.stringify(ctx.capacidade ?? null); const curvaMudou = JSON.stringify(curva ?? null) !== JSON.stringify(ctx.curva ?? null);
+    let travado = null;
+    if (!estavel) travado = oscila ? "as correções ficaram se alternando" : `não estabilizou em ${MAXR} rodadas`;
+    else if (antes.fat > 0 && depois.fat > antes.fat * 1.3) travado = `o faturamento subiria mais de 30% (${fmtBRL(antes.fat)} → ${fmtBRL(depois.fat)})`;
+    const alertas = [];
+    if (depois.uso != null && depois.uso > 1) alertas.push(`A capacidade fica acima de 100% (${fmtNum(depois.uso * 100, 0)}%): resolva a Capacidade com a equipe antes de aplicar.`);
+    else if (depois.uso != null && depois.uso >= 0.85) alertas.push(`A capacidade fica perto do limite (${fmtNum(depois.uso * 100, 0)}%): confira a equipe, os tempos e o fator de pico.`);
+    if (depois.pb == null) alertas.push("Com os dados atuais o negócio não recupera o investimento. Isso é um resultado do plano, não um erro: apresente à equipe e, se quiser, use a Viabilidade (opcional).");
+    return { rodadas, estavel, oscila, travado, decisoes, alertas, antes, depois, alvo, lancDepois: L, capacidadeDepois: capMudou ? cap : undefined, curvaDepois: curvaMudou ? curva : undefined, linhas: rodadas.flatMap((r) => r.passos.flatMap((p) => p.linhas || [])), chaves: Array.from(new Set(rodadas.flatMap((r) => r.passos.map((p) => p.chave)))) };
+  }
   // Teste de estresse (só leitura): o que acontece se o cenário ruim ocorrer
   function estresse(L) {
     const c = calcular(L); if (!(c.faturamento > 0)) return null;
@@ -9992,7 +10033,7 @@ const PA = (() => {
     return { nota: Math.max(0, 100 - pen), pend };
   }
   const CHAVES_EXTRA = ["H|cap", "R|est", "R|giro", "R|imp", "R|coe", "R|cus", "R|pro", "R|fin", "R|prc", "R|arr", "R|mer", "V|via"];
-  return { analisar, aplicar, capacidade, viabilidade, sugestoes, simular, mercado, mercadoSim, giro, imposto, coerencia, estoqueNoM1, LISTAS, CHAVES_EXTRA, estresse, pontuacao };
+  return { analisar, aplicar, capacidade, viabilidade, sugestoes, simular, mercado, mercadoSim, giro, imposto, coerencia, estoqueNoM1, estabilizar, ESTAB_ROT, LISTAS, CHAVES_EXTRA, estresse, pontuacao };
 })();
 
 // ===== Ajuste geral (menu Gestão → Ajuste geral) =====
@@ -10706,6 +10747,59 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
     setOcupado(false);
   };
 
+  // ---------- Ajustar tudo e estabilizar (simula em rodadas; só grava ao aplicar, tudo num único ajuste) ----------
+  const [stab, setStab] = useState(null);   // { equipeId, lanc, dados, ctx, excl:{}, viab }
+  const stAbrir = async () => {
+    if (!paEq) return;
+    if (!equipePronta(aval, paEq, Date.now())) { setAviso({ tipo: "erro", texto: "A equipe precisa estar bloqueada para avaliação (e pronta, após os 20 segundos)." }); return; }
+    setOcupado(true); setAviso(null);
+    try {
+      const d = await lerDadosEstrito(paEq); const lanc = mergeLancamentos(d.lancamentos);
+      const refsCfg = await window.storage.get(`refs_segmento_${turma.professorUid}`, true).then((x) => (x ? JSON.parse(x.value) : null)).catch(() => null);
+      const segEq = equipes.find((e) => e.id === paEq)?.segmento;
+      const ctx = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [], refs: refsDoSegmento(refsCfg, segEq), capacidade: d.capacidade || null, curva: d.curvaFluxo || null, segmento: segEq, nSocios: (equipes.find((e) => e.id === paEq)?.integrantes || []).length || 0 };
+      setPaPontos(null); setStab({ equipeId: paEq, lanc, dados: d, ctx, excl: {}, viab: false });
+    } catch (e) { falhar(e); }
+    setOcupado(false);
+  };
+  const stRes = useMemo(() => {
+    if (!stab) return null;
+    try { return PA.estabilizar(stab.lanc, stab.ctx, { viab: stab.viab, excluir: Object.keys(stab.excl).filter((k) => stab.excl[k]) }); } catch (e) { return { erro: String(e.message || e) }; }
+  }, [stab]);
+  const stAplicar = async () => {
+    if (!stab || !stRes || stRes.erro || !stRes.chaves.length) return;
+    const eqId = stab.equipeId;
+    if (!window.confirm(`Aplicar o ajuste completo em ${nomeEq(eqId)}? É recomendável ter feito o Backup geral. Fica registrado como UM ajuste e pode ser desfeito. Não gera devolução nem desconto de nota.`)) return;
+    setOcupado(true); setAviso(null);
+    const id = `aj_${Date.now()}`; let registrado = false;
+    try {
+      if (!equipePronta(await lerAvaliacao(turma.id), eqId, Date.now())) throw new Error("a equipe não está mais bloqueada/pronta");
+      const d = await lerDadosEstrito(eqId); const lanc = mergeLancamentos(d.lancamentos);
+      if (JSON.stringify(lanc) !== JSON.stringify(stab.lanc) || JSON.stringify(d.capacidade ?? null) !== JSON.stringify(stab.dados.capacidade ?? null) || JSON.stringify(d.curvaFluxo ?? null) !== JSON.stringify(stab.dados.curvaFluxo ?? null)) throw new Error("os dados da equipe mudaram desde a simulação: simule de novo");
+      const lancDepois = stRes.lancDepois; const capacidadeDepois = stRes.capacidadeDepois, curvaDepois = stRes.curvaDepois;
+      const mods = {}; const esperado = {}; const linhas = [...stRes.linhas]; const mudancas = [];
+      MODS_PONTOS.forEach((m) => {
+        if (JSON.stringify(lanc[m]) === JSON.stringify(lancDepois[m])) return;
+        mods[m] = lancDepois[m]; esperado[m] = jsonModulo(d.lancamentos, m);
+        linhas.push(...linhasDiffModulo(Number(m.slice(1)), lanc[m], lancDepois[m]));
+        mudancas.push({ equipeId: eqId, equipeNome: nomeEq(eqId), modId: m, antes: lanc[m], depois: lancDepois[m] });
+      });
+      const extras = {};
+      if (capacidadeDepois !== undefined) { extras.capacidade = { esperado: d.capacidade ?? null, novo: capacidadeDepois }; mudancas.push({ equipeId: eqId, equipeNome: nomeEq(eqId), modId: "capacidade", antes: d.capacidade ?? null, depois: capacidadeDepois }); }
+      if (curvaDepois !== undefined) { extras.curvaFluxo = { esperado: d.curvaFluxo ?? null, novo: curvaDepois }; mudancas.push({ equipeId: eqId, equipeNome: nomeEq(eqId), modId: "curva", antes: d.curvaFluxo ?? null, depois: curvaDepois }); }
+      const modsRel = { ...mods, ...(capacidadeDepois !== undefined ? { capacidade: 1 } : {}), ...(curvaDepois !== undefined ? { curva: 1 } : {}) };
+      if (!mudancas.length) throw new Error("nenhuma alteração resultou da simulação");
+      const mot = "Ajuste completo (estabilização): correções de realismo e coerência aplicadas em sequência.";
+      await registrarAjusteProf(turma.id, { id, em: Date.now(), por: professorNome, tipo: "pontos", motivo: mot, mudancas, desfeito: false });
+      registrado = true;
+      const coment = { modulo: "Geral", texto: textoAvisoAjuste(professorNome, linhas, mot), autor: professorNome, timestamp: Date.now(), tipo: "ajuste", lote: id };
+      await gravarModulosEquipe(turma.id, eqId, mods, esperado, coment, montarRelato({ id, por: professorNome, tipo: "pontos", motivo: mot, linhas, lancAntes: lanc, lancDepois, mods: modsRel }), Object.keys(extras).length ? extras : undefined);
+      setStab(null); await carregar();
+      setAviso({ tipo: "ok", texto: `Ajuste completo aplicado em ${nomeEq(eqId)} (${Object.keys(mods).map((m) => "M" + m.slice(1)).join(", ")}). A equipe recebe o aviso na aba Feedback e você pode desfazer no histórico. Volte em Encerrar projeto e clique em “Conferir de novo”; faça o Backup geral.` });
+    } catch (e) { if (registrado) await limparRegistroAjuste(turma.id, id, null); falhar(e); await carregar(); }
+    setOcupado(false);
+  };
+
   // ---------- Preços sugeridos (o professor marca quais usar) ----------
   const r2p = (v) => Math.round((Number(v) || 0) * 100) / 100;
   const prCalcLinhas = (lanc, margem) => {
@@ -11016,6 +11110,42 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
               {prontas.map((e) => <option key={e.id} value={e.id}>{e.nomeNegocio}</option>)}
             </select>
             <button disabled={ocupado || !paEq} onClick={paAnalisar} className="bg-amber-500 disabled:opacity-40 text-slate-900 text-sm font-bold px-4 py-2 rounded-md">Analisar (não grava nada)</button>
+            <button disabled={ocupado || !paEq} onClick={stAbrir} className="bg-sky-600 disabled:opacity-40 text-white text-sm font-bold px-4 py-2 rounded-md">⚙ Simular ajuste completo (estabilizar)</button>
+          </div>
+        )}
+        {stab && stRes && (
+          <div className="mt-4 border border-sky-700 rounded-xl p-3 bg-slate-900/60 space-y-3" data-testid="estabilizar">
+            <div className="text-sm font-bold text-sky-300">Ajustar tudo e estabilizar — {nomeEq(stab.equipeId)}</div>
+            <p className="text-xs text-slate-400">O sistema aplica, em rodadas e sempre na mesma ordem, só as correções de realismo e coerência, até nada mais mudar. Nada é gravado agora. Não forço preço nem quantidade para chegar a um prazo de retorno: o retorno do investimento é mostrado como ele ficou.</p>
+            {stRes.erro ? <p className="text-sm text-red-300">Não foi possível simular: {stRes.erro}</p> : (<>
+              <div className="space-y-2">
+                {stRes.rodadas.map((r) => (
+                  <div key={r.n} className="text-xs text-slate-300"><b>Rodada {r.n}</b>{r.passos.length ? "" : " — nada mais a corrigir"}
+                    {r.passos.map((p) => (
+                      <label key={p.chave} className="flex items-start gap-2 ml-3 mt-0.5"><input type="checkbox" className="mt-0.5" checked={!stab.excl[p.chave]} onChange={(e) => setStab((x) => ({ ...x, excl: { ...x.excl, [p.chave]: !e.target.checked } }))} /><span>{p.rot}{(p.linhas || []).length ? <span className="text-slate-500"> — {p.linhas.slice(0, 3).join("; ")}{p.linhas.length > 3 ? ` (+${p.linhas.length - 3})` : ""}</span> : null}</span></label>
+                    ))}
+                  </div>
+                ))}
+                {Object.keys(stab.excl).filter((k) => stab.excl[k]).length > 0 && <p className="text-[11px] text-slate-500">Itens desmarcados ficam de fora (já simulado sem eles; desmarque de novo para reincluir).</p>}
+              </div>
+              <label className="flex items-start gap-2 text-xs text-slate-300"><input type="checkbox" className="mt-0.5" checked={stab.viab} onChange={(e) => setStab((x) => ({ ...x, viab: e.target.checked }))} /><span>Também aproximar da meta de {stRes.alvo} anos de retorno (Viabilidade) — <i>opcional, desligado por padrão; muda preços e quantidades</i></span></label>
+              <table className="w-full text-xs"><thead><tr className="text-slate-400 text-left"><th></th><th>Hoje</th><th>Depois</th></tr></thead><tbody className="text-slate-200">
+                <tr><td>Faturamento mensal</td><td>{fmtBRL(stRes.antes.fat)}</td><td>{fmtBRL(stRes.depois.fat)}</td></tr>
+                <tr><td>Resultado operacional</td><td>{fmtBRL(stRes.antes.res)}</td><td>{fmtBRL(stRes.depois.res)}</td></tr>
+                <tr><td>Retorno do investimento</td><td>{stRes.antes.pb == null ? "não recupera" : `${fmtNum(stRes.antes.pb, 1)} anos`}</td><td>{stRes.depois.pb == null ? "não recupera" : `${fmtNum(stRes.depois.pb, 1)} anos`} {stRes.depois.pb != null && <span className={stRes.depois.pb <= stRes.alvo ? "text-emerald-300" : "text-amber-300"}>({stRes.depois.pb <= stRes.alvo ? `dentro da meta de ${stRes.alvo} anos` : `fora da meta de ${stRes.alvo} anos`})</span>}</td></tr>
+                <tr><td>Capital de giro</td><td>{fmtBRL(stRes.antes.giro)}</td><td>{fmtBRL(stRes.depois.giro)}</td></tr>
+                {stRes.depois.uso != null && <tr><td>Uso da capacidade (pico)</td><td>{stRes.antes.uso == null ? "—" : `${fmtNum(stRes.antes.uso * 100, 0)}%`}</td><td>{fmtNum(stRes.depois.uso * 100, 0)}%</td></tr>}
+              </tbody></table>
+              {stRes.alertas.map((a, i) => <p key={i} className="text-xs text-amber-300">⚠ {a}</p>)}
+              {stRes.decisoes.map((a, i) => <p key={i} className="text-xs text-sky-300">• {a} Resolva em “Analisar”.</p>)}
+              {stRes.travado && <p className="text-xs text-red-300">Trava de segurança: {stRes.travado}. Por isso o botão de aplicar fica bloqueado; use “Analisar” e decida ponto a ponto.</p>}
+              {!stRes.chaves.length && !stRes.travado && <p className="text-xs text-emerald-300">Nada a ajustar: as regras atuais já estão satisfeitas.</p>}
+              <div className="flex gap-2 flex-wrap items-center">
+                <button disabled={ocupado || !!stRes.travado || !stRes.chaves.length} onClick={stAplicar} className="bg-emerald-600 disabled:opacity-40 text-white text-sm font-bold px-4 py-2 rounded-md">Aplicar tudo de uma vez</button>
+                <button disabled={ocupado} onClick={() => setStab(null)} className="bg-slate-700 text-slate-100 text-sm px-4 py-2 rounded-md">Fechar</button>
+                <span className="text-xs text-slate-500">Antes de aplicar, faça o Backup geral. Vira um único ajuste, com Desfazer.</span>
+              </div>
+            </>)}
           </div>
         )}
         {paPontos && (

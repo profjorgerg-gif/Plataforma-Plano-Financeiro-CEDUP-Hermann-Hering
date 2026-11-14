@@ -1,4 +1,4 @@
-// build: 20261113_09h40m Retorno do investimento: o prazo real é o resultado; 5 anos viram referência (fora da meta é informativo)
+// build: 20261114_11h30m Guia Pedagógico: slide 8 Indicadores de Viabilidade (PDF para imprimir + PPTX editável)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -787,6 +787,7 @@ const GUIA_PEDAGOGICO_ITENS = [
   { id: "slide5", label: "5. Bloco 4 — Resultado e Viabilidade", arquivo: "slide-5-bloco-4-resultado-e-viabilidade.pdf" },
   { id: "slide6", label: "6. Cenários e Fluxo de Caixa", arquivo: "slide-6-cenarios-e-fluxo-de-caixa.pdf" },
   { id: "slide7", label: "7. Apresentações finais", arquivo: "slide-7-apresentacoes-finais.pdf" },
+  { id: "slide8", label: "8. Indicadores de Viabilidade (Módulos 12 e 13)", arquivo: "slide-8-indicadores-de-viabilidade.pdf", editavel: "slide-8-indicadores-de-viabilidade.pptx" },
 ];
 
 function GuiaPedagogicoView() {
@@ -795,18 +796,24 @@ function GuiaPedagogicoView() {
       <SectionTitle icon={GraduationCap} sub="Metodologia de aplicação em sala de aula e slides de apoio para cada sessão — acesso exclusivo do professor, com impressão e download liberados.">Guia Pedagógico</SectionTitle>
       <div className="space-y-2.5">
         {GUIA_PEDAGOGICO_ITENS.map((it) => (
-          <a
-            key={it.id}
-            href={`${import.meta.env.BASE_URL}${it.arquivo}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`flex items-center justify-between gap-3 p-4 rounded-lg border transition ${it.destaque ? "bg-amber-950/20 border-amber-500/40 hover:border-amber-400" : "bg-slate-800 border-slate-700 hover:border-slate-500"}`}
-          >
-            <span className={`flex items-center gap-2.5 text-sm font-semibold ${it.destaque ? "text-amber-300" : "text-slate-200"}`}>
-              {it.destaque ? <BookOpen size={16} /> : <Monitor size={16} />} {it.label}
-            </span>
-            <Printer size={15} className="text-slate-500 shrink-0" />
-          </a>
+          <div key={it.id} className="flex items-stretch gap-2">
+            <a
+              href={`${import.meta.env.BASE_URL}${it.arquivo}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`flex-1 flex items-center justify-between gap-3 p-4 rounded-lg border transition ${it.destaque ? "bg-amber-950/20 border-amber-500/40 hover:border-amber-400" : "bg-slate-800 border-slate-700 hover:border-slate-500"}`}
+            >
+              <span className={`flex items-center gap-2.5 text-sm font-semibold ${it.destaque ? "text-amber-300" : "text-slate-200"}`}>
+                {it.destaque ? <BookOpen size={16} /> : <Monitor size={16} />} {it.label}
+              </span>
+              <Printer size={15} className="text-slate-500 shrink-0" />
+            </a>
+            {it.editavel && (
+              <a href={`${import.meta.env.BASE_URL}${it.editavel}`} download title="Baixar o PowerPoint editável (.pptx)" className="flex items-center gap-1.5 px-3 rounded-lg border bg-slate-800 border-slate-700 hover:border-slate-500 text-xs font-semibold text-sky-300 shrink-0">
+                <FileDown size={14} /> .pptx
+              </a>
+            )}
+          </div>
         ))}
       </div>
     </div>
@@ -1380,6 +1387,7 @@ const VERSOES = [
     "Gestão → Encerrar projeto: nova \"Conferência dos documentos\". O sistema gera o Word e o PowerPoint de cada equipe em segundo plano, lê os números que saíram nos arquivos e compara com os da tela (investimento, faturamento, resultado, ponto de equilíbrio, rentabilidade, retorno, mês do caixa positivo, saldo, VPL, TIR, parecer e capacidade). Cada divergência diz a origem: \"Dado da equipe\" (com o botão Corrigir, que leva ao Ajuste geral) ou \"Falha do sistema\" (com Copiar resumo). Depois de corrigir, \"Conferir de novo\".",
     "Conferência dos documentos com sugestões automáticas: quando a divergência é de dado da equipe (resultado negativo, sem retorno, caixa fraco no 1º ano), o sistema simula as opções da Viabilidade do Ajuste geral — combinação equilibrada, só preços, só custos — e mostra, para cada uma, o resultado, o retorno, o mês do caixa positivo e o parecer antes e depois. Nada é gravado: o botão \"Levar ao Ajuste geral\" abre a equipe já selecionada e a opção marcada, com antes × depois, confirmação e Desfazer; depois é só clicar em \"Conferir de novo\". O botão \"Corrigir\" também passa a abrir o Ajuste geral já na equipe certa. Novo botão \"Aplicar esta sugestão\": abre uma janela com os percentuais editáveis (dentro dos limites) e o antes × depois; ao confirmar (com Backup geral marcado e motivo), o sistema bloqueia a equipe se preciso, aguarda os 20 segundos, grava só os módulos alterados, registra no Relatório de ajustes (com Desfazer), avisa a equipe no Feedback, libera de novo (se foi ele que bloqueou) e roda a Conferência de novo.",
     "Canais de venda (opcional): na Capacidade, passo 2, a equipe informa quanto do faturamento é vendido online. A loja passa a atender só a parte presencial, entra o recurso \"expedição de pedidos online\", e as contas passam a considerar o custo do online (plataforma e frete, em % das vendas online) e o prazo de recebimento do online (média ponderada com a loja, no capital de giro). Word, PowerPoint (slide 8b), DRE, fluxo, VPL/TIR, preço mínimo e Conferência usam os novos valores. Com 0% (padrão) nada muda: equipes e dados antigos continuam iguais.",
+    "Guia Pedagógico: novo item \"8. Indicadores de Viabilidade (Módulos 12 e 13)\", com o PDF para abrir/imprimir e o botão .pptx para baixar o PowerPoint editável. Explica, na ordem do relatório em Word, o que cada indicador significa e para que serve (margem, resultado, ponto de equilíbrio, lucratividade, rentabilidade e prazo de retorno), com exemplo, sinais de alerta e notas do professor.",
     "Retorno do investimento: o PPF mostra sempre em quanto tempo o negócio se paga; os 5 anos são só a referência de viabilidade. Retorno acima de 5 anos aparece como \"fora da meta\" (informativo): não reprova a sugestão da Conferência, não penaliza a nota do Realismo e o plano de viabilidade do Ajuste geral passa a ser opcional. Continuam como problema o prejuízo e o investimento que não se paga.",
     "Ajuste geral › Ajustar tudo e estabilizar: o botão \"Simular ajuste completo (estabilizar)\" aplica, em rodadas e sempre na mesma ordem, só as correções de realismo e coerência (mercadoria no Módulo 1, giro, impostos, coerência, custos, pró-labore, financiamento, preço mínimo, arranque e realismo de mercado) até nada mais mudar, evitando o ciclo de \"corrige um e aparece outro\". Nada é gravado na simulação; o professor vê as rodadas, pode desmarcar passos, compara hoje × depois e aplica tudo como UM ajuste, com Desfazer. O sistema não força preços nem quantidades para chegar a 5 anos: o retorno do investimento é mostrado como ficou, dentro ou fora da meta (a aproximação da meta é um passo opcional, desligado por padrão). Há trava de segurança (não estabilizou, faturamento +30%) e alertas de capacidade.",
     "Ajuste geral › Coerência entre módulos: quando a Capacidade informa um recurso que não existe no Módulo 1 (ex.: caixa/ponto de pagamento em empresa só da proprietária), o professor pode marcar \"Não se aplica a esta empresa\". Ao aplicar, a quantidade do recurso na Capacidade passa a 0, nada é lançado no Módulo 1 e o ajuste fica registrado com Desfazer.",

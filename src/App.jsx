@@ -1,4 +1,4 @@
-// build: 20261114_11h30m Guia Pedagógico: slide 8 Indicadores de Viabilidade (PDF para imprimir + PPTX editável)
+// build: 20261119_19h05m Apresentação: títulos dos slides mais profissionais (padrão plano de negócio)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -855,7 +855,7 @@ const MANUAL_ALUNO_PASSOS = [
   { titulo: "Lancem a folha de pagamento (Módulo 9)", texto: "No Módulo 9, cadastrem as funções, a quantidade, o salário, VT/VR e os encargos (grupos A/B/C/D). O pró-labore dos sócios entra no mesmo módulo. Usem \"ver composição\" para conferir como o custo total de cada função foi calculado." },
   { titulo: "Salvem versões ao longo do projeto", texto: "Sempre que fizerem um ajuste relevante (novo preço, novo custo, nova equipe de trabalho), cliquem em \"Salvar versão\" na Análise do Negócio. Isso registra a evolução do projeto para vocês e para o professor.", imagem: "aluno_versions" },
   { titulo: "Leiam o feedback do professor", texto: "Verifiquem regularmente a aba \"Feedback do Professor\": além dos comentários organizados por módulo, é lá que aparece a nota final ponderada (média dos módulos + Módulo 13 + Cenários/Fluxo de Caixa + Apresentação) assim que todos os componentes forem lançados." },
-  { titulo: "Baixem a Apresentação e o Plano Financeiro (Word)", texto: "No menu do aluno, \"Baixar Apresentação (dados da equipe)\" gera um PowerPoint já preenchido com Visão Geral, DRE, Indicadores e Fluxo de Caixa até o retorno do investimento (a conclusão fica em branco para a equipe escrever). \"Baixar Plano Financeiro (Word)\" gera o documento com os 13 módulos, a Análise do Negócio, o Fluxo de Caixa (mensal no 1º ano e anual até o retorno do investimento) e os Cenários, com 15 gráficos, para copiar no Plano de Negócio. Os arquivos são gerados na hora, exigem internet no clique e avisam quando faltar algum dado. O link \"Modelo em branco\" continua disponível." },
+  { titulo: "Baixem a Apresentação e o Plano Financeiro (Word)", texto: "No menu do aluno, \"Baixar Apresentação (dados da equipe)\" gera um PowerPoint já preenchido com Panorama Financeiro, DRE, Indicadores e Fluxo de Caixa até o retorno do investimento (a conclusão fica em branco para a equipe escrever). \"Baixar Plano Financeiro (Word)\" gera o documento com os 13 módulos, a Análise do Negócio, o Fluxo de Caixa (mensal no 1º ano e anual até o retorno do investimento) e os Cenários, com 15 gráficos, para copiar no Plano de Negócio. Os arquivos são gerados na hora, exigem internet no clique e avisam quando faltar algum dado. O link \"Modelo em branco\" continua disponível." },
   { titulo: "Finalizem o projeto", texto: "O plano financeiro está concluído quando os 13 módulos estiverem preenchidos, enviados e corrigidos, o resultado operacional analisado e pelo menos duas versões salvas mostrando a evolução dos ajustes feitos pela equipe.", imagem: "aluno_finish" },
 ];
 
@@ -1389,6 +1389,7 @@ const VERSOES = [
     "Canais de venda (opcional): na Capacidade, passo 2, a equipe informa quanto do faturamento é vendido online. A loja passa a atender só a parte presencial, entra o recurso \"expedição de pedidos online\", e as contas passam a considerar o custo do online (plataforma e frete, em % das vendas online) e o prazo de recebimento do online (média ponderada com a loja, no capital de giro). Word, PowerPoint (slide 8b), DRE, fluxo, VPL/TIR, preço mínimo e Conferência usam os novos valores. Com 0% (padrão) nada muda: equipes e dados antigos continuam iguais.",
     "Guia Pedagógico: novo item \"8. Indicadores de Viabilidade (Módulos 12 e 13)\", com o PDF para abrir/imprimir e o botão .pptx para baixar o PowerPoint editável. Explica, na ordem do relatório em Word, o que cada indicador significa e para que serve (margem, resultado, ponto de equilíbrio, lucratividade, rentabilidade e prazo de retorno), com exemplo, sinais de alerta e notas do professor.",
     "Retorno do investimento: o PPF mostra sempre em quanto tempo o negócio se paga; os 5 anos são só a referência de viabilidade. Retorno acima de 5 anos aparece como \"fora da meta\" (informativo): não reprova a sugestão da Conferência, não penaliza a nota do Realismo e o plano de viabilidade do Ajuste geral passa a ser opcional. Continuam como problema o prejuízo e o investimento que não se paga.",
+    "Apresentação (PowerPoint): títulos dos slides padronizados com a linguagem de plano de negócio — Panorama Financeiro, Investimento Inicial e Fontes de Recursos, DRE, Margem de Contribuição por Produto, Indicadores de Viabilidade, Fluxo de Caixa Projetado, Análise de Cenários/VPL/TIR, Capacidade, Memória de Cálculo e Parecer e Recomendações. O conteúdo dos slides não mudou.",
     "Ajuste geral › Ajustar tudo e estabilizar: o botão \"Simular ajuste completo (estabilizar)\" aplica, em rodadas e sempre na mesma ordem, só as correções de realismo e coerência (mercadoria no Módulo 1, giro, impostos, coerência, custos, pró-labore, financiamento, preço mínimo, arranque e realismo de mercado) até nada mais mudar, evitando o ciclo de \"corrige um e aparece outro\". Nada é gravado na simulação; o professor vê as rodadas, pode desmarcar passos, compara hoje × depois e aplica tudo como UM ajuste, com Desfazer. O sistema não força preços nem quantidades para chegar a 5 anos: o retorno do investimento é mostrado como ficou, dentro ou fora da meta (a aproximação da meta é um passo opcional, desligado por padrão). Há trava de segurança (não estabilizou, faturamento +30%) e alertas de capacidade.",
     "Ajuste geral › Coerência entre módulos: quando a Capacidade informa um recurso que não existe no Módulo 1 (ex.: caixa/ponto de pagamento em empresa só da proprietária), o professor pode marcar \"Não se aplica a esta empresa\". Ao aplicar, a quantidade do recurso na Capacidade passa a 0, nada é lançado no Módulo 1 e o ajuste fica registrado com Desfazer.",
     "Ajuste geral › novo aviso \"Mercadoria lançada no Módulo 1\": o sistema reconhece itens que parecem estoque para revenda (blusas, calças, anéis…) lançados como investimento fixo, mostra o efeito (investimento, depreciação, resultado, retorno) e o professor escolhe, item a item, mover para o estoque inicial (Módulo 2) ou só remover. Uma dica compara o estoque do Módulo 2 com o valor das peças e a cobertura em dias e sugere a opção (sem marcar sozinha). Registro com Desfazer; nada é alterado sozinho.",
@@ -4737,7 +4738,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   c.addText(rodape, { x: 0.5, y: 7.08, w: 11.6, h: 0.3, fontFace: "Calibri", fontSize: 9, color: "64748B", margin: 0 });
 
   // 2 · Visão geral
-  const s2 = base("1 · Visão Geral", "Análise do Negócio — o panorama do negócio", 2, ["Quanto foi investido", "Quanto a empresa fatura por mês", "Qual o resultado operacional"]);
+  const s2 = base("1 · Panorama Financeiro do Negócio", "Faturamento, custos e resultado mensal", 2, ["Quanto foi investido", "Quanto a empresa fatura por mês", "Qual o resultado operacional"]);
   if (!temDados && !temInvest) aviso(s2, "Esta parte ainda não pode ser montada: preencham os módulos de investimento e de faturamento (Módulos 1 a 5) e baixem a apresentação de novo.");
   else {
     const w3 = (W - 0.3) / 3;
@@ -4754,7 +4755,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   }
 
   // 2b · Investimento e fontes de recursos
-  const sI = base("2 · Quanto Precisa e de Onde Vem", "Investimento inicial e fontes de recursos", 3, ["O valor total e o que ele compra", "Quanto é dos sócios e quanto é de terceiros", "Por que o capital de giro pesa no investimento"]);
+  const sI = base("2 · Investimento Inicial e Fontes de Recursos", "Estrutura de capital: recursos próprios e de terceiros", 3, ["O valor total e o que ele compra", "Quanto é dos sócios e quanto é de terceiros", "Por que o capital de giro pesa no investimento"]);
   if (!temInvest) aviso(sI, "Esta parte ainda não pode ser montada: preencham os Módulos 1 a 3 (investimentos) e baixem a apresentação de novo.");
   else {
     const pPro = Math.min(100, Math.max(0, Number(lanc?.m4?.pctProprio) || 0));
@@ -4771,7 +4772,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   }
 
   // 3 · DRE
-  const s3 = base("3 · Como Chegamos Até Aqui", "Demonstrativo de Resultados — o detalhamento", 4, ["Receita", "Custos variáveis", "Custos fixos", "Como esses números formam o resultado apresentado no slide anterior"]);
+  const s3 = base("3 · Demonstrativo de Resultados (DRE)", "Da receita ao resultado operacional", 4, ["Receita", "Custos variáveis", "Custos fixos", "Como esses números formam o resultado apresentado no slide anterior"]);
   if (!temDados) aviso(s3, "Esta parte ainda não pode ser montada: o faturamento (Módulo 5) ainda não foi preenchido.");
   else {
     const f = calc.faturamento;
@@ -4796,7 +4797,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   }
 
   // 3b · Produtos mais lucrativos
-  const sP = base("4 · O Que Sustenta o Resultado", "Produtos e serviços mais lucrativos — margem de contribuição", 5, ["Quais itens geram mais margem", "Se há dependência de poucos produtos", "Itens com margem baixa ou negativa"]);
+  const sP = base("4 · Margem de Contribuição por Produto", "Mix de produtos e dependência do resultado", 5, ["Quais itens geram mais margem", "Se há dependência de poucos produtos", "Itens com margem baixa ou negativa"]);
   const rk = calc.produtosRanking || [];
   if (!rk.length || calc.cmv <= 0) aviso(sP, "Esta parte ainda não pode ser montada: preencham o faturamento (Módulo 5) e os custos unitários (Módulo 8) e baixem a apresentação de novo.");
   else {
@@ -4813,7 +4814,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   }
 
   // 4 · Indicadores
-  const s4 = base("5 · O Negócio É Viável?", "Indicadores de Viabilidade — o veredito", 6, ["Ponto de Equilíbrio", "Lucratividade", "Rentabilidade", "Prazo de Retorno (Payback)"]);
+  const s4 = base("5 · Indicadores de Viabilidade", "Ponto de equilíbrio, lucratividade, rentabilidade e prazo de retorno (payback)", 6, ["Ponto de Equilíbrio", "Lucratividade", "Rentabilidade", "Prazo de Retorno (Payback)"]);
   if (!temDados || !temInvest) aviso(s4, "Esta parte ainda não pode ser montada: faltam investimento e faturamento (Módulos 1 a 5) para calcular os indicadores.");
   else {
     const cw = (W - 0.15) / 2, ch = 1.45;
@@ -4836,7 +4837,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   }
 
   // 5 · Fluxo de caixa
-  const s5 = base("6 · Qual a Trajetória", "Fluxo de Caixa Anual — a evolução no tempo", 7, ["Em qual mês (e ano) o caixa fica positivo", "Como o investimento se recupera ao longo do tempo"]);
+  const s5 = base("6 · Fluxo de Caixa Projetado", "Evolução anual e recuperação do investimento", 7, ["Em qual mês (e ano) o caixa fica positivo", "Como o investimento se recupera ao longo do tempo"]);
   if (!temDados || !temInvest) aviso(s5, "Esta parte ainda não pode ser montada: faltam investimento e faturamento (Módulos 1 a 5) para projetar o caixa.");
   else {
     const pos = fluxo.find((m) => m.mes > 0 && m.saldo >= 0);
@@ -4853,7 +4854,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   }
 
   // 5b · Cenários, VPL e TIR
-  const sN = base("7 · E Se Algo Mudar?", "Cenários, VPL e TIR — a análise de risco", 8, ["Resultado nos cenários da equipe", "VPL e TIR: o investimento supera o retorno mínimo?", "Preparar a resposta para: e se as vendas caírem?"]);
+  const sN = base("7 · Análise de Cenários, VPL e TIR", "Sensibilidade do resultado e retorno mínimo exigido (TMA)", 8, ["Resultado nos cenários da equipe", "VPL e TIR: o investimento supera o retorno mínimo?", "Preparar a resposta para: e se as vendas caírem?"]);
   if (!temDados || !temInvest) aviso(sN, "Esta parte ainda não pode ser montada: faltam investimento e faturamento (Módulos 1 a 5).");
   else {
     const tma = Number.isFinite(Number(tmaAnual)) && tmaAnual !== "" && tmaAnual != null ? Number(tmaAnual) : 12;
@@ -4878,7 +4879,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   }
 
   // 6 · Capacidade
-  const sC = base("8 · Dá Conta de Atender?", "Capacidade de produção e atendimento — o negócio comporta o plano?", 9, ["Qual é o gargalo da empresa", "Como a capacidade foi calculada, passo a passo", "O que a equipe fará se o pico não couber"]);
+  const sC = base("8 · Capacidade de Produção e Atendimento", "A estrutura comporta a demanda e o pico?", 9, ["Qual é o gargalo da empresa", "Como a capacidade foi calculada, passo a passo", "O que a equipe fará se o pico não couber"]);
   if (!capCalc) aviso(sC, "Esta parte ainda não pode ser montada: preencham a Capacidade da empresa (passos 1 a 3) na plataforma e baixem a apresentação de novo.");
   else {
     const gs = capCalc.grupos.filter((g) => g.cap != null);
@@ -4921,7 +4922,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   }
 
   // 7 · Como chegamos aos números (apoio à banca)
-  const sF = base("9 · Como Chegamos Aos Números", "As fórmulas por trás dos resultados — apoio para a defesa", 10, ["Cada fórmula com os números da própria empresa", "Perguntas que a banca pode fazer"]);
+  const sF = base("9 · Memória de Cálculo", "Fórmulas dos indicadores, como apoio à defesa", 10, ["Cada fórmula com os números da própria empresa", "Perguntas que a banca pode fazer"]);
   if (!temDados) aviso(sF, "Esta parte ainda não pode ser montada: o faturamento (Módulo 5) ainda não foi preenchido.");
   else {
     const hdF = (t, al) => ({ text: t, options: { bold: true, color: "FFFFFF", fill: { color: NAVY }, fontSize: 12, align: al } });
@@ -4949,7 +4950,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   }
 
   // 10 · Conclusão: resumo da "Conclusão analítica" do Word, para a equipe apresentar (pode ser editada no PowerPoint)
-  const s6 = base("10 · Conclusão da Equipe", "O que concluímos sobre a viabilidade do negócio", 11, null);
+  const s6 = base("10 · Parecer e Recomendações", "Síntese da viabilidade e próximos passos", 11, null);
   if (!temDados || !temInvest) aviso(s6, "[ Escrevam aqui, com as próprias palavras, a conclusão da equipe: o negócio é viável? Por quê? Qual o principal risco? O que vocês fariam diferente? ]");
   else {
     const C = conclusaoResumo({ equipe, calc, fluxo, fluxoL, capCalc, tmaAnual, pPro: Math.min(100, Math.max(0, Number(lanc?.m4?.pctProprio) || 0)) });
@@ -5454,7 +5455,7 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
       const tmaM = Math.pow(1 + tma / 100, 1 / 12) - 1;
       const vpl = calcularVPL(fluxoL, tmaM); const tirM = calcularTIRMensal(fluxoL); const tirA = tirM !== null ? (Math.pow(1 + tirM, 12) - 1) * 100 : null;
       filhos.push(h2("VPL e TIR (indicadores opcionais)"));
-      filhos.push(para(`Considerando a Taxa Mínima de Atratividade (TMA) de ${num(tma, 1)}% ao ano, o VPL do fluxo de ${horiz === "1 ano" ? "12 meses" : horiz} é de ${brl(vpl)}${vpl >= 0 ? ", ou seja, o negócio gera valor além do retorno mínimo exigido pelos sócios" : ", ou seja, nos ${horiz} projetados o negócio não gera valor suficiente para cobrir a TMA"}. ${tirA !== null ? `A TIR é de ${num(tirA, 1)}% ao ano.` : `Não há TIR calculável: o investimento não é recuperado dentro de ${horiz}.`}`));
+      filhos.push(para(`Considerando a Taxa Mínima de Atratividade (TMA) de ${num(tma, 1)}% ao ano, o VPL do fluxo de ${horiz === "1 ano" ? "12 meses" : horiz} é de ${brl(vpl)}${vpl >= 0 ? ", ou seja, o negócio gera valor além do retorno mínimo exigido pelos sócios" : `, ou seja, nos ${horiz} projetados o negócio não gera valor suficiente para cobrir a TMA`}. ${tirA !== null ? `A TIR é de ${num(tirA, 1)}% ao ano.` : `Não há TIR calculável: o investimento não é recuperado dentro de ${horiz}.`}`));
       filhos.push(tabela(["Indicador", "Resultado"], [["TMA (taxa mínima de atratividade, ao ano)", pc(tma, 1)], ["VPL (valor presente líquido)", brl(vpl)], ["TIR (taxa interna de retorno, ao ano)", tirA !== null ? pc(tirA, 1) : `Não recupera em ${horiz}`]], [3, 2], [1]));
       filhos.push(comoCalc([
         `TMA mensal = (1 + TMA anual)^(1/12) – 1 = (1 + ${num(tma, 1)}%)^(1/12) – 1 = ${num(tmaM * 100, 3)}% ao mês`,

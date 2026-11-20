@@ -1,4 +1,4 @@
-// build: 20261120_11h50m Ajuste geral: cartão Retorno do investimento usa a faixa de 5 a 10 anos
+// build: 20261120_12h10m Ajuste geral 3: análises e downloads da equipe para o professor (somente leitura)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1381,6 +1381,7 @@ function chamadoPassaFiltro(c, filtro) {
 // ============================================================================
 const VERSOES = [
   { versao: "3.8", data: "12/11/2026", itens: [
+    "Ajuste geral › 3. Ajuste manual: cada equipe ganhou a linha \"Análises da equipe (calculadas · somente leitura)\" com Análise da DRE, Análise de Indicadores, Análise do Negócio, Análise de Cenários e Fluxo de Caixa Anual (abrem em uma janela com os dados atuais da equipe, sem sair do Ajuste geral) e os botões Baixar Apresentação e Baixar Plano Financeiro (Word). O professor não precisa mais entrar em \"Ver como aluno\" a cada conferência. Nada é gravado.",
     "Ajuste geral › cartão \"Retorno do investimento\" alinhado à faixa de 5 a 10 anos: retorno dentro da faixa (ou mais rápido) aparece em verde, sem plano de alavancas; só acima de 10 anos continua o plano opcional. Nada é corrigido por causa do retorno.",
     "Indicadores › nova Margem de segurança = (faturamento anual − ponto de equilíbrio) ÷ faturamento anual: mostra quanto as vendas podem cair antes de dar prejuízo (abaixo de 10% estreita · 10 a 25% confortável · acima de 25% ampla; só informativa, sem nota). Aparece na Análise de Indicadores (com o faturamento anual planejado e a frase \"Como ler\"), no Word, no slide 3 do PowerPoint e na Conferência dos documentos, para todas as equipes. Um ponto de equilíbrio alto não é cobrado: ele acompanha o faturamento.",
     "Ajuste geral › nova etapa \"Calibragem pela meta de retorno (5 a 10 anos)\": mostra, antes e depois, o resultado mensal, o prazo de retorno, o mês em que o caixa fica positivo e quantos dos 6 primeiros meses ficam negativos. Se o retorno estiver fora de 5 a 10 anos, propõe o preço do produto principal (Módulo 5); sempre propõe a curva de arranque em 12 passos (1º semestre negativo e evolução gradual) e a sazonalidade suave. Não mexe nos Módulos 1, 2, 3, 4 e 11 e só vale se o professor aplicar (registrado, com Desfazer; equipe bloqueada).",
@@ -5748,7 +5749,7 @@ function PainelExemploSegmento({ segmento, exemplo }) {
   );
 }
 
-function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades, onAtualizarEquipe, somenteLeitura }) {
+function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades, onAtualizarEquipe, somenteLeitura, abaInicial, acaoInicial, onFechar }) {
   const [dados, setDadosReal] = useSharedObject(equipeKey, { lancamentos: defaultLancamentos(), historico: [], comentarios: [] });
   // Modo Coordenação (somente leitura): TODA gravação em dados da equipe é descartada aqui, na origem.
   // Bloqueio de avaliação (Gestão → Ajuste geral): enquanto o professor avalia/ajusta, a equipe só visualiza.
@@ -5760,11 +5761,18 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   const encerrado = !!(encEntrada && encEntrada.ativo) && !somenteLeitura && equipe?.teste !== true;
   const setDados = (somenteLeitura || bloqueadoAval || encerrado) ? () => {} : setDadosReal;
   const [alertasTurma] = useSharedObject(turmaId && equipe?.id && equipe?.teste !== true ? chaveAlertas(turmaId) : null, null);
-  const [aba, setAba] = useState("inicio");
+  const [aba, setAba] = useState(abaInicial || "inicio");
+  const acaoInicialFeita = useRef(false);
   const [menuAberto, setMenuAberto] = useState(false);
   const [gerandoPpt, setGerandoPpt] = useState(false);
   const [gerandoDoc, setGerandoDoc] = useState(false);
   const [erroPpt, setErroPpt] = useState("");
+  // Painel do professor (Ajuste geral › 3): gera o PowerPoint/Word da equipe assim que os dados carregam e fecha a janela.
+  useEffect(() => {
+    if (!acaoInicial || acaoInicialFeita.current || dados === undefined) return;
+    acaoInicialFeita.current = true;
+    (async () => { try { await (acaoInicial === "ppt" ? acaoBaixarPpt() : acaoBaixarDoc()); } catch {} if (onFechar) onFechar(); })();
+  });
   const [confirmSairAberto, setConfirmSairAberto] = useState(false);
   const [decisaoGestorTomada, setDecisaoGestorTomada] = useState(!!somenteLeitura);
   const [pdfAberto, setPdfAberto] = useState(null);
@@ -10664,6 +10672,7 @@ function SaudeDadosCard({ turma, equipes }) {
 }
 
 function AjusteGeralTurma({ turma, equipes, professorNome }) {
+  const [verAnalise, setVerAnalise] = useState(null); // { equipeId, nome, aba | acao, rot } — análises e downloads da equipe, só leitura
   const [aval, setAval] = useState(null);
   const [dadosMap, setDadosMap] = useState({});
   const [hist, setHist] = useState([]);
@@ -11633,11 +11642,37 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
                   {MODS_LANC.map((m) => <button key={m.id} disabled={ocupado} onClick={() => abrirEditor(e.id, m.id)} title={`Módulo ${m.n} · ${m.nome}`} className="text-xs border border-slate-600 hover:border-amber-500 text-slate-200 px-2.5 py-1.5 rounded-md text-left"><b className="text-amber-400">M{m.n}</b> <span className="text-slate-300">· {m.nome}</span></button>)}
                 </div>
+                <div className="mt-2 pt-2 border-t border-dashed border-slate-700">
+                  <div className="text-[10.5px] font-bold uppercase tracking-wide text-slate-500 mb-1">Análises da equipe (calculadas · somente leitura)</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
+                    {[["m12", "Análise da DRE"], ["m13", "Análise de Indicadores"], ["analise", "Análise do Negócio"], ["cenarios", "Análise de Cenários"], ["fluxocaixa", "Fluxo de Caixa Anual"]].map(([aba, rot]) => <button key={aba} disabled={ocupado} onClick={() => setVerAnalise({ equipeId: e.id, nome: e.nomeNegocio, aba, rot })} className="text-xs border border-slate-600 hover:border-sky-500 text-slate-200 px-2.5 py-1.5 rounded-md text-left">📊 {rot}</button>)}
+                    {[["ppt", "Baixar Apresentação"], ["doc", "Baixar Plano Financeiro (Word)"]].map(([acao, rot]) => <button key={acao} disabled={ocupado || !!verAnalise} onClick={() => setVerAnalise({ equipeId: e.id, nome: e.nomeNegocio, acao, rot })} className="text-xs border border-emerald-700/70 hover:border-emerald-400 text-emerald-200 px-2.5 py-1.5 rounded-md text-left">⬇ {rot}</button>)}
+                  </div>
+</div>
               </div>
             ))}
           </div>
         )}
       </Card>
+
+      {verAnalise && (
+        <div className={verAnalise.acao ? "fixed bottom-4 right-4 z-[80]" : "fixed inset-0 z-[80] bg-slate-950 overflow-auto"}>
+          {verAnalise.acao
+            ? <div className="bg-slate-800 border border-emerald-600 text-emerald-200 text-sm rounded-lg px-4 py-3 shadow-xl">⏳ Gerando «{verAnalise.rot}» de {verAnalise.nome}…</div>
+            : <div className="sticky top-0 z-[90] h-10 flex items-center justify-between gap-3 px-4 bg-sky-950 border-b border-sky-700/70 text-sky-200 text-xs font-semibold">
+                <span className="truncate">👁 {verAnalise.rot} — SOMENTE LEITURA · {verAnalise.nome}</span>
+                <button onClick={() => setVerAnalise(null)} className="shrink-0 bg-sky-400 text-slate-900 font-bold rounded-md px-3 py-1 hover:bg-sky-300">Fechar</button>
+              </div>}
+          <div className={verAnalise.acao ? "hidden" : ""}>
+            <AlunoWorkspaceCarregado
+              userSessao={{ uid: turma.professorUid, nome: professorNome || "Professor", email: "", papel: "aluno" }}
+              turmaId={turma.id} equipeId={verAnalise.equipeId} somenteLeitura abaInicial={verAnalise.aba} acaoInicial={verAnalise.acao}
+              onFechar={() => setVerAnalise(null)} onSair={() => setVerAnalise(null)} onTrocarEmpresa={() => setVerAnalise(null)}
+              professorUid={turma.professorUid} professorNome={professorNome} turmaNome={turma.nome} ultimaVersaoVista={APP_VERSION} onVerNovidades={undefined}
+            />
+          </div>
+        </div>
+      )}
 
       <Card className="p-4">
         <button onClick={() => setHistAberto((v) => !v)} aria-expanded={histAberto} className="w-full text-left text-sm font-bold text-slate-100 flex items-center gap-2"><History size={15} className="text-amber-400" /> 4. Ajustes feitos (com desfazer) <span className="text-[11px] font-normal text-slate-500">({hist.length}) · {histAberto ? "clique para recolher" : "clique para abrir"}</span><ChevronDown size={16} className={`ml-auto text-slate-400 transition-transform ${histAberto ? "rotate-180" : ""}`} /></button>
@@ -20164,7 +20199,7 @@ function EscolherEmpresa({ perfil, turmaId, turmaNome, onSair, onEscolhida }) {
   );
 }
 
-function AlunoWorkspaceCarregado({ userSessao, turmaId, equipeId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades, somenteLeitura }) {
+function AlunoWorkspaceCarregado({ userSessao, turmaId, equipeId, onSair, onTrocarEmpresa, professorUid, professorNome, turmaNome, ultimaVersaoVista, onVerNovidades, somenteLeitura, abaInicial, acaoInicial, onFechar }) {
   // Trocado de useEquipeSalva (leitura única) para useSharedList: a equipe
   // precisa de um jeito de gravar sua própria escolha de segmento de volta
   // na mesma lista `equipes_{turmaId}` que a tela da turma usa — sem isso,
@@ -20176,7 +20211,7 @@ function AlunoWorkspaceCarregado({ userSessao, turmaId, equipeId, onSair, onTroc
   const atualizarEquipe = async (patch) => {
     await setEquipes(equipes.map((e) => (e.id === equipeId ? { ...e, ...patch } : e)));
   };
-  return <AlunoWorkspace user={userSessao} equipe={equipe} equipeKey={`dados_equipe_${equipe.id}`} turmaId={turmaId} onSair={onSair} onTrocarEmpresa={() => onTrocarEmpresa(equipe)} professorUid={professorUid} professorNome={professorNome} turmaNome={turmaNome} ultimaVersaoVista={ultimaVersaoVista} onVerNovidades={onVerNovidades} onAtualizarEquipe={somenteLeitura ? undefined : atualizarEquipe} somenteLeitura={!!somenteLeitura} />;
+  return <AlunoWorkspace user={userSessao} equipe={equipe} equipeKey={`dados_equipe_${equipe.id}`} turmaId={turmaId} onSair={onSair} onTrocarEmpresa={() => onTrocarEmpresa(equipe)} professorUid={professorUid} professorNome={professorNome} turmaNome={turmaNome} ultimaVersaoVista={ultimaVersaoVista} onVerNovidades={onVerNovidades} onAtualizarEquipe={somenteLeitura ? undefined : atualizarEquipe} somenteLeitura={!!somenteLeitura} abaInicial={abaInicial} acaoInicial={acaoInicial} onFechar={onFechar} />;
 }
 
 function AlunoRoteador({ perfil, onSair, onVirarProfessor }) {

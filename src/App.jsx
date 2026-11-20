@@ -1,4 +1,4 @@
-// build: 20261120_00h45m Apresentação (PowerPoint) enxuta: capa + 5 slides (até 5 minutos), com tempo sugerido e roteiro nas Notas do orador
+// build: 20261120_10h50m Módulo 9: coluna opcional "Turnos" (Comercial, Manhã, Tarde, Noite) + sugestão de pessoas na Capacidade
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1381,6 +1381,7 @@ function chamadoPassaFiltro(c, filtro) {
 // ============================================================================
 const VERSOES = [
   { versao: "3.8", data: "12/11/2026", itens: [
+    "Módulo 9 com a coluna opcional \"Turnos\": marque Comercial (horário comercial) ou combine Manhã, Tarde e Noite. O Nº passa a ser de pessoas por turno e o total de pessoas (Nº × turnos) entra no custo. Sem marcar nada, vale 1 turno, como antes. Na Capacidade, o aviso de mais de 8 horas mostra quantas pessoas o Módulo 9 indica e tem o botão \"Usar este número\".",
     "Apresentação (PowerPoint) mais enxuta: agora são a capa e 5 slides, para apresentar em até 5 minutos — 1 Investimento Inicial e Fontes de Recursos; 2 Resultado Mensal (da receita ao lucro, com os 3 principais produtos); 3 Viabilidade (equilíbrio, rentabilidade, retorno, VPL, TIR e parecer); 4 Caixa, Cenários e Capacidade; 5 Parecer e Recomendações. Cada slide mostra o tempo sugerido e traz, nas Notas do orador, o roteiro com os números da equipe, as fórmulas e as perguntas que a banca pode fazer. Quem tem vendas online ganha um slide extra \"Vendas por Canal\". O Word continua completo.",
     "Fluxo de Caixa até o retorno do investimento: em vez de parar no mês 12, a projeção segue até o ano em que o caixa fica positivo (até 10 anos). Há duas visões: anual (receita, custos, resultado e saldo de cada ano) e mensal (com os anos que abrem e fecham, até o mês do retorno). Se o negócio não se paga, mostra 10 anos com aviso.",
     "Fim da inconsistência entre telas: o Fluxo, o VPL e a TIR passam a valer para todo o período projetado, então um negócio que volta em 3 ou 8 anos não aparece mais como \"não recupera em 12 meses\". O crescimento mensal e o arranque valem só no 1º ano; depois o resultado se mantém no nível do mês 12 e a sazonalidade se repete.",
@@ -3282,6 +3283,11 @@ function totalEncargosGrupo(regime) {
 // (vt, vr, prolabore) são opcionais: vazios = 0, e o total fica idêntico ao
 // de antes da folha detalhada (Nº × salário × (1 + encargos)). Mesma função
 // usada por calcular(), pela tela do Módulo 9 e pelos relatórios.
+// Turnos da função (opcional): "Comercial" (horário comercial) é alternativa única; Manhã, Tarde e Noite podem ser combinados. Em branco = 1 turno.
+const TURNOS_M9 = [["comercial", "Comercial", "horário comercial"], ["manha", "Manhã", "manhã"], ["tarde", "Tarde", "tarde"], ["noite", "Noite", "noite"]];
+const m9TurnosSel = (it) => (Array.isArray(it?.turnosSel) ? it.turnosSel.filter((k) => TURNOS_M9.some((t) => t[0] === k)) : []);
+const m9NTurnos = (it) => Math.max(1, m9TurnosSel(it).length);
+const m9TxtTurnos = (it) => m9TurnosSel(it).map((k) => TURNOS_M9.find((t) => t[0] === k)[2]).join(" e ");
 function detalheMaoDeObra(m9) {
   const base = m9 || {};
   const modo = base.modoEncargos || "grupos";
@@ -3290,7 +3296,9 @@ function detalheMaoDeObra(m9) {
   const info = ENCARGOS_GRUPOS[regime] || ENCARGOS_GRUPOS.simples;
   const inssPatronal = (info.grupoA.find((i) => i.nome.startsWith("Previdência Social")) || { pct: 0 }).pct;
   const linhas = (base.itens || []).map((it) => {
-    const qtd = Number(it.qtd) || 0;
+    const porTurno = Number(it.qtd) || 0;
+    const turnos = m9NTurnos(it); const turnosTxt = m9TxtTurnos(it); // opcional: em branco = 1 turno (como antes)
+    const qtd = porTurno * turnos; // total de pessoas (todos os turnos): é ele que vai para o custo e para os demais módulos
     const salario = Number(it.salario) || 0;
     const pct = modo === "grupos" ? pctGrupos : (Number(it.pctEncargos) || 0);
     const vt = Number(it.vt) || 0;
@@ -3299,7 +3307,7 @@ function detalheMaoDeObra(m9) {
     const encargos = salarioTotal * pct / 100;
     const beneficios = qtd * (vt + vr);
     const total = qtd * salario * (1 + pct / 100) + beneficios;
-    return { id: it.id, funcao: it.funcao, qtd, salario, pct, vt, vr, salarioTotal, encargos, beneficios, total };
+    return { id: it.id, funcao: it.funcao, qtd, porTurno, turnos, turnosTxt, salario, pct, vt, vr, salarioTotal, encargos, beneficios, total };
   });
   const prolabore = (base.prolabore || []).map((it) => {
     const qtd = Number(it.qtd) || 0;
@@ -3392,7 +3400,9 @@ function M9Form({ data, update, abrirTudo }) {
           <thead>
             <tr className="text-left text-xs uppercase text-slate-400 border-b border-slate-700">
               <th className="py-2 pr-2">Função</th>
-              <th className="py-2 pr-2 w-20">Nº</th>
+              <th className="py-2 pr-2 w-20" title="Pessoas em cada turno. Sem turnos, é o total de pessoas da função.">Nº por turno</th>
+              <th className="py-2 pr-2 w-44" title="Opcional. Em que turnos a função trabalha (em branco = 1 turno). Total de pessoas = Nº por turno × turnos marcados.">Turnos <span className="text-[9px] font-bold bg-amber-500 text-slate-900 rounded px-1 align-middle">NOVO</span></th>
+              <th className="py-2 pr-2 w-16" title="Nº por turno × Turnos">Pessoas</th>
               <th className="py-2 pr-2 w-28">Salário (R$)</th>
               <th className="py-2 pr-2 w-28" title="Opcional — por pessoa, por mês">Vale-transp. (R$)</th>
               <th className="py-2 pr-2 w-28" title="Opcional — por pessoa, por mês">Vale-refeição (R$)</th>
@@ -3416,6 +3426,8 @@ function M9Form({ data, update, abrirTudo }) {
                       </button>
                     </td>
                     <td className="py-1.5 pr-2 align-top"><NumInput value={it.qtd} onChange={(v) => setCampo(it.id, "qtd", v)} /></td>
+                    <td className="py-1.5 pr-2 align-top"><div className="flex flex-wrap gap-1 pt-1">{TURNOS_M9.map(([k, rot, ttl]) => { const sel = m9TurnosSel(it).includes(k); return <button key={k} type="button" title={k === "comercial" ? "Horário comercial: um único turno (alternativa a Manhã/Tarde/Noite)" : `Turno da ${ttl}`} onClick={() => { const at = m9TurnosSel(it); const novo = sel ? at.filter((x) => x !== k) : k === "comercial" ? ["comercial"] : [...at.filter((x) => x !== "comercial"), k]; setCampo(it.id, "turnosSel", novo); }} className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold ${sel ? "bg-amber-500 text-slate-900 border-amber-500" : "border-slate-600 text-slate-400 hover:border-slate-400"}`}>{rot}</button>; })}</div></td>
+                    <td className={`py-1.5 pr-2 align-top font-semibold ${r.turnos > 1 ? "text-amber-300" : "text-slate-300"}`}><span className="block pt-2">{fmtNum(r.qtd, 0)}</span></td>
                     <td className="py-1.5 pr-2 align-top"><NumInput value={it.salario} onChange={(v) => setCampo(it.id, "salario", v)} /></td>
                     <td className="py-1.5 pr-2 align-top"><NumInput value={it.vt} onChange={(v) => setCampo(it.id, "vt", v)} /></td>
                     <td className="py-1.5 pr-2 align-top"><NumInput value={it.vr} onChange={(v) => setCampo(it.id, "vr", v)} /></td>
@@ -3429,7 +3441,7 @@ function M9Form({ data, update, abrirTudo }) {
                   </tr>
                   {aberta && (
                     <tr className="border-b border-slate-800">
-                      <td colSpan={8} className="pb-3">
+                      <td colSpan={10} className="pb-3">
                         <div className="bg-slate-900 border border-slate-700 rounded-md p-3 text-xs">
                           <div className="font-bold text-slate-200 mb-2">{it.funcao || "Função"} — custo de 1 pessoa para a empresa</div>
                           <table className="w-full max-w-lg">
@@ -3456,7 +3468,7 @@ function M9Form({ data, update, abrirTudo }) {
         </table>
       </div>
       <AddBtn onClick={() => setItens([...itens, { id: uid(), funcao: "", qtd: 1, salario: 0, pctEncargos: 30 }])}>Adicionar função</AddBtn>
-      <p className="text-[11px] text-slate-500 mt-1">Vale-transporte e vale-refeição são opcionais (valor mensal por pessoa). Em branco, não entram no custo.</p>
+      <p className="text-[11px] text-slate-500 mt-1">Vale-transporte e vale-refeição são opcionais (valor mensal por pessoa). Em branco, não entram no custo. <b>Turnos</b> (opcional): marque <b>Comercial</b> (horário comercial) ou combine <b>Manhã, Tarde e Noite</b>. O Nº passa a ser de pessoas <b>por turno</b> e o total de pessoas (Nº × turnos marcados) é o que entra no custo. Sem marcar nada = 1 turno.</p>
 
       <div className="mt-6">
         <div className="text-sm font-bold text-slate-200 mb-1">Pró-labore dos sócios</div>
@@ -12643,7 +12655,7 @@ const CAP_SUG_RX = {
 };
 function capSugModulos(lanc) {
   const m1 = (lanc?.m1?.itens || []).map((x) => ({ n: String(x?.desc || ""), q: Number(x?.qtd) || 0 }));
-  const m9 = (lanc?.m9?.itens || []).map((x) => ({ n: String(x?.funcao || ""), q: Number(x?.qtd) || 0 }));
+  const m9 = (lanc?.m9?.itens || []).map((x) => ({ n: String(x?.funcao || ""), q: (Number(x?.qtd) || 0) * m9NTurnos(x) }));
   const socios = (lanc?.m9?.prolabore || []).reduce((a, x) => a + (Number(x?.qtd) || 1), 0);
   const out = {};
   Object.entries(CAP_SUG_RX).forEach(([id, spec]) => {
@@ -12985,7 +12997,7 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulad
                             <div key={t} className="bg-slate-950 border border-slate-700 rounded-md p-2"><div className="text-lg font-bold text-emerald-300">{v}</div><div className="text-[10px] text-slate-400">{t}</div></div>
                           ))}
                         </div>
-                        {local > 8 && <div className="mt-2 text-xs rounded-md border border-amber-800/60 bg-amber-950/30 text-amber-200 p-2">⚠ Com {fmtNum(local, 1)} h no local e jornada de cerca de 8 h por pessoa, a empresa precisa de <b>mais de um turno</b>: lancem no Módulo 9 todas as pessoas de cada turno e informem em “Pessoas que produzem/atendem” a soma do que trabalha em um dia.</div>}
+                        {local > 8 && <div className="mt-2 text-xs rounded-md border border-amber-800/60 bg-amber-950/30 text-amber-200 p-2">⚠ Com {fmtNum(local, 1)} h no local e jornada de cerca de 8 h por pessoa, a empresa precisa de <b>mais de um turno</b>: no <b>Módulo 9</b>, marquem a coluna <b>Turnos</b> de cada função (ex.: 2 padeiros por turno × manhã e tarde = 4 pessoas) e, na Capacidade, informem em “Pessoas que produzem/atendem” a <b>soma de pessoas que trabalham em um dia</b>, contando todos os turnos.{sugM.__pessoas && <> O Módulo 9 indica <b>{sugM.__pessoas.qtd} pessoa(s) na produção</b> ({sugM.__pessoas.fonte.split(' (')[0]}). <button type="button" onClick={() => set({ pessoasTrab: sugM.__pessoas.qtd })} className="underline text-amber-100 font-semibold">Usar este número</button></>}</div>}
                         <button className="mt-2 text-[11px] underline text-slate-400" onClick={() => set({ funcionamento: { ...(cap.funcionamento || {}), dia: undefined } })}>Voltar ao modo manual (digitar horas e eficiência)</button>
                       </>
                     ) : <div className="text-[11px] text-slate-500 mt-1">Se preferir, ignore este quadro e digite direto as horas e a eficiência na tabela abaixo (modo manual).</div>}
@@ -16682,7 +16694,7 @@ function telaMercado(a, ctx) {
     return tabela("Capacidade › " + (/passo 3/.test(o) ? "Passo 3 · Produção" : "Passo 2 · Funcionamento e atendimento"), PASSOS, /passo 3/.test(o) ? 2 : 1, ["Recurso", "Quantidade", "Tempo (min)"], rec.map(([n, v]) => ({ c: [n, String(v.qtd), nz(v.duracao)], h: true })), "① conferir quantidade e tempo de cada recurso");
   }
   if (/^Módulo 9/.test(o)) {
-    const rows = [...m9.linhas.map((r) => ({ c: [r.funcao || "—", String(r.qtd), R(r.total)], h: /refor[cç]o de equipe/i.test(r.funcao || "") })), ...m9.prolabore.map((r) => ({ c: [(r.funcao || "Sócio") + " (pró-labore)", String(r.qtd), R(r.total)], h: !m9.linhas.some((x) => /refor[cç]o/i.test(x.funcao || "")) }))];
+    const rows = [...m9.linhas.map((r) => ({ c: [(r.funcao || "—") + (r.turnos > 1 ? ` (${fmtNum(r.porTurno, 0)} por turno × ${r.turnos} turnos: ${r.turnosTxt})` : ""), String(r.qtd), R(r.total)], h: /refor[cç]o de equipe/i.test(r.funcao || "") })), ...m9.prolabore.map((r) => ({ c: [(r.funcao || "Sócio") + " (pró-labore)", String(r.qtd), R(r.total)], h: !m9.linhas.some((x) => /refor[cç]o/i.test(x.funcao || "")) }))];
     return tabela("Módulo 9 · Mão de Obra", ["Funcionários", "Pró-labore"], 0, ["Função", "Qtd", "Custo/mês"], rows, rows.some((r) => r.h && /refor/i.test(r.c[0])) ? "① trocar pela função real ou clicar na lixeira" : "① conferir o valor retirado pelos sócios");
   }
   if (/^Módulo 1 e Módulo 10 → Módulo 2/.test(o)) return tabela("Módulo 1 · Investimentos Fixos", [], 0, ["Descrição", "Qtd", "Valor un."], (l.m1.itens || []).map((it) => ({ c: [it.desc || "—", String(Number(it.qtd) || 0), R(it.valorUnit)], h: acha(it.desc) })), "① excluir estas linhas · ② lançar o valor no Módulo 2 › Estoque inicial");
@@ -17154,7 +17166,7 @@ function gerarCalculoCapacidade(item) {
     if (c.usoPico != null && c.usoPico > 1) out.caber.push({ g: "Horas de trabalho", a: `Precisam de ${fmtNum(out.horas.precisa, 0)} pessoa(s) (${fmtNum(c.horas * pico, 0)} h ÷ ${fmtNum(horasEf, 1)} h por pessoa); hoje a Capacidade usa ${fmtNum(c.pessoas, 0)}.${horasDia > 8 ? ` Com jornada de 8 h por pessoa (${fmtNum(porPes8, 1)} h/mês) seriam ${fmtNum(out.horas.pessoas8, 0)} pessoa(s).` : ""} Lancem no Módulo 9.`, b: "Ou reduzir as quantidades do Módulo 5 / o tempo de cada item, se estiver acima do real." });
   } else if (!c.ativo) out.conferir.push("Os minutos de cada produto/serviço não foram informados: as horas de trabalho não são conferidas.");
   else out.conferir.push("O número de pessoas que produzem/atendem não foi informado: as horas de trabalho não são conferidas.");
-  if (horasDia > 8) out.conferir.push(`O funcionamento é de ${fmtNum(horasDia, 0)} h por dia, mas cada pessoa trabalha cerca de 8 h. Se há mais de um turno, as pessoas da Capacidade devem ser contadas por turno e todas lançadas no Módulo 9.`);
+  if (horasDia > 8) out.conferir.push(`O funcionamento é de ${fmtNum(horasDia, 0)} h por dia, mas cada pessoa trabalha cerca de 8 h. Se há mais de um turno, marcar a coluna Turnos no Módulo 9 e informar na Capacidade a soma de pessoas que trabalham em um dia.`);
   if (c.pessoas > 0 && c.pessoas !== nFunc + nSoc) out.conferir.push(`A Capacidade usa ${fmtNum(c.pessoas, 0)} pessoa(s); o Módulo 9 tem ${fmtNum(nFunc, 0)} funcionário(s) + ${fmtNum(nSoc, 0)} sócio(s). Dizer quem produz/atende e deixar os dois iguais.`);
   if (A.durMedia && capTipoSeg(equipe.segmento) === "servico") (A.recA || []).forEach((r) => { const d = capNum((cap.recursos || {})[r.id]?.duracao); if (r.tipo === "servico" && d > 0 && Math.abs(d - A.durMedia) / A.durMedia >= 0.1) out.conferir.push(`O tempo do recurso "${r.nome}" (${fmtNum(d, 0)} min) é diferente da média dos minutos por serviço informados (${fmtNum(A.durMedia, 0)} min). Usar o mesmo tempo nos dois lugares.`); });
   if (!out.func.picoInformado) out.conferir.push("O fator de pico não foi informado (a conta usa 1,0). Informar quanto a movimentação sobe nos melhores dias.");

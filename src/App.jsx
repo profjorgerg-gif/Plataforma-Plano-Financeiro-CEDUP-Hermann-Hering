@@ -1,4 +1,4 @@
-// build: 20261119_23h55m Ajuste geral: ficha técnica (M6) corrigida e completa + M8 acompanha a ficha (professor confere e aplica)
+// build: 20261120_00h20m Capacidade: "Montar o dia" (horas de produção × horas de atendimento) + ficha técnica no Ajuste geral
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1390,6 +1390,7 @@ const VERSOES = [
     "Guia Pedagógico: novo item \"8. Indicadores de Viabilidade (Módulos 12 e 13)\", com o PDF para abrir/imprimir e o botão .pptx para baixar o PowerPoint editável. Explica, na ordem do relatório em Word, o que cada indicador significa e para que serve (margem, resultado, ponto de equilíbrio, lucratividade, rentabilidade e prazo de retorno), com exemplo, sinais de alerta e notas do professor.",
     "Retorno do investimento: o PPF mostra sempre em quanto tempo o negócio se paga; os 5 anos são só a referência de viabilidade. Retorno acima de 5 anos aparece como \"fora da meta\" (informativo): não reprova a sugestão da Conferência, não penaliza a nota do Realismo e o plano de viabilidade do Ajuste geral passa a ser opcional. Continuam como problema o prejuízo e o investimento que não se paga.",
     "Ajuste geral — Ficha técnica (Módulo 6): nova proposta automática, que o professor confere e aplica (com registro e Desfazer). Corrige unidade/dose/preço fora do padrão (ex.: 0,5 g a R$ 6,44 por grama; café a 45 g por dose), troca o insumo genérico \"produto\" pelos ingredientes e acrescenta os que faltam a partir de receitas-padrão (preço da própria equipe quando plausível), e o Módulo 8 acompanha o custo da ficha completa. O efeito no resultado e no retorno aparece antes de aplicar. Só vale para produtos cujos insumos a receita-padrão conhece; a equipe que já detalhou a receita não é alterada.",
+    "Capacidade › Passo 2: nova opção \"Montar o dia\" (opcional), com uma versão para cada tipo de negócio (produzem, serviços, revenda). A equipe informa as horas de preparo antes de abrir, de loja aberta, de limpeza/fechamento e de intervalos; o sistema soma as horas no local, calcula a eficiência real e separa as horas de produção (pessoas e equipamentos) das horas de atendimento (caixa, mesas, balcão, agenda). Corrige o erro de creditar ao atendimento as horas de preparo. Aparece também no Word e no PowerPoint. Quem não usar continua no modo manual (horas e eficiência), com o mesmo resultado de antes.",
     "Apresentação (PowerPoint): títulos dos slides padronizados com a linguagem de plano de negócio — Panorama Financeiro, Investimento Inicial e Fontes de Recursos, DRE, Margem de Contribuição por Produto, Indicadores de Viabilidade, Fluxo de Caixa Projetado, Análise de Cenários/VPL/TIR, Capacidade, Memória de Cálculo e Parecer e Recomendações. O conteúdo dos slides não mudou.",
     "Ajuste geral › Ajustar tudo e estabilizar: o botão \"Simular ajuste completo (estabilizar)\" aplica, em rodadas e sempre na mesma ordem, só as correções de realismo e coerência (mercadoria no Módulo 1, giro, impostos, coerência, custos, pró-labore, financiamento, preço mínimo, arranque e realismo de mercado) até nada mais mudar, evitando o ciclo de \"corrige um e aparece outro\". Nada é gravado na simulação; o professor vê as rodadas, pode desmarcar passos, compara hoje × depois e aplica tudo como UM ajuste, com Desfazer. O sistema não força preços nem quantidades para chegar a 5 anos: o retorno do investimento é mostrado como ficou, dentro ou fora da meta (a aproximação da meta é um passo opcional, desligado por padrão). Há trava de segurança (não estabilizou, faturamento +30%) e alertas de capacidade.",
     "Ajuste geral › Coerência entre módulos: quando a Capacidade informa um recurso que não existe no Módulo 1 (ex.: caixa/ponto de pagamento em empresa só da proprietária), o professor pode marcar \"Não se aplica a esta empresa\". Ao aplicar, a quantidade do recurso na Capacidade passa a 0, nada é lançado no Módulo 1 e o ajuste fica registrado com Desfazer.",
@@ -4894,7 +4895,8 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
     const hd = (t) => ({ text: t, options: { bold: true, color: "FFFFFF", fill: { color: NAVY }, fontSize: 12 } });
     const cel = (t, i, b) => ({ text: String(t), options: { fontSize: 12, bold: !!b, color: NAVY, fill: { color: i % 2 ? "FFFFFF" : LIGHT } } });
     const fm = capCalc.func; const nf = (n, d = 0) => (Number(n) || 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
-    const linhasC = [["Minutos por mês", `${nf(fm.horasDia, 1)} h/dia × 60 × ${nf(fm.diasMes)} dias × ${nf(fm.efic)}% de eficiência = ${nf(fm.minMes)} min`]];
+    const linhasC = [["Minutos por mês", `${nf(fm.horasDia, 1)} h/dia × 60 × ${nf(fm.diasMes)} dias × ${nf(fm.efic)}% de eficiência = ${nf(fm.minMes)} min${fm.comDia ? " (produção e pessoas)" : ""}`]];
+    if (fm.comDia && fm.dia) linhasC.push(["Atendimento (loja aberta)", `(${nf(fm.dia.aberto, 1)} h aberta − ${nf(fm.dia.intervalos, 1)} h sem cliente) × ${nf(fm.diasMes)} dias × 60 = ${nf(fm.horasEfA * 60)} min (caixa, mesas, balcão)`]);
     capCalc.grupos.forEach((g) => {
       g.linhas.filter((x) => x.cap != null).forEach((x) => linhasC.push([`${g.titulo} — ${x.nome}${x.gargalo ? " (gargalo)" : ""}`, `${x.conta} = ${nf(x.cap)} ${capCalc.un}/mês`]));
       if (g.cap != null) linhasC.push([`${g.titulo}: plano ÷ capacidade`, `${nf(g.dem)} ÷ ${nf(g.cap)} = ${nf(g.uso * 100)}% · no pico: ${nf(g.dem)} × ${nf(fm.pico, 1)} = ${nf(g.dem * fm.pico)} → ${nf(g.usoPico * 100)}%`]);
@@ -5473,9 +5475,11 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
     const nf = (n, d = 0) => num(n, d);
     const fm = capCalc.func;
     filhos.push(para(`Esta seção mostra se a estrutura da empresa consegue atender o plano de vendas do Módulo 5, no mês normal e no pico de movimento. A empresa funciona ${nf(fm.horasDia, 1)} hora(s) por dia, ${nf(fm.diasMes)} dias por mês, com eficiência real de ${nf(fm.efic)}% e fator de pico de ${nf(fm.pico, 1)}.`));
+    if (fm.comDia && fm.dia) filhos.push(para(`O dia de trabalho foi montado assim: preparo antes de abrir ${nf(fm.dia.preparo, 1)} h; loja aberta ${nf(fm.dia.aberto, 1)} h; limpeza e fechamento ${nf(fm.dia.fechamento, 1)} h; intervalos e horas sem cliente ${nf(fm.dia.intervalos, 1)} h. Horas de produção (pessoas e equipamentos) = preparo + loja aberta − intervalos = ${nf(fm.dia.preparo + fm.dia.aberto - fm.dia.intervalos, 1)} h por dia. Horas de atendimento (caixa, mesas, balcão, agenda) = loja aberta − intervalos = ${nf(fm.dia.aberto - fm.dia.intervalos, 1)} h por dia. A eficiência de ${nf(fm.efic)}% é as horas de produção ÷ as horas da equipe no local (${nf(fm.horasDia, 1)} h).`));
     filhos.push(comoCalc([
       `Minutos por dia = horas por dia × 60 × eficiência = ${nf(fm.horasDia, 1)} × 60 × ${num(fm.efic / 100, 2)} = ${nf(fm.minDia)} min`,
-      `Minutos por mês = minutos por dia × dias por mês = ${nf(fm.minDia)} × ${nf(fm.diasMes)} = ${nf(fm.minMes)} min`,
+      `Minutos por mês = minutos por dia × dias por mês = ${nf(fm.minDia)} × ${nf(fm.diasMes)} = ${nf(fm.minMes)} min${fm.comDia ? " (produção e pessoas)" : ""}`,
+      ...(fm.comDia ? [`Minutos por mês do atendimento = horas de atendimento × dias por mês × 60 = ${nf(fm.horasEfA * 60)} min (usados nos recursos de atendimento: caixa, mesas, balcão, agenda)`] : []),
       `Capacidade mensal de um recurso = quantidade × minutos por mês ÷ tempo gasto em cada atendimento, serviço ou unidade (nos recursos por taxa ou lote, a conta usa as unidades por hora ou por ciclo)`,
       `Capacidade da empresa = menor capacidade entre os recursos (o gargalo); uso no pico = plano × fator de pico ÷ capacidade`,
     ], "Fórmulas usadas"));
@@ -9452,7 +9456,7 @@ const PA = (() => {
     const espTxt = R.espaco?.uso > 1 ? " ⚠ O espaço (m²) não comporta os recursos informados." : "";
     if (R.demanda > 0 && R.falta > 0) {
       const g = R.gargalo; const f = R.capacidade / R.demanda; const pct = Math.round((1 - f) * 100);
-      const nUn = Math.max(1, Math.ceil(R.falta / (g.porHora * R.horasEf / (g.fr || 1))));
+      const nUn = Math.max(1, Math.ceil(R.falta / (g.porHora * (capGrupo(g.r) === "a" ? (R.horasEfA ?? R.horasEf) : R.horasEf) / (g.fr || 1))));
       const horasDia = capNum(cap.funcionamento?.horasDia) || 8; const horasNec = Math.round((horasDia * R.demanda / R.capacidade) * 10) / 10;
       const opcoes = [{ id: "manter", rotulo: "Deixar como está" },
         { id: "reduzir", rotulo: `Faturamento: reduzir as quantidades do Módulo 5 em ${pct}% para caber na capacidade` },
@@ -12577,6 +12581,16 @@ function capModeloAtivo(modelo, cap) {
 }
 const modeloCapacidade = (segmento) => CAP_MODELOS[segmento] || CAP_MODELOS.generico;
 const capNum = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 0; };
+// Horas do funcionamento. `horasEf` (pessoas e recursos de PRODUÇÃO) e `horasEfA` (recursos de ATENDIMENTO: caixa, mesas, balcão, agenda).
+// Sem a tela "Montar o dia" (f.dia), as duas são iguais (modo antigo). Com ela: produção = preparo + loja aberta − intervalos; atendimento = loja aberta − intervalos.
+function capHorasFunc(f) {
+  f = f || {};
+  const horasDia = capNum(f.horasDia) || 8, diasMes = capNum(f.diasMes) || 26, efic = capNum(f.eficiencia) || 85;
+  const horasEf = horasDia * diasMes * (Math.min(efic, 100) / 100);
+  const ab = capNum(f.dia?.aberto);
+  const horasEfA = ab > 0 ? Math.max(0, ab - capNum(f.dia?.intervalos)) * diasMes : horasEf;
+  return { horasDia, diasMes, efic, horasEf, horasEfA, comDia: ab > 0 };
+}
 const capPorHora = (r, v) => {
   if (r.tipo === "taxa") return capNum(v?.taxa);
   if (r.tipo === "lote") return capNum(v?.ciclo) > 0 ? capNum(v?.lote) * 60 / capNum(v?.ciclo) : 0;
@@ -12585,12 +12599,12 @@ const capPorHora = (r, v) => {
 // Núcleo do cálculo (puro): devolve capacidade mensal de cada recurso, gargalo, utilização e as opções de ajuste.
 function calcularCapacidade(modelo, cap, demandaM5) {
   const f = cap?.funcionamento || {};
-  const horasDia = capNum(f.horasDia) || 8, diasMes = capNum(f.diasMes) || 26, efic = capNum(f.eficiencia) || 85;
-  const horasEf = horasDia * diasMes * (Math.min(efic, 100) / 100);
+  const { horasDia, diasMes, efic, horasEf, horasEfA } = capHorasFunc(f);
+  const hDoGrupo = (r) => (capGrupo(r) === "a" ? horasEfA : horasEf);
   const demanda = capNum(cap?.demandaManual) > 0 ? capNum(cap.demandaManual) : capNum(demandaM5);
   const linhas = modelo.recursos.map((r) => {
     const v = cap?.recursos?.[r.id] || {}; const porHora = capPorHora(r, v); const qtd = capNum(v.qtd);
-    const capHora = qtd * porHora; const capMes = capHora * horasEf;
+    const capHora = qtd * porHora; const capMes = capHora * hDoGrupo(r);
     // "% da demanda que usa este recurso" (opcional; vazio = 100%): ex.: marmitas para viagem não usam o salão.
     const parc = capNum(v.parcela); const frx = capNum(v.__fr); const fr = frx > 0 ? frx : parc > 0 ? Math.min(parc, 100) / 100 : 1;
     return { r, qtd, porHora, capHora, capMes, fr, capEq: capMes / fr, need: capNum(v.__need), preenchido: qtd > 0 && porHora > 0 };
@@ -12608,7 +12622,7 @@ function calcularCapacidade(modelo, cap, demandaM5) {
   const m2Usado = linhas.reduce((a, l) => a + l.m2Total, 0);
   const espaco = { area, areaUtil, usado: m2Usado, uso: areaUtil > 0 && m2Usado > 0 ? m2Usado / areaUtil : null };
   const ativos = linhas.filter((l) => l.preenchido);
-  if (!ativos.length || horasEf <= 0) return { horasEf, demanda, linhas, capacidade: null, espaco };
+  if (!ativos.length || horasEf <= 0) return { horasEf, horasEfA, demanda, linhas, capacidade: null, espaco };
   const gargalo = ativos.reduce((a, b) => (b.capEq < a.capEq ? b : a));
   const capacidade = gargalo.capEq;
   linhas.forEach((l) => { l.uso = l.preenchido && demanda > 0 ? demanda / l.capEq : null; });
@@ -12616,8 +12630,8 @@ function calcularCapacidade(modelo, cap, demandaM5) {
   const opcoes = [];
   if (falta > 0) {
     // A) acrescentar unidades no gargalo; depois mostra o novo gargalo
-    const un = Math.ceil((demanda - gargalo.capEq) / (gargalo.porHora * horasEf / gargalo.fr));
-    const nova = ativos.map((l) => (l === gargalo ? l.capEq + un * gargalo.porHora * horasEf / gargalo.fr : l.capEq));
+    const hG = hDoGrupo(gargalo.r); const un = Math.ceil((demanda - gargalo.capEq) / (gargalo.porHora * hG / gargalo.fr));
+    const nova = ativos.map((l) => (l === gargalo ? l.capEq + un * gargalo.porHora * hG / gargalo.fr : l.capEq));
     const novoCap = Math.min(...nova); const novoG = ativos[nova.indexOf(novoCap)];
     const m2Extra = un * gargalo.m2; const cabe = !(area > 0 && gargalo.m2 > 0) || m2Usado + m2Extra <= areaUtil;
     opcoes.push({ tipo: "recurso", texto: `Acrescentar ${un} ${gargalo.r.nome.toLowerCase()} → a capacidade passa a ${fmtNum(novoCap, 0)} ${modelo.unidade}/mês${novoCap >= demanda ? "" : ` (o novo gargalo seria "${novoG.r.nome.toLowerCase()}", que ainda não atende)`}${gargalo.m2 > 0 ? ` · ocupa mais ${fmtNum(m2Extra, 1)} m²${area > 0 ? (cabe ? " (cabe no espaço)" : " — NÃO cabe no espaço disponível: avaliem ampliar a área/aluguel") : ""}` : ""}`, onde: gargalo.r.mod + (cabe ? "" : " e Módulo 1 (instalações/aluguel)") });
@@ -12627,7 +12641,7 @@ function calcularCapacidade(modelo, cap, demandaM5) {
   }
   const sobra = demanda > 0 && demanda / capacidade < 0.6;
   const pico = Math.max(1, capNum(f.pico) || 1);
-  return { horasEf, demanda, linhas, gargalo, capacidade, falta, opcoes, espaco, utilizacao: demanda > 0 ? demanda / capacidade : null, pico, utilizacaoPico: demanda > 0 ? demanda * pico / capacidade : null, sobra };
+  return { horasEf, horasEfA, demanda, linhas, gargalo, capacidade, falta, opcoes, espaco, utilizacao: demanda > 0 ? demanda / capacidade : null, pico, utilizacaoPico: demanda > 0 ? demanda * pico / capacidade : null, sobra };
 }
 
 // Ticket médio e clientes (ou unidades) necessários para empatar: usa o ponto de equilíbrio do Módulo 13 e o ticket do Módulo 5.
@@ -12979,14 +12993,57 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulad
             <Card className="p-4">
               <h3 className="text-sm font-bold text-slate-100 mb-1">Passo 2 · Funcionamento e atendimento</h3>
               <div className="text-xs text-sky-200 bg-sky-950/30 border border-sky-800/50 rounded-lg p-2 mb-2">Em linguagem simples: <b>em um dia de funcionamento, quantos clientes a empresa consegue atender, e quantos precisa atender para vender o que planejou?</b></div>
+              {(() => {
+                const d = f.dia || {}; const tp = capTipoSeg(segmento);
+                const pre = capNum(d.preparo), ab = capNum(d.aberto), fe = capNum(d.fechamento), iv = capNum(d.intervalos);
+                const local = pre + ab + fe, prod = Math.max(0, pre + ab - iv), atend = Math.max(0, ab - iv), efi = local > 0 ? (prod / local) * 100 : 0;
+                const R4 = tp === "servico" ? [["① Preparação antes de atender (opcional)", "montar o ambiente e os equipamentos"], ["② Horário de atendimento", "agenda aberta ao cliente"], ["③ Higienização e fechamento (opcional)", "não produz"], ["④ Horários vagos na agenda (h por dia)", "sem cliente"]]
+                  : tp === "revenda" ? [["① Arrumação antes de abrir (opcional)", "vitrine, reposição"], ["② Loja aberta", "horário de atendimento ao cliente"], ["③ Fechamento e caixa (opcional)", "não vende"], ["④ Horas sem cliente (h por dia)", "movimento fraco, intervalos"]]
+                  : [["① Preparo antes de abrir", "produção: assar, preparar massas e recheios"], ["② Loja aberta", "atendimento + produção"], ["③ Limpeza e fechamento", "não produz: vira perda de eficiência"], ["④ Intervalos e horas sem cliente (h por dia)", "almoço da equipe, movimento fraco"]];
+                const setDia = (k, v) => {
+                  const nd = { ...(cap.funcionamento?.dia || {}), [k]: v }; const p0 = capNum(nd.preparo), a0 = capNum(nd.aberto), f0 = capNum(nd.fechamento), i0 = capNum(nd.intervalos);
+                  const nf = { ...(cap.funcionamento || {}), dia: nd };
+                  if (a0 > 0) { const lc = p0 + a0 + f0; const pd = Math.max(0, p0 + a0 - i0); nf.horasDia = Math.round(lc * 100) / 100; nf.eficiencia = lc > 0 && pd > 0 ? Math.round((pd / lc) * 10000) / 100 : undefined; }
+                  set({ funcionamento: nf });
+                };
+                const w = (x) => (local > 0 ? `${Math.max(0, (x / local) * 100)}%` : "0%");
+                return (
+                  <div className="mb-3 rounded-lg border border-emerald-800/50 bg-emerald-950/20 p-3">
+                    <div className="text-sm font-bold text-emerald-200">Montar o dia <span className="text-[11px] font-normal text-slate-400">(opcional, recomendado)</span></div>
+                    <div className="text-[11px] text-slate-400 mb-1">Em um dia normal, quantas horas a equipe gasta em cada etapa? O sistema soma as horas e calcula a eficiência sozinho{ab > 0 ? "; por isso as horas e a eficiência da tabela abaixo ficam bloqueadas" : ""}.</div>
+                    <table className="w-full text-sm"><tbody>
+                      {[["preparo", R4[0]], ["aberto", R4[1]], ["fechamento", R4[2]], ["intervalos", R4[3]]].map(([k, [t, h]]) => (
+                        <tr key={k} className="border-t border-slate-800"><td className="py-1 text-slate-300">{t} <span className="text-[11px] text-slate-500">{h}</span></td><td className="text-right"><CapInput value={d[k]} placeholder={0} step="0.25" onChange={(v) => setDia(k, v)} /></td></tr>
+                      ))}
+                    </tbody></table>
+                    {ab > 0 ? (
+                      <>
+                        <div className="flex h-6 rounded-md overflow-hidden mt-2 text-[10px] font-bold text-white">
+                          {pre > 0 && <div style={{ width: w(pre) }} className="bg-blue-600 flex items-center justify-center">Preparo {fmtNum(pre, 1)} h</div>}
+                          <div style={{ width: w(ab) }} className="bg-emerald-700 flex items-center justify-center">Aberta {fmtNum(ab, 1)} h</div>
+                          {fe > 0 && <div style={{ width: w(fe) }} className="bg-slate-500 flex items-center justify-center">{fmtNum(fe, 1)} h</div>}
+                        </div>
+                        <div className="text-[10px] text-slate-500 mt-0.5">azul/verde = tempo que produz ou atende · cinza = limpeza e fechamento (não produz) · os intervalos são descontados do tempo aberto</div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2 text-center">
+                          {[[fmtNum(local, 1) + " h", "horas da equipe no local"], [fmtNum(prod, 1) + " h", tp === "revenda" ? "horas da equipe (preparo + aberta − sem cliente)" : "horas de produção/serviço (pessoas e equipamentos)"], [fmtNum(atend, 1) + " h", "horas de atendimento (caixa, mesas, balcão, agenda)"], [fmtNum(efi, 0) + "%", "eficiência real (calculada)"]].map(([v, t]) => (
+                            <div key={t} className="bg-slate-950 border border-slate-700 rounded-md p-2"><div className="text-lg font-bold text-emerald-300">{v}</div><div className="text-[10px] text-slate-400">{t}</div></div>
+                          ))}
+                        </div>
+                        {local > 8 && <div className="mt-2 text-xs rounded-md border border-amber-800/60 bg-amber-950/30 text-amber-200 p-2">⚠ Com {fmtNum(local, 1)} h no local e jornada de cerca de 8 h por pessoa, a empresa precisa de <b>mais de um turno</b>: lancem no Módulo 9 todas as pessoas de cada turno e informem em “Pessoas que produzem/atendem” a soma do que trabalha em um dia.</div>}
+                        <button className="mt-2 text-[11px] underline text-slate-400" onClick={() => set({ funcionamento: { ...(cap.funcionamento || {}), dia: undefined } })}>Voltar ao modo manual (digitar horas e eficiência)</button>
+                      </>
+                    ) : <div className="text-[11px] text-slate-500 mt-1">Se preferir, ignore este quadro e digite direto as horas e a eficiência na tabela abaixo (modo manual).</div>}
+                  </div>
+                );
+              })()}
               <table className="w-full text-sm"><tbody>
-                <tr><td className="py-1.5 text-slate-300">Horas de funcionamento por dia</td><td className="text-right"><CapInput value={f.horasDia} placeholder={8} onChange={(v) => setFunc("horasDia", v)} /></td></tr>
+                <tr><td className="py-1.5 text-slate-300">Horas de funcionamento por dia{capNum(f.dia?.aberto) > 0 && <span className="text-[11px] text-emerald-400"> · calculado em “Montar o dia”</span>}</td><td className="text-right">{capNum(f.dia?.aberto) > 0 ? <span className="inline-block w-24 text-center font-bold text-slate-200">{fmtNum(capNum(f.horasDia), 1)}</span> : <CapInput value={f.horasDia} placeholder={8} onChange={(v) => setFunc("horasDia", v)} />}</td></tr>
                 <tr><td className="py-1.5 text-slate-300">Dias de funcionamento por mês</td><td className="text-right"><CapInput value={f.diasMes} placeholder={26} onChange={(v) => setFunc("diasMes", v)} /></td></tr>
-                <tr><td className="py-1.5 text-slate-300">Eficiência real (%) <span className="text-[11px] text-slate-500">paradas, limpeza, perdas (na dúvida, 85)</span></td><td className="text-right"><CapInput value={f.eficiencia} placeholder={85} onChange={(v) => setFunc("eficiencia", v)} /></td></tr>
+                <tr><td className="py-1.5 text-slate-300">Eficiência real (%) <span className="text-[11px] text-slate-500">{capNum(f.dia?.aberto) > 0 ? "calculada em “Montar o dia”" : "paradas, limpeza, perdas (na dúvida, 85)"}</span></td><td className="text-right">{capNum(f.dia?.aberto) > 0 ? <span className="inline-block w-24 text-center font-bold text-slate-200">{fmtNum(capNum(f.eficiencia), 0)}</span> : <CapInput value={f.eficiencia} placeholder={85} onChange={(v) => setFunc("eficiencia", v)} />}</td></tr>
                 <tr><td className="py-1.5 text-slate-300">Área útil de produção/atendimento (m²) <span className="text-[11px] text-slate-500">sem banheiro e depósito</span></td><td className="text-right"><CapInput value={f.area} placeholder={60} onChange={(v) => setFunc("area", v)} /></td></tr>
                 <tr><td className="py-1.5 text-slate-300">Fator de pico <span className="text-[11px] text-slate-500">ex.: 1,3 = nos dias/meses de pico vendem 30% a mais (almoço, datas, verão); vazio = sem pico</span></td><td className="text-right"><CapInput value={f.pico} placeholder={1} onChange={(v) => setFunc("pico", v)} /></td></tr>
               </tbody></table>
-              <div className="text-xs text-slate-400 mt-2">Horas efetivas no mês: <b className="text-slate-200">{fmtNum(R.horasEf, 1)} h</b></div>
+              <div className="text-xs text-slate-400 mt-2">Horas efetivas no mês: <b className="text-slate-200">{fmtNum(R.horasEf, 1)} h</b>{R.horasEfA != null && Math.abs(R.horasEfA - R.horasEf) > 0.05 ? <> · produção/pessoas · atendimento: <b className="text-slate-200">{fmtNum(R.horasEfA, 1)} h</b></> : null}</div>
             </Card>
             <Card className="p-4">
               <h3 className="text-sm font-bold text-slate-100 mb-1">Quantos clientes precisam ser atendidos <span className="text-[11px] font-normal text-slate-500">(vem do Módulo 5)</span></h3>
@@ -13242,7 +13299,7 @@ function capAplicarCenario(base, cen) {
   const rec = { ...(base?.recursos || {}) };
   Object.entries(cen?.qtd || {}).forEach(([id, q]) => { if (q) rec[id] = { ...(rec[id] || {}), qtd: q }; });
   const func = { ...(base?.funcionamento || {}) };
-  if (cen?.horasDia) func.horasDia = cen.horasDia;
+  if (cen?.horasDia) { func.horasDia = cen.horasDia; func.dia = undefined; }   // o cenário muda as horas direto: sai do "Montar o dia"
   return { ...base, recursos: rec, funcionamento: func, ...(cen?.demanda ? { demandaManual: cen.demanda } : {}) };
 }
 function capSugestaoTexto(R, modelo) {
@@ -17100,8 +17157,9 @@ function gerarCalculoCapacidade(item) {
   const m9 = detalheMaoDeObra(l.m9); const nFunc = m9.linhas.reduce((s, r) => s + r.qtd, 0); const nSoc = m9.prolabore.reduce((s, r) => s + r.qtd, 0);
   const horasDia = capNum(f.horasDia) || 8, diasMes = capNum(f.diasMes) || 26, efic = capNum(f.eficiencia) || 85; const pico = Math.max(1, capNum(f.pico) || 1);
   const ef = Math.min(efic, 100) / 100; const minDia = horasDia * 60 * ef; const horasEf = horasDia * diasMes * ef; const minMes = horasEf * 60;
+  const hf = capHorasFunc(f); const horasEfA = hf.horasEfA;
   const out = { id: equipe.id, nome: equipe.nomeNegocio, segmento: equipe.segmento || "não informado", integrantes: equipe.integrantes || [], teste: !!equipe.teste, em: Date.now(), assin: capCalcAssinatura(item),
-    func: { horasDia, diasMes, efic, pico, picoInformado: capNum(f.pico) > 1, minDia, minMes, horasEf }, grupos: [], horas: null, caber: [], conferir: [], res: { k: "n", txt: "não calculada", gargalo: "" }, pessoas: { cap: capNum(cap.pessoasTrab) || 0, func: nFunc, soc: nSoc } };
+    func: { horasDia, diasMes, efic, pico, picoInformado: capNum(f.pico) > 1, minDia, minMes, horasEf, horasEfA, comDia: hf.comDia, dia: hf.comDia ? { preparo: capNum(f.dia?.preparo), aberto: capNum(f.dia?.aberto), fechamento: capNum(f.dia?.fechamento), intervalos: capNum(f.dia?.intervalos) } : null }, grupos: [], horas: null, caber: [], conferir: [], res: { k: "n", txt: "não calculada", gargalo: "" }, pessoas: { cap: capNum(cap.pessoasTrab) || 0, func: nFunc, soc: nSoc } };
   let A = null; try { A = capAnalise(equipe.segmento, capComCanal(cap, l), m5); } catch { A = null; }
   if (!A) { out.conferir.push("Não foi possível calcular a Capacidade desta empresa."); return out; }
   const un = A.modelo.unidade; out.un = un;
@@ -17116,6 +17174,7 @@ function gerarCalculoCapacidade(item) {
     if (!Rx) return;
     const linhas = (Rx.linhas || []).filter((ln) => ln.qtd > 0).map((ln) => {
       const r = ln.r; const v = recs[r.id] || {}; const q = fmtNum(ln.qtd, 0); let tempo = "", conta = "";
+      const horasEf = capGrupo(r) === "a" ? horasEfA : out.func.horasEf; const minMes = horasEf * 60;   // atendimento usa só a loja aberta (se informada a "Montar o dia")
       if (r.tipo === "taxa") { tempo = `${fmtNum(capNum(v.taxa), 1)} un/h`; conta = `${q} × ${fmtNum(capNum(v.taxa), 1)} × ${fmtNum(horasEf, 1)} h`; }
       else if (r.tipo === "lote") { tempo = `${fmtNum(capNum(v.lote), 0)} un a cada ${fmtNum(capNum(v.ciclo), 0)} min`; conta = `${q} × (${fmtNum(capNum(v.lote), 0)} × 60 ÷ ${fmtNum(capNum(v.ciclo), 0)}) × ${fmtNum(horasEf, 1)} h`; }
       else { const d = capNum(v.duracao); tempo = d > 0 ? `${fmtNum(d, 1)} min` : ""; conta = `${q} × ${fmtNum(minMes, 0)} ÷ ${fmtNum(d, 1)} min`; if (r.porRot && (capNum(v.por) || 1) > 1) conta += ` × ${fmtNum(capNum(v.por), 0)}`; if (r.visRot && (capNum(v.vis) || 1) > 1) conta += ` ÷ ${fmtNum(capNum(v.vis), 0)}`; }

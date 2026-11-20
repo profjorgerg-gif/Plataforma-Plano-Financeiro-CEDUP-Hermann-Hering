@@ -1,4 +1,4 @@
-// build: 20261119_19h05m Apresentação: títulos dos slides mais profissionais (padrão plano de negócio)
+// build: 20261119_23h55m Ajuste geral: ficha técnica (M6) corrigida e completa + M8 acompanha a ficha (professor confere e aplica)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1389,6 +1389,7 @@ const VERSOES = [
     "Canais de venda (opcional): na Capacidade, passo 2, a equipe informa quanto do faturamento é vendido online. A loja passa a atender só a parte presencial, entra o recurso \"expedição de pedidos online\", e as contas passam a considerar o custo do online (plataforma e frete, em % das vendas online) e o prazo de recebimento do online (média ponderada com a loja, no capital de giro). Word, PowerPoint (slide 8b), DRE, fluxo, VPL/TIR, preço mínimo e Conferência usam os novos valores. Com 0% (padrão) nada muda: equipes e dados antigos continuam iguais.",
     "Guia Pedagógico: novo item \"8. Indicadores de Viabilidade (Módulos 12 e 13)\", com o PDF para abrir/imprimir e o botão .pptx para baixar o PowerPoint editável. Explica, na ordem do relatório em Word, o que cada indicador significa e para que serve (margem, resultado, ponto de equilíbrio, lucratividade, rentabilidade e prazo de retorno), com exemplo, sinais de alerta e notas do professor.",
     "Retorno do investimento: o PPF mostra sempre em quanto tempo o negócio se paga; os 5 anos são só a referência de viabilidade. Retorno acima de 5 anos aparece como \"fora da meta\" (informativo): não reprova a sugestão da Conferência, não penaliza a nota do Realismo e o plano de viabilidade do Ajuste geral passa a ser opcional. Continuam como problema o prejuízo e o investimento que não se paga.",
+    "Ajuste geral — Ficha técnica (Módulo 6): nova proposta automática, que o professor confere e aplica (com registro e Desfazer). Corrige unidade/dose/preço fora do padrão (ex.: 0,5 g a R$ 6,44 por grama; café a 45 g por dose), troca o insumo genérico \"produto\" pelos ingredientes e acrescenta os que faltam a partir de receitas-padrão (preço da própria equipe quando plausível), e o Módulo 8 acompanha o custo da ficha completa. O efeito no resultado e no retorno aparece antes de aplicar. Só vale para produtos cujos insumos a receita-padrão conhece; a equipe que já detalhou a receita não é alterada.",
     "Apresentação (PowerPoint): títulos dos slides padronizados com a linguagem de plano de negócio — Panorama Financeiro, Investimento Inicial e Fontes de Recursos, DRE, Margem de Contribuição por Produto, Indicadores de Viabilidade, Fluxo de Caixa Projetado, Análise de Cenários/VPL/TIR, Capacidade, Memória de Cálculo e Parecer e Recomendações. O conteúdo dos slides não mudou.",
     "Ajuste geral › Ajustar tudo e estabilizar: o botão \"Simular ajuste completo (estabilizar)\" aplica, em rodadas e sempre na mesma ordem, só as correções de realismo e coerência (mercadoria no Módulo 1, giro, impostos, coerência, custos, pró-labore, financiamento, preço mínimo, arranque e realismo de mercado) até nada mais mudar, evitando o ciclo de \"corrige um e aparece outro\". Nada é gravado na simulação; o professor vê as rodadas, pode desmarcar passos, compara hoje × depois e aplica tudo como UM ajuste, com Desfazer. O sistema não força preços nem quantidades para chegar a 5 anos: o retorno do investimento é mostrado como ficou, dentro ou fora da meta (a aproximação da meta é um passo opcional, desligado por padrão). Há trava de segurança (não estabilizou, faturamento +30%) e alertas de capacidade.",
     "Ajuste geral › Coerência entre módulos: quando a Capacidade informa um recurso que não existe no Módulo 1 (ex.: caixa/ponto de pagamento em empresa só da proprietária), o professor pode marcar \"Não se aplica a esta empresa\". Ao aplicar, a quantidade do recurso na Capacidade passa a 0, nada é lançado no Módulo 1 e o ajuste fica registrado com Desfazer.",
@@ -10068,6 +10069,39 @@ const AJ = (() => {
   const fator = (a, b) => (a && b && grp[a] === grp[b] ? FU[a] / FU[b] : null);
   const totLinha = (it) => { const q = Number(it.qtd) || 0, c = Number(it.custoUnit) || 0; if (it.unQtd && it.unPreco) { const f = fator(it.unQtd, it.unPreco); return f == null ? 0 : q * f * c; } return q * c; };
   const chave = (p) => [p.regra, p.alvo.m, p.alvo.id, p.alvo.campo || (p.alvo.campos ? Object.keys(p.alvo.campos).join("+") : ""), p.alvo.remover ? "rm" : ""].join("|");
+
+  // ── Ficha técnica (M6): preços de referência (R$ por unidade de compra) e receitas-padrão por 1 unidade vendida ──
+  // Usados SÓ para propor ajustes ao professor (nunca automáticos). O preço da própria equipe prevalece quando é plausível.
+  const PRECO_REF = [
+    ["pão de hambúrguer", 1.2, "un"], ["leite condensado", 16, "kg"], ["farinha de trigo", 4.96, "kg"], ["farinha de milho", 12, "kg"], ["molho de tomate", 8, "kg"],
+    ["margarina", 14, "kg"], ["manteiga", 45, "kg"], ["fermento", 45, "kg"], ["chocolate", 40, "kg"], ["granulado", 20, "kg"], ["salsicha", 14, "kg"], ["presunto", 32, "kg"],
+    ["açúcar", 4.5, "kg"], ["queijo", 40, "kg"], ["frango", 16, "kg"], ["carne", 35, "kg"], ["fruta", 8, "kg"], ["café", 45, "kg"], ["leite", 5, "L"], ["óleo", 8.5, "L"], ["ovo", 0.8, "un"], ["sal", 2.5, "kg"],
+  ].map(([nome, preco, un]) => ({ nome, k: norm(nome), preco, un })).sort((a, b) => b.k.length - a.k.length);
+  const refDoMaterial = (mat) => { const m = norm(mat); return PRECO_REF.find((r) => new RegExp(`(^|[^a-z])${r.k.replace(/ /g, " ")}`).test(m)) || null; };
+  // [regex do produto, [[insumo, qtd, unidade], …]] — quantidades por 1 unidade vendida (rendimento 1)
+  const RECEITAS = [
+    [/\bpao frances|\bpaozinho|\bpao frances\b/, [["farinha de trigo", 60, "g"], ["sal", 1, "g"], ["fermento", 1, "g"]]],
+    [/\bbolacha|\bbiscoito/, [["farinha de trigo", 71, "g"], ["açúcar", 25, "g"], ["margarina", 30, "g"], ["ovo", 0.3, "un"]]],
+    [/\bempanada/, [["farinha de milho", 33, "g"], ["carne", 30, "g"], ["queijo", 20, "g"], ["óleo", 15, "ml"]]],
+    [/\bpao doce|\bdona/, [["farinha de trigo", 60, "g"], ["açúcar", 10, "g"], ["fermento", 2, "g"], ["ovo", 0.1, "un"], ["margarina", 10, "g"], ["leite", 20, "ml"]]],
+    [/\bgolfeado/, [["farinha de trigo", 70, "g"], ["açúcar", 20, "g"], ["manteiga", 15, "g"], ["fermento", 3, "g"], ["leite", 30, "ml"]]],
+    [/\bcapp?uc+h?ino/, [["café", 10, "g"], ["leite", 150, "ml"], ["açúcar", 8, "g"]]],
+    [/\bespresso|\bcafe expresso/, [["café", 8, "g"]]],
+    [/\bcafe com leite/, [["café", 8, "g"], ["leite", 150, "ml"]]],
+    [/\bsand(w|u)ich.*frango/, [["pão de hambúrguer", 1, "un"], ["frango", 60, "g"], ["queijo", 20, "g"]]],
+    [/\bpizza/, [["farinha de trigo", 80, "g"], ["molho de tomate", 40, "g"], ["queijo", 60, "g"], ["fermento", 2, "g"]]],
+    [/\bcoxinha/, [["farinha de trigo", 40, "g"], ["frango", 30, "g"], ["óleo", 20, "ml"], ["margarina", 5, "g"]]],
+    [/\bpastel/, [["farinha de trigo", 50, "g"], ["queijo", 30, "g"], ["óleo", 40, "ml"]]],
+    [/\bhamb(u|ur)gue/, [["pão de hambúrguer", 1, "un"], ["carne", 90, "g"], ["queijo", 20, "g"]]],
+    [/\benroladinho/, [["farinha de trigo", 40, "g"], ["salsicha", 25, "g"], ["ovo", 0.1, "un"], ["fermento", 2, "g"], ["margarina", 5, "g"]]],
+    [/\bbrownie/, [["chocolate", 30, "g"], ["farinha de trigo", 25, "g"], ["açúcar", 40, "g"], ["ovo", 0.5, "un"], ["manteiga", 25, "g"]]],
+    [/\bcatalina/, [["farinha de milho", 50, "g"], ["queijo", 30, "g"], ["açúcar", 10, "g"], ["óleo", 30, "ml"]]],
+    [/\bsuco/, [["fruta", 150, "g"], ["açúcar", 15, "g"]]],
+    [/\bbrigadeiro/, [["leite condensado", 25, "g"], ["chocolate", 5, "g"], ["manteiga", 3, "g"], ["granulado", 5, "g"]]],
+  ];
+  const PRONTOS = /\brefrigerante|\bagua de coco|\bagua mineral|\bagua\b|\bsuco de caixinha/;   // comprados prontos: "produto" × 1 un é legítimo
+  const slugF = (s) => norm(s).replace(/[^a-z0-9]+/g, "");
+  const fmtIns = (q, u, p, up) => `${String(q).replace(".", ",")} ${u} × R$ ${Number(p).toFixed(2).replace(".", ",")}/${up}`;
 function proporAjustes(l) {
   const P = []; let n = 0;
   const add = (p) => P.push({ id: "p" + (++n), ...p });
@@ -10087,15 +10121,65 @@ function proporAjustes(l) {
   [["m9", l.m9?.itens, ["funcao"], ["salario", "qtd"]], ["m11", l.m11?.itens, ["desc"], ["valor"]], ["m3", l.m3?.itens, ["desc"], ["valor"]], ["m1", l.m1?.itens, ["desc"], ["valorUnit"]]].forEach(([m, arr, tc, vc]) => (arr || []).forEach((it) => {
     if (tc.every((c) => !limpa(it[c])) && vc.every((c) => !(Number(it[c]) > 0) || c === "qtd")) add({ nivel: 1, regra: "linha_vazia", mod: +m.slice(1), alvo: { m, id: it.id, remover: true }, antes: "(linha sem nome e sem valor)", depois: "remover linha", motivo: "Linha vazia" });
   }));
+  // N2 (marcado por padrão: o professor confere e clica em Aplicar) · FICHA TÉCNICA do Módulo 6: unidades/preços/doses fora do padrão,
+  // insumo genérico "produto" e ingredientes que faltam, a partir de receitas-padrão. Depois, o M8 acompanha a ficha completa.
+  let _kp = null; const fichaProps = []; const addF = (p) => { const q = { id: "p" + (++n), nivel: 2, marcar: true, mod: 6, prod: _kp, ...p }; P.push(q); fichaProps.push(q); return q; };
+  {
+    const itens6 = l.m6?.itens || []; const rend0 = l.m6?.rendimentos || {};
+    const porProd = {}; itens6.forEach((it) => { const k = norm(it.produto); if (k) (porProd[k] = porProd[k] || []).push(it); });
+    // preço próprio da equipe por insumo (mediana das linhas em massa/volume plausíveis)
+    const precoEquipe = {};
+    itens6.forEach((it) => { const r = refDoMaterial(it.material); if (!r || !it.unPreco || grp[it.unPreco] !== grp[r.un] || !(Number(it.custoUnit) > 0)) return; const emRef = Number(it.custoUnit) * (FU[r.un] / FU[it.unPreco]); if (emRef >= r.preco / 2 && emRef <= r.preco * 2) (precoEquipe[r.k] = precoEquipe[r.k] || []).push(emRef); });
+    const precoDe = (r) => { const m = precoEquipe[r.k]; return m && m.length ? { v: Math.round(mediana(m) * 10000) / 10000, un: r.un } : { v: r.preco, un: r.un }; };
+    Object.entries(porProd).forEach(([kp, rows]) => {
+      _kp = kp;
+      if (PRONTOS.test(kp)) return;
+      const rec = RECEITAS.find(([re]) => re.test(kp)); if (!rec) return;
+      const reais = rows.filter((it) => norm(it.material) && norm(it.material) !== "produto");
+      if (new Set(reais.map((it) => norm(it.material))).size >= 3) return;   // a equipe já detalhou a receita: não mexe
+      if (!reais.every((it) => rec[1].some(([ing]) => norm(it.material).includes(norm(ing))))) return;   // há insumo que a receita-padrão não conhece: é outro produto/receita, não mexe
+      const nomeProd = limpa(rows[0].produto);
+      const usadas = new Set();
+      rec[1].forEach(([ing, q, uq], i) => {
+        const r = refDoMaterial(ing); if (!r) return; const { v, un } = precoDe(r);
+        const k = norm(ing); const ex = rows.find((it) => !usadas.has(it.id) && norm(it.material).includes(k) && (ing !== "farinha de trigo" || !/milho/.test(norm(it.material))));
+        const preco = Math.round(v * 10000) / 10000;
+        if (ex) {
+          usadas.add(ex.id);
+          const iguais = ex.unQtd === uq && ex.unPreco === un && Math.abs(Number(ex.qtd) - q) < 1e-9 && Math.abs(Number(ex.custoUnit) - preco) / preco < 0.05;
+          if (iguais) return;
+          addF({ regra: "ficha_ajusta", alvo: { m: "m6", id: ex.id, campos: { qtd: q, unQtd: uq, custoUnit: preco, unPreco: un } },
+            antes: `${fmtValAj(Number(ex.qtd))} ${ex.unQtd || "?"} × R$ ${fmtValAj(Number(ex.custoUnit))}/${ex.unPreco || "?"}`, depois: fmtIns(q, uq, preco, un),
+            motivo: `${nomeProd} · ${ing}: unidade/dose/preço fora do padrão (referência: ${fmtIns(q, uq, preco, un)})` });
+        } else {
+          addF({ regra: "ficha_acrescenta", alvo: { m: "m6", id: `fx_${slugF(nomeProd)}_${slugF(ing)}`, adicionar: { id: `fx_${slugF(nomeProd)}_${slugF(ing)}`, produto: nomeProd, material: ing, qtd: q, unQtd: uq, custoUnit: preco, unPreco: un } },
+            antes: "—", depois: `${ing}: ${fmtIns(q, uq, preco, un)}`, motivo: `${nomeProd} · insumo que falta na receita-padrão` });
+        }
+      });
+      // insumo genérico "produto" sai (a receita o substitui); linhas de outros insumos que não casam ficam como estão
+      rows.filter((it) => norm(it.material) === "produto").forEach((it) => addF({ regra: "ficha_remove_generico", alvo: { m: "m6", id: it.id, remover: true }, antes: `“produto” × ${fmtValAj(Number(it.qtd))} ${it.unQtd || ""} a R$ ${fmtValAj(Number(it.custoUnit))}`, depois: "removido (substituído pelos ingredientes)", motivo: `${nomeProd} · insumo genérico não é ingrediente` }));
+      // rendimento: a receita-padrão é por 1 unidade vendida
+      const kr = Object.keys(rend0).find((x) => norm(x) === kp);
+      if (kr !== undefined && Number(rend0[kr]) !== 1) addF({ regra: "ficha_rendimento", alvo: { m: "m6", id: "rend:" + kr, rend: kr }, antes: Number(rend0[kr]), depois: 1, motivo: `${nomeProd} · a receita-padrão é por 1 unidade vendida` });
+    });
+    // preço por kg/L absurdo em insumo sem receita-padrão (3× acima ou abaixo da referência) → N2 desmarcado
+    itens6.forEach((it) => {
+      if (fichaProps.some((p) => p.alvo.id === it.id)) return;
+      const r = refDoMaterial(it.material); if (!r || !it.unPreco || grp[it.unPreco] !== grp[r.un] || !(Number(it.custoUnit) > 0) || !(Number(it.qtd) >= 1)) return;   // qtd fracionada (ex.: 0,24 g) é par qtd/preço calibrado: não se mexe só no preço
+      const emRef = Number(it.custoUnit) * (FU[r.un] / FU[it.unPreco]);
+      if (emRef > r.preco * 3 || emRef < r.preco / 3) P.push({ id: "p" + (++n), nivel: 2, mod: 6, regra: "ficha_preco_ref", alvo: { m: "m6", id: it.id, campos: { custoUnit: Math.round(r.preco * (FU[it.unPreco] / FU[r.un]) * 10000) / 10000 } }, antes: `R$ ${fmtValAj(Number(it.custoUnit))}/${it.unPreco}`, depois: `R$ ${fmtValAj(Math.round(r.preco * (FU[it.unPreco] / FU[r.un]) * 10000) / 10000)}/${it.unPreco}`, motivo: `${limpa(it.produto)} · “${limpa(it.material)}”: preço fora da faixa de mercado (referência ≈ R$ ${String(r.preco).replace(".", ",")}/${r.un})` });
+    });
+  }
+  const lSim = fichaProps.length ? aplicarFicha(l, fichaProps) : l;
   // N1 · M8 diferente do que o próprio M6 calcula (só quando o M6 está completo p/ o produto)
-  const m5 = l.m5?.itens || [];
-  const rend = l.m6?.rendimentos || {}; const prods = {};
-  (l.m6?.itens || []).forEach((it) => { const k = norm(it.produto); if (!k) return; (prods[k] = prods[k] || { it: [], tot: 0, comUn: true }); prods[k].it.push(it); prods[k].tot += totLinha(it); if (!(it.unQtd && it.unPreco)) prods[k].comUn = false; });
+  const m5 = lSim.m5?.itens || [];
+  const rend = lSim.m6?.rendimentos || {}; const prods = {};
+  (lSim.m6?.itens || []).forEach((it) => { const k = norm(it.produto); if (!k) return; (prods[k] = prods[k] || { it: [], tot: 0, comUn: true }); prods[k].it.push(it); prods[k].tot += totLinha(it); if (!(it.unQtd && it.unPreco)) prods[k].comUn = false; });
   m5.forEach((p) => {
     const k = norm(p.nome); const g = prods[k]; if (!g) return;
-    const r = Number(rend[(g.it[0].produto || "").trim()]) || 0; if (!(r > 0) || !g.comUn) return;
+    const r = Number(rend[(g.it[0].produto || "").trim()]) || (fichaProps.some((fp) => fp.prod === k) ? 1 : 0); if (!(r > 0) || !g.comUn) return;
     const calc = Math.round((g.tot / r) * 100) / 100; const atual = Number(l.m8?.custosUnit?.[p.id]) || 0;
-    if (calc > 0 && Math.abs(calc - atual) / Math.max(calc, atual) > 0.05) add({ nivel: 2, regra: "m8_derivado", mod: 8, alvo: { m: "m8", id: p.id }, antes: atual, depois: calc, motivo: `O Módulo 6 calcula R$ ${calc.toFixed(2)} por unidade de “${limpa(p.nome)}”; o Módulo 8 tem R$ ${atual.toFixed(2)}` });
+    if (calc > 0 && Math.abs(calc - atual) / Math.max(calc, atual) > 0.05) { const dep = fichaProps.filter((fp) => fp.prod === k).map((fp) => chave(fp)); add({ nivel: 2, regra: "m8_derivado", mod: 8, marcar: dep.length > 0, dep, alvo: { m: "m8", id: p.id }, antes: atual, depois: calc, motivo: `O Módulo 6 calcula R$ ${calc.toFixed(2)} por unidade de “${limpa(p.nome)}”; o Módulo 8 tem R$ ${atual.toFixed(2)}` }); }
   });
   // N2 · unidades ausentes no M6 (inferidas pelo nome do insumo)
   (l.m6?.itens || []).forEach((it) => {
@@ -10123,10 +10207,15 @@ function proporAjustes(l) {
   return P;
 }
 
-function aplicar(l, props) {
+function aplicarFicha(l, props) { return aplicar(l, props, true); }
+function aplicar(l, props, semDep) {
   const c = JSON.parse(JSON.stringify(l));
+  const chavesOk = new Set(props.map((x) => chave(x)));
   props.forEach((p) => {
     const a = p.alvo;
+    if (!semDep && p.dep && p.dep.length && !p.dep.every((k) => chavesOk.has(k))) return;   // M8 só acompanha a ficha se TODOS os ajustes dela estiverem marcados
+    if (a.rend) { (c.m6.rendimentos = c.m6.rendimentos || {})[a.rend] = p.depois; return; }
+    if (a.adicionar) { c.m6.itens = c.m6.itens || []; if (!c.m6.itens.some((x) => x.id === a.id)) c.m6.itens.push({ ...a.adicionar }); return; }
     if (a.m === "m8") { (c.m8.custosUnit = c.m8.custosUnit || {})[a.id] = p.depois; return; }
     if (a.m === "m10") { (c.m10.vidasUteis = c.m10.vidasUteis || {})[a.id] = p.depois; return; }
     const lista = a.m === "m9p" ? c.m9.prolabore : c[a.m].itens;
@@ -10259,6 +10348,7 @@ const jsonModulo = (lanc, modId) => JSON.stringify(mergeLancamentos(lanc)[modId]
 function rotuloItemAj(it) { return String(it?.desc || it?.nome || it?.produto || it?.funcao || it?.material || "item").replace(/\s+/g, " ").trim(); }
 const REGRAS_REAIS = ["milhar", "piso", "custo_fator", "m8_derivado"];
 function fmtPropVal(p, v) {
+  if (typeof v === "string" && /^ficha_/.test(p.regra)) return v;
   if (typeof v === "number" && REGRAS_REAIS.includes(p.regra)) return fmtBRL(v);
   if (typeof v === "number" && p.regra === "vida_util") return `${fmtValAj(v)} anos`;
   return fmtValAj(v);
@@ -10607,7 +10697,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
       for (const id of ids) {
         const d = await lerDadosEstrito(id); novosDados[id] = d;
         const props = AJ.proporAjustes(mergeLancamentos(d.lancamentos));
-        novo[id] = { props, marc: new Set(props.filter((p) => p.nivel === 1).map((p) => AJ.chave(p))) };
+        novo[id] = { props, marc: new Set(props.filter((p) => p.nivel === 1 || p.marcar).map((p) => AJ.chave(p))) };
       }
       setDadosMap(novosDados); setProp(novo);
     } catch (e) { falhar(e); }

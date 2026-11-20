@@ -1,4 +1,4 @@
-// build: 20261120_13h25m Reequilíbrio de viabilidade (equipe e volume) e trava dos módulos preservados
+// build: 20261120_14h58m Análise de Cenários com até 6 cenários (slide 4 mostra 3)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -850,7 +850,7 @@ const MANUAL_ALUNO_PASSOS = [
   { titulo: "Os módulos são liberados um a um", texto: "No início, só o Módulo 1 vem liberado — os demais aparecem na lista, mas travados. Preencham o módulo atual e cliquem em \"Enviar para correção\": ele trava para edição e o(a) professor(a) libera o seguinte depois de corrigir. Fiquem de olho no Prazo de Entrega de cada módulo — entregas fora do prazo têm desconto de 2,0 pontos por pontualidade, e um módulo com prazo vencido sem envio só é reaberto pelo(a) professor(a)." },
   { titulo: "Leiam a teoria antes de lançar dados", texto: "Todo módulo tem uma caixa \"Teoria do módulo\" — abram-na antes de preencher. Ela traz o conceito e a fórmula que a plataforma está usando nos cálculos.", imagem: "aluno_theory" },
   { titulo: "Acompanhem a Análise do Negócio", texto: "A cada rodada de ajustes, confiram os gráficos, os alertas automáticos e o ranking \"Produtos Mais Lucrativos\" — essa aba reúne o que foi lançado em todos os módulos e mostra quais produtos/serviços mais contribuem para o resultado." },
-  { titulo: "Explorem a Análise de Cenários e o Fluxo de Caixa", texto: "Na aba \"Análise de Cenários\", criem até 3 simulações de \"e se\" (ex.: preço 10% maior, custo de matéria-prima 5% mais caro) sem alterar nada do que já foi lançado. No Fluxo de Caixa Anual, vejam a projeção ano a ano e mês a mês até o ano em que o investimento volta (até 10 anos, se o negócio demorar) — e, se quiserem se aprofundar, o VPL e a TIR, indicadores opcionais que avaliam o investimento levando em conta o valor do dinheiro no tempo." },
+  { titulo: "Explorem a Análise de Cenários e o Fluxo de Caixa", texto: "Na aba \"Análise de Cenários\", criem até 6 simulações de \"e se\" (ex.: preço 10% maior, custo de matéria-prima 5% mais caro) sem alterar nada do que já foi lançado. No Fluxo de Caixa Anual, vejam a projeção ano a ano e mês a mês até o ano em que o investimento volta (até 10 anos, se o negócio demorar) — e, se quiserem se aprofundar, o VPL e a TIR, indicadores opcionais que avaliam o investimento levando em conta o valor do dinheiro no tempo." },
   { titulo: "Informem o segmento do negócio", texto: "Na aba \"Segmento do negócio\", escolham o segmento da empresa (ex.: padaria, restaurante, estética, semijoias). O botão \"Sugerir itens\" traz exemplos de itens típicos do segmento para orientar os lançamentos — são apenas sugestões, cada equipe lança os seus próprios dados." },
   { titulo: "Lancem a folha de pagamento (Módulo 9)", texto: "No Módulo 9, cadastrem as funções, a quantidade, o salário, VT/VR e os encargos (grupos A/B/C/D). O pró-labore dos sócios entra no mesmo módulo. Usem \"ver composição\" para conferir como o custo total de cada função foi calculado." },
   { titulo: "Salvem versões ao longo do projeto", texto: "Sempre que fizerem um ajuste relevante (novo preço, novo custo, nova equipe de trabalho), cliquem em \"Salvar versão\" na Análise do Negócio. Isso registra a evolução do projeto para vocês e para o professor.", imagem: "aluno_versions" },
@@ -1385,6 +1385,7 @@ const VERSOES = [
     "Ajuste geral › 3. Ajuste manual: cada equipe ganhou a linha \"Análises da equipe (calculadas · somente leitura)\" com Análise da DRE, Análise de Indicadores, Análise do Negócio, Análise de Cenários e Fluxo de Caixa Anual (abrem em uma janela com os dados atuais da equipe, sem sair do Ajuste geral) e os botões Baixar Apresentação e Baixar Plano Financeiro (Word). O professor não precisa mais entrar em \"Ver como aluno\" a cada conferência. Nada é gravado.",
     "Ajuste geral › cartão \"Retorno do investimento\" alinhado à faixa de 5 a 10 anos: retorno dentro da faixa (ou mais rápido) aparece em verde, sem plano de alavancas; só acima de 10 anos continua o plano opcional. Nada é corrigido por causa do retorno.",
     "Indicadores › nova Margem de segurança = (faturamento anual − ponto de equilíbrio) ÷ faturamento anual: mostra quanto as vendas podem cair antes de dar prejuízo (abaixo de 10% estreita · 10 a 25% confortável · acima de 25% ampla; só informativa, sem nota). Aparece na Análise de Indicadores (com o faturamento anual planejado e a frase \"Como ler\"), no Word, no slide 3 do PowerPoint e na Conferência dos documentos, para todas as equipes. Um ponto de equilíbrio alto não é cobrado: ele acompanha o faturamento.",
+    "Análise de Cenários › agora até 6 cenários por equipe (antes 3). O Word traz todos; o slide 4 do PowerPoint e das imagens mostra 3 (o pior, o mais próximo do plano e o melhor resultado) e as notas do orador listam todos. Cenários já lançados não mudam.",
     "Ajuste geral › nova etapa \"Reequilíbrio de viabilidade: equipe e volume\": para planos que dão prejuízo (ou não se pagam em 10 anos) por causa de um \"Reforço de equipe\" acima do salário mínimo, propõe o reforço como Auxiliar de atendimento de 1 salário mínimo (nunca menos, mesmo em meio período), as quantidades do Módulo 5 que a capacidade comporta (preços inalterados, retorno de até 6 anos) e os vendedores da Capacidade (utilização de até 80%). Mostra hoje × depois (resultado, retorno, mão de obra, utilização, margem de segurança). Não mexe nos Módulos 1, 2, 3, 4 e 11 nem no pró-labore; só vale se o professor aplicar (registrado, com Desfazer; equipe bloqueada). Depois de aplicar, o cartão de Calibragem passa a propor a curva de 24 passos.",
     "Calibragem e Fluxo de caixa › caixa negativo no 1º ano inteiro e recuperação gradual a partir do 2º ano: a curva de arranque passa a ter 24 passos (1º ano abaixo do ponto de equilíbrio, já considerando a sazonalidade; 2º ano subindo até 100%). A tela de Pendências aceita o 1º ano negativo quando o 2º ano recupera, e o Ajuste geral mostra \"Meses negativos no 1º ano\". Ao aplicar, o sistema marca os Módulos 1, 2, 3, 4 e 11 como preservados: nenhum ajuste automático ou por pontos consegue alterá-los (só a edição manual do professor).",
     "Ajuste geral › nova etapa \"Calibragem pela meta de retorno (5 a 10 anos)\": mostra, antes e depois, o resultado mensal, o prazo de retorno, o mês em que o caixa fica positivo e quantos dos 6 primeiros meses ficam negativos. Se o retorno estiver fora de 5 a 10 anos, propõe o preço do produto principal (Módulo 5); sempre propõe a curva de arranque em 24 passos (os 12 meses do 1º ano com caixa negativo e recuperação gradual no 2º ano, até 100% no mês 24) e a sazonalidade suave. Não mexe nos Módulos 1, 2, 3, 4 e 11 e só vale se o professor aplicar (registrado, com Desfazer; equipe bloqueada).",
@@ -3975,7 +3976,7 @@ function AnaliseCenarios({ calc, cenarios, onSetCenarios, readOnly }) {
     onSetCenarios(lista.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   };
   const adicionar = () => {
-    if (lista.length >= 3) return;
+    if (lista.length >= 6) return;
     const novo = { id: uid(), nome: `Cenário ${lista.length + 1}`, variacaoFaturamento: 0, variacaoCustoVariavel: 0, variacaoCustoFixo: 0 };
     onSetCenarios([...lista, novo]);
   };
@@ -4040,9 +4041,9 @@ function AnaliseCenarios({ calc, cenarios, onSetCenarios, readOnly }) {
         })}
       </div>
 
-      {!readOnly && lista.length < 3 && (
+      {!readOnly && lista.length < 6 && (
         <button onClick={adicionar} className="mt-4 flex items-center gap-2 border border-dashed border-slate-600 text-slate-300 px-4 py-2.5 rounded-md hover:border-amber-500 hover:text-amber-400 text-sm font-semibold w-full justify-center">
-          <Plus size={15} /> Adicionar cenário ({lista.length}/3)
+          <Plus size={15} /> Adicionar cenário ({lista.length}/6)
         </button>
       )}
       {!readOnly && lista.length === 0 && (
@@ -5013,10 +5014,18 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   // 5 · Slide 4 — Caixa, cenários e capacidade
   const gs4 = capCalc ? capCalc.grupos.filter((g) => g.cap != null) : [];
   const gP = [...gs4].sort((a, b) => (b.usoPico || 0) - (a.usoPico || 0))[0];
-  const cens = (cenarios || []).filter((x) => x).slice(0, 3);
+  const censTodos = (cenarios || []).filter((x) => x);
+  // No slide: no máximo 3 cenários: o pior, o mais próximo do plano base e o melhor (por resultado mensal); os demais ficam no Word e nas notas do orador
+  const cens = (() => {
+    if (censTodos.length <= 3) return censTodos;
+    const com = censTodos.map((x, i) => ({ x, i, r: calcularCenario(calc, x).resultadoOperacional })); const ord = [...com].sort((a, b) => a.r - b.r);
+    const pior = ord[0], melhor = ord[ord.length - 1];
+    const meio = [...com].filter((o) => o !== pior && o !== melhor).sort((a, b) => Math.abs(a.r - calc.resultadoOperacional) - Math.abs(b.r - calc.resultadoOperacional))[0];
+    return [pior, meio, melhor].sort((a, b) => a.i - b.i).map((o) => o.x);
+  })();
   const sN = base("4 · Caixa, Cenários e Capacidade", "Quando o caixa fica positivo, o que muda se as vendas variarem e se a estrutura comporta", 5, [
     `Caixa: saldo de ${money0(fluxo[12] ? fluxo[12].saldo : 0)} ao final do mês 12; o caixa fica positivo em ${rotRet}. Explique de onde vem o dinheiro que cobre o período negativo.`,
-    cens.length ? `Cenários: ${cens.map((x, i) => { const r = calcularCenario(calc, x); return `${x.nome || "Cenário " + (i + 1)} → resultado de ${money0(r.resultadoOperacional)} por mês`; }).join("; ")}. Responda: e se as vendas caírem?` : "Criem cenários na plataforma (pessimista e otimista) para responder: e se as vendas caírem?",
+    censTodos.length ? `Cenários: ${censTodos.map((x, i) => { const r = calcularCenario(calc, x); return `${x.nome || "Cenário " + (i + 1)} → resultado de ${money0(r.resultadoOperacional)} por mês`; }).join("; ")}. Responda: e se as vendas caírem?` : "Criem cenários na plataforma (pessimista e otimista) para responder: e se as vendas caírem?",
     gP ? `Capacidade: uso normal de ${pct(gP.uso * 100, 0)} e de ${pct(gP.usoPico * 100, 0)} no pico${gP.gargalo ? `; o gargalo é ${gP.gargalo}` : ""}. ${gP.usoPico > 1 ? "A estrutura não atende o pico: digam o que fariam." : "A estrutura comporta o pico."}` : "Capacidade: preencham os passos 1 a 3 da Capacidade na plataforma.",
     "Se a banca perguntar: por que o caixa começa negativo? O que muda se o faturamento cair 10%? A estrutura atende o pico?",
   ], "50 s");
@@ -5033,7 +5042,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
     const wk = (wL - 0.15) / 2;
     kpi(sN, X, Y + 3.15, wk, 1.25, "Saldo ao final do mês 12", money0(fluxo[12].saldo), "", fluxo[12].saldo >= 0 ? GREEN : SLATE);
     kpi(sN, X + wk + 0.15, Y + 3.15, wk, 1.25, "Caixa fica positivo em", rotRet, RL.longo && RL.mesRet ? `retorno em ${fmtNum(RL.mesRet / 12, 1)} anos` : "");
-    sN.addText("Cenários (variação do faturamento)", { x: xR, y: Y, w: wR, h: 0.3, fontFace: "Calibri", fontSize: 12, bold: true, color: NAVY, margin: 0 });
+    sN.addText(censTodos.length > 3 ? `Cenários: pior, intermediário e melhor (3 de ${censTodos.length})` : "Cenários (variação do faturamento)", { x: xR, y: Y, w: wR, h: 0.3, fontFace: "Calibri", fontSize: 12, bold: true, color: NAVY, margin: 0 });
     if (!cens.length) {
       sN.addShape(pptx.ShapeType.roundRect, { x: xR, y: Y + 0.35, w: wR, h: 2.0, fill: { color: LIGHT }, line: { color: BORDER, width: 1.25, dashType: "dash" }, rectRadius: 0.08 });
       sN.addText("A equipe ainda não criou cenários na plataforma. Criem um cenário pessimista (ex.: vendas –10%) e um otimista, e baixem a apresentação de novo.", { x: xR + 0.2, y: Y + 0.35, w: wR - 0.4, h: 2.0, fontFace: "Calibri", fontSize: 13, italic: true, color: SLATE, align: "center", valign: "middle" });
@@ -6383,7 +6392,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
         {aba === "cenarios" && (
           <div>
             <button onClick={() => setAba("inicio")} className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 mb-4"><ArrowLeft size={15} /> Voltar ao início</button>
-            <SectionTitle icon={GitCompareArrows} sub="Crie até 3 cenários simulando mudanças no faturamento e nos custos, e compare o resultado projetado com o cenário atual.">Análise de Cenários</SectionTitle>
+            <SectionTitle icon={GitCompareArrows} sub="Crie até 6 cenários simulando mudanças no faturamento e nos custos, e compare o resultado projetado com o cenário atual.">Análise de Cenários</SectionTitle>
             <AnaliseCenarios calc={calc} cenarios={dados.cenarios} onSetCenarios={(novos) => setDados({ ...dados, cenarios: novos })} readOnly={souVisualizador} />
           </div>
         )}

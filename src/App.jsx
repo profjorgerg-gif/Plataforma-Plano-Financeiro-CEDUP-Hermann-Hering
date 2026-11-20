@@ -1,4 +1,4 @@
-// build: 20261120_17h27m Volume pela demanda pesquisada (Ajuste geral)
+// build: 20261120_17h38 Calibragem com alternativa de 6 meses negativos (Ajuste geral)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1385,6 +1385,7 @@ const VERSOES = [
     "Ajuste geral › 3. Ajuste manual: cada equipe ganhou a linha \"Análises da equipe (calculadas · somente leitura)\" com Análise da DRE, Análise de Indicadores, Análise do Negócio, Análise de Cenários e Fluxo de Caixa Anual (abrem em uma janela com os dados atuais da equipe, sem sair do Ajuste geral) e os botões Baixar Apresentação e Baixar Plano Financeiro (Word). O professor não precisa mais entrar em \"Ver como aluno\" a cada conferência. Nada é gravado.",
     "Ajuste geral › cartão \"Retorno do investimento\" alinhado à faixa de 5 a 10 anos: retorno dentro da faixa (ou mais rápido) aparece em verde, sem plano de alavancas; só acima de 10 anos continua o plano opcional. Nada é corrigido por causa do retorno.",
     "Indicadores › nova Margem de segurança = (faturamento anual − ponto de equilíbrio) ÷ faturamento anual: mostra quanto as vendas podem cair antes de dar prejuízo (abaixo de 10% estreita · 10 a 25% confortável · acima de 25% ampla; só informativa, sem nota). Aparece na Análise de Indicadores (com o faturamento anual planejado e a frase \"Como ler\"), no Word, no slide 3 do PowerPoint e na Conferência dos documentos, para todas as equipes. Um ponto de equilíbrio alto não é cobrado: ele acompanha o faturamento.",
+    "Ajuste geral › Calibragem: dois novos itens. (1) Alternativa \"6 meses negativos\": curva de 24 passos com só o 1º semestre abaixo do ponto de equilíbrio e caixa positivo a partir do 7º mês (marque no lugar da curva de 12 meses; indicada para empresas de retorno muito rápido, como as de investimento baixo). (2) O item de preço pode ser desmarcado para manter os preços da equipe. Em ambos os casos os Módulos 1, 2, 3, 4 e 11 ficam preservados.",
     "Ajuste geral › nova etapa \"Volume pela demanda pesquisada (Módulo 5)\": para plano que dá prejuízo (ou não se paga em 10 anos) com a capacidade quase toda ociosa (utilização abaixo de 50%) e vendas lançadas bem abaixo dos clientes por dia que a própria equipe pesquisou, propõe o menor aumento das quantidades do Módulo 5 (preços inalterados) que leva o retorno a até 6 anos, sem passar de 85% da demanda pesquisada nem de 80% de utilização. Aplique junto com o cartão de Impostos; depois a Calibragem propõe o 1º ano negativo e a recuperação no 2º. Não mexe nos Módulos 1, 2, 3, 4 e 11.",
     "Ajuste geral › nova etapa \"Compensação do imposto pelo volume (Módulo 5)\": quando a correção do imposto (Módulo 7) tira da faixa de 5 a 10 anos um plano que hoje se paga em até 10 anos, propõe o menor aumento das quantidades do Módulo 5 (preços inalterados) que leva o retorno a até 6 anos, com a alíquota do Simples já recalculada para o novo faturamento e utilização da capacidade de até 80%. Aplique junto com o cartão de Impostos. Não mexe nos Módulos 1, 2, 3, 4 e 11.",
     "Análise de Cenários › agora até 6 cenários por equipe (antes 3). O Word traz todos; o slide 4 do PowerPoint e das imagens mostra 3 (o pior, o mais próximo do plano e o melhor resultado) e as notas do orador listam todos. Cenários já lançados não mudam.",
@@ -10123,7 +10124,7 @@ const PA = (() => {
       while (hi - lo > 1) { const mid = Math.floor((lo + hi) / 2); if (rapido(comPreco(X, top.id, mid / 100))) hi = mid; else lo = mid; }
       return lo / 100;
     };
-    const sim = (its) => { const X = clone(L); const Xx = { curva: atual }; its.forEach((i) => { if (!i.info) i.fn(X, Xx); }); return { X, Xx }; };
+    const sim = (its) => { const X = clone(L); const Xx = { curva: atual }; its.forEach((i) => { if (!i.info && !i.off) i.fn(X, Xx); }); return { X, Xx }; };
     if (top) {
       const preSim = sim(itens).X;
       const pN = resolvePreco(preSim);
@@ -10147,15 +10148,26 @@ const PA = (() => {
       const a1 = BASE1.map((v, i) => { const fs = sazFin ? Number(sazFin[(miFin + i) % 12]) || 1 : 1; return Math.round(Math.max(0.2, Math.min(1, (b * (v / 0.883)) / fs)) * 1000) / 1000; });
       const u = a1[11]; return [...a1, ...RAMPA2.map((r) => Math.round(Math.min(1, u + (1 - u) * r) * 1000) / 1000)];
     };
+    // variante de 6 meses negativos (escolha do professor para empresas de retorno muito rápido, ex.: investimento baixo): 1º semestre abaixo do ponto de equilíbrio, caixa positivo a partir do 7º mês e plena capacidade no mês 24
+    const BASE6 = [0.70, 0.78, 0.85, 0.91, 0.96, 0.99, 1.005, 1.02, 1.035, 1.05, 1.06, 1.07];
+    const arr6De = (X) => {
+      const cx = calcular(X); const b = cx.margemContribuicao > 0 ? cx.custoFixoTotal / cx.margemContribuicao : 1;
+      const a1 = BASE6.map((v, i) => { const fs = sazFin ? Number(sazFin[(miFin + i) % 12]) || 1 : 1; return Math.round(Math.max(0.2, Math.min(1, (b * v) / fs)) * 1000) / 1000; });
+      const u = a1[11]; return [...a1, ...RAMPA2.map((r) => Math.round(Math.min(1, u + (1 - u) * r) * 1000) / 1000)];
+    };
+    const jaSeis = Array.isArray(atual?.arranque) && atual.arranque.length >= 24 && JSON.stringify(atual.arranque) === JSON.stringify(arr6De(L));   // curva de 6 meses já aplicada: o preço foi mantido de propósito
+    if (jaSeis) { const ix = itens.findIndex((i) => i.id === "c_preco"); if (ix >= 0) itens.splice(ix, 1); }
     const arrAtual = Array.isArray(atual?.arranque) ? atual.arranque : [];
     const sazAtual = Array.isArray(atual?.sazonal) ? atual.sazonal : null;
     itens.push({ id: "c_arr", texto: "Curva de arranque em 24 passos: os 12 meses do 1º ano abaixo do ponto de equilíbrio (caixa negativo) e recuperação gradual no 2º ano, até 100% no mês 24 (Fluxo de caixa)", linha: "curva de arranque de 24 passos (1º ano negativo e recuperação no 2º ano)",
-      fn: (X, Xx) => { Xx.curva = { ...(Xx.curva || {}), arranque: arrDe(X), mesInicio: Xx.curva?.mesInicio || mesIni }; } });
+      fn: (X, Xx, v) => { if (v && v.c_arr6 === true) return; Xx.curva = { ...(Xx.curva || {}), arranque: arrDe(X), mesInicio: Xx.curva?.mesInicio || mesIni }; } });
+    itens.push({ id: "c_arr6", off: true, texto: "ALTERNATIVA (marque no lugar da curva de 12 meses): curva de 24 passos com só os 6 primeiros meses abaixo do ponto de equilíbrio (caixa negativo), caixa positivo a partir do 7º mês e plena capacidade no mês 24. Use em empresa de retorno muito rápido (investimento baixo). Desmarque também o item de preço para manter os preços.", linha: "curva de arranque de 24 passos (só os 6 primeiros meses negativos)",
+      fn: (X, Xx) => { Xx.curva = { ...(Xx.curva || {}), arranque: arr6De(X), mesInicio: Xx.curva?.mesInicio || mesIni }; } });
     if (sazSuave && JSON.stringify(sazAtual) !== JSON.stringify(sazSuave)) itens.push({ id: "c_saz", texto: "Sazonalidade suave do segmento (variação de até ±1% ao mês, sem picos que escondam o payback)", linha: "sazonalidade suavizada", fn: (_X, Xx) => { Xx.curva = { ...(Xx.curva || {}), sazonal: sazSuave, mesInicio: Xx.curva?.mesInicio || mesIni }; } });
     const fim = sim(itens); const cd = calcular(fim.X);
     const resFl = (cx, cv) => { const fl = fluxoAteRetorno(cx, taxa, cv); const r = resumoFluxoLongo(fl); const neg = fl.slice(1, 13).filter((m) => m.resultado < 0).length; const pos13 = fl[13] ? fl[13].resultado >= 0 : false; return { mesRet: r.mesRet, neg, pos13 }; };
     const f0 = resFl(c, atual), f1 = resFl(cd, fim.Xx.curva);
-    const jaOk = c.prazoRetorno != null && c.prazoRetorno >= 5 && c.prazoRetorno <= 10 && f0.neg === 12 && f0.pos13 && !itens.some((i) => i.id === "c_preco") && JSON.stringify(arrAtual) === JSON.stringify(arrDe(L));
+    const jaOk = jaSeis ? (f0.neg === 6 && f0.pos13) : c.prazoRetorno != null && c.prazoRetorno >= 5 && c.prazoRetorno <= 10 && f0.neg === 12 && f0.pos13 && !itens.some((i) => i.id === "c_preco") && JSON.stringify(arrAtual) === JSON.stringify(arrDe(L));
     if (jaOk) return null;
     const anos = (v) => (v == null ? "não se paga" : `${fmtNum(v, 1)} anos`);
     const mesTxt = (m) => (m == null ? "não se paga" : `mês ${m} (${fmtNum(m / 12, 1)} anos)`);
@@ -10163,7 +10175,8 @@ const PA = (() => {
       { rot: "Resultado mensal (plano estável)", hoje: fmtBRL(c.resultadoOperacional), faixa: "—", sit: "—", depois: fmtBRL(cd.resultadoOperacional) },
       { rot: "Prazo de retorno (investimento ÷ lucro anual)", hoje: anos(c.prazoRetorno), faixa: "5 a 10 anos", sit: c.prazoRetorno != null && c.prazoRetorno >= 5 && c.prazoRetorno <= 10 ? "ok" : "fora", depois: anos(cd.prazoRetorno) },
       { rot: "Caixa fica positivo (Fluxo de caixa)", hoje: mesTxt(f0.mesRet), faixa: "—", sit: "—", depois: mesTxt(f1.mesRet) },
-      { rot: "Meses negativos no 1º ano", hoje: `${f0.neg} de 12`, faixa: "12 de 12", sit: f0.neg === 12 ? "ok" : "fora", depois: `${f1.neg} de 12` },
+      { rot: "Meses negativos no 1º ano", hoje: `${f0.neg} de 12`, faixa: "12 de 12 (ou 6 de 12 na alternativa)", sit: f0.neg === 12 || jaSeis ? "ok" : "fora", depois: `${f1.neg} de 12` },
+      { rot: "Alternativa de 6 meses negativos: caixa positivo (Fluxo de caixa)", hoje: "—", faixa: "—", sit: "—", depois: (() => { const sp = sim(itens.filter((i) => i.id !== "c_preco")); const q = resFl(calcular(sp.X), { ...(sp.Xx.curva || {}), arranque: arr6De(sp.X) }); return `${q.neg} de 12 negativos; ${mesTxt(q.mesRet)}`; })() },
     ];
     return montarLista("R|cal", "Mercado", "Calibragem pela meta de retorno (5 a 10 anos)", ["m5"], tabela, itens, "Calibragem pela meta de retorno",
       { resumo: `Calibragem pela meta de retorno: resultado mensal ${fmtBRL(c.resultadoOperacional)} → ${fmtBRL(cd.resultadoOperacional)}; retorno ${anos(c.prazoRetorno)} → ${anos(cd.prazoRetorno)} (módulos 1, 2, 3, 4 e 11 intocados).` });

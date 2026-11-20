@@ -1,4 +1,4 @@
-// build: 20261120_00h20m Capacidade: "Montar o dia" (horas de produção × horas de atendimento) + ficha técnica no Ajuste geral
+// build: 20261120_00h45m Apresentação (PowerPoint) enxuta: capa + 5 slides (até 5 minutos), com tempo sugerido e roteiro nas Notas do orador
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -855,7 +855,7 @@ const MANUAL_ALUNO_PASSOS = [
   { titulo: "Lancem a folha de pagamento (Módulo 9)", texto: "No Módulo 9, cadastrem as funções, a quantidade, o salário, VT/VR e os encargos (grupos A/B/C/D). O pró-labore dos sócios entra no mesmo módulo. Usem \"ver composição\" para conferir como o custo total de cada função foi calculado." },
   { titulo: "Salvem versões ao longo do projeto", texto: "Sempre que fizerem um ajuste relevante (novo preço, novo custo, nova equipe de trabalho), cliquem em \"Salvar versão\" na Análise do Negócio. Isso registra a evolução do projeto para vocês e para o professor.", imagem: "aluno_versions" },
   { titulo: "Leiam o feedback do professor", texto: "Verifiquem regularmente a aba \"Feedback do Professor\": além dos comentários organizados por módulo, é lá que aparece a nota final ponderada (média dos módulos + Módulo 13 + Cenários/Fluxo de Caixa + Apresentação) assim que todos os componentes forem lançados." },
-  { titulo: "Baixem a Apresentação e o Plano Financeiro (Word)", texto: "No menu do aluno, \"Baixar Apresentação (dados da equipe)\" gera um PowerPoint já preenchido com Panorama Financeiro, DRE, Indicadores e Fluxo de Caixa até o retorno do investimento (a conclusão fica em branco para a equipe escrever). \"Baixar Plano Financeiro (Word)\" gera o documento com os 13 módulos, a Análise do Negócio, o Fluxo de Caixa (mensal no 1º ano e anual até o retorno do investimento) e os Cenários, com 15 gráficos, para copiar no Plano de Negócio. Os arquivos são gerados na hora, exigem internet no clique e avisam quando faltar algum dado. O link \"Modelo em branco\" continua disponível." },
+  { titulo: "Baixem a Apresentação e o Plano Financeiro (Word)", texto: "No menu do aluno, \"Baixar Apresentação (dados da equipe)\" gera um PowerPoint já preenchido, com a capa e 5 slides para apresentar em até 5 minutos: Investimento e Fontes de Recursos, Resultado Mensal, Viabilidade (equilíbrio, retorno, VPL e TIR), Caixa, Cenários e Capacidade, e Parecer e Recomendações. Cada slide indica o tempo sugerido, e as Notas do orador trazem o roteiro, as fórmulas e as perguntas da banca (o espaço das considerações finais fica para a equipe escrever). \"Baixar Plano Financeiro (Word)\" gera o documento com os 13 módulos, a Análise do Negócio, o Fluxo de Caixa (mensal no 1º ano e anual até o retorno do investimento) e os Cenários, com 15 gráficos, para copiar no Plano de Negócio. Os arquivos são gerados na hora, exigem internet no clique e avisam quando faltar algum dado. O link \"Modelo em branco\" continua disponível." },
   { titulo: "Finalizem o projeto", texto: "O plano financeiro está concluído quando os 13 módulos estiverem preenchidos, enviados e corrigidos, o resultado operacional analisado e pelo menos duas versões salvas mostrando a evolução dos ajustes feitos pela equipe.", imagem: "aluno_finish" },
 ];
 
@@ -1381,6 +1381,7 @@ function chamadoPassaFiltro(c, filtro) {
 // ============================================================================
 const VERSOES = [
   { versao: "3.8", data: "12/11/2026", itens: [
+    "Apresentação (PowerPoint) mais enxuta: agora são a capa e 5 slides, para apresentar em até 5 minutos — 1 Investimento Inicial e Fontes de Recursos; 2 Resultado Mensal (da receita ao lucro, com os 3 principais produtos); 3 Viabilidade (equilíbrio, rentabilidade, retorno, VPL, TIR e parecer); 4 Caixa, Cenários e Capacidade; 5 Parecer e Recomendações. Cada slide mostra o tempo sugerido e traz, nas Notas do orador, o roteiro com os números da equipe, as fórmulas e as perguntas que a banca pode fazer. Quem tem vendas online ganha um slide extra \"Vendas por Canal\". O Word continua completo.",
     "Fluxo de Caixa até o retorno do investimento: em vez de parar no mês 12, a projeção segue até o ano em que o caixa fica positivo (até 10 anos). Há duas visões: anual (receita, custos, resultado e saldo de cada ano) e mensal (com os anos que abrem e fecham, até o mês do retorno). Se o negócio não se paga, mostra 10 anos com aviso.",
     "Fim da inconsistência entre telas: o Fluxo, o VPL e a TIR passam a valer para todo o período projetado, então um negócio que volta em 3 ou 8 anos não aparece mais como \"não recupera em 12 meses\". O crescimento mensal e o arranque valem só no 1º ano; depois o resultado se mantém no nível do mês 12 e a sazonalidade se repete.",
     "A meta de 5 anos do curso continua como aviso em amarelo, mas não gera mais erro: quando o retorno passa de 5 anos, o fluxo mostra todo o caminho. Quando o mês do retorno difere do prazo do Módulo 13 (que divide o investimento pelo lucro de um mês normal), a tela explica o motivo.",
@@ -4711,13 +4712,14 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   const temDados = (calc.faturamento || 0) > 0;
   const temInvest = (calc.investimentoTotal || 0) > 0;
 
-  const base = (titulo, subtitulo, n, destaques) => {
+  const base = (titulo, subtitulo, n, destaques, tempo) => {
     const s = pptx.addSlide(); s.background = { color: "FFFFFF" };
     s.addText(titulo, { x: 0.7, y: 0.5, w: 11.9, h: 0.7, fontFace: "Cambria", fontSize: 30, bold: true, color: NAVY, margin: 0 });
     s.addText(subtitulo, { x: 0.7, y: 1.15, w: 11.9, h: 0.4, fontFace: "Calibri", fontSize: 13.5, italic: true, color: SLATE, margin: 0 });
     s.addText(rodape, { x: 0.5, y: 7.08, w: 11.6, h: 0.3, fontFace: "Calibri", fontSize: 9, color: SLATE, margin: 0 });
     s.addText(String(n), { x: 12.3, y: 7.08, w: 0.5, h: 0.3, fontFace: "Calibri", fontSize: 9, color: SLATE, align: "right", margin: 0 });
-    if (destaques) s.addNotes("O QUE DESTACAR NA APRESENTAÇÃO:\n" + destaques.map((t) => "• " + t).join("\n"));
+    if (tempo) s.addText(`Tempo sugerido: ${tempo}`, { x: 9.6, y: 0.18, w: 3.0, h: 0.28, fontFace: "Calibri", fontSize: 10.5, bold: true, color: AMBER, align: "right", margin: 0 });
+    if (destaques) s.addNotes(`ROTEIRO PARA APRESENTAR ESTE SLIDE (tempo sugerido: ${tempo || "—"}; a apresentação inteira cabe em menos de 5 minutos):\n` + destaques.map((t) => "• " + t).join("\n") + "\n\nSe algum número mudar no sistema, baixem a apresentação de novo.");
     return s;
   };
   const kpi = (s, x, y, w, h, label, valor, sub, cor) => {
@@ -4737,179 +4739,161 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   c.addText(equipe.nomeNegocio, { x: 0.7, y: 2.8, w: 11.5, h: 1.1, fontFace: "Cambria", fontSize: 40, bold: true, color: "FFFFFF", margin: 0 });
   c.addText("Apresentação do Plano Financeiro", { x: 0.7, y: 4.0, w: 11.5, h: 0.5, fontFace: "Calibri", fontSize: 20, color: "E2E8F0", margin: 0 });
   c.addText((equipe.integrantes || []).join(" · ") || "Integrantes da equipe", { x: 0.7, y: 4.7, w: 11.5, h: 0.9, fontFace: "Calibri", fontSize: 14, italic: true, color: "94A3B8", valign: "top", margin: 0 });
+  c.addText("5 slides · apresentação de até 5 minutos", { x: 0.7, y: 5.8, w: 11.5, h: 0.4, fontFace: "Calibri", fontSize: 13, color: AMBER, margin: 0 });
   c.addText(rodape, { x: 0.5, y: 7.08, w: 11.6, h: 0.3, fontFace: "Calibri", fontSize: 9, color: "64748B", margin: 0 });
 
-  // 2 · Visão geral
-  const s2 = base("1 · Panorama Financeiro do Negócio", "Faturamento, custos e resultado mensal", 2, ["Quanto foi investido", "Quanto a empresa fatura por mês", "Qual o resultado operacional"]);
-  if (!temDados && !temInvest) aviso(s2, "Esta parte ainda não pode ser montada: preencham os módulos de investimento e de faturamento (Módulos 1 a 5) e baixem a apresentação de novo.");
-  else {
-    const w3 = (W - 0.3) / 3;
-    kpi(s2, X, Y, w3, 1.2, "Investimento total", money0(calc.investimentoTotal), "fixo + giro + pré-operacional");
-    kpi(s2, X + w3 + 0.15, Y, w3, 1.2, "Faturamento mensal", money0(calc.faturamento), `receita anual ${money0(calc.receitaAnual)}`);
-    kpi(s2, X + 2 * (w3 + 0.15), Y, w3, 1.2, "Resultado operacional/mês", money0(calc.resultadoOperacional), calc.resultadoOperacional >= 0 ? "lucro" : "prejuízo", calc.resultadoOperacional >= 0 ? GREEN : RED);
-    if (temDados) {
-      s2.addChart(pptx.charts.BAR, [{ name: "R$ por mês", labels: ["Faturamento", "Custos variáveis", "Custos fixos", "Resultado"], values: [calc.faturamento, calc.custoVariavelTotal, calc.custoFixoTotal, calc.resultadoOperacional] }], {
-        x: X, y: Y + 1.35, w: W, h: H - 1.35, barDir: "col", chartColors: [AMBER, "EF4444", "64748B", GREEN], varyColors: true,
-        showTitle: true, title: "Para onde vai o faturamento de cada mês", titleFontSize: 12, titleFontFace: "Calibri", titleColor: NAVY,
-        showValue: true, dataLabelFormatCode: "R$ #,##0", dataLabelFontSize: 10, dataLabelPosition: "outEnd", valAxisHidden: true, valGridLine: { style: "none" }, catAxisLabelFontSize: 10, showLegend: false,
-      });
-    }
-  }
+  // ----- Modelo de 5 slides (aprovado em 20/11/2026): cada slide conta uma história, para apresentar em até 5 minutos -----
+  const nf = (n, d = 0) => (Number(n) || 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+  const pPro = Math.min(100, Math.max(0, Number(lanc?.m4?.pctProprio) || 0));
+  const tma = Number.isFinite(Number(tmaAnual)) && tmaAnual !== "" && tmaAnual != null ? Number(tmaAnual) : 12;
+  const tmaM = Math.pow(1 + tma / 100, 1 / 12) - 1; const vpl = (temDados && temInvest) ? calcularVPL(fluxoL, tmaM) : null; const tirM = (temDados && temInvest) ? calcularTIRMensal(fluxoL) : null; const tirA = tirM !== null && tirM !== undefined ? (Math.pow(1 + tirM, 12) - 1) * 100 : null;
+  const C = (temDados && temInvest) ? conclusaoResumo({ equipe, calc, fluxo, fluxoL, capCalc, tmaAnual, pPro }) : null;
+  const anosPay = calc.prazoRetorno != null ? nf(calc.prazoRetorno, 1) : null;
+  const rk = calc.produtosRanking || [];
 
-  // 2b · Investimento e fontes de recursos
-  const sI = base("2 · Investimento Inicial e Fontes de Recursos", "Estrutura de capital: recursos próprios e de terceiros", 3, ["O valor total e o que ele compra", "Quanto é dos sócios e quanto é de terceiros", "Por que o capital de giro pesa no investimento"]);
+  // 2 · Slide 1 — Investimento inicial e fontes de recursos
+  const sI = base("1 · Investimento Inicial e Fontes de Recursos", "Quanto é preciso para abrir e de onde vem o dinheiro", 2, [
+    `Investimento total: ${money0(calc.investimentoTotal)} (fixos ${money0(calc.investFixo)} + capital de giro ${money0(calc.capitalGiroTotal)} + pré-operacionais ${money0(calc.investPreOp)}).`,
+    `Fontes: ${nf(pPro, 0)}% recursos próprios e ${nf(100 - pPro, 0)}% de terceiros.`,
+    "Explique por que o capital de giro pesa: é o dinheiro para pagar as contas até as vendas virarem caixa.",
+    "Se a banca perguntar: o que é investimento fixo, capital de giro e pré-operacional? De onde vem o dinheiro dos sócios?",
+  ], "40 s");
   if (!temInvest) aviso(sI, "Esta parte ainda não pode ser montada: preencham os Módulos 1 a 3 (investimentos) e baixem a apresentação de novo.");
   else {
-    const pPro = Math.min(100, Math.max(0, Number(lanc?.m4?.pctProprio) || 0));
     const fontesT = (lanc?.m4?.fontesTerceiros || []).filter((x) => x && x.fonte).map((x) => x.fonte);
     const w4 = (W - 0.45) / 4;
-    kpi(sI, X, Y, w4, 1.1, "Investimentos fixos", money0(calc.investFixo), "máquinas, móveis e equipamentos");
-    kpi(sI, X + (w4 + 0.15), Y, w4, 1.1, "Capital de giro", money0(calc.capitalGiroTotal), `${pct(calc.investimentoTotal > 0 ? (calc.capitalGiroTotal / calc.investimentoTotal) * 100 : 0, 0)} do investimento`);
-    kpi(sI, X + 2 * (w4 + 0.15), Y, w4, 1.1, "Pré-operacionais", money0(calc.investPreOp), "gastos antes de abrir");
-    kpi(sI, X + 3 * (w4 + 0.15), Y, w4, 1.1, "Investimento total", money0(calc.investimentoTotal), "soma dos três");
-    const wc = (W - 0.3) / 2;
+    kpi(sI, X, Y, w4, 1.1, "Investimento total", money0(calc.investimentoTotal), "soma dos três");
+    kpi(sI, X + (w4 + 0.15), Y, w4, 1.1, "Investimentos fixos", money0(calc.investFixo), "máquinas, móveis e equipamentos");
+    kpi(sI, X + 2 * (w4 + 0.15), Y, w4, 1.1, "Capital de giro", money0(calc.capitalGiroTotal), `${pct(calc.investimentoTotal > 0 ? (calc.capitalGiroTotal / calc.investimentoTotal) * 100 : 0, 0)} do investimento`);
+    kpi(sI, X + 3 * (w4 + 0.15), Y, w4, 1.1, "Pré-operacionais", money0(calc.investPreOp), "gastos antes de abrir");
+    const wc = (W - 0.3) / 2, hp = H - 1.3 - 0.75;
     const fat = [["Investimentos fixos", calc.investFixo], ["Capital de giro", calc.capitalGiroTotal], ["Pré-operacionais", calc.investPreOp]].filter((x) => x[1] > 0);
-    if (fat.length) sI.addChart(pptx.charts.PIE, [{ name: "Investimento", labels: fat.map((x) => x[0]), values: fat.map((x) => Math.round(x[1])) }], { x: X, y: Y + 1.25, w: wc, h: H - 1.3, chartColors: [AMBER, "3B82F6", "64748B"], showLegend: true, legendPos: "b", legendFontSize: 11, showPercent: true, showValue: false, dataLabelColor: "FFFFFF", dataLabelFontSize: 11, showTitle: true, title: "O que o investimento compra", titleFontSize: 12, titleColor: NAVY });
-    sI.addChart(pptx.charts.PIE, [{ name: "Fontes", labels: ["Recursos próprios", "Recursos de terceiros"], values: [Math.round((calc.investimentoTotal * pPro) / 100), Math.round((calc.investimentoTotal * (100 - pPro)) / 100)] }], { x: X + wc + 0.3, y: Y + 1.25, w: wc, h: H - 1.3, chartColors: [GREEN, RED], showLegend: true, legendPos: "b", legendFontSize: 11, showPercent: true, showValue: false, dataLabelColor: "FFFFFF", dataLabelFontSize: 11, showTitle: true, title: `De onde vem o dinheiro${fontesT.length ? " (terceiros: " + fontesT.join(", ") + ")" : ""}`, titleFontSize: 12, titleColor: NAVY });
+    if (fat.length) sI.addChart(pptx.charts.PIE, [{ name: "Investimento", labels: fat.map((x) => x[0]), values: fat.map((x) => Math.round(x[1])) }], { x: X, y: Y + 1.25, w: wc, h: hp, chartColors: [AMBER, "3B82F6", "64748B"], showLegend: true, legendPos: "b", legendFontSize: 11, showPercent: true, showValue: false, dataLabelColor: "FFFFFF", dataLabelFontSize: 11, showTitle: true, title: "O que o investimento compra", titleFontSize: 12, titleColor: NAVY });
+    sI.addChart(pptx.charts.PIE, [{ name: "Fontes", labels: ["Recursos próprios", "Recursos de terceiros"], values: [Math.round((calc.investimentoTotal * pPro) / 100), Math.round((calc.investimentoTotal * (100 - pPro)) / 100)] }], { x: X + wc + 0.3, y: Y + 1.25, w: wc, h: hp, chartColors: [GREEN, RED], showLegend: true, legendPos: "b", legendFontSize: 11, showPercent: true, showValue: false, dataLabelColor: "FFFFFF", dataLabelFontSize: 11, showTitle: true, title: `De onde vem o dinheiro${fontesT.length ? " (terceiros: " + fontesT.join(", ") + ")" : ""}`, titleFontSize: 12, titleColor: NAVY });
+    const ly = Y + H - 0.62;
+    sI.addShape(pptx.ShapeType.roundRect, { x: X, y: ly, w: W, h: 0.58, fill: { color: "FFFBEB" }, line: { color: AMBER, width: 1 }, rectRadius: 0.06 });
+    sI.addText(`Leitura: ${pPro >= 100 ? "todo o investimento vem de recursos próprios" : `${nf(100 - pPro, 0)}% do investimento vem de terceiros`}; o capital de giro representa ${pct(calc.investimentoTotal > 0 ? (calc.capitalGiroTotal / calc.investimentoTotal) * 100 : 0, 0)} do valor.`, { x: X + 0.2, y: ly, w: W - 0.4, h: 0.58, fontFace: "Calibri", fontSize: 13, bold: true, color: BROWN, align: "center", valign: "middle" });
   }
 
-  // 3 · DRE
-  const s3 = base("3 · Demonstrativo de Resultados (DRE)", "Da receita ao resultado operacional", 4, ["Receita", "Custos variáveis", "Custos fixos", "Como esses números formam o resultado apresentado no slide anterior"]);
+  // 3 · Slide 2 — Resultado mensal: da receita ao lucro
+  const s3 = base("2 · Resultado Mensal: da Receita ao Lucro", "Faturamento, custos e produtos que sustentam o resultado", 3, [
+    `Faturamento: ${money0(calc.faturamento)} por mês (${money0(calc.receitaAnual)} por ano). Resultado operacional: ${money0(calc.resultadoOperacional)} por mês (${pct(calc.lucratividade)} do faturamento).`,
+    "Conte a história da DRE: receita – custos variáveis = margem de contribuição; margem – custos fixos = resultado.",
+    rk.length ? `Produtos que mais sustentam a margem: ${rk.slice(0, 3).map((x) => x.nome).join(", ")}.` : "Mostre quais produtos geram mais margem de contribuição.",
+    "FÓRMULAS: Faturamento = Σ quantidade × preço · CMV = Σ quantidade × custo unitário · Margem de contribuição = receita – custos variáveis · Resultado = margem – custos fixos (outros fixos + mão de obra + depreciação).",
+    "Se a banca perguntar: por que o resultado é tão pequeno/grande? Qual produto é mais importante? O que acontece se ele sair do cardápio?",
+  ], "50 s");
   if (!temDados) aviso(s3, "Esta parte ainda não pode ser montada: o faturamento (Módulo 5) ainda não foi preenchido.");
   else {
-    const f = calc.faturamento;
-    const linhas = [
-      ["Receita total com vendas", f, 1], ["(–) Custos variáveis totais", -calc.custoVariavelTotal, 0], ["      CMV (custo das mercadorias vendidas)", -calc.cmv, 0], ["      Impostos e taxas sobre vendas", -calc.custoComercializacao, 0],
-      ["= Margem de contribuição", calc.margemContribuicao, 1], ["(–) Custos fixos totais", -calc.custoFixoTotal, 0], ["= Resultado operacional", calc.resultadoOperacional, 1],
-    ];
+    const f = calc.faturamento; const w3 = (W - 0.3) / 3;
+    kpi(s3, X, Y, w3, 1.05, "Faturamento mensal", money0(calc.faturamento), `receita anual ${money0(calc.receitaAnual)}`);
+    kpi(s3, X + w3 + 0.15, Y, w3, 1.05, "Resultado operacional/mês", money0(calc.resultadoOperacional), calc.resultadoOperacional >= 0 ? "lucro" : "prejuízo", calc.resultadoOperacional >= 0 ? GREEN : RED);
+    kpi(s3, X + 2 * (w3 + 0.15), Y, w3, 1.05, "Lucratividade", pct(calc.lucratividade), "do faturamento vira lucro");
+    const yT = Y + 1.2, rH = 0.38; const temRk = rk.length > 0 && calc.cmv > 0; const wD = temRk ? W * 0.55 : W;
+    const linhas = [["Receita total com vendas", f, 1], ["(–) Custos variáveis totais", -calc.custoVariavelTotal, 0], ["= Margem de contribuição", calc.margemContribuicao, 1], ["(–) Custos fixos totais", -calc.custoFixoTotal, 0], ["= Resultado operacional", calc.resultadoOperacional, 1]];
     const hd = (t, al) => ({ text: t, options: { bold: true, color: "FFFFFF", fill: { color: NAVY }, align: al, fontSize: 11 } });
-    const rows = [[hd("Descrição", "left"), hd("R$ por mês", "right"), hd("% do faturamento", "right")]];
+    const rows = [[hd("Descrição", "left"), hd("R$ por mês", "right"), hd("% do fat.", "right")]];
     linhas.forEach(([d, v, b], i) => {
       const fill = { color: b ? "FEF3C7" : i % 2 ? "FFFFFF" : LIGHT };
-      rows.push([
-        { text: d, options: { bold: !!b, color: NAVY, fill, fontSize: 12 } },
-        { text: v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }), options: { bold: !!b, color: v < 0 ? RED : NAVY, align: "right", fill, fontSize: 12 } },
-        { text: pct((Math.abs(v) / f) * 100), options: { bold: !!b, color: SLATE, align: "right", fill, fontSize: 12 } },
-      ]);
+      rows.push([{ text: d, options: { bold: !!b, color: NAVY, fill, fontSize: 11.5 } }, { text: v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }), options: { bold: !!b, color: v < 0 ? RED : NAVY, align: "right", fill, fontSize: 11.5 } }, { text: pct((Math.abs(v) / f) * 100), options: { bold: !!b, color: SLATE, align: "right", fill, fontSize: 11.5 } }]);
     });
-    s3.addTable(rows, { x: X, y: Y, w: W, colW: [W * 0.52, W * 0.24, W * 0.24], rowH: 0.42, fontFace: "Calibri", border: { type: "none" }, valign: "middle" });
-    const ok = calc.resultadoOperacional >= 0;
-    s3.addShape(pptx.ShapeType.roundRect, { x: X, y: Y + 3.95, w: W, h: 0.85, fill: { color: ok ? "ECFDF5" : "FEF2F2" }, line: { color: ok ? GREEN : RED, width: 1.25 }, rectRadius: 0.06 });
-    s3.addText(`Resultado projetado: ${ok ? "LUCRO" : "PREJUÍZO"} de ${Math.abs(calc.resultadoOperacional).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} por mês`, { x: X, y: Y + 3.95, w: W, h: 0.85, fontFace: "Cambria", fontSize: 18, bold: true, color: ok ? GREEN : RED, align: "center", valign: "middle" });
+    s3.addTable(rows, { x: X, y: yT, w: wD, colW: [wD * 0.5, wD * 0.27, wD * 0.23], rowH: rH, fontFace: "Calibri", border: { type: "none" }, valign: "middle" });
+    if (temRk) {
+      const wR = W - wD - 0.2, xR = X + wD + 0.2; const n3 = Math.min(3, rk.length); const top = rk.slice(0, n3);
+      const hdP = (t, al) => ({ text: t, options: { bold: true, color: "FFFFFF", fill: { color: NAVY }, fontSize: 11, align: al } });
+      const cP = (t, i, o = {}) => ({ text: String(t), options: { fontSize: 11, color: o.neg ? RED : NAVY, fill: { color: i % 2 ? "FFFFFF" : LIGHT }, align: o.al, bold: o.b } });
+      s3.addTable([[hdP("Produto/serviço", "left"), hdP("Margem/mês", "right"), hdP("% da margem", "right")], ...top.map((x, i) => [cP(x.nome, i, { b: true }), cP(money0(x.margemTotal), i, { al: "right", neg: x.margemTotal < 0, b: true }), cP(pct(x.pctDaMargem), i, { al: "right" })])], { x: xR, y: yT, w: wR, colW: [wR * 0.5, wR * 0.27, wR * 0.23], rowH: rH, fontFace: "Calibri", border: { type: "solid", pt: 0.5, color: BORDER }, valign: "middle" });
+      const p3 = top.reduce((a, x) => a + x.pctDaMargem, 0); const negs = rk.filter((x) => x.margemTotal < 0).length; const yb2 = yT + rH * (n3 + 1) + 0.15;
+      s3.addShape(pptx.ShapeType.roundRect, { x: xR, y: yb2, w: wR, h: rH * 6 - rH * (n3 + 1) - 0.15 + 0.0, fill: { color: "FFFBEB" }, line: { color: AMBER, width: 1 }, rectRadius: 0.06 });
+      s3.addText(`Leitura: ${n3 === 1 ? "o principal item gera" : `os ${n3} principais itens geram`} ${pct(p3, 0)} da margem de contribuição${p3 >= 70 ? " — alta dependência de poucos produtos" : ""}.${negs ? ` Atenção: ${negs} ite${negs > 1 ? "ns dão" : "m dá"} prejuízo.` : ""}`, { x: xR + 0.12, y: yb2, w: wR - 0.24, h: rH * 6 - rH * (n3 + 1) - 0.15, fontFace: "Calibri", fontSize: 11.5, bold: true, color: BROWN, align: "center", valign: "middle" });
+    }
+    const ok = calc.resultadoOperacional >= 0; const yBn = yT + rH * 6 + 0.35;
+    s3.addShape(pptx.ShapeType.roundRect, { x: X, y: yBn, w: W, h: 0.8, fill: { color: ok ? "ECFDF5" : "FEF2F2" }, line: { color: ok ? GREEN : RED, width: 1.25 }, rectRadius: 0.06 });
+    s3.addText(`Resultado projetado: ${ok ? "LUCRO" : "PREJUÍZO"} de ${Math.abs(calc.resultadoOperacional).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} por mês`, { x: X, y: yBn, w: W, h: 0.8, fontFace: "Cambria", fontSize: 18, bold: true, color: ok ? GREEN : RED, align: "center", valign: "middle" });
   }
 
-  // 3b · Produtos mais lucrativos
-  const sP = base("4 · Margem de Contribuição por Produto", "Mix de produtos e dependência do resultado", 5, ["Quais itens geram mais margem", "Se há dependência de poucos produtos", "Itens com margem baixa ou negativa"]);
-  const rk = calc.produtosRanking || [];
-  if (!rk.length || calc.cmv <= 0) aviso(sP, "Esta parte ainda não pode ser montada: preencham o faturamento (Módulo 5) e os custos unitários (Módulo 8) e baixem a apresentação de novo.");
-  else {
-    const top = rk.slice(0, 8);
-    const hdP = (t, al) => ({ text: t, options: { bold: true, color: "FFFFFF", fill: { color: NAVY }, fontSize: 12, align: al } });
-    const cP = (t, i, o = {}) => ({ text: String(t), options: { fontSize: 12, color: o.neg ? RED : NAVY, fill: { color: i % 2 ? "FFFFFF" : LIGHT }, align: o.al, bold: o.b } });
-    sP.addTable([[hdP("#", "center"), hdP("Produto/serviço", "left"), hdP("Preço", "right"), hdP("Custo unit.", "right"), hdP("Margem unit.", "right"), hdP("Margem %", "right"), hdP("Margem total/mês", "right"), hdP("% da margem", "right")],
-      ...top.map((x, i) => [cP(i + 1, i, { al: "center" }), cP(x.nome, i, { b: true }), cP(money2(x.preco), i, { al: "right" }), cP(money2(x.custoUnit), i, { al: "right" }), cP(money2(x.margemUnit), i, { al: "right", neg: x.margemUnit < 0 }), cP(pct(x.margemPct), i, { al: "right" }), cP(money0(x.margemTotal), i, { al: "right", neg: x.margemTotal < 0, b: true }), cP(pct(x.pctDaMargem), i, { al: "right" })])],
-      { x: X, y: Y, w: W, colW: [W * 0.05, W * 0.27, W * 0.1, W * 0.1, W * 0.11, W * 0.1, W * 0.15, W * 0.12], rowH: 0.36, fontFace: "Calibri", border: { type: "solid", pt: 0.5, color: BORDER }, valign: "middle" });
-    const n3 = Math.min(3, rk.length); const p3 = rk.slice(0, n3).reduce((a, x) => a + x.pctDaMargem, 0); const negs = rk.filter((x) => x.margemTotal < 0).length;
-    const yb2 = Y + 0.36 * (top.length + 1) + 0.2;
-    sP.addShape(pptx.ShapeType.roundRect, { x: X, y: yb2, w: W, h: 0.75, fill: { color: "FFFBEB" }, line: { color: AMBER, width: 1 }, rectRadius: 0.06 });
-    sP.addText(`Leitura: ${n3 === 1 ? "o principal item gera" : `os ${n3} primeiros itens geram`} ${pct(p3, 0)} da margem de contribuição${p3 >= 70 ? " — alta dependência de poucos produtos" : ""}.${negs ? ` Atenção: ${negs} ite${negs > 1 ? "ns dão" : "m dá"} prejuízo.` : ""}${rk.length > top.length ? ` (exibidos os ${top.length} maiores de ${rk.length})` : ""}`, { x: X + 0.2, y: yb2, w: W - 0.4, h: 0.75, fontFace: "Calibri", fontSize: 13, bold: true, color: BROWN, align: "center", valign: "middle" });
-  }
-
-  // 4 · Indicadores
-  const s4 = base("5 · Indicadores de Viabilidade", "Ponto de equilíbrio, lucratividade, rentabilidade e prazo de retorno (payback)", 6, ["Ponto de Equilíbrio", "Lucratividade", "Rentabilidade", "Prazo de Retorno (Payback)"]);
+  // 4 · Slide 3 — Viabilidade
+  const qBanca = [];
+  if (calc.prazoRetorno != null && calc.prazoRetorno > 5) qBanca.push(`Por que o retorno leva ${anosPay} anos e como encurtá-lo?`);
+  if (fluxo && fluxo.length > 12 && fluxo.filter((m) => m.mes > 0 && m.resultado < 0).length > 0) qBanca.push("Por que o caixa começa negativo e em quantos meses ele se recupera?");
+  if (capCalc && capCalc.res && capCalc.res.k === "r") qBanca.push("A estrutura atende o pico de movimento? O que será feito se não atender?");
+  qBanca.push("O que muda se o faturamento cair 10%?");
+  const s4 = base("3 · Viabilidade: Equilíbrio, Retorno e Valor", "O negócio se paga? Em quanto tempo? Vale a pena frente à TMA?", 4, [
+    `Ponto de equilíbrio: ${calc.pontoEquilibrio != null ? money0(calc.pontoEquilibrio) : "—"} por ano, contra receita de ${money0(calc.receitaAnual)}. Rentabilidade: ${pct(calc.rentabilidade)} ao ano.`,
+    `Payback: ${anosPay ? `${anosPay} anos` : "o lucro atual não recupera o investimento"}. Este é o número central da PPF: em quanto tempo o negócio se paga.`,
+    vpl != null ? `VPL: ${money0(vpl)} (TMA de ${pct(tma, 1)} ao ano). TIR: ${tirA !== null ? pct(tirA, 1) + " ao ano" : "não recupera no horizonte"}. ${vpl >= 0 ? "O investimento supera o retorno mínimo exigido." : "O investimento não cobre o retorno mínimo exigido."}` : "VPL e TIR: informe a TMA no sistema para calcular.",
+    "FÓRMULAS: Ponto de equilíbrio = custos fixos anuais ÷ índice da margem · Payback = investimento ÷ lucro anual · Rentabilidade = lucro anual ÷ investimento · VPL = Σ resultado do mês ÷ (1 + TMA mensal)^mês, com o investimento no mês 0 · TIR = taxa que zera o VPL.",
+    "Se a banca perguntar: " + qBanca.slice(0, 3).join(" · "),
+  ], "70 s");
   if (!temDados || !temInvest) aviso(s4, "Esta parte ainda não pode ser montada: faltam investimento e faturamento (Módulos 1 a 5) para calcular os indicadores.");
   else {
-    const cw = (W - 0.15) / 2, ch = 1.45;
-    const itens = [
-      ["Ponto de equilíbrio (anual)", calc.pontoEquilibrio != null ? money0(calc.pontoEquilibrio) : "—", `Receita anual projetada: ${money0(calc.receitaAnual)}`],
-      ["Lucratividade", pct(calc.lucratividade), "% do faturamento que vira lucro"],
-      ["Rentabilidade (ao ano)", pct(calc.rentabilidade), "retorno anual sobre o investimento"],
-      ["Prazo de retorno (payback)", calc.prazoRetorno != null ? `${calc.prazoRetorno.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} anos` : "—", calc.prazoRetorno != null ? `≈ ${Math.round(calc.prazoRetorno * 12)} meses para recuperar o investimento` : "o lucro não recupera o investimento"],
-    ];
-    itens.forEach(([a, b, sub], i) => kpi(s4, X + (i % 2) * (cw + 0.15), Y + Math.floor(i / 2) * (ch + 0.15), cw, ch, a, b, sub));
+    const cw = (W - 0.3) / 3, ch = 1.3;
+    const par = C.rotulo.charAt(0) + C.rotulo.slice(1).toLowerCase();
+    const k = (i, label, valor, sub, cor) => kpi(s4, X + (i % 3) * (cw + 0.15), Y + Math.floor(i / 3) * (ch + 0.15), cw, ch, label, valor, sub, cor);
+    k(0, "Ponto de equilíbrio (anual)", calc.pontoEquilibrio != null ? money0(calc.pontoEquilibrio) : "—", `receita anual projetada ${money0(calc.receitaAnual)}`);
+    k(1, "Rentabilidade (ao ano)", pct(calc.rentabilidade), "retorno anual sobre o investimento");
+    k(2, "Prazo de retorno (payback)", anosPay ? `${anosPay} anos` : "—", anosPay ? `≈ ${Math.round(calc.prazoRetorno * 12)} meses para recuperar o investimento` : "o lucro não recupera o investimento", calc.prazoRetorno != null && calc.prazoRetorno > 5 ? "B45309" : NAVY);
+    k(3, `VPL (TMA de ${pct(tma, 1)} ao ano)`, money0(vpl), vpl >= 0 ? "gera valor além do mínimo exigido" : `não cobre a TMA em ${horiz}`, vpl >= 0 ? GREEN : RED);
+    k(4, "TIR (ao ano)", tirA !== null ? pct(tirA, 1) : `Não recupera em ${horiz}`, tirA !== null ? (tirA >= tma ? "acima da TMA" : "abaixo da TMA") : `o saldo não zera em ${horiz}`, tirA !== null && tirA >= tma ? GREEN : RED);
+    k(5, "Parecer", par, C.parecer === "g" ? "plano viável" : C.parecer === "a" ? "lucrativo, mas com pontos de atenção" : "o plano precisa de ajustes", C.parecer === "g" ? GREEN : C.parecer === "a" ? "B45309" : RED);
     let leitura = "";
     if (calc.pontoEquilibrio != null && calc.receitaAnual > 0) {
       const razao = (calc.receitaAnual / calc.pontoEquilibrio - 1) * 100;
-      const seg = (1 - calc.pontoEquilibrio / calc.receitaAnual) * 100;
-      leitura = `Leitura: a receita projetada está ${pct(Math.abs(razao))} ${razao >= 0 ? "acima" : "abaixo"} do ponto de equilíbrio (margem de segurança de ${pct(seg)})` + (calc.prazoRetorno != null ? `; o investimento se paga em cerca de ${calc.prazoRetorno.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} anos.` : "; com o resultado atual, o investimento não se paga.");
+      leitura = `Leitura: a receita projetada está ${pct(Math.abs(razao))} ${razao >= 0 ? "acima" : "abaixo"} do ponto de equilíbrio` + (calc.prazoRetorno != null ? `; o investimento se paga em cerca de ${anosPay} anos` : "; com o resultado atual, o investimento não se paga") + (vpl >= 0 ? " e supera o retorno mínimo exigido (TMA)." : " e não supera o retorno mínimo exigido (TMA).");
     }
     const yb = Y + 2 * (ch + 0.15);
-    s4.addShape(pptx.ShapeType.roundRect, { x: X, y: yb, w: W, h: Y + H - yb, fill: { color: "FFFBEB" }, line: { color: AMBER, width: 1 }, rectRadius: 0.06 });
-    s4.addText(leitura, { x: X + 0.2, y: yb, w: W - 0.4, h: Y + H - yb, fontFace: "Calibri", fontSize: 14, bold: true, color: BROWN, align: "center", valign: "middle" });
+    s4.addShape(pptx.ShapeType.roundRect, { x: X, y: yb, w: W, h: 0.95, fill: { color: "FFFBEB" }, line: { color: AMBER, width: 1 }, rectRadius: 0.06 });
+    s4.addText(leitura, { x: X + 0.2, y: yb, w: W - 0.4, h: 0.95, fontFace: "Calibri", fontSize: 14, bold: true, color: BROWN, align: "center", valign: "middle" });
   }
 
-  // 5 · Fluxo de caixa
-  const s5 = base("6 · Fluxo de Caixa Projetado", "Evolução anual e recuperação do investimento", 7, ["Em qual mês (e ano) o caixa fica positivo", "Como o investimento se recupera ao longo do tempo"]);
-  if (!temDados || !temInvest) aviso(s5, "Esta parte ainda não pode ser montada: faltam investimento e faturamento (Módulos 1 a 5) para projetar o caixa.");
+  // 5 · Slide 4 — Caixa, cenários e capacidade
+  const gs4 = capCalc ? capCalc.grupos.filter((g) => g.cap != null) : [];
+  const gP = [...gs4].sort((a, b) => (b.usoPico || 0) - (a.usoPico || 0))[0];
+  const cens = (cenarios || []).filter((x) => x).slice(0, 3);
+  const sN = base("4 · Caixa, Cenários e Capacidade", "Quando o caixa fica positivo, o que muda se as vendas variarem e se a estrutura comporta", 5, [
+    `Caixa: saldo de ${money0(fluxo[12] ? fluxo[12].saldo : 0)} ao final do mês 12; o caixa fica positivo em ${rotRet}. Explique de onde vem o dinheiro que cobre o período negativo.`,
+    cens.length ? `Cenários: ${cens.map((x, i) => { const r = calcularCenario(calc, x); return `${x.nome || "Cenário " + (i + 1)} → resultado de ${money0(r.resultadoOperacional)} por mês`; }).join("; ")}. Responda: e se as vendas caírem?` : "Criem cenários na plataforma (pessimista e otimista) para responder: e se as vendas caírem?",
+    gP ? `Capacidade: uso normal de ${pct(gP.uso * 100, 0)} e de ${pct(gP.usoPico * 100, 0)} no pico${gP.gargalo ? `; o gargalo é ${gP.gargalo}` : ""}. ${gP.usoPico > 1 ? "A estrutura não atende o pico: digam o que fariam." : "A estrutura comporta o pico."}` : "Capacidade: preencham os passos 1 a 3 da Capacidade na plataforma.",
+    "Se a banca perguntar: por que o caixa começa negativo? O que muda se o faturamento cair 10%? A estrutura atende o pico?",
+  ], "50 s");
+  if (!temDados || !temInvest) aviso(sN, "Esta parte ainda não pode ser montada: faltam investimento e faturamento (Módulos 1 a 5) para projetar o caixa.");
   else {
-    const pos = fluxo.find((m) => m.mes > 0 && m.saldo >= 0);
-    const neg = fluxo.filter((m) => m.mes > 0 && m.resultado < 0).length;
-    const w3 = (W - 0.3) / 3;
-    kpi(s5, X, Y, w3, 1.05, "Saldo ao final do mês 12", money0(fluxo[12].saldo), "", fluxo[12].saldo >= 0 ? GREEN : SLATE);
-    kpi(s5, X + w3 + 0.15, Y, w3, 1.05, "Caixa fica positivo em", rotRet, RL.longo && RL.mesRet ? `retorno em ${fmtNum(RL.mesRet / 12, 1)} anos` : "");
-    kpi(s5, X + 2 * (w3 + 0.15), Y, w3, 1.05, "Meses com resultado negativo", `${neg} de 12`, "");
-    s5.addChart(pptx.charts.LINE, [{ name: "Saldo de caixa acumulado", labels: RL.longo ? ["Início", ...fluxoPorAno(fluxoL).map((y) => `Ano ${y.ano}`)] : fluxo.map((m) => (m.mes > 0 ? m.label : "Início")), values: RL.longo ? [fluxoL[0].saldo, ...fluxoPorAno(fluxoL).map((y) => y.saldo)].map((v) => Math.round(v * 100) / 100) : fluxo.map((m) => Math.round(m.saldo * 100) / 100) }], {
-      x: X, y: Y + 1.2, w: W, h: H - 1.2, chartColors: [AMBER], lineSize: 3, lineDataSymbolSize: 7, showLegend: false,
-      showTitle: true, title: RL.longo ? `Saldo de caixa no fim de cada ano (investimento no início) · ${horiz}` : "Evolução do saldo de caixa (investimento no mês 0)", titleFontSize: 12, titleFontFace: "Calibri", titleColor: NAVY,
-      valAxisLabelFormatCode: "R$ #,##0", valAxisLabelFontSize: 9, catAxisLabelFontSize: 9, catAxisLabelPos: "low", valGridLine: { color: "E2E8F0", size: 0.75 },
-    });
-  }
-
-  // 5b · Cenários, VPL e TIR
-  const sN = base("7 · Análise de Cenários, VPL e TIR", "Sensibilidade do resultado e retorno mínimo exigido (TMA)", 8, ["Resultado nos cenários da equipe", "VPL e TIR: o investimento supera o retorno mínimo?", "Preparar a resposta para: e se as vendas caírem?"]);
-  if (!temDados || !temInvest) aviso(sN, "Esta parte ainda não pode ser montada: faltam investimento e faturamento (Módulos 1 a 5).");
-  else {
-    const tma = Number.isFinite(Number(tmaAnual)) && tmaAnual !== "" && tmaAnual != null ? Number(tmaAnual) : 12;
-    const tmaM = Math.pow(1 + tma / 100, 1 / 12) - 1; const vpl = calcularVPL(fluxoL, tmaM); const tirM = calcularTIRMensal(fluxoL); const tirA = tirM !== null ? (Math.pow(1 + tirM, 12) - 1) * 100 : null;
-    const w3n = (W - 0.3) / 3;
-    kpi(sN, X, Y, w3n, 1.1, `VPL (TMA de ${pct(tma, 1)} ao ano)`, money0(vpl), vpl >= 0 ? "gera valor além do mínimo exigido" : `não cobre a TMA em ${horiz}`, vpl >= 0 ? GREEN : RED);
-    kpi(sN, X + w3n + 0.15, Y, w3n, 1.1, "TIR (ao ano)", tirA !== null ? pct(tirA, 1) : `Não recupera em ${horiz}`, tirA !== null ? (tirA >= tma ? "acima da TMA" : "abaixo da TMA") : `o saldo não zera em ${horiz}`, tirA !== null && tirA >= tma ? GREEN : RED);
-    kpi(sN, X + 2 * (w3n + 0.15), Y, w3n, 1.1, "Resultado mensal (base)", money0(calc.resultadoOperacional), calc.resultadoOperacional >= 0 ? "lucro" : "prejuízo", calc.resultadoOperacional >= 0 ? GREEN : RED);
-    const cens = (cenarios || []).filter((c) => c).slice(0, 4);
-    const hdN = (t, al) => ({ text: t, options: { bold: true, color: "FFFFFF", fill: { color: NAVY }, fontSize: 12, align: al } });
-    const cN = (t, i, o = {}) => ({ text: String(t), options: { fontSize: 12, color: o.neg ? RED : NAVY, fill: { color: i % 2 ? "FFFFFF" : LIGHT }, align: o.al, bold: o.b } });
+    const wL = 6.5, xR = X + wL + 0.25, wR = W - wL - 0.25;
+    {
+      sN.addChart(pptx.charts.LINE, [{ name: "Saldo de caixa acumulado", labels: RL.longo ? ["Início", ...fluxoPorAno(fluxoL).map((y) => `Ano ${y.ano}`)] : fluxo.map((m) => (m.mes > 0 ? m.label : "Início")), values: RL.longo ? [fluxoL[0].saldo, ...fluxoPorAno(fluxoL).map((y) => y.saldo)].map((v) => Math.round(v * 100) / 100) : fluxo.map((m) => Math.round(m.saldo * 100) / 100) }], {
+        x: X, y: Y, w: wL, h: 3.0, chartColors: [AMBER], lineSize: 3, lineDataSymbolSize: 7, showLegend: false,
+        showTitle: true, title: RL.longo ? `Saldo de caixa no fim de cada ano · ${horiz}` : "Evolução do saldo de caixa (investimento no mês 0)", titleFontSize: 11, titleFontFace: "Calibri", titleColor: NAVY,
+        valAxisLabelFormatCode: "R$ #,##0", valAxisLabelFontSize: 9, catAxisLabelFontSize: 9, catAxisLabelPos: "low", valGridLine: { color: "E2E8F0", size: 0.75 },
+      });
+    }
+    const wk = (wL - 0.15) / 2;
+    kpi(sN, X, Y + 3.15, wk, 1.25, "Saldo ao final do mês 12", money0(fluxo[12].saldo), "", fluxo[12].saldo >= 0 ? GREEN : SLATE);
+    kpi(sN, X + wk + 0.15, Y + 3.15, wk, 1.25, "Caixa fica positivo em", rotRet, RL.longo && RL.mesRet ? `retorno em ${fmtNum(RL.mesRet / 12, 1)} anos` : "");
+    sN.addText("Cenários (variação do faturamento)", { x: xR, y: Y, w: wR, h: 0.3, fontFace: "Calibri", fontSize: 12, bold: true, color: NAVY, margin: 0 });
     if (!cens.length) {
-      sN.addShape(pptx.ShapeType.roundRect, { x: X, y: Y + 1.35, w: W, h: 2.2, fill: { color: LIGHT }, line: { color: BORDER, width: 1.25, dashType: "dash" }, rectRadius: 0.08 });
-      sN.addText("A equipe ainda não criou cenários na plataforma. Criem um cenário pessimista (ex.: vendas –10%) e um otimista, e baixem a apresentação de novo.", { x: X + 0.4, y: Y + 1.35, w: W - 0.8, h: 2.2, fontFace: "Calibri", fontSize: 15, italic: true, color: SLATE, align: "center", valign: "middle" });
+      sN.addShape(pptx.ShapeType.roundRect, { x: xR, y: Y + 0.35, w: wR, h: 2.0, fill: { color: LIGHT }, line: { color: BORDER, width: 1.25, dashType: "dash" }, rectRadius: 0.08 });
+      sN.addText("A equipe ainda não criou cenários na plataforma. Criem um cenário pessimista (ex.: vendas –10%) e um otimista, e baixem a apresentação de novo.", { x: xR + 0.2, y: Y + 0.35, w: wR - 0.4, h: 2.0, fontFace: "Calibri", fontSize: 13, italic: true, color: SLATE, align: "center", valign: "middle" });
     } else {
-      const linhas = [["Base (atual)", "—", "—", "—", calc.faturamento, calc.resultadoOperacional, calc.pontoEquilibrio, calc.lucratividade], ...cens.map((c, i) => { const r = calcularCenario(calc, c); return [c.nome || `Cenário ${i + 1}`, `${(Number(c.variacaoFaturamento) || 0).toLocaleString("pt-BR")}%`, `${(Number(c.variacaoCustoVariavel) || 0).toLocaleString("pt-BR")}%`, `${(Number(c.variacaoCustoFixo) || 0).toLocaleString("pt-BR")}%`, r.faturamento, r.resultadoOperacional, r.pontoEquilibrio, r.lucratividade]; })];
-      sN.addTable([[hdN("Cenário", "left"), hdN("Δ Faturamento", "right"), hdN("Δ C. variável", "right"), hdN("Δ C. fixo", "right"), hdN("Faturamento/mês", "right"), hdN("Resultado/mês", "right"), hdN("Ponto de equilíbrio", "right"), hdN("Lucratividade", "right")],
-        ...linhas.map((l, i) => [cN(l[0], i, { b: true }), cN(l[1], i, { al: "right" }), cN(l[2], i, { al: "right" }), cN(l[3], i, { al: "right" }), cN(money0(l[4]), i, { al: "right" }), cN(money0(l[5]), i, { al: "right", neg: l[5] < 0, b: true }), cN(l[6] != null ? money0(l[6]) : "—", i, { al: "right" }), cN(pct(l[7]), i, { al: "right" })])],
-        { x: X, y: Y + 1.3, w: W, colW: [W * 0.19, W * 0.11, W * 0.11, W * 0.09, W * 0.13, W * 0.13, W * 0.14, W * 0.1], rowH: 0.42, fontFace: "Calibri", border: { type: "solid", pt: 0.5, color: BORDER }, valign: "middle" });
+      const hdN = (t, al) => ({ text: t, options: { bold: true, color: "FFFFFF", fill: { color: NAVY }, fontSize: 11, align: al } });
+      const cN = (t, i, o = {}) => ({ text: String(t), options: { fontSize: 11, color: o.neg ? RED : NAVY, fill: { color: i % 2 ? "FFFFFF" : LIGHT }, align: o.al, bold: o.b } });
+      const linhasN = [["Base (atual)", "—", calc.resultadoOperacional, calc.lucratividade], ...cens.map((x, i) => { const r = calcularCenario(calc, x); return [x.nome || `Cenário ${i + 1}`, `${(Number(x.variacaoFaturamento) || 0).toLocaleString("pt-BR")}%`, r.resultadoOperacional, r.lucratividade]; })];
+      sN.addTable([[hdN("Cenário", "left"), hdN("Δ Faturamento", "right"), hdN("Resultado/mês", "right"), hdN("Lucratividade", "right")], ...linhasN.map((l, i) => [cN(l[0], i, { b: true }), cN(l[1], i, { al: "right" }), cN(money0(l[2]), i, { al: "right", neg: l[2] < 0, b: true }), cN(pct(l[3]), i, { al: "right" })])], { x: xR, y: Y + 0.35, w: wR, colW: [wR * 0.34, wR * 0.2, wR * 0.25, wR * 0.21], rowH: 0.4, fontFace: "Calibri", border: { type: "solid", pt: 0.5, color: BORDER }, valign: "middle" });
     }
-    sN.addText("VPL = Σ resultado do mês ÷ (1 + TMA mensal)^mês, com o investimento no mês 0. TIR = taxa que zera o VPL.", { x: X, y: Y + H - 0.4, w: W, h: 0.35, fontFace: "Calibri", fontSize: 11, italic: true, color: SLATE, margin: 0 });
-  }
-
-  // 6 · Capacidade
-  const sC = base("8 · Capacidade de Produção e Atendimento", "A estrutura comporta a demanda e o pico?", 9, ["Qual é o gargalo da empresa", "Como a capacidade foi calculada, passo a passo", "O que a equipe fará se o pico não couber"]);
-  if (!capCalc) aviso(sC, "Esta parte ainda não pode ser montada: preencham a Capacidade da empresa (passos 1 a 3) na plataforma e baixem a apresentação de novo.");
-  else {
-    const gs = capCalc.grupos.filter((g) => g.cap != null);
-    const gP = [...gs].sort((a, b) => (b.usoPico || 0) - (a.usoPico || 0))[0];
-    const w3c = (W - 0.3) / 3;
     if (gP) {
-      kpi(sC, X, Y, w3c, 1.15, `Capacidade (${gP.titulo.toLowerCase()})`, `${Math.round(gP.cap).toLocaleString("pt-BR")} ${capCalc.un}/mês`, gP.gargalo ? `gargalo: ${gP.gargalo}` : "");
-      kpi(sC, X + w3c + 0.15, Y, w3c, 1.15, "Demanda planejada (Módulo 5)", `${Math.round(gP.dem).toLocaleString("pt-BR")} ${capCalc.un}/mês`, `uso normal de ${pct(gP.uso * 100, 0)}`);
-      kpi(sC, X + 2 * (w3c + 0.15), Y, w3c, 1.15, "Uso no pico", pct(gP.usoPico * 100, 0), gP.usoPico > 1 ? "não atende o pico" : "atende o pico", gP.usoPico > 1 ? RED : GREEN);
+      const wq = (wR - 0.15) / 2;
+      kpi(sN, xR, Y + 3.15, wq, 1.25, "Uso normal", pct(gP.uso * 100, 0), `${nf(gP.dem)} de ${nf(gP.cap)} ${capCalc.un}/mês`);
+      kpi(sN, xR + wq + 0.15, Y + 3.15, wq, 1.25, "Uso no pico", pct(gP.usoPico * 100, 0), gP.usoPico > 1 ? "não atende o pico" : "atende o pico", gP.usoPico > 1 ? RED : GREEN);
+      if (gP.gargalo) sN.addText(`Gargalo da estrutura: ${gP.gargalo}`, { x: xR, y: Y + 4.5, w: wR, h: 0.3, fontFace: "Calibri", fontSize: 10.5, italic: true, color: SLATE, margin: 0 });
+    } else {
+      sN.addShape(pptx.ShapeType.roundRect, { x: xR, y: Y + 3.15, w: wR, h: 1.25, fill: { color: LIGHT }, line: { color: BORDER, width: 1.25, dashType: "dash" }, rectRadius: 0.08 });
+      sN.addText("Capacidade ainda não preenchida: completem os passos 1 a 3 da Capacidade na plataforma e baixem a apresentação de novo.", { x: xR + 0.15, y: Y + 3.15, w: wR - 0.3, h: 1.25, fontFace: "Calibri", fontSize: 12, italic: true, color: SLATE, align: "center", valign: "middle" });
     }
-    const hd = (t) => ({ text: t, options: { bold: true, color: "FFFFFF", fill: { color: NAVY }, fontSize: 12 } });
-    const cel = (t, i, b) => ({ text: String(t), options: { fontSize: 12, bold: !!b, color: NAVY, fill: { color: i % 2 ? "FFFFFF" : LIGHT } } });
-    const fm = capCalc.func; const nf = (n, d = 0) => (Number(n) || 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
-    const linhasC = [["Minutos por mês", `${nf(fm.horasDia, 1)} h/dia × 60 × ${nf(fm.diasMes)} dias × ${nf(fm.efic)}% de eficiência = ${nf(fm.minMes)} min${fm.comDia ? " (produção e pessoas)" : ""}`]];
-    if (fm.comDia && fm.dia) linhasC.push(["Atendimento (loja aberta)", `(${nf(fm.dia.aberto, 1)} h aberta − ${nf(fm.dia.intervalos, 1)} h sem cliente) × ${nf(fm.diasMes)} dias × 60 = ${nf(fm.horasEfA * 60)} min (caixa, mesas, balcão)`]);
-    capCalc.grupos.forEach((g) => {
-      g.linhas.filter((x) => x.cap != null).forEach((x) => linhasC.push([`${g.titulo} — ${x.nome}${x.gargalo ? " (gargalo)" : ""}`, `${x.conta} = ${nf(x.cap)} ${capCalc.un}/mês`]));
-      if (g.cap != null) linhasC.push([`${g.titulo}: plano ÷ capacidade`, `${nf(g.dem)} ÷ ${nf(g.cap)} = ${nf(g.uso * 100)}% · no pico: ${nf(g.dem)} × ${nf(fm.pico, 1)} = ${nf(g.dem * fm.pico)} → ${nf(g.usoPico * 100)}%`]);
-    });
-    if (capCalc.horas) linhasC.push(["Horas de trabalho", `${nf(capCalc.horas.nec)} h necessárias ÷ ${nf(capCalc.horas.disp)} h disponíveis = ${nf(capCalc.horas.uso * 100)}%`]);
-    const rowsC = [[hd("Passo"), hd("Cálculo da equipe")], ...linhasC.slice(0, 8).map((l, i) => [cel(l[0], i, true), cel(l[1], i)])];
-    sC.addTable(rowsC, { x: X, y: Y + 1.3, w: W, colW: [W * 0.32, W * 0.68], rowH: 0.36, fontFace: "Calibri", border: { type: "solid", pt: 0.5, color: BORDER }, valign: "middle" });
-    if (capCalc.caber.length) sC.addText(`Para caber no pico: ${capCalc.caber[0].a.replace(/\s*Depois, lançar nos Módulos 1 e 9\./, "")}`.slice(0, 260), { x: X, y: Y + H - 0.5, w: W, h: 0.5, fontFace: "Calibri", fontSize: 11.5, italic: true, color: BROWN, margin: 0, valign: "top" });
   }
 
+  // Extra · Vendas por canal (só aparece quando a equipe informou vendas online)
   // 8b · Vendas por canal (só aparece quando a equipe informou vendas online)
   if (temDados && calc.canal && calc.canal.ativo) {
-    const sV = base("8b · Vendas por Canal", "Loja e online — faturamento, custos e prazo de recebimento", "9b", ["Quanto do faturamento vem de cada canal", "O custo extra do online e o efeito no resultado", "O prazo de recebimento do online pesa no capital de giro"]);
+    const sV = base("Extra · Vendas por Canal", "Loja e online — faturamento, custos e prazo de recebimento", "4b", ["Quanto do faturamento vem de cada canal", "O custo extra do online e o efeito no resultado", "O prazo de recebimento do online pesa no capital de giro"]);
     const cn = capCalc && capCalc.canal; const f = calc.faturamento;
     const hdV = (t, al) => ({ text: t, options: { bold: true, color: "FFFFFF", fill: { color: NAVY }, fontSize: 12, align: al } });
     const cV = (t, i, o = {}) => ({ text: String(t), options: { fontSize: 12, color: NAVY, fill: { color: i % 2 ? "FFFFFF" : LIGHT }, align: o.al, bold: o.b } });
@@ -4924,36 +4908,8 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
     sV.addText("O online amplia o alcance, mas custa mais por venda (plataforma e frete) e demora mais para virar caixa. Quando a capacidade tem folga, o limite do negócio passa a ser a demanda, não a estrutura.", { x: X, y: Y + 3.1, w: W, h: 1.2, fontFace: "Calibri", fontSize: 14, italic: true, color: SLATE, margin: 0 });
   }
 
-  // 7 · Como chegamos aos números (apoio à banca)
-  const sF = base("9 · Memória de Cálculo", "Fórmulas dos indicadores, como apoio à defesa", 10, ["Cada fórmula com os números da própria empresa", "Perguntas que a banca pode fazer"]);
-  if (!temDados) aviso(sF, "Esta parte ainda não pode ser montada: o faturamento (Módulo 5) ainda não foi preenchido.");
-  else {
-    const hdF = (t, al) => ({ text: t, options: { bold: true, color: "FFFFFF", fill: { color: NAVY }, fontSize: 12, align: al } });
-    const ce = (t, i, o = {}) => ({ text: String(t), options: { fontSize: 12, color: NAVY, fill: { color: i % 2 ? "FFFFFF" : LIGHT }, ...o } });
-    const fx = [
-      ["Faturamento mensal", "Σ quantidade × preço unitário", money0(calc.faturamento)],
-      ["CMV", "Σ quantidade × custo unitário", money0(calc.cmv)],
-      ["Margem de contribuição", "Receita – custos variáveis", `${money0(calc.margemContribuicao)} (${pct(calc.faturamento > 0 ? (calc.margemContribuicao / calc.faturamento) * 100 : 0)})`],
-      ["Custos fixos", "Outros fixos + mão de obra + depreciação", money0(calc.custoFixoTotal)],
-      ["Resultado mensal", "Margem de contribuição – custos fixos", money0(calc.resultadoOperacional)],
-      ["Ponto de equilíbrio (ano)", "Custos fixos anuais ÷ índice da margem", calc.pontoEquilibrio != null ? money0(calc.pontoEquilibrio) : "—"],
-      ["Payback", "Investimento ÷ lucro anual", calc.prazoRetorno != null ? `${calc.prazoRetorno.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} anos` : "—"],
-      ["Rentabilidade (ano)", "Lucro anual ÷ investimento", pct(calc.rentabilidade)],
-    ];
-    sF.addTable([[hdF("Indicador", "left"), hdF("Fórmula", "left"), hdF("Resultado da empresa", "right")], ...fx.map((r, i) => [ce(r[0], i, { bold: true }), ce(r[1], i), ce(r[2], i, { align: "right", bold: true })])], { x: X, y: Y, w: W, colW: [W * 0.28, W * 0.44, W * 0.28], rowH: 0.33, fontFace: "Calibri", border: { type: "solid", pt: 0.5, color: BORDER }, valign: "middle" });
-    const q = [];
-    if (calc.prazoRetorno != null && calc.prazoRetorno > 5) q.push(`Por que o retorno leva ${calc.prazoRetorno.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} anos e como encurtá-lo?`);
-    if (fluxo && fluxo.length > 12 && fluxo.filter((m) => m.mes > 0 && m.resultado < 0).length > 0) q.push("Por que o caixa começa negativo e em quantos meses ele se recupera?");
-    if (capCalc && capCalc.res && capCalc.res.k === "r") q.push("A estrutura atende o pico de movimento? O que será feito se não atender?");
-    q.push("O que muda se o faturamento cair 10%?");
-    const yq = Y + 0.33 * (fx.length + 1) + 0.2;
-    const hq = 0.45 + 0.32 * Math.min(3, q.length);
-    sF.addShape(pptx.ShapeType.roundRect, { x: X, y: yq, w: W, h: hq, fill: { color: "FFFBEB" }, line: { color: AMBER, width: 1 }, rectRadius: 0.06 });
-    sF.addText([{ text: "Perguntas que a banca pode fazer", options: { bold: true, breakLine: true } }, ...q.slice(0, 3).map((t) => ({ text: t, options: { bullet: true, breakLine: true } }))], { x: X + 0.2, y: yq + 0.08, w: W - 0.4, h: hq - 0.12, fontFace: "Calibri", fontSize: 12, color: BROWN, valign: "top", margin: 0 });
-  }
-
-  // 10 · Conclusão: resumo da "Conclusão analítica" do Word, para a equipe apresentar (pode ser editada no PowerPoint)
-  const s6 = base("10 · Parecer e Recomendações", "Síntese da viabilidade e próximos passos", 11, null);
+  // 6 · Slide 5 — Conclusão: resumo da "Conclusão analítica" do Word, para a equipe apresentar (pode ser editada no PowerPoint)
+  const s6 = base("5 · Parecer e Recomendações", "Síntese da viabilidade e próximos passos", 6, null, "60 s");
   if (!temDados || !temInvest) aviso(s6, "[ Escrevam aqui, com as próprias palavras, a conclusão da equipe: o negócio é viável? Por quê? Qual o principal risco? O que vocês fariam diferente? ]");
   else {
     const C = conclusaoResumo({ equipe, calc, fluxo, fluxoL, capCalc, tmaAnual, pPro: Math.min(100, Math.max(0, Number(lanc?.m4?.pctProprio) || 0)) });

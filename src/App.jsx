@@ -1,4 +1,4 @@
-// build: 20261120_14h58m Análise de Cenários com até 6 cenários (slide 4 mostra 3)
+// build: 20261120_17h35m Compensação do imposto pelo volume (Ajuste geral)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1385,6 +1385,7 @@ const VERSOES = [
     "Ajuste geral › 3. Ajuste manual: cada equipe ganhou a linha \"Análises da equipe (calculadas · somente leitura)\" com Análise da DRE, Análise de Indicadores, Análise do Negócio, Análise de Cenários e Fluxo de Caixa Anual (abrem em uma janela com os dados atuais da equipe, sem sair do Ajuste geral) e os botões Baixar Apresentação e Baixar Plano Financeiro (Word). O professor não precisa mais entrar em \"Ver como aluno\" a cada conferência. Nada é gravado.",
     "Ajuste geral › cartão \"Retorno do investimento\" alinhado à faixa de 5 a 10 anos: retorno dentro da faixa (ou mais rápido) aparece em verde, sem plano de alavancas; só acima de 10 anos continua o plano opcional. Nada é corrigido por causa do retorno.",
     "Indicadores › nova Margem de segurança = (faturamento anual − ponto de equilíbrio) ÷ faturamento anual: mostra quanto as vendas podem cair antes de dar prejuízo (abaixo de 10% estreita · 10 a 25% confortável · acima de 25% ampla; só informativa, sem nota). Aparece na Análise de Indicadores (com o faturamento anual planejado e a frase \"Como ler\"), no Word, no slide 3 do PowerPoint e na Conferência dos documentos, para todas as equipes. Um ponto de equilíbrio alto não é cobrado: ele acompanha o faturamento.",
+    "Ajuste geral › nova etapa \"Compensação do imposto pelo volume (Módulo 5)\": quando a correção do imposto (Módulo 7) tira da faixa de 5 a 10 anos um plano que hoje se paga em até 10 anos, propõe o menor aumento das quantidades do Módulo 5 (preços inalterados) que leva o retorno a até 6 anos, com a alíquota do Simples já recalculada para o novo faturamento e utilização da capacidade de até 80%. Aplique junto com o cartão de Impostos. Não mexe nos Módulos 1, 2, 3, 4 e 11.",
     "Análise de Cenários › agora até 6 cenários por equipe (antes 3). O Word traz todos; o slide 4 do PowerPoint e das imagens mostra 3 (o pior, o mais próximo do plano e o melhor resultado) e as notas do orador listam todos. Cenários já lançados não mudam.",
     "Ajuste geral › nova etapa \"Reequilíbrio de viabilidade: equipe e volume\": para planos que dão prejuízo (ou não se pagam em 10 anos) por causa de um \"Reforço de equipe\" acima do salário mínimo, propõe o reforço como Auxiliar de atendimento de 1 salário mínimo (nunca menos, mesmo em meio período), as quantidades do Módulo 5 que a capacidade comporta (preços inalterados, retorno de até 6 anos) e os vendedores da Capacidade (utilização de até 80%). Mostra hoje × depois (resultado, retorno, mão de obra, utilização, margem de segurança). Não mexe nos Módulos 1, 2, 3, 4 e 11 nem no pró-labore; só vale se o professor aplicar (registrado, com Desfazer; equipe bloqueada). Depois de aplicar, o cartão de Calibragem passa a propor a curva de 24 passos.",
     "Calibragem e Fluxo de caixa › caixa negativo no 1º ano inteiro e recuperação gradual a partir do 2º ano: a curva de arranque passa a ter 24 passos (1º ano abaixo do ponto de equilíbrio, já considerando a sazonalidade; 2º ano subindo até 100%). A tela de Pendências aceita o 1º ano negativo quando o 2º ano recupera, e o Ajuste geral mostra \"Meses negativos no 1º ano\". Ao aplicar, o sistema marca os Módulos 1, 2, 3, 4 e 11 como preservados: nenhum ajuste automático ou por pontos consegue alterá-los (só a edição manual do professor).",
@@ -9974,6 +9975,41 @@ const PA = (() => {
     const grafico = f1.slice(1).map((m) => (c.faturamento > 0 ? m.receita / c.faturamento : 1));
     return montarLista("R|arr", "Mercado", "Arranque e sazonalidade (Fluxo de caixa)", [], tabela, itens, "Arranque e sazonalidade", { grafico, resumo: `Arranque e sazonalidade: caixa para cobrir meses negativos ${fmtBRL(need(f0))} → ${fmtBRL(need(f1))}.` });
   }
+  // Compensação do imposto pelo volume: quando a correção do imposto (Módulo 7) tira um plano que hoje se paga em até 10 anos da faixa (resultado ≤ 0 ou retorno > 10 anos),
+  // propõe o MENOR aumento das quantidades do Módulo 5 (preços inalterados) que leva o retorno a até 6 anos, desde que a utilização da capacidade fique em até 80%.
+  // Não mexe nos módulos 1, 2, 3, 4 e 11. Deve ser aplicado junto com a correção do imposto.
+  function compensacaoVolume(L, ctx) {
+    const imp = imposto(L, ctx); if (!imp) return null;
+    const c = calcular(L); if (!(c.resultadoOperacional > 0) || !(c.prazoRetorno > 0 && c.prazoRetorno <= 10)) return null;
+    const Lx = mercadoAplicaLista(L, imp.itens.filter((i) => !i.info)); const cx = calcular(Lx);
+    if (cx.resultadoOperacional > 0 && cx.prazoRetorno != null && cx.prazoRetorno <= 10) return null;
+    const escala = (X, f) => { X.m5.itens = X.m5.itens.map((x) => (Number(x.qtd) > 0 ? { ...x, qtd: Math.max(1, Math.round(Number(x.qtd) * f)) } : x)); };
+    const pecas = (X) => X.m5.itens.reduce((t, x) => t + (Number(x.qtd) || 0), 0);
+    // o imposto do Simples depende do faturamento: recalcula a alíquota já com as quantidades novas
+    const comImposto = (base, f) => { const Y = clone(base); escala(Y, f); const im = imposto(Y, ctx); return im ? mercadoAplicaLista(Y, im.itens.filter((i) => !i.info)) : Y; };
+    let fVol = null; let utilD = null;
+    for (let f = 1.005; f <= 1.1501; f = Math.round((f + 0.005) * 1000) / 1000) {
+      const Y = comImposto(L, f); const z = calcular(Y);
+      if (z.resultadoOperacional > 0 && z.prazoRetorno != null && z.prazoRetorno > 0 && z.prazoRetorno <= 6) {
+        let u = null; try { const r = capacidade(Y, ctx); u = r?.info?.utilizacao ?? null; } catch { u = null; }
+        if (u != null && u > 0.8) return null;
+        fVol = f; utilD = u; break;
+      }
+    }
+    if (fVol == null) return null;
+    const Z = comImposto(L, fVol); const cd = calcular(Z);
+    let utilH = null; try { const r = capacidade(L, ctx); utilH = r?.info?.utilizacao ?? null; } catch { utilH = null; }
+    const anos = (v) => (v == null ? "não se paga" : `${fmtNum(v, 1)} anos`); const pct = (v) => (v == null ? "—" : `${fmtNum(v * 100, 0)}%`);
+    const itens = [{ id: "v_vol", texto: `Módulo 5: quantidades +${fmtNum((fVol - 1) * 100, 1)}% (${fmtNum(pecas(L), 0)} → ${fmtNum(pecas(Z), 0)} unidades por mês), preços inalterados, para compensar a correção do imposto (aplique junto com o cartão de Impostos)`, linha: `quantidades do Módulo 5 +${fmtNum((fVol - 1) * 100, 1)}% (compensa o imposto)`, fn: (X) => escala(X, fVol) }];
+    const tabela = [
+      { rot: "Resultado mensal (com o imposto corrigido)", hoje: fmtBRL(cx.resultadoOperacional), faixa: "> 0", sit: cx.resultadoOperacional > 0 ? "ok" : "fora", depois: fmtBRL(cd.resultadoOperacional) },
+      { rot: "Prazo de retorno (com o imposto corrigido)", hoje: anos(cx.prazoRetorno), faixa: "5 a 10 anos", sit: cx.prazoRetorno != null && cx.prazoRetorno <= 10 ? "ok" : "fora", depois: anos(cd.prazoRetorno) },
+      { rot: "Utilização da capacidade", hoje: pct(utilH), faixa: "até 80%", sit: utilH != null && utilH <= 0.8 ? "ok" : "fora", depois: pct(utilD) },
+      { rot: "Margem de segurança", hoje: (() => { const m = margemSeguranca(cx); return m ? `${fmtNum(m.pct, 1)}%` : "—"; })(), faixa: "—", sit: "—", depois: (() => { const m = margemSeguranca(cd); return m ? `${fmtNum(m.pct, 1)}%` : "—"; })() },
+    ];
+    return montarLista("R|vol", "Mercado", "Compensação do imposto pelo volume (Módulo 5)", ["m5"], tabela, itens, "Compensação do imposto pelo volume",
+      { resumo: `Compensação do imposto pelo volume: com o imposto corrigido, resultado ${fmtBRL(cx.resultadoOperacional)} → ${fmtBRL(cd.resultadoOperacional)}; retorno ${anos(cx.prazoRetorno)} → ${anos(cd.prazoRetorno)} (módulos 1, 2, 3, 4 e 11 intocados).` });
+  }
   // Reequilíbrio de viabilidade (equipe e volume): quando o plano dá prejuízo ou não se paga em 10 anos por causa de um "Reforço de equipe" acima do salário mínimo,
   // dimensiona o reforço (nunca abaixo de 1 salário mínimo), ajusta as quantidades do Módulo 5 ao que a capacidade comporta e atualiza os vendedores da Capacidade.
   // NUNCA mexe nos módulos 1, 2, 3, 4 e 11 (nem no pró-labore). Só vale se o professor aplicar.
@@ -10023,7 +10059,7 @@ const PA = (() => {
   // NUNCA mexe nos módulos 1, 2, 3, 4 e 11. Só é aplicada se o professor escolher.
   function calibragem(L, ctx, X0) {
     const R = refsX(ctx); const c = calcular(L); if (!(c.faturamento > 0) || !(c.investimentoTotal > 0)) return null;
-    if (reequilibrio(L, ctx, X0)) return null;   // aplique antes o Reequilíbrio de viabilidade (a curva do Fluxo depende do plano já viável)
+    if (reequilibrio(L, ctx, X0) || compensacaoVolume(L, ctx)) return null;   // aplique antes o Reequilíbrio de viabilidade (a curva do Fluxo depende do plano já viável)
     const F0 = c.faturamento; const r50 = (v) => Math.round(v / 50) * 50; const taxa = ctx.taxaCrescimento ?? 0;
     const atual = X0 && X0.curva !== undefined ? X0.curva : ctx.curva;
     const PRAZO_ALVO = 6.5;
@@ -10094,7 +10130,7 @@ const PA = (() => {
     return montarLista("R|cal", "Mercado", "Calibragem pela meta de retorno (5 a 10 anos)", ["m5"], tabela, itens, "Calibragem pela meta de retorno",
       { resumo: `Calibragem pela meta de retorno: resultado mensal ${fmtBRL(c.resultadoOperacional)} → ${fmtBRL(cd.resultadoOperacional)}; retorno ${anos(c.prazoRetorno)} → ${anos(cd.prazoRetorno)} (módulos 1, 2, 3, 4 e 11 intocados).` });
   }
-  const LISTAS = [["R|est", estoqueNoM1], ["R|giro", giro], ["R|imp", imposto], ["R|coe", coerencia], ["R|cus", custosFaltantes], ["R|pro", proLabore], ["R|fin", financiamento], ["R|prc", precoMinimo], ["R|arr", arranque], ["R|rec", reequilibrio], ["R|cal", calibragem]];
+  const LISTAS = [["R|est", estoqueNoM1], ["R|giro", giro], ["R|vol", compensacaoVolume], ["R|imp", imposto], ["R|coe", coerencia], ["R|cus", custosFaltantes], ["R|pro", proLabore], ["R|fin", financiamento], ["R|prc", precoMinimo], ["R|arr", arranque], ["R|rec", reequilibrio], ["R|cal", calibragem]];
 
   // ---- Realismo de mercado: aproxima a empresa das faixas típicas do segmento (só corrige o que está "bom demais") ----
   const MERC_MAX = { cmv: 150, mo: 1e9, div: 1e9, preco: 40, qtd: 50, inv: 100 };
@@ -10266,7 +10302,7 @@ const PA = (() => {
   }
   // ---- Estabilizar: aplica, em ordem fixa e em rodadas, as correções de realismo e coerência até nada mais mudar (só simula; não grava) ----
   // O retorno do investimento NÃO é forçado a 5 anos: a aproximação da meta (Viabilidade) só entra se o professor ligar (opts.viab).
-  const ESTAB_ROT = { "R|rec": "Reequilíbrio de viabilidade: equipe e volume", "R|cal": "Calibragem pela meta de retorno", "R|est": "Mercadoria lançada no Módulo 1", "R|giro": "Capital de giro e prazos", "R|imp": "Impostos", "R|coe": "Coerência entre módulos", "R|cus": "Custos que faltavam", "R|pro": "Pró-labore", "R|fin": "Financiamento", "R|prc": "Preço mínimo", "R|arr": "Arranque do fluxo", "R|mer": "Realismo de mercado", "V|via": "Viabilidade (aproximar da meta de anos de retorno)" };
+  const ESTAB_ROT = { "R|vol": "Compensação do imposto pelo volume (Módulo 5)", "R|rec": "Reequilíbrio de viabilidade: equipe e volume", "R|cal": "Calibragem pela meta de retorno", "R|est": "Mercadoria lançada no Módulo 1", "R|giro": "Capital de giro e prazos", "R|imp": "Impostos", "R|coe": "Coerência entre módulos", "R|cus": "Custos que faltavam", "R|pro": "Pró-labore", "R|fin": "Financiamento", "R|prc": "Preço mínimo", "R|arr": "Arranque do fluxo", "R|mer": "Realismo de mercado", "V|via": "Viabilidade (aproximar da meta de anos de retorno)" };
   function estabilizar(L0, ctx, opts) {
     opts = opts || {}; const excl = new Set(opts.excluir || []); const alvo = opts.alvo || 5; const MAXR = 6;
     let L = clone(L0); let cap = ctx.capacidade || null, curva = ctx.curva !== undefined ? ctx.curva : null;
@@ -10282,7 +10318,7 @@ const PA = (() => {
     for (let n = 1; n <= MAXR; n++) {
       const passos = [];
       for (const [k, fn] of LISTAS) {
-        if (excl.has(k) || k === "R|cal" || k === "R|rec") continue; let p = null; try { p = fn(L, mk()); } catch { p = null; }
+        if (excl.has(k) || k === "R|cal" || k === "R|rec" || k === "R|vol") continue; let p = null; try { p = fn(L, mk()); } catch { p = null; }
         if (!p || !(p.itens || []).some((i) => !i.info)) continue;
         const o = (p.opcoes || []).find((x) => x.recomendado) || (p.opcoes || []).find((x) => x.id === "aplicar");
         if (!o || o.id === "manter") { const dc = `${ESTAB_ROT[k] || k}: precisa de decisão sua (não há opção segura para aplicar sozinha).`; if (!decisoes.includes(dc)) decisoes.push(dc); continue; }
@@ -10321,11 +10357,11 @@ const PA = (() => {
     if (norm.length) { pen += Math.min(15, norm.length * 3); pend.push(`${norm.length} ponto(s) de atenção`); }
     const cp = seguro(() => capacidade(L, ctx)); if (cp && cp.semDados) { pen += 5; pend.push("capacidade sem dados"); }
     const m = seguro(() => mercado(L, ctx)); if (m) { pen += pesos["R|mer"]; pend.push("realismo de mercado"); }
-    LISTAS.forEach(([k, fn]) => { if (k === "R|cal" || k === "R|rec") return; const pt = seguro(() => fn(L, ctx)); if (pt && (pt.itens || []).some((i) => !i.info)) { pen += pesos[k]; pend.push(String(pt.rotulo).replace(/ \(.*\)$/, "").toLowerCase()); } });
+    LISTAS.forEach(([k, fn]) => { if (k === "R|cal" || k === "R|rec" || k === "R|vol") return; const pt = seguro(() => fn(L, ctx)); if (pt && (pt.itens || []).some((i) => !i.info)) { pen += pesos[k]; pend.push(String(pt.rotulo).replace(/ \(.*\)$/, "").toLowerCase()); } });
     const cv = seguro(() => calcular(L)); if (cv && cv.faturamento > 0 && cv.investimentoTotal > 0 && cv.prazoRetorno == null) { pen += 15; pend.push("o investimento não se paga"); }   // prazo longo (fora da meta de 5 anos) NÃO penaliza: o prazo real é o resultado do plano
     return { nota: Math.max(0, 100 - pen), pend };
   }
-  const CHAVES_EXTRA = ["H|cap", "R|est", "R|giro", "R|imp", "R|coe", "R|cus", "R|pro", "R|fin", "R|prc", "R|arr", "R|rec", "R|cal", "R|mer", "V|via"];
+  const CHAVES_EXTRA = ["H|cap", "R|est", "R|giro", "R|imp", "R|coe", "R|cus", "R|pro", "R|fin", "R|prc", "R|arr", "R|vol", "R|rec", "R|cal", "R|mer", "V|via"];
   return { analisar, aplicar, capacidade, viabilidade, sugestoes, simular, mercado, mercadoSim, giro, imposto, coerencia, estoqueNoM1, estabilizar, ESTAB_ROT, LISTAS, CHAVES_EXTRA, estresse, pontuacao };
 })();
 
@@ -10765,7 +10801,7 @@ async function gravarModulosEquipe(turmaId, equipeId, novos, esperado, comentari
     novoD[campo] = extras[campo].novo;
   });
   // A curva de 24 passos (calibragem pela meta de retorno) ou o Reequilíbrio de viabilidade marcam M1, M2, M3, M4 e M11 como preservados, inclusive em atualizações automáticas futuras.
-  if ((extras?.curvaFluxo && Array.isArray(extras.curvaFluxo.novo?.arranque) && extras.curvaFluxo.novo.arranque.length >= 24) || (relato?.linhas || []).some((l) => /Reequilíbrio de viabilidade:|Calibragem pela meta de retorno:/.test(String(l)))) novoD.modulosPreservados = Array.from(new Set([...preserv, "m1", "m2", "m3", "m4", "m11"]));
+  if ((extras?.curvaFluxo && Array.isArray(extras.curvaFluxo.novo?.arranque) && extras.curvaFluxo.novo.arranque.length >= 24) || (relato?.linhas || []).some((l) => /Reequilíbrio de viabilidade:|Calibragem pela meta de retorno:|Compensação do imposto pelo volume:/.test(String(l)))) novoD.modulosPreservados = Array.from(new Set([...preserv, "m1", "m2", "m3", "m4", "m11"]));
   await window.storage.set(`dados_equipe_${equipeId}`, JSON.stringify(novoD), true);
 }
 

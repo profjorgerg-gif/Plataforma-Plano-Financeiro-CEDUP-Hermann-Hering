@@ -1,4 +1,4 @@
-// build: 20261120_12h40m Slides em imagens (PNG) e Word liberados só após o encerramento do projeto; professor sempre liberado
+// build: 20261120_13h05m Calibragem com curva de 24 passos (1º ano negativo, recuperação no 2º) e trava dos módulos preservados
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1385,7 +1385,8 @@ const VERSOES = [
     "Ajuste geral › 3. Ajuste manual: cada equipe ganhou a linha \"Análises da equipe (calculadas · somente leitura)\" com Análise da DRE, Análise de Indicadores, Análise do Negócio, Análise de Cenários e Fluxo de Caixa Anual (abrem em uma janela com os dados atuais da equipe, sem sair do Ajuste geral) e os botões Baixar Apresentação e Baixar Plano Financeiro (Word). O professor não precisa mais entrar em \"Ver como aluno\" a cada conferência. Nada é gravado.",
     "Ajuste geral › cartão \"Retorno do investimento\" alinhado à faixa de 5 a 10 anos: retorno dentro da faixa (ou mais rápido) aparece em verde, sem plano de alavancas; só acima de 10 anos continua o plano opcional. Nada é corrigido por causa do retorno.",
     "Indicadores › nova Margem de segurança = (faturamento anual − ponto de equilíbrio) ÷ faturamento anual: mostra quanto as vendas podem cair antes de dar prejuízo (abaixo de 10% estreita · 10 a 25% confortável · acima de 25% ampla; só informativa, sem nota). Aparece na Análise de Indicadores (com o faturamento anual planejado e a frase \"Como ler\"), no Word, no slide 3 do PowerPoint e na Conferência dos documentos, para todas as equipes. Um ponto de equilíbrio alto não é cobrado: ele acompanha o faturamento.",
-    "Ajuste geral › nova etapa \"Calibragem pela meta de retorno (5 a 10 anos)\": mostra, antes e depois, o resultado mensal, o prazo de retorno, o mês em que o caixa fica positivo e quantos dos 6 primeiros meses ficam negativos. Se o retorno estiver fora de 5 a 10 anos, propõe o preço do produto principal (Módulo 5); sempre propõe a curva de arranque em 12 passos (1º semestre negativo e evolução gradual) e a sazonalidade suave. Não mexe nos Módulos 1, 2, 3, 4 e 11 e só vale se o professor aplicar (registrado, com Desfazer; equipe bloqueada).",
+    "Calibragem e Fluxo de caixa › caixa negativo no 1º ano inteiro e recuperação gradual a partir do 2º ano: a curva de arranque passa a ter 24 passos (1º ano abaixo do ponto de equilíbrio, já considerando a sazonalidade; 2º ano subindo até 100%). A tela de Pendências aceita o 1º ano negativo quando o 2º ano recupera, e o Ajuste geral mostra \"Meses negativos no 1º ano\". Ao aplicar, o sistema marca os Módulos 1, 2, 3, 4 e 11 como preservados: nenhum ajuste automático ou por pontos consegue alterá-los (só a edição manual do professor).",
+    "Ajuste geral › nova etapa \"Calibragem pela meta de retorno (5 a 10 anos)\": mostra, antes e depois, o resultado mensal, o prazo de retorno, o mês em que o caixa fica positivo e quantos dos 6 primeiros meses ficam negativos. Se o retorno estiver fora de 5 a 10 anos, propõe o preço do produto principal (Módulo 5); sempre propõe a curva de arranque em 24 passos (os 12 meses do 1º ano com caixa negativo e recuperação gradual no 2º ano, até 100% no mês 24) e a sazonalidade suave. Não mexe nos Módulos 1, 2, 3, 4 e 11 e só vale se o professor aplicar (registrado, com Desfazer; equipe bloqueada).",
     "Módulo 9 com a coluna opcional \"Turnos\": marque Comercial (horário comercial) ou combine Manhã, Tarde e Noite. O Nº passa a ser de pessoas por turno e o total de pessoas (Nº × turnos) entra no custo. Sem marcar nada, vale 1 turno, como antes. Na Capacidade, o aviso de mais de 8 horas mostra quantas pessoas o Módulo 9 indica e tem o botão \"Usar este número\".",
     "Apresentação (PowerPoint) mais enxuta: agora são a capa e 5 slides, para apresentar em até 5 minutos — 1 Investimento Inicial e Fontes de Recursos; 2 Resultado Mensal (da receita ao lucro, com os 3 principais produtos); 3 Viabilidade (equilíbrio, rentabilidade, retorno, VPL, TIR e parecer); 4 Caixa, Cenários e Capacidade; 5 Parecer e Recomendações. Cada slide mostra o tempo sugerido e traz, nas Notas do orador, o roteiro com os números da equipe, as fórmulas e as perguntas que a banca pode fazer. Quem tem vendas online ganha um slide extra \"Vendas por Canal\". O Word continua completo.",
     "Fluxo de Caixa até o retorno do investimento: em vez de parar no mês 12, a projeção segue até o ano em que o caixa fica positivo (até 10 anos). Há duas visões: anual (receita, custos, resultado e saldo de cada ano) e mensal (com os anos que abrem e fecham, até o mês do retorno). Se o negócio não se paga, mostra 10 anos com aviso.",
@@ -5570,7 +5571,7 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
     if (RL.longo) {
       const pa = fluxoPorAno(fluxoL);
       filhos.push(h2(`Fluxo de caixa anual até o retorno (${horiz})`));
-      filhos.push(para(`${RL.mesRet ? `O investimento é recuperado no mês ${RL.mesRet}, ou seja, no ${RL.anoRet}º ano (${num(RL.mesRet / 12, 1)} anos). ${RL.mesRet > META_RETORNO_ANOS * 12 ? `O prazo supera a meta de ${META_RETORNO_ANOS} anos do curso e deve ser discutido na conclusão: o que a equipe faria para encurtá-lo (preços, custos ou investimento)? ` : ""}` : `Mesmo projetando ${horiz}, o saldo acumulado continua negativo: com os números atuais o investimento não é recuperado. `}A tabela resume cada ano e o saldo acumulado ao final dele; o crescimento e o arranque do primeiro ano não se repetem nos anos seguintes (o resultado se mantém no nível do mês 12).`));
+      filhos.push(para(`${RL.mesRet ? `O investimento é recuperado no mês ${RL.mesRet}, ou seja, no ${RL.anoRet}º ano (${num(RL.mesRet / 12, 1)} anos). ${RL.mesRet > META_RETORNO_ANOS * 12 ? `O prazo supera a meta de ${META_RETORNO_ANOS} anos do curso e deve ser discutido na conclusão: o que a equipe faria para encurtá-lo (preços, custos ou investimento)? ` : ""}` : `Mesmo projetando ${horiz}, o saldo acumulado continua negativo: com os números atuais o investimento não é recuperado. `}A tabela resume cada ano e o saldo acumulado ao final dele; o crescimento do primeiro ano não se repete nos anos seguintes e, quando a curva de arranque tem 24 passos, a recuperação se completa no 2º ano; depois o resultado se mantém no nível pleno.`));
       if (RL.mesRet && calc.prazoRetorno != null && Math.abs(RL.mesRet - calc.prazoRetorno * 12) >= 6) filhos.push(para(`Observação: o prazo de retorno do Módulo 13 (${num(calc.prazoRetorno, 1)} anos) divide o investimento pelo lucro de um mês normal; o fluxo considera também o arranque, o crescimento e a sazonalidade do primeiro ano, por isso o retorno aqui (${num(RL.mesRet / 12, 1)} anos) pode ser um pouco posterior.`));
       filhos.push(imagem({ tipo: "linhas", titulo: "Saldo de caixa no fim de cada ano", categorias: ["Início", ...pa.map((y) => `Ano ${y.ano}`)], series: [{ nome: "Saldo de caixa acumulado", valores: [fluxoL[0].saldo, ...pa.map((y) => y.saldo)], cor: "#c9972e" }], alt: 280 }));
       filhos.push(tabela(["Período", "Receita", "Custos e despesas", "Resultado", "Saldo acumulado"], [["Início", "—", "—", brl(fluxoL[0].resultado), brl(fluxoL[0].saldo)], ...pa.map((y) => [`Ano ${y.ano}${RL.anoRet === y.ano ? " (retorno)" : ""}`, brl(y.receita), brl(y.custos), brl(y.resultado), brl(y.saldo)])], [1.8, 1.9, 2, 1.8, 2], [1, 2, 3, 4], false, 17));
@@ -10000,20 +10001,31 @@ const PA = (() => {
         fn: (X) => { const p = resolvePreco(X); X.m5.itens = X.m5.itens.map((x) => (x.id === top.id ? { ...x, precoUnit: p } : x)); } });
     }
     // curva: 1º semestre abaixo do ponto de equilíbrio (caixa negativo) e depois evolução gradual; sazonalidade do segmento suavizada
-    const BASE_ARR = [0.70, 0.78, 0.85, 0.90, 0.93, 0.95], K_ARR = [0.90, 0.92, 0.94, 0.96, 0.98, 0.99], FIM_ARR = [0.975, 0.98, 0.985, 0.99, 0.995, 1];
+    const BASE1 = [0.70, 0.75, 0.79, 0.82, 0.84, 0.855, 0.865, 0.872, 0.878, 0.88, 0.881, 0.882], RAMPA2 = [0.07, 0.15, 0.28, 0.41, 0.53, 0.66, 0.75, 0.83, 0.87, 0.92, 0.96, 1];
     const perfil = SAZ_SEG[ctx?.segmento]; const sazBase = perfil ? sazNorm(SAZ_PERFIS[perfil]) : null;
-    const sazSuave = sazBase ? sazBase.map((x) => Math.round((1 + (x - 1) * 0.1) * 100 + 1e-9) / 100) : null;
+    const sazAtual0 = Array.isArray(atual?.sazonal) ? atual.sazonal : null;
+    const suaviza = (a) => a.map((x) => Math.round((1 + (x - 1) * 0.1) * 100 + 1e-9) / 100);
+    // sazonalidade atenuada (10% da amplitude da já aplicada; sem sazonalidade aplicada, parte do perfil do segmento já suavizado). Só atenua enquanto a oscilação passar de 1,5%, para a calibragem se estabilizar.
+    const devSaz = (a) => Math.max(...a.map((x) => Math.abs(Number(x) - 1)));
+    const sazSuave = sazAtual0 && sazAtual0.length === 12 ? (devSaz(sazAtual0) > 0.015 ? suaviza(sazAtual0.map(Number)) : null) : (sazBase ? suaviza(suaviza(sazBase)) : null);
     const mesIni = ((new Date().getMonth() + 1) % 12) + 1;
-    const arrDe = (X) => { const cx = calcular(X); const b = cx.margemContribuicao > 0 ? cx.custoFixoTotal / cx.margemContribuicao : 1; return [...BASE_ARR.map((v, i) => Math.round(Math.max(0.2, Math.min(v, b * K_ARR[i])) * 1000) / 1000), ...FIM_ARR]; };
+    const sazFin = sazSuave || sazAtual0; const miFin = (Number(atual?.mesInicio) || mesIni) - 1;
+    // curva de 24 passos: ano 1 inteiro abaixo do ponto de equilíbrio (caixa negativo, já considerando a sazonalidade) e ano 2 com recuperação gradual até 100%
+    const arrDe = (X) => {
+      const cx = calcular(X); const b = cx.margemContribuicao > 0 ? cx.custoFixoTotal / cx.margemContribuicao : 1;
+      // o 1º ano acompanha o ponto de equilíbrio de cada empresa: de 79% a 99,9% de b (b = custo fixo ÷ margem de contribuição), já descontada a sazonalidade
+      const a1 = BASE1.map((v, i) => { const fs = sazFin ? Number(sazFin[(miFin + i) % 12]) || 1 : 1; return Math.round(Math.max(0.2, Math.min(1, (b * (v / 0.883)) / fs)) * 1000) / 1000; });
+      const u = a1[11]; return [...a1, ...RAMPA2.map((r) => Math.round(Math.min(1, u + (1 - u) * r) * 1000) / 1000)];
+    };
     const arrAtual = Array.isArray(atual?.arranque) ? atual.arranque : [];
     const sazAtual = Array.isArray(atual?.sazonal) ? atual.sazonal : null;
-    itens.push({ id: "c_arr", texto: "Curva de arranque em 12 passos: os 6 primeiros meses abaixo do ponto de equilíbrio (caixa negativo) e depois evolução gradual até 100% no 12º mês (Fluxo de caixa)", linha: "curva de arranque de 12 passos (1º semestre negativo)",
+    itens.push({ id: "c_arr", texto: "Curva de arranque em 24 passos: os 12 meses do 1º ano abaixo do ponto de equilíbrio (caixa negativo) e recuperação gradual no 2º ano, até 100% no mês 24 (Fluxo de caixa)", linha: "curva de arranque de 24 passos (1º ano negativo e recuperação no 2º ano)",
       fn: (X, Xx) => { Xx.curva = { ...(Xx.curva || {}), arranque: arrDe(X), mesInicio: Xx.curva?.mesInicio || mesIni }; } });
     if (sazSuave && JSON.stringify(sazAtual) !== JSON.stringify(sazSuave)) itens.push({ id: "c_saz", texto: "Sazonalidade suave do segmento (variação de até ±1% ao mês, sem picos que escondam o payback)", linha: "sazonalidade suavizada", fn: (_X, Xx) => { Xx.curva = { ...(Xx.curva || {}), sazonal: sazSuave, mesInicio: Xx.curva?.mesInicio || mesIni }; } });
     const fim = sim(itens); const cd = calcular(fim.X);
-    const resFl = (cx, cv) => { const fl = fluxoAteRetorno(cx, taxa, cv); const r = resumoFluxoLongo(fl); const neg = fl.slice(1, 7).filter((m) => m.resultado < 0).length; return { mesRet: r.mesRet, neg }; };
+    const resFl = (cx, cv) => { const fl = fluxoAteRetorno(cx, taxa, cv); const r = resumoFluxoLongo(fl); const neg = fl.slice(1, 13).filter((m) => m.resultado < 0).length; const pos13 = fl[13] ? fl[13].resultado >= 0 : false; return { mesRet: r.mesRet, neg, pos13 }; };
     const f0 = resFl(c, atual), f1 = resFl(cd, fim.Xx.curva);
-    const jaOk = c.prazoRetorno != null && c.prazoRetorno >= 5 && c.prazoRetorno <= 10 && f0.neg === 6 && !itens.some((i) => i.id === "c_preco") && JSON.stringify(arrAtual) === JSON.stringify(arrDe(L));
+    const jaOk = c.prazoRetorno != null && c.prazoRetorno >= 5 && c.prazoRetorno <= 10 && f0.neg === 12 && f0.pos13 && !itens.some((i) => i.id === "c_preco") && JSON.stringify(arrAtual) === JSON.stringify(arrDe(L));
     if (jaOk) return null;
     const anos = (v) => (v == null ? "não se paga" : `${fmtNum(v, 1)} anos`);
     const mesTxt = (m) => (m == null ? "não se paga" : `mês ${m} (${fmtNum(m / 12, 1)} anos)`);
@@ -10021,7 +10033,7 @@ const PA = (() => {
       { rot: "Resultado mensal (plano estável)", hoje: fmtBRL(c.resultadoOperacional), faixa: "—", sit: "—", depois: fmtBRL(cd.resultadoOperacional) },
       { rot: "Prazo de retorno (investimento ÷ lucro anual)", hoje: anos(c.prazoRetorno), faixa: "5 a 10 anos", sit: c.prazoRetorno != null && c.prazoRetorno >= 5 && c.prazoRetorno <= 10 ? "ok" : "fora", depois: anos(cd.prazoRetorno) },
       { rot: "Caixa fica positivo (Fluxo de caixa)", hoje: mesTxt(f0.mesRet), faixa: "—", sit: "—", depois: mesTxt(f1.mesRet) },
-      { rot: "Meses negativos entre os 6 primeiros", hoje: `${f0.neg} de 6`, faixa: "6 de 6", sit: f0.neg === 6 ? "ok" : "fora", depois: `${f1.neg} de 6` },
+      { rot: "Meses negativos no 1º ano", hoje: `${f0.neg} de 12`, faixa: "12 de 12", sit: f0.neg === 12 ? "ok" : "fora", depois: `${f1.neg} de 12` },
     ];
     return montarLista("R|cal", "Mercado", "Calibragem pela meta de retorno (5 a 10 anos)", ["m5"], tabela, itens, "Calibragem pela meta de retorno",
       { resumo: `Calibragem pela meta de retorno: resultado mensal ${fmtBRL(c.resultadoOperacional)} → ${fmtBRL(cd.resultadoOperacional)}; retorno ${anos(c.prazoRetorno)} → ${anos(cd.prazoRetorno)} (módulos 1, 2, 3, 4 e 11 intocados).` });
@@ -10678,6 +10690,12 @@ async function gravarModulosEquipe(turmaId, equipeId, novos, esperado, comentari
   for (const modId of Object.keys(novos)) {
     if (esperado && esperado[modId] !== undefined && jsonModulo(d.lancamentos, modId) !== esperado[modId]) throw new Error(`a equipe alterou o ${modId.toUpperCase().replace("M", "Módulo ")} depois que você abriu — recarregue e refaça`);
   }
+  // Trava dos módulos preservados (M1, M2, M3, M4 e M11 na calibragem): ajustes automáticos ou por pontos NUNCA mudam esses módulos; só a edição manual do professor.
+  const preserv = Array.isArray(d.modulosPreservados) ? d.modulosPreservados : [];
+  if (preserv.length && relato?.tipo !== "manual") {
+    const tocados = Object.keys(novos).filter((m) => preserv.includes(m) && jsonModulo(d.lancamentos, m) !== JSON.stringify(novos[m]));
+    if (tocados.length) throw new Error(`${tocados.map((m) => "Módulo " + m.slice(1)).join(", ")} está(ão) preservado(s) pelo professor e não pode(m) ser alterado(s) por ajuste automático`);
+  }
   const lanc = { ...(d.lancamentos || {}) };
   Object.keys(novos).forEach((modId) => { lanc[modId] = novos[modId]; });
   const coments = comentario ? [...(d.comentarios || []), comentario] : (d.comentarios || []);
@@ -10690,6 +10708,8 @@ async function gravarModulosEquipe(turmaId, equipeId, novos, esperado, comentari
     if (JSON.stringify(d[campo] ?? null) !== JSON.stringify(extras[campo].esperado ?? null)) throw new Error(`a equipe alterou ${campo === "capacidade" ? "a Capacidade de produção" : campo === "curvaFluxo" ? "a curva do Fluxo de caixa" : "o crescimento do Fluxo de caixa"} depois que você abriu — recarregue e refaça`);
     novoD[campo] = extras[campo].novo;
   });
+  // A curva de 24 passos (calibragem pela meta de retorno) marca M1, M2, M3, M4 e M11 como preservados, inclusive em atualizações automáticas futuras.
+  if (extras?.curvaFluxo && Array.isArray(extras.curvaFluxo.novo?.arranque) && extras.curvaFluxo.novo.arranque.length >= 24) novoD.modulosPreservados = Array.from(new Set([...preserv, "m1", "m2", "m3", "m4", "m11"]));
   await window.storage.set(`dados_equipe_${equipeId}`, JSON.stringify(novoD), true);
 }
 
@@ -12275,6 +12295,11 @@ function compararDocumentos(T, tokW, tokP) {
   });
 }
 // Pendências de dados da equipe (vistas na própria tela, independentes dos arquivos).
+// Caixa do 1º ano: aceita o 1º ano inteiro negativo quando a curva de 24 passos prevê recuperação gradual no 2º ano (mês 13 em diante positivo).
+function caixa1Ok(neg, f12, fl, curva) {
+  if (!(neg > 6 || (f12[12] && f12[12].resultado < 0))) return true;
+  return Array.isArray(curva?.arranque) && curva.arranque.length >= 24 && !!(fl && fl[13] && fl[13].resultado >= 0);
+}
 function pendenciasDados(T) {
   const { calc, fluxo12, usoPico } = T; const out = [];
   if (calc.resultadoOperacional <= 0) out.push({ rot: "Resultado operacional", msg: `o resultado mensal está em ${brlC(calc.resultadoOperacional)}`, onde: "Módulos 5 a 11 (preços, quantidades e custos)" });
@@ -12282,7 +12307,7 @@ function pendenciasDados(T) {
   if (calc.prazoRetorno == null && calc.investimentoTotal > 0 && calc.faturamento > 0) out.push({ rot: "Retorno do investimento", msg: "o lucro atual não recupera o investimento", onde: "Módulos 5, 6 e 11" });
   if (usoPico != null && usoPico > 100) out.push({ rot: "Capacidade no pico", msg: `a estrutura não comporta o plano de vendas (${nC(usoPico, 0)}% no pico)`, onde: "Capacidade (Ajuste geral)" });
   const neg = fluxo12.filter((m) => m.mes > 0 && m.resultado < 0).length;
-  if (neg > 6 || (fluxo12[12] && fluxo12[12].resultado < 0)) out.push({ rot: "Caixa no 1º ano", msg: `${neg} meses com resultado negativo${fluxo12[12] && fluxo12[12].resultado < 0 ? " e o mês 12 ainda negativo" : ""}`, onde: "Módulos 5 a 11 e arranque do fluxo" });
+  if (!caixa1Ok(neg, fluxo12, T.fluxoL, T.curva)) out.push({ rot: "Caixa no 1º ano", msg: `${neg} meses com resultado negativo${fluxo12[12] && fluxo12[12].resultado < 0 ? " e o mês 12 ainda negativo" : ""}`, onde: "Módulos 5 a 11 e arranque do fluxo" });
   return out;
 }
 // Pedido de ajuste vindo da Conferência (Encerrar projeto → Ajuste geral): guarda a equipe e a opção sugerida. Nada é gravado.
@@ -12297,7 +12322,7 @@ function avaliarCenario(equipe, dados, lx, alvo, X) {
   const taxa = dados.taxaCrescimentoFluxo ?? 0;
   const c = calcular(lx); const fl = fluxoAteRetorno(c, taxa, dados.curvaFluxo); const f12 = fl.filter((m) => m.mes <= 12);
   const pos = fl.find((m) => m.mes > 0 && m.saldo >= 0); const neg = f12.filter((m) => m.mes > 0 && m.resultado < 0).length;
-  const caixaOk = !(neg > 6 || (f12[12] && f12[12].resultado < 0));
+  const caixaOk = caixa1Ok(neg, f12, fl, dados.curvaFluxo);
   const parecer = conclusaoResumo({ equipe, calc: c, fluxo: f12, fluxoL: fl, capCalc: X.capCalc, tmaAnual: X.tmaAnual, pPro: X.pPro }).rotulo;
   const alvoOk = c.prazoRetorno != null && c.prazoRetorno <= alvo;
   return { fat: c.faturamento, res: c.resultadoOperacional, prazo: c.prazoRetorno, mes: pos ? pos.mes : null, caixaOk, parecer, alvoOk, resolve: c.resultadoOperacional > 0 && c.prazoRetorno != null && caixaOk };   // o prazo real é o resultado; a meta (alvoOk) é só informativa
@@ -12375,7 +12400,7 @@ async function conferirDocumentosEquipe(equipe, dados, refs) {
   let usoPico = null; if (capCalc) { const gs = capCalc.grupos.filter((g) => g.cap != null && g.usoPico != null); if (gs.length) usoPico = Math.round(Math.max(...gs.map((g) => g.usoPico)) * 100); }
   const pPro = Math.min(100, Math.max(0, Number(lanc?.m4?.pctProprio) || 0));
   const parecer = conclusaoResumo({ equipe, calc, fluxo: fluxo12, fluxoL, capCalc, tmaAnual, pPro }).rotulo;
-  const T = { calc, fluxoL, fluxo12, posL, capCalc, vpl: temTma ? vpl : null, tirA, parecer, usoPico };
+  const T = { curva: dados.curvaFluxo, calc, fluxoL, fluxo12, posL, capCalc, vpl: temTma ? vpl : null, tirA, parecer, usoPico };
   const comum = { equipe, calc, fluxo: fluxoL, capCalc, lanc, cenarios, tmaAnual, modoConferir: true };
   const wBlob = await gerarPlanoFinanceiroWord({ ...comum, taxaCrescimento: taxa, historico: dados.historico || [] });
   const pBuf = await gerarApresentacaoEquipe(comum);

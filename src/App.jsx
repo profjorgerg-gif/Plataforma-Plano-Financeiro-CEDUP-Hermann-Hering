@@ -1,4 +1,4 @@
-// build: 20261120_11h40m Indicadores: Margem de segurança (tela, Word, PowerPoint e Conferência)
+// build: 20261120_11h50m Ajuste geral: cartão Retorno do investimento usa a faixa de 5 a 10 anos
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1381,6 +1381,7 @@ function chamadoPassaFiltro(c, filtro) {
 // ============================================================================
 const VERSOES = [
   { versao: "3.8", data: "12/11/2026", itens: [
+    "Ajuste geral › cartão \"Retorno do investimento\" alinhado à faixa de 5 a 10 anos: retorno dentro da faixa (ou mais rápido) aparece em verde, sem plano de alavancas; só acima de 10 anos continua o plano opcional. Nada é corrigido por causa do retorno.",
     "Indicadores › nova Margem de segurança = (faturamento anual − ponto de equilíbrio) ÷ faturamento anual: mostra quanto as vendas podem cair antes de dar prejuízo (abaixo de 10% estreita · 10 a 25% confortável · acima de 25% ampla; só informativa, sem nota). Aparece na Análise de Indicadores (com o faturamento anual planejado e a frase \"Como ler\"), no Word, no slide 3 do PowerPoint e na Conferência dos documentos, para todas as equipes. Um ponto de equilíbrio alto não é cobrado: ele acompanha o faturamento.",
     "Ajuste geral › nova etapa \"Calibragem pela meta de retorno (5 a 10 anos)\": mostra, antes e depois, o resultado mensal, o prazo de retorno, o mês em que o caixa fica positivo e quantos dos 6 primeiros meses ficam negativos. Se o retorno estiver fora de 5 a 10 anos, propõe o preço do produto principal (Módulo 5); sempre propõe a curva de arranque em 12 passos (1º semestre negativo e evolução gradual) e a sazonalidade suave. Não mexe nos Módulos 1, 2, 3, 4 e 11 e só vale se o professor aplicar (registrado, com Desfazer; equipe bloqueada).",
     "Módulo 9 com a coluna opcional \"Turnos\": marque Comercial (horário comercial) ou combine Manhã, Tarde e Noite. O Nº passa a ser de pessoas por turno e o total de pessoas (Nº × turnos) entra no custo. Sem marcar nada, vale 1 turno, como antes. Na Capacidade, o aviso de mais de 8 horas mostra quantas pessoas o Módulo 9 indica e tem o botão \"Usar este número\".",
@@ -11468,9 +11469,15 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
             {paResultado && paResultado.viaPt && (() => {
               const vp = paResultado.viaPt; const e = paEsc["V|via"] || { opt: "manter", v: {} }; const I = vp.info;
               const setV = (k, val) => paEscolher("V|via", { v: { ...(e.v || {}), [k]: val } });
+              if (I.prazo != null && I.prazo <= 10 && I.prazo > 0) return (
+                <div className="border-2 border-emerald-500/50 rounded-xl p-3 bg-slate-900/60">
+                  <div className="text-sm font-bold text-slate-100 mb-1">📊 Retorno do investimento <span className="text-[11px] font-bold px-1.5 py-0.5 rounded ml-1 bg-emerald-900 text-emerald-300">{fmtNum(I.prazo, 1)} anos · {I.prazo >= 5 ? "dentro da faixa de 5 a 10 anos" : "mais rápido que a faixa de 5 a 10 anos"}</span></div>
+                  <p className="text-xs text-slate-400">Este é o prazo em que o negócio se paga nas condições lançadas. O objetivo do PPF é mostrar em quanto tempo o negócio se paga; a faixa de referência é de 5 a 10 anos e não há nada a corrigir por causa do retorno.</p>
+                </div>
+              );
               return (
                 <div className={`border-2 ${I.prazo == null ? "border-rose-500/60" : "border-amber-500/50"} rounded-xl p-3 bg-slate-900/60`}>
-                  <div className="text-sm font-bold text-slate-100 mb-1">{I.prazo == null ? "📉" : "📊"} Retorno do investimento <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ml-1 ${I.prazo == null ? "bg-rose-900 text-rose-300" : "bg-amber-900 text-amber-300"}`}>{I.prazo == null ? "não se paga" : `${fmtNum(I.prazo, 1)} anos · fora da meta de ${fmtNum(I.alvo, 0)}`}</span></div>
+                  <div className="text-sm font-bold text-slate-100 mb-1">{I.prazo == null ? "📉" : "📊"} Retorno do investimento <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ml-1 ${I.prazo == null ? "bg-rose-900 text-rose-300" : "bg-amber-900 text-amber-300"}`}>{I.prazo == null ? "não se paga" : `${fmtNum(I.prazo, 1)} anos · acima da faixa de 5 a 10 anos`}</span></div>
                   {I.prazo != null && <p className="text-xs text-slate-400 mb-1">Este é o prazo em que o negócio se paga nas condições lançadas; nada precisa ser corrigido por causa dele. <b className="text-sky-300">Opcional:</b> se a equipe quiser aproximar o retorno de uma meta, use o plano abaixo (nada muda até você aplicar).</p>}
                   <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 mb-2">{I.prazo == null ? "O sistema olhou a empresa inteira e calculou quanto cada alavanca precisa mudar para o investimento se pagar em até" : "Plano opcional: quanto cada alavanca precisaria mudar para o investimento se pagar em até"}
                     <input type="number" min="0.5" step="0.5" value={paEsc["V|via"]?.alvo ?? I.alvo} onChange={(ev) => paEscolher("V|via", { alvo: ev.target.value })} className="w-16 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-100" /> anos.</div>

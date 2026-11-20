@@ -1,4 +1,4 @@
-// build: 20261120_12h10m Ajuste geral 3: análises e downloads da equipe para o professor (somente leitura)
+// build: 20261120_12h40m Slides em imagens (PNG) e Word liberados só após o encerramento do projeto; professor sempre liberado
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -855,7 +855,7 @@ const MANUAL_ALUNO_PASSOS = [
   { titulo: "Lancem a folha de pagamento (Módulo 9)", texto: "No Módulo 9, cadastrem as funções, a quantidade, o salário, VT/VR e os encargos (grupos A/B/C/D). O pró-labore dos sócios entra no mesmo módulo. Usem \"ver composição\" para conferir como o custo total de cada função foi calculado." },
   { titulo: "Salvem versões ao longo do projeto", texto: "Sempre que fizerem um ajuste relevante (novo preço, novo custo, nova equipe de trabalho), cliquem em \"Salvar versão\" na Análise do Negócio. Isso registra a evolução do projeto para vocês e para o professor.", imagem: "aluno_versions" },
   { titulo: "Leiam o feedback do professor", texto: "Verifiquem regularmente a aba \"Feedback do Professor\": além dos comentários organizados por módulo, é lá que aparece a nota final ponderada (média dos módulos + Módulo 13 + Cenários/Fluxo de Caixa + Apresentação) assim que todos os componentes forem lançados." },
-  { titulo: "Baixem a Apresentação e o Plano Financeiro (Word)", texto: "No menu do aluno, \"Baixar Apresentação (dados da equipe)\" gera um PowerPoint já preenchido, com a capa e 5 slides para apresentar em até 5 minutos: Investimento e Fontes de Recursos, Resultado Mensal, Viabilidade (equilíbrio, retorno, VPL e TIR), Caixa, Cenários e Capacidade, e Parecer e Recomendações. Cada slide indica o tempo sugerido, e as Notas do orador trazem o roteiro, as fórmulas e as perguntas da banca (o espaço das considerações finais fica para a equipe escrever). \"Baixar Plano Financeiro (Word)\" gera o documento com os 13 módulos, a Análise do Negócio, o Fluxo de Caixa (mensal no 1º ano e anual até o retorno do investimento) e os Cenários, com 15 gráficos, para copiar no Plano de Negócio. Os arquivos são gerados na hora, exigem internet no clique e avisam quando faltar algum dado. O link \"Modelo em branco\" continua disponível." },
+  { titulo: "Baixem a Apresentação e o Plano Financeiro (Word)", texto: "No menu do aluno, \"Baixar Apresentação (dados da equipe)\" gera um PowerPoint já preenchido, com a capa e 5 slides para apresentar em até 5 minutos: Investimento e Fontes de Recursos, Resultado Mensal, Viabilidade (equilíbrio, retorno, VPL e TIR), Caixa, Cenários e Capacidade, e Parecer e Recomendações. Cada slide indica o tempo sugerido, e as Notas do orador trazem o roteiro, as fórmulas e as perguntas da banca (o espaço das considerações finais fica para a equipe escrever). Atenção: o PowerPoint fica disponível durante o projeto; \"Baixar Plano Financeiro (Word)\" e \"Baixar slides em imagens (PNG)\" aparecem com cadeado e só são liberados quando o professor encerra o projeto (aí todas as telas ficam só para leitura, e as imagens servem para colar os slides do PPF na apresentação conjunta com as outras disciplinas). O Word gera o documento com os 13 módulos, a Análise do Negócio, o Fluxo de Caixa (mensal no 1º ano e anual até o retorno do investimento) e os Cenários, com 15 gráficos, para copiar no Plano de Negócio. Os arquivos são gerados na hora, exigem internet no clique e avisam quando faltar algum dado. O link \"Modelo em branco\" continua disponível." },
   { titulo: "Finalizem o projeto", texto: "O plano financeiro está concluído quando os 13 módulos estiverem preenchidos, enviados e corrigidos, o resultado operacional analisado e pelo menos duas versões salvas mostrando a evolução dos ajustes feitos pela equipe.", imagem: "aluno_finish" },
 ];
 
@@ -1381,6 +1381,7 @@ function chamadoPassaFiltro(c, filtro) {
 // ============================================================================
 const VERSOES = [
   { versao: "3.8", data: "12/11/2026", itens: [
+    "Slides em imagens (PNG): depois que o professor encerra o projeto, o aluno baixa um ZIP com a capa e os slides do PPF em imagens 1920×1080 (mesmo desenho e dados do PowerPoint) para colar na apresentação conjunta com Marketing, Empreendedorismo e Gestão da Produção. Antes do encerramento, o aluno só baixa o PowerPoint; o Word e as imagens aparecem com cadeado (\"libera no encerramento\"). O professor tem tudo liberado (menu \"Ver como aluno\" e Ajuste geral › 3 › Baixar slides em imagens). Os cartões de números dos slides 1 e 2 ganharam mais espaço entre o valor e a legenda.",
     "Ajuste geral › 3. Ajuste manual: cada equipe ganhou a linha \"Análises da equipe (calculadas · somente leitura)\" com Análise da DRE, Análise de Indicadores, Análise do Negócio, Análise de Cenários e Fluxo de Caixa Anual (abrem em uma janela com os dados atuais da equipe, sem sair do Ajuste geral) e os botões Baixar Apresentação e Baixar Plano Financeiro (Word). O professor não precisa mais entrar em \"Ver como aluno\" a cada conferência. Nada é gravado.",
     "Ajuste geral › cartão \"Retorno do investimento\" alinhado à faixa de 5 a 10 anos: retorno dentro da faixa (ou mais rápido) aparece em verde, sem plano de alavancas; só acima de 10 anos continua o plano opcional. Nada é corrigido por causa do retorno.",
     "Indicadores › nova Margem de segurança = (faturamento anual − ponto de equilíbrio) ÷ faturamento anual: mostra quanto as vendas podem cair antes de dar prejuízo (abaixo de 10% estreita · 10 a 25% confortável · acima de 25% ampla; só informativa, sem nota). Aparece na Análise de Indicadores (com o faturamento anual planejado e a frase \"Como ler\"), no Word, no slide 3 do PowerPoint e na Conferência dos documentos, para todas as equipes. Um ponto de equilíbrio alto não é cobrado: ele acompanha o faturamento.",
@@ -4736,10 +4737,127 @@ function conclusaoResumo({ equipe, calc, fluxo, fluxoL, capCalc, tmaAnual, pPro 
   return { parecer, rotulo, motivo, sec, rec: rec.slice(0, 3) };
 }
 
-async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cenarios, tmaAnual, modoConferir }) {
+// ---- Imagens dos slides (PNG 1920×1080): mesmo desenho do PowerPoint, gravado por um "gravador" no lugar do pptxgenjs e pintado em canvas ----
+class PptxRecorder {
+  constructor() { this.slides = []; this.ShapeType = { rect: "rect", roundRect: "roundRect" }; this.charts = { PIE: "pie", LINE: "line", BAR: "bar" }; }
+  addSlide() {
+    const s = { background: { color: "FFFFFF" }, items: [], addText(t, o) { this.items.push({ k: "text", t, o: o || {} }); }, addShape(t, o) { this.items.push({ k: "shape", t, o: o || {} }); }, addChart(t, d, o) { this.items.push({ k: "chart", t, d, o: o || {} }); }, addTable(r, o) { this.items.push({ k: "table", r, o: o || {} }); }, addNotes() {} };
+    this.slides.push(s); return s;
+  }
+}
+const IMG_PX = 144; // 1920 px ÷ 13,333 pol
+function pintarSlideCanvas(slide) {
+  const cv = document.createElement("canvas"); cv.width = 1920; cv.height = 1080; const c = cv.getContext("2d");
+  const cor = (v) => { const h = typeof v === "object" && v ? v.color : v; return h ? `#${String(h).replace("#", "")}` : null; };
+  const fam = (f) => (/cambria/i.test(f || "") ? '"Cambria","Georgia",serif' : '"Calibri","Carlito","Segoe UI",Arial,sans-serif');
+  c.fillStyle = cor(slide.background) || "#FFFFFF"; c.fillRect(0, 0, 1920, 1080);
+  const rr = (x, y, w, h, r) => { r = Math.max(0, Math.min(r, w / 2, h / 2)); c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); };
+  const forma = (tipo, o) => {
+    const x = o.x * IMG_PX, y = o.y * IMG_PX, w = o.w * IMG_PX, h = o.h * IMG_PX;
+    if (tipo === "roundRect") rr(x, y, w, h, (o.rectRadius || 0) * IMG_PX); else { c.beginPath(); c.rect(x, y, w, h); }
+    if (o.fill && cor(o.fill)) { c.fillStyle = cor(o.fill); c.fill(); }
+    if (o.line && cor(o.line) && (o.line.width ?? 1) > 0) { c.strokeStyle = cor(o.line); c.lineWidth = (o.line.width || 1) * 2; c.setLineDash(o.line.dashType === "dash" ? [14, 10] : []); c.stroke(); c.setLineDash([]); }
+  };
+  // texto: parágrafos de trechos com estilo, quebra de linha por palavra, alinhamento e redução para caber
+  const texto = (t, o, bx, by, bw, bh) => {
+    let runs = typeof t === "string" ? [{ text: t, options: {} }] : (t || []).map((r) => (typeof r === "string" ? { text: r, options: {} } : r));
+    const m = (o.margin ?? 4) * 2; const w = bw - 2 * m;
+    const paras = []; let cur = [];
+    runs.forEach((r) => { const op = { ...o, ...(r.options || {}) }; String(r.text).split("\n").forEach((ln, i, arr) => { cur.push({ txt: ln, op }); if (i < arr.length - 1 || op.breakLine) { paras.push(cur); cur = []; } }); });
+    if (cur.length) paras.push(cur);
+    const montar = (esc) => {
+      const linhas = [];
+      paras.forEach((p) => {
+        const bullet = p[0].op.bullet ? 34 * esc : 0; let linha = []; let larg = 0; let altL = 0;
+        const fecha = () => { linhas.push({ it: linha, larg, alt: altL || (p[0].op.fontSize || 12) * 2 * 1.2 * esc, bullet: p === linha.__p ? 0 : 0, p }); linha = []; larg = 0; altL = 0; };
+        p.forEach((seg) => {
+          const fs = (seg.op.fontSize || 12) * 2 * esc; c.font = `${seg.op.italic ? "italic " : ""}${seg.op.bold ? "bold " : ""}${fs}px ${fam(seg.op.fontFace)}`;
+          String(seg.txt).split(/(\s+)/).forEach((pl) => { if (pl === "") return; const wd = c.measureText(pl).width; if (larg + wd > w - bullet && larg > 0 && pl.trim() !== "") fecha(); if (!(larg === 0 && pl.trim() === "")) { linha.push({ pl, wd, op: seg.op, fs }); larg += wd; altL = Math.max(altL, fs * 1.2); } });
+        });
+        fecha(); linhas[linhas.length - 1].fim = true; linhas[linhas.length - 1].bulletP = p[0].op.bullet; linhas[linhas.length - 1].p = p;
+        // marca a 1ª linha do parágrafo
+        const ini = linhas.length - 1; let k = ini; while (k > 0 && !linhas[k - 1].fim) k--; linhas[k].primeira = true; for (let q = k; q <= ini; q++) linhas[q].bulletP = p[0].op.bullet;
+      });
+      return linhas;
+    };
+    let esc = 1; let linhas = montar(esc);
+    const altTot = (ls) => ls.reduce((s, l) => s + l.alt, 0);
+    for (let i = 0; i < 8 && altTot(linhas) > bh - 2 * m + 2 && esc > 0.55; i++) { esc -= 0.06; linhas = montar(esc); }
+    const vh = altTot(linhas); const va = o.valign || "top";
+    let y = va === "middle" ? by + (bh - vh) / 2 : va === "bottom" ? by + bh - vh - m : by + m;
+    c.textBaseline = "alphabetic";
+    linhas.forEach((l) => {
+      const bul = l.bulletP ? 34 * esc : 0; const al = (l.it[0] && l.it[0].op.align) || o.align || "left";
+      let x = bx + m + bul; if (al === "center") x = bx + (bw - l.larg) / 2; else if (al === "right") x = bx + bw - m - l.larg;
+      const base = y + l.alt * 0.78;
+      if (l.primeira && l.bulletP) { c.fillStyle = cor(l.it[0].op.color) || "#000"; c.font = `${(l.it[0].fs || 24)}px ${fam(l.it[0].op.fontFace)}`; c.fillText("•", bx + m + 6 * esc, base); }
+      l.it.forEach((s) => { c.font = `${s.op.italic ? "italic " : ""}${s.op.bold ? "bold " : ""}${s.fs}px ${fam(s.op.fontFace)}`; c.fillStyle = cor(s.op.color) || "#000000"; c.fillText(s.pl, x, base); x += s.wd; });
+      y += l.alt;
+    });
+  };
+  const tabela = (rows, o) => {
+    let y = o.y * IMG_PX; const x0 = o.x * IMG_PX; const cw = (o.colW || []).map((v) => v * IMG_PX);
+    rows.forEach((r, ri) => {
+      const rh = (Array.isArray(o.rowH) ? o.rowH[ri] : o.rowH) || 0.3; const h = rh * IMG_PX; let x = x0;
+      r.forEach((cel, ci) => {
+        const cl = typeof cel === "string" ? { text: cel, options: {} } : cel; const op = cl.options || {}; const w = cw[ci] || 100;
+        if (op.fill && cor(op.fill)) { c.fillStyle = cor(op.fill); c.fillRect(x, y, w, h); }
+        texto(String(cl.text), { fontFace: o.fontFace, fontSize: 11, color: "0F172A", valign: "middle", margin: 5, ...op }, x, y, w, h);
+        x += w;
+      });
+      y += h;
+    });
+  };
+  const grafico = (it) => {
+    const o = it.o; const bx = o.x * IMG_PX, by = o.y * IMG_PX, bw = o.w * IMG_PX, bh = o.h * IMG_PX; const dado = it.d[0]; let topo = by;
+    if (o.showTitle && o.title) { texto(o.title, { fontSize: o.titleFontSize || 12, bold: true, color: o.titleColor || "0F172A", fontFace: o.titleFontFace, align: "center", margin: 2 }, bx, by, bw, 36 * (o.titleFontSize || 12) / 12 + 10); topo = by + 36 * (o.titleFontSize || 12) / 12 + 14; }
+    const cores = (o.chartColors || ["F59E0B"]).map((v) => `#${v}`);
+    if (it.t === "pie") {
+      const tot = dado.values.reduce((s, v) => s + Math.max(0, v), 0) || 1; const legAlt = o.showLegend ? 70 : 0; const cy = topo + (by + bh - legAlt - topo) / 2; const R = Math.min(bw, by + bh - legAlt - topo) / 2 - 8; const cx = bx + bw / 2; let a = -Math.PI / 2;
+      dado.values.forEach((v, i) => { const ang = (Math.max(0, v) / tot) * 2 * Math.PI; c.beginPath(); c.moveTo(cx, cy); c.arc(cx, cy, R, a, a + ang); c.closePath(); c.fillStyle = cores[i % cores.length]; c.fill(); c.strokeStyle = "#fff"; c.lineWidth = 3; c.stroke();
+        if (o.showPercent && v / tot > 0.04) { const m = a + ang / 2; c.fillStyle = "#fff"; c.font = `bold ${(o.dataLabelFontSize || 11) * 2}px ${fam()}`; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText(`${Math.round((v / tot) * 100)}%`, cx + Math.cos(m) * R * 0.62, cy + Math.sin(m) * R * 0.62); c.textAlign = "left"; }
+        a += ang; });
+      if (o.showLegend) { c.font = `${(o.legendFontSize || 11) * 2}px ${fam()}`; c.textBaseline = "middle"; const itens = dado.labels.map((l, i) => ({ l, w: c.measureText(l).width + 46 })); const tw = itens.reduce((s, q) => s + q.w, 0); let lx = bx + Math.max(0, (bw - tw) / 2); const ly = by + bh - 28;
+        itens.forEach((q, i) => { c.fillStyle = cores[i % cores.length]; c.fillRect(lx, ly - 9, 18, 18); c.fillStyle = "#334155"; c.fillText(q.l, lx + 26, ly); lx += q.w; }); }
+    } else if (it.t === "line") {
+      const vals = dado.values; const mn = Math.min(0, ...vals), mx = Math.max(0, ...vals); const pad = (mx - mn) * 0.08 || 1; const lo = mn - (mn < 0 ? pad : 0), hi = mx + pad;
+      const gx = bx + 170, gy = topo + 8, gw = bw - 190, gh = by + bh - topo - 70; const yv = (v) => gy + gh - ((v - lo) / (hi - lo)) * gh;
+      c.font = `${(o.valAxisLabelFontSize || 9) * 2}px ${fam()}`; c.textBaseline = "middle"; c.textAlign = "right";
+      for (let i = 0; i <= 5; i++) { const v = lo + ((hi - lo) * i) / 5; const yy = yv(v); c.strokeStyle = "#E2E8F0"; c.lineWidth = 1.5; c.beginPath(); c.moveTo(gx, yy); c.lineTo(gx + gw, yy); c.stroke(); c.fillStyle = "#475569"; c.fillText(`R$ ${Math.round(v).toLocaleString("pt-BR")}`, gx - 10, yy); }
+      c.strokeStyle = "#94A3B8"; c.lineWidth = 2; c.beginPath(); c.moveTo(gx, yv(0)); c.lineTo(gx + gw, yv(0)); c.stroke();
+      const px = (i) => gx + (vals.length === 1 ? gw / 2 : (gw * i) / (vals.length - 1));
+      c.strokeStyle = cores[0]; c.lineWidth = (o.lineSize || 3) * 2; c.beginPath(); vals.forEach((v, i) => (i ? c.lineTo(px(i), yv(v)) : c.moveTo(px(i), yv(v)))); c.stroke();
+      c.fillStyle = cores[0]; vals.forEach((v, i) => { c.beginPath(); c.arc(px(i), yv(v), (o.lineDataSymbolSize || 7) * 1.2, 0, 7); c.fill(); });
+      c.textAlign = "center"; c.textBaseline = "top"; c.fillStyle = "#475569"; c.font = `${(o.catAxisLabelFontSize || 9) * 2}px ${fam()}`; const passo = Math.ceil(vals.length / 12);
+      dado.labels.forEach((l, i) => { if (i % passo === 0) c.fillText(String(l), px(i), gy + gh + 12); }); c.textAlign = "left";
+    }
+  };
+  slide.items.forEach((it) => {
+    if (it.k === "shape") forma(it.t, it.o);
+    else if (it.k === "text") texto(it.t, it.o, it.o.x * IMG_PX, it.o.y * IMG_PX, it.o.w * IMG_PX, it.o.h * IMG_PX);
+    else if (it.k === "table") tabela(it.r, it.o);
+    else if (it.k === "chart") grafico(it);
+  });
+  return cv;
+}
+// Baixa um ZIP com um PNG por slide (capa + slides), com os mesmos dados do PowerPoint.
+async function gerarImagensSlidesEquipe(args) {
+  const slides = await gerarApresentacaoEquipe({ ...args, modoImagens: true });
+  const JSZip = await carregarScriptCDN(JSZIP_URL, "JSZip"); const zip = new JSZip();
+  const slug = (t) => nomeArquivoSeguro(String(t || "").replace(/^\d+\s*·\s*/, "").split(":")[0]).slice(0, 44).replace(/-[^-]{0,3}$/, "");
+  for (let i = 0; i < slides.length; i++) {
+    const cv = pintarSlideCanvas(slides[i]);
+    const blob = await new Promise((res) => cv.toBlob(res, "image/png"));
+    const titulo = (slides[i].items.find((x) => x.k === "text" && x.o && x.o.fontSize >= 28) || {}).t;
+    zip.file(`PPF-${i}-${i === 0 ? "Capa" : slug(titulo) || "Slide"}-${nomeArquivoSeguro(args.equipe.nomeNegocio)}.png`, blob);
+  }
+  const z = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(z); const a = document.createElement("a"); a.href = url; a.download = `Slides-PPF-${nomeArquivoSeguro(args.equipe.nomeNegocio)}.zip`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cenarios, tmaAnual, modoConferir, modoImagens }) {
   const fluxoL = fluxo; fluxo = fluxo.filter((m) => m.mes <= 12); const RL = resumoFluxoLongo(fluxoL); const horiz = `${RL.anos} ${RL.anos === 1 ? "ano" : "anos"}`;
   const posL = fluxoL.find((m) => m.mes > 0 && m.saldo >= 0); const rotRet = posL ? `Mês ${posL.mes}${posL.mes > 12 ? ` (Ano ${RL.anoRet})` : ""}` : `Não se recupera em ${horiz}`;
-  const PptxGenJS = await carregarScriptCDN(PPTXGENJS_URL, "PptxGenJS");
+  const PptxGenJS = modoImagens ? PptxRecorder : await carregarScriptCDN(PPTXGENJS_URL, "PptxGenJS");
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE"; // 13,33 x 7,5 pol — mesmo formato do modelo
   pptx.author = "CEDUP Hermann Hering";
@@ -4768,7 +4886,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   const kpi = (s, x, y, w, h, label, valor, sub, cor) => {
     s.addShape(pptx.ShapeType.roundRect, { x, y, w, h, fill: { color: LIGHT }, line: { color: BORDER, width: 1 }, rectRadius: 0.06 });
     s.addText(label.toUpperCase(), { x: x + 0.12, y: y + 0.08, w: w - 0.24, h: 0.3, fontFace: "Calibri", fontSize: 9, bold: true, color: SLATE, margin: 0 });
-    s.addText(valor, { x: x + 0.12, y: y + 0.38, w: w - 0.24, h: h * 0.42, fontFace: "Cambria", fontSize: String(valor).length > 14 ? 14 : 22, bold: true, color: cor || NAVY, valign: "middle", margin: 0 });
+    s.addText(valor, { x: x + 0.12, y: y + 0.3, w: w - 0.24, h: Math.max(0.4, h - 0.78), fontFace: "Cambria", fontSize: String(valor).length > 14 ? 14 : 22, bold: true, color: cor || NAVY, valign: "middle", margin: 0 });
     if (sub) s.addText(sub, { x: x + 0.12, y: y + h - 0.4, w: w - 0.24, h: 0.32, fontFace: "Calibri", fontSize: 9.5, color: SLATE, margin: 0 });
   };
   const aviso = (s, texto) => {
@@ -4976,6 +5094,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   }
   s6.addNotes("ROTEIRO PARA APRESENTAR A CONCLUSÃO (usem as palavras da equipe):\n• Este slide resume a \"Conclusão analítica\" do Plano Financeiro (Word): o parecer, os resultados e as recomendações.\n• Comecem pelo parecer e digam por quê, citando os números.\n• Mostrem o principal risco (capacidade no pico, caixa negativo, retorno lento, capital de giro).\n• Fechem dizendo o que a equipe faria diferente ou ajustaria no plano.\n• Se algum número mudar no sistema, baixem a apresentação de novo.");
 
+  if (modoImagens) return pptx.slides;
   if (modoConferir) return await pptx.write({ outputType: "arraybuffer" });
   await pptx.writeFile({ fileName: `Apresentacao-Plano-Financeiro-${nomeArquivoSeguro(equipe.nomeNegocio)}.pptx` });
 }
@@ -5760,6 +5879,8 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   const encEntrada = encKey?.equipes?.[equipe?.id];
   const encerrado = !!(encEntrada && encEntrada.ativo) && !somenteLeitura && equipe?.teste !== true;
   const setDados = (somenteLeitura || bloqueadoAval || encerrado) ? () => {} : setDadosReal;
+  // Word e imagens dos slides só são liberados ao aluno depois que o professor encerra o projeto (professor e empresa de teste: sempre liberado)
+  const liberadoFinal = !!somenteLeitura || encerrado || equipe?.teste === true;
   const [alertasTurma] = useSharedObject(turmaId && equipe?.id && equipe?.teste !== true ? chaveAlertas(turmaId) : null, null);
   const [aba, setAba] = useState(abaInicial || "inicio");
   const acaoInicialFeita = useRef(false);
@@ -5771,7 +5892,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
   useEffect(() => {
     if (!acaoInicial || acaoInicialFeita.current || dados === undefined) return;
     acaoInicialFeita.current = true;
-    (async () => { try { await (acaoInicial === "ppt" ? acaoBaixarPpt() : acaoBaixarDoc()); } catch {} if (onFechar) onFechar(); })();
+    (async () => { try { await (acaoInicial === "ppt" ? acaoBaixarPpt() : acaoInicial === "img" ? acaoBaixarImagens() : acaoBaixarDoc()); } catch {} if (onFechar) onFechar(); })();
   });
   const [confirmSairAberto, setConfirmSairAberto] = useState(false);
   const [decisaoGestorTomada, setDecisaoGestorTomada] = useState(!!somenteLeitura);
@@ -6379,6 +6500,13 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
     catch { setErroPpt("Não foi possível gerar agora — confira a conexão com a internet e tente de novo."); }
     finally { setGerandoDoc(false); }
   };
+  const acaoBaixarImagens = async () => {
+    setErroPpt(""); setGerandoPpt(true);
+    try { await gerarImagensSlidesEquipe({ equipe, calc, fluxo: fluxoAteRetorno(calc, dados?.taxaCrescimentoFluxo ?? 0, dados?.curvaFluxo), capCalc: capCalcParaDocumentos(equipe, dados), lanc, cenarios: dados?.cenarios || [], tmaAnual: dados?.tmaAnualFluxo ?? 12 }); }
+    catch { setErroPpt("Não foi possível gerar agora — confira a conexão com a internet e tente de novo."); }
+    finally { setGerandoPpt(false); }
+  };
+  const avisoBloqueado = () => setErroPpt("🔒 Liberado quando o professor encerrar o projeto.");
   const abrirManualAluno = () => { const url = MANUAIS_PDF.manualAlunoRef; if (user.mestre) window.open(url, "_blank", "noopener"); else setPdfAberto({ url, titulo: "Manual do Aluno" }); };
   const menuMesaAluno = [
     { direct: true, key: "inicio", label: "Início" },
@@ -6392,7 +6520,8 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
     { label: "Análises", itens: [...MODULOS.filter((m) => ehModuloAnalise(m)).map((m) => ({ key: m.id, label: m.nome, status: estadoModulo(fluxo, m.id).status })), { key: "analise", label: "Análise do Negócio" }, { key: "cenarios", label: "Análise de Cenários" }, { key: "fluxocaixa", label: "Fluxo de Caixa Anual" }] },
     { label: "Entregas", itens: [
       { key: "ppt", label: gerandoPpt ? "Gerando apresentação…" : "Baixar Apresentação (dados da equipe)", acao: acaoBaixarPpt },
-      { key: "doc", label: gerandoDoc ? "Gerando documento…" : "Baixar Plano Financeiro (Word)", acao: acaoBaixarDoc },
+      { key: "doc", label: gerandoDoc ? "Gerando documento…" : liberadoFinal ? "Baixar Plano Financeiro (Word)" : "🔒 Plano Financeiro (Word) — libera no encerramento", acao: liberadoFinal ? acaoBaixarDoc : avisoBloqueado },
+      { key: "img", label: liberadoFinal ? "Baixar slides em imagens (PNG)" : "🔒 Slides em imagens (PNG) — libera no encerramento", acao: liberadoFinal ? acaoBaixarImagens : avisoBloqueado },
       { key: "modelo", label: "Modelo de apresentação em branco", acao: () => window.open(MODELO_APRESENTACAO_URL, "_blank", "noopener") },
     ] },
     { label: "Acompanhamento", badge: naoLidos || 0, itens: [
@@ -6475,7 +6604,7 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
                   </button>
                   <button
                     type="button"
-                    disabled={gerandoDoc}
+                    disabled={gerandoDoc || !liberadoFinal}
                     onClick={async () => {
                       setErroPpt(""); setGerandoDoc(true);
                       try { await gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo: fluxoAteRetorno(calc, dados?.taxaCrescimentoFluxo ?? 0, dados?.curvaFluxo), cenarios: dados?.cenarios || [], taxaCrescimento: dados?.taxaCrescimentoFluxo ?? 0, tmaAnual: dados?.tmaAnualFluxo ?? 12, historico: dados?.historico || [], capCalc: capCalcParaDocumentos(equipe, dados) }); setMenuAberto(false); }
@@ -6484,7 +6613,15 @@ function AlunoWorkspace({ user, equipe, equipeKey, turmaId, onSair, onTrocarEmpr
                     }}
                     className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent disabled:opacity-60"
                   >
-                    <FileDown size={16} className="shrink-0" /> <span className="truncate flex-1">{gerandoDoc ? "Gerando documento…" : "Baixar Plano Financeiro (Word)"}</span>
+                    <FileDown size={16} className="shrink-0" /> <span className="truncate flex-1">{gerandoDoc ? "Gerando documento…" : liberadoFinal ? "Baixar Plano Financeiro (Word)" : "🔒 Plano Financeiro (Word) — libera no encerramento"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={gerandoPpt || !liberadoFinal}
+                    onClick={acaoBaixarImagens}
+                    className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-left transition text-white/60 hover:bg-white/5 border-l-4 border-transparent disabled:opacity-60"
+                  >
+                    <FileDown size={16} className="shrink-0" /> <span className="truncate flex-1">{liberadoFinal ? "Baixar slides em imagens (PNG)" : "🔒 Slides em imagens (PNG) — libera no encerramento"}</span>
                   </button>
                   <a href={MODELO_APRESENTACAO_URL} download onClick={() => setMenuAberto(false)} className="block pl-12 pr-5 pb-1.5 text-[11px] text-white/40 hover:text-white/70 underline">
                     Modelo em branco
@@ -11646,7 +11783,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
                   <div className="text-[10.5px] font-bold uppercase tracking-wide text-slate-500 mb-1">Análises da equipe (calculadas · somente leitura)</div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
                     {[["m12", "Análise da DRE"], ["m13", "Análise de Indicadores"], ["analise", "Análise do Negócio"], ["cenarios", "Análise de Cenários"], ["fluxocaixa", "Fluxo de Caixa Anual"]].map(([aba, rot]) => <button key={aba} disabled={ocupado} onClick={() => setVerAnalise({ equipeId: e.id, nome: e.nomeNegocio, aba, rot })} className="text-xs border border-slate-600 hover:border-sky-500 text-slate-200 px-2.5 py-1.5 rounded-md text-left">📊 {rot}</button>)}
-                    {[["ppt", "Baixar Apresentação"], ["doc", "Baixar Plano Financeiro (Word)"]].map(([acao, rot]) => <button key={acao} disabled={ocupado || !!verAnalise} onClick={() => setVerAnalise({ equipeId: e.id, nome: e.nomeNegocio, acao, rot })} className="text-xs border border-emerald-700/70 hover:border-emerald-400 text-emerald-200 px-2.5 py-1.5 rounded-md text-left">⬇ {rot}</button>)}
+                    {[["ppt", "Baixar Apresentação"], ["doc", "Baixar Plano Financeiro (Word)"], ["img", "Baixar slides em imagens (PNG)"]].map(([acao, rot]) => <button key={acao} disabled={ocupado || !!verAnalise} onClick={() => setVerAnalise({ equipeId: e.id, nome: e.nomeNegocio, acao, rot })} className="text-xs border border-emerald-700/70 hover:border-emerald-400 text-emerald-200 px-2.5 py-1.5 rounded-md text-left">⬇ {rot}</button>)}
                   </div>
 </div>
               </div>

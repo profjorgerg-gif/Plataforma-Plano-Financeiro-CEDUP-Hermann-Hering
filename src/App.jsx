@@ -1,4 +1,4 @@
-// build: 20261120_11h25m Ajuste geral: etapa "Calibragem pela meta de retorno (5 a 10 anos)" (preço M5 + curva do Fluxo; sem M1–M4 e M11)
+// build: 20261120_11h40m Indicadores: Margem de segurança (tela, Word, PowerPoint e Conferência)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1381,6 +1381,7 @@ function chamadoPassaFiltro(c, filtro) {
 // ============================================================================
 const VERSOES = [
   { versao: "3.8", data: "12/11/2026", itens: [
+    "Indicadores › nova Margem de segurança = (faturamento anual − ponto de equilíbrio) ÷ faturamento anual: mostra quanto as vendas podem cair antes de dar prejuízo (abaixo de 10% estreita · 10 a 25% confortável · acima de 25% ampla; só informativa, sem nota). Aparece na Análise de Indicadores (com o faturamento anual planejado e a frase \"Como ler\"), no Word, no slide 3 do PowerPoint e na Conferência dos documentos, para todas as equipes. Um ponto de equilíbrio alto não é cobrado: ele acompanha o faturamento.",
     "Ajuste geral › nova etapa \"Calibragem pela meta de retorno (5 a 10 anos)\": mostra, antes e depois, o resultado mensal, o prazo de retorno, o mês em que o caixa fica positivo e quantos dos 6 primeiros meses ficam negativos. Se o retorno estiver fora de 5 a 10 anos, propõe o preço do produto principal (Módulo 5); sempre propõe a curva de arranque em 12 passos (1º semestre negativo e evolução gradual) e a sazonalidade suave. Não mexe nos Módulos 1, 2, 3, 4 e 11 e só vale se o professor aplicar (registrado, com Desfazer; equipe bloqueada).",
     "Módulo 9 com a coluna opcional \"Turnos\": marque Comercial (horário comercial) ou combine Manhã, Tarde e Noite. O Nº passa a ser de pessoas por turno e o total de pessoas (Nº × turnos) entra no custo. Sem marcar nada, vale 1 turno, como antes. Na Capacidade, o aviso de mais de 8 horas mostra quantas pessoas o Módulo 9 indica e tem o botão \"Usar este número\".",
     "Apresentação (PowerPoint) mais enxuta: agora são a capa e 5 slides, para apresentar em até 5 minutos — 1 Investimento Inicial e Fontes de Recursos; 2 Resultado Mensal (da receita ao lucro, com os 3 principais produtos); 3 Viabilidade (equilíbrio, rentabilidade, retorno, VPL, TIR e parecer); 4 Caixa, Cenários e Capacidade; 5 Parecer e Recomendações. Cada slide mostra o tempo sugerido e traz, nas Notas do orador, o roteiro com os números da equipe, as fórmulas e as perguntas que a banca pode fazer. Quem tem vendas online ganha um slide extra \"Vendas por Canal\". O Word continua completo.",
@@ -3622,7 +3623,21 @@ function M12View({ calc }) {
   );
 }
 
+// Margem de segurança = (faturamento anual − ponto de equilíbrio) ÷ faturamento anual: quanto as vendas podem cair antes de dar prejuízo.
+function margemSeguranca(calc) {
+  if (!calc || calc.pontoEquilibrio == null || !(calc.receitaAnual > 0)) return null;
+  const valorAno = calc.receitaAnual - calc.pontoEquilibrio; const pct = (valorAno / calc.receitaAnual) * 100;
+  const faixa = pct < 0 ? "negativa" : pct < 10 ? "estreita" : pct <= 25 ? "confortável" : "ampla";
+  return { pct, valorAno, valorMes: valorAno / 12, faixa };
+}
+function leituraMargemSeg(calc) {
+  const m = margemSeguranca(calc); if (!m) return "";
+  const lucrat = Number.isFinite(calc.lucratividade) ? ` (lucratividade de ${fmtPct(calc.lucratividade)})` : "";
+  if (m.pct < 0) return `As vendas planejadas ficam ${fmtNum(Math.abs(m.pct), 1)}% abaixo do ponto de equilíbrio: com esse faturamento o plano dá prejuízo.`;
+  return `As vendas planejadas ficam ${fmtNum(m.pct, 1)}% acima do ponto de equilíbrio (${fmtBRL(m.valorAno)} por ano, cerca de ${fmtBRL(m.valorMes)} por mês). A margem é ${m.faixa}${m.faixa === "estreita" ? `, coerente com um lucro pequeno${lucrat}: uma queda de vendas maior que isso gera prejuízo` : m.faixa === "confortável" ? ": o plano suporta uma queda moderada das vendas" : ": o plano suporta uma queda grande das vendas"}. Referência: abaixo de 10% estreita · 10 a 25% confortável · acima de 25% ampla.`;
+}
 function M13View({ calc }) {
+  const ms = margemSeguranca(calc);
   return (
     <div className="grid md:grid-cols-2 gap-4">
       <Card className="p-4">
@@ -3630,6 +3645,19 @@ function M13View({ calc }) {
         <div className="text-2xl font-bold text-slate-100">{calc.pontoEquilibrio != null ? fmtBRL(calc.pontoEquilibrio) : "—"}</div>
         <p className="text-xs text-slate-400 mt-1">Faturamento anual necessário para cobrir todos os custos.</p>
       </Card>
+      {ms && (<Card className="p-4">
+        <div className="text-xs font-bold uppercase text-slate-400 mb-1">Faturamento anual planejado</div>
+        <div className="text-2xl font-bold text-slate-100">{fmtBRL(calc.receitaAnual)}</div>
+        <p className="text-xs text-slate-400 mt-1">Faturamento mensal (Módulo 5) × 12.</p>
+      </Card>)}
+      {ms && (<Card className="p-4 border-amber-500/60">
+        <div className="text-xs font-bold uppercase text-amber-300 mb-1">Margem de segurança</div>
+        <div className="text-2xl font-bold text-slate-100">{fmtPct(ms.pct)}</div>
+        <p className="text-xs text-slate-400 mt-1">(Faturamento − ponto de equilíbrio) ÷ faturamento. Quanto as vendas podem cair antes de dar prejuízo.</p>
+      </Card>)}
+      {ms && (<Card className="p-4 md:col-span-2 border-l-4 border-l-amber-500">
+        <p className="text-sm text-slate-200"><b>Como ler:</b> {leituraMargemSeg(calc)}</p>
+      </Card>)}
       <Card className="p-4">
         <div className="text-xs font-bold uppercase text-slate-400 mb-1">Lucratividade</div>
         <div className="text-2xl font-bold text-slate-100">{fmtPct(calc.lucratividade)}</div>
@@ -4832,10 +4860,10 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   if (capCalc && capCalc.res && capCalc.res.k === "r") qBanca.push("A estrutura atende o pico de movimento? O que será feito se não atender?");
   qBanca.push("O que muda se o faturamento cair 10%?");
   const s4 = base("3 · Viabilidade: Equilíbrio, Retorno e Valor", "O negócio se paga? Em quanto tempo? Vale a pena frente à TMA?", 4, [
-    `Ponto de equilíbrio: ${calc.pontoEquilibrio != null ? money0(calc.pontoEquilibrio) : "—"} por ano, contra receita de ${money0(calc.receitaAnual)}. Rentabilidade: ${pct(calc.rentabilidade)} ao ano.`,
+    `Ponto de equilíbrio: ${calc.pontoEquilibrio != null ? money0(calc.pontoEquilibrio) : "—"} por ano, contra receita de ${money0(calc.receitaAnual)}. Rentabilidade: ${pct(calc.rentabilidade)} ao ano.${margemSeguranca(calc) ? ` Margem de segurança: ${pct(margemSeguranca(calc).pct, 1)} (${margemSeguranca(calc).faixa}).` : ""}`,
     `Payback: ${anosPay ? `${anosPay} anos` : "o lucro atual não recupera o investimento"}. Este é o número central da PPF: em quanto tempo o negócio se paga.`,
     vpl != null ? `VPL: ${money0(vpl)} (TMA de ${pct(tma, 1)} ao ano). TIR: ${tirA !== null ? pct(tirA, 1) + " ao ano" : "não recupera no horizonte"}. ${vpl >= 0 ? "O investimento supera o retorno mínimo exigido." : "O investimento não cobre o retorno mínimo exigido."}` : "VPL e TIR: informe a TMA no sistema para calcular.",
-    "FÓRMULAS: Ponto de equilíbrio = custos fixos anuais ÷ índice da margem · Payback = investimento ÷ lucro anual · Rentabilidade = lucro anual ÷ investimento · VPL = Σ resultado do mês ÷ (1 + TMA mensal)^mês, com o investimento no mês 0 · TIR = taxa que zera o VPL.",
+    "FÓRMULAS: Ponto de equilíbrio = custos fixos anuais ÷ índice da margem · Margem de segurança = (receita anual − PE) ÷ receita anual · Payback = investimento ÷ lucro anual · Rentabilidade = lucro anual ÷ investimento · VPL = Σ resultado do mês ÷ (1 + TMA mensal)^mês, com o investimento no mês 0 · TIR = taxa que zera o VPL.",
     "Se a banca perguntar: " + qBanca.slice(0, 3).join(" · "),
   ], "70 s");
   if (!temDados || !temInvest) aviso(s4, "Esta parte ainda não pode ser montada: faltam investimento e faturamento (Módulos 1 a 5) para calcular os indicadores.");
@@ -4851,8 +4879,9 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
     k(5, "Parecer", par, C.parecer === "g" ? "plano viável" : C.parecer === "a" ? "lucrativo, mas com pontos de atenção" : "o plano precisa de ajustes", C.parecer === "g" ? GREEN : C.parecer === "a" ? "B45309" : RED);
     let leitura = "";
     if (calc.pontoEquilibrio != null && calc.receitaAnual > 0) {
-      const razao = (calc.receitaAnual / calc.pontoEquilibrio - 1) * 100;
-      leitura = `Leitura: a receita projetada está ${pct(Math.abs(razao))} ${razao >= 0 ? "acima" : "abaixo"} do ponto de equilíbrio` + (calc.prazoRetorno != null ? `; o investimento se paga em cerca de ${anosPay} anos` : "; com o resultado atual, o investimento não se paga") + (vpl >= 0 ? " e supera o retorno mínimo exigido (TMA)." : " e não supera o retorno mínimo exigido (TMA).");
+      const ms = margemSeguranca(calc);
+      leitura = ms.pct < 0 ? `Leitura: a receita projetada está ${pct(Math.abs(ms.pct), 1)} abaixo do ponto de equilíbrio` : `Leitura: margem de segurança de ${pct(ms.pct, 1)} (${ms.faixa}): as vendas podem cair até ${pct(ms.pct, 1)} antes de dar prejuízo`;
+      leitura += (calc.prazoRetorno != null ? `; o investimento se paga em cerca de ${anosPay} anos` : "; com o resultado atual, o investimento não se paga") + (vpl >= 0 ? " e supera o retorno mínimo exigido (TMA)." : " e não supera o retorno mínimo exigido (TMA).");
     }
     const yb = Y + 2 * (ch + 0.15);
     s4.addShape(pptx.ShapeType.roundRect, { x: X, y: yb, w: W, h: 0.95, fill: { color: "FFFBEB" }, line: { color: AMBER, width: 1 }, rectRadius: 0.06 });
@@ -5355,8 +5384,10 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
   if (!temDados || !temInvest) filhos.push(vazio("Disponíveis quando investimento e faturamento forem preenchidos."));
   else {
     filhos.push(para(`O ponto de equilíbrio é de ${calc.pontoEquilibrio != null ? brl(calc.pontoEquilibrio) : "—"} por ano, frente a uma receita anual projetada de ${brl(calc.receitaAnual)}. A lucratividade é de ${pc(calc.lucratividade)} e a rentabilidade de ${pc(calc.rentabilidade)} ao ano${calc.prazoRetorno != null ? `, com prazo de retorno do investimento de ${num(calc.prazoRetorno, 1)} anos (cerca de ${Math.round(calc.prazoRetorno * 12)} meses)` : ", sem recuperação do investimento com o resultado atual"}.`));
+    if (margemSeguranca(calc)) filhos.push(para(`Margem de segurança: ${leituraMargemSeg(calc)}`));
     filhos.push(tabela(["Indicador", "Resultado", "O que mostra"], [
       ["Ponto de equilíbrio (anual)", calc.pontoEquilibrio != null ? brl(calc.pontoEquilibrio) : "—", "Faturamento anual necessário para cobrir todos os custos"],
+      ...(margemSeguranca(calc) ? [["Margem de segurança", pc(margemSeguranca(calc).pct, 1), "Quanto as vendas podem cair antes de dar prejuízo"]] : []),
       ["Lucratividade", pc(calc.lucratividade), "Parte do faturamento que vira lucro"],
       ["Rentabilidade (ao ano)", pc(calc.rentabilidade), "Retorno anual sobre o investimento total"],
       ["Prazo de retorno (payback)", calc.prazoRetorno != null ? `${num(calc.prazoRetorno, 1)} anos` : "—", "Tempo para recuperar o investimento pelo lucro"],
@@ -5365,6 +5396,7 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
       `Lucro anual = resultado operacional × 12 = ${brl(calc.resultadoOperacional)} × 12 = ${brl(calc.lucroAnual)}`,
       `Índice da margem de contribuição = (receita anual – custos variáveis anuais) ÷ receita anual = (${brl(calc.receitaAnual)} – ${brl(calc.custoVariavelAnual)}) ÷ ${brl(calc.receitaAnual)} = ${pc(calc.indiceMargemContribuicao * 100, 1)}`,
       `Ponto de equilíbrio = custos fixos anuais ÷ índice da margem = ${brl(calc.custoFixoAnual)} ÷ ${pc(calc.indiceMargemContribuicao * 100, 1)} = ${calc.pontoEquilibrio != null ? brl(calc.pontoEquilibrio) : "—"}`,
+      ...(margemSeguranca(calc) ? [`Margem de segurança = (receita anual – ponto de equilíbrio) ÷ receita anual = (${brl(calc.receitaAnual)} – ${brl(calc.pontoEquilibrio)}) ÷ ${brl(calc.receitaAnual)} = ${pc(margemSeguranca(calc).pct, 1)}`] : []),
       `Lucratividade = lucro anual ÷ receita anual = ${brl(calc.lucroAnual)} ÷ ${brl(calc.receitaAnual)} = ${pc(calc.lucratividade, 1)}`,
       `Rentabilidade = lucro anual ÷ investimento total = ${brl(calc.lucroAnual)} ÷ ${brl(calc.investimentoTotal)} = ${pc(calc.rentabilidade, 1)}`,
       `Payback = investimento total ÷ lucro anual = ${brl(calc.investimentoTotal)} ÷ ${brl(calc.lucroAnual)} = ${calc.prazoRetorno != null ? num(calc.prazoRetorno, 1) + " anos" : "não recupera"}`,
@@ -12024,6 +12056,7 @@ function itensConferencia(T) {
     { id: "fat", rot: "Faturamento mensal", t: "brl", tela: calc.faturamento, w: (k) => reTxt(k, /faturamento mensal de (R\$[\s\u00a0]+[\d.,]+)/i), p: (k) => aposRot(k, "FATURAMENTO MENSAL") },
     { id: "res", rot: "Resultado operacional mensal", t: "brl", tela: calc.resultadoOperacional, w: (k) => aposRot(k, "5. Resultado operacional", true), p: (k) => aposRot(k, "RESULTADO OPERACIONAL/MÊS") },
     { id: "pe", rot: "Ponto de equilíbrio (anual)", t: "brl", tela: calc.pontoEquilibrio, w: (k) => aposRot(k, "Ponto de equilíbrio (anual)"), p: (k) => aposRot(k, "PONTO DE EQUILÍBRIO (ANUAL)") },
+    ...(margemSeguranca(calc) ? [{ id: "ms", rot: "Margem de segurança", t: "pct", tela: margemSeguranca(calc).pct, w: (k) => aposRot(k, "Margem de segurança"), p: (k) => reTxt(k, /margem de segurança de (-?[\d.,]+%)/i) ?? ((x) => (x ? `-${x}` : undefined))(reTxt(k, /está ([\d.,]+%) abaixo do ponto de equilíbrio/i)) }] : []),
     { id: "rent", rot: "Rentabilidade (ao ano)", t: "pct", tela: calc.rentabilidade, w: (k) => aposRot(k, "Rentabilidade (ao ano)"), p: (k) => aposRot(k, "RENTABILIDADE (AO ANO)") },
     { id: "pay", rot: "Retorno do investimento (payback)", t: "anos", tela: calc.prazoRetorno, w: (k) => aposRot(k, "Prazo de retorno (payback)"), p: (k) => aposRot(k, "PRAZO DE RETORNO (PAYBACK)") },
     { id: "mes", rot: "Mês em que o caixa fica positivo", t: "mes", tela: posL ? posL.mes : null, w: (k) => aposRot(k, "Mês em que o caixa fica positivo"), p: (k) => aposRot(k, "CAIXA FICA POSITIVO EM") },

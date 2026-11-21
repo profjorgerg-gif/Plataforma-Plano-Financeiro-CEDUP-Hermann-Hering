@@ -1,4 +1,4 @@
-// build: 20261120_17h38 Calibragem com alternativa de 6 meses negativos (Ajuste geral)
+// build: 20261120_22h37 Análise de Cenários pelo Ajuste geral
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1385,6 +1385,7 @@ const VERSOES = [
     "Ajuste geral › 3. Ajuste manual: cada equipe ganhou a linha \"Análises da equipe (calculadas · somente leitura)\" com Análise da DRE, Análise de Indicadores, Análise do Negócio, Análise de Cenários e Fluxo de Caixa Anual (abrem em uma janela com os dados atuais da equipe, sem sair do Ajuste geral) e os botões Baixar Apresentação e Baixar Plano Financeiro (Word). O professor não precisa mais entrar em \"Ver como aluno\" a cada conferência. Nada é gravado.",
     "Ajuste geral › cartão \"Retorno do investimento\" alinhado à faixa de 5 a 10 anos: retorno dentro da faixa (ou mais rápido) aparece em verde, sem plano de alavancas; só acima de 10 anos continua o plano opcional. Nada é corrigido por causa do retorno.",
     "Indicadores › nova Margem de segurança = (faturamento anual − ponto de equilíbrio) ÷ faturamento anual: mostra quanto as vendas podem cair antes de dar prejuízo (abaixo de 10% estreita · 10 a 25% confortável · acima de 25% ampla; só informativa, sem nota). Aparece na Análise de Indicadores (com o faturamento anual planejado e a frase \"Como ler\"), no Word, no slide 3 do PowerPoint e na Conferência dos documentos, para todas as equipes. Um ponto de equilíbrio alto não é cobrado: ele acompanha o faturamento.",
+    "Ajuste geral › nova etapa \"Análise de Cenários (6 cenários)\": para a equipe que ainda não lançou nenhum cenário, propõe 6 (faturamento +10% / +20% / +30% e −10% / −20% / −30%, com custo variável e custo fixo acompanhando). Não mexe em nenhum módulo de lançamento; a equipe pode editar depois. Fica registrado, com Desfazer.",
     "Ajuste geral › Calibragem: dois novos itens. (1) Alternativa \"6 meses negativos\": curva de 24 passos com só o 1º semestre abaixo do ponto de equilíbrio e caixa positivo a partir do 7º mês (marque no lugar da curva de 12 meses; indicada para empresas de retorno muito rápido, como as de investimento baixo). (2) O item de preço pode ser desmarcado para manter os preços da equipe. Em ambos os casos os Módulos 1, 2, 3, 4 e 11 ficam preservados.",
     "Ajuste geral › nova etapa \"Volume pela demanda pesquisada (Módulo 5)\": para plano que dá prejuízo (ou não se paga em 10 anos) com a capacidade quase toda ociosa (utilização abaixo de 50%) e vendas lançadas bem abaixo dos clientes por dia que a própria equipe pesquisou, propõe o menor aumento das quantidades do Módulo 5 (preços inalterados) que leva o retorno a até 6 anos, sem passar de 85% da demanda pesquisada nem de 80% de utilização. Aplique junto com o cartão de Impostos; depois a Calibragem propõe o 1º ano negativo e a recuperação no 2º. Não mexe nos Módulos 1, 2, 3, 4 e 11.",
     "Ajuste geral › nova etapa \"Compensação do imposto pelo volume (Módulo 5)\": quando a correção do imposto (Módulo 7) tira da faixa de 5 a 10 anos um plano que hoje se paga em até 10 anos, propõe o menor aumento das quantidades do Módulo 5 (preços inalterados) que leva o retorno a até 6 anos, com a alíquota do Simples já recalculada para o novo faturamento e utilização da capacidade de até 80%. Aplique junto com o cartão de Impostos. Não mexe nos Módulos 1, 2, 3, 4 e 11.",
@@ -9754,7 +9755,7 @@ const PA = (() => {
       opcoes: [{ id: "manter", rotulo: "Deixar como está" }, { id: "aplicar", rotulo: "Aplicar os itens marcados", recomendado: true }],
       aplicar: (Lx, opt, v, Xx) => {
         if (opt !== "aplicar") return; const feitos = [];
-        itens.forEach((it) => { if (it.info || (it.off ? !(v && v[it.id] === true) : (v && v[it.id] === false))) return; if (it.naoAplica && v && v[`${it.id}_na`] === true) { it.fnNa(Lx, Xx, v); feitos.push(it.linhaNa); return; } if (it.partes && !it.partes.some((_p, i) => Number(v?.[`${it.id}_v${i}`]) > 0)) return; const a0 = JSON.stringify([Lx, Xx.curva ?? null, Xx.capacidade ?? null]); it.fn(Lx, Xx, v); if (JSON.stringify([Lx, Xx.curva ?? null, Xx.capacidade ?? null]) !== a0) feitos.push(it.partes ? it.linha(v) : it.linha); });
+        itens.forEach((it) => { if (it.info || (it.off ? !(v && v[it.id] === true) : (v && v[it.id] === false))) return; if (it.naoAplica && v && v[`${it.id}_na`] === true) { it.fnNa(Lx, Xx, v); feitos.push(it.linhaNa); return; } if (it.partes && !it.partes.some((_p, i) => Number(v?.[`${it.id}_v${i}`]) > 0)) return; const a0 = JSON.stringify([Lx, Xx.curva ?? null, Xx.capacidade ?? null, Xx.cenarios ?? null]); it.fn(Lx, Xx, v); if (JSON.stringify([Lx, Xx.curva ?? null, Xx.capacidade ?? null, Xx.cenarios ?? null]) !== a0) feitos.push(it.partes ? it.linha(v) : it.linha); });
         if (feitos.length) Xx.linhas.push(`${titulo} — ${feitos.join(" · ")}`);
       } };
   };
@@ -10049,6 +10050,16 @@ const PA = (() => {
     return montarLista("R|dem", "Mercado", "Volume pela demanda pesquisada (Módulo 5)", ["m5"], tabela, itens, "Volume pela demanda pesquisada",
       { resumo: `Volume pela demanda pesquisada: resultado mensal ${fmtBRL(c.resultadoOperacional)} → ${fmtBRL(cd.resultadoOperacional)}; retorno ${anos(c.prazoRetorno)} → ${anos(cd.prazoRetorno)} (módulos 1, 2, 3, 4 e 11 intocados).` });
   }
+  // Análise de Cenários vazia: propõe 6 cenários (3 de alta e 3 de baixa) para a equipe que ainda não lançou nenhum. Não mexe em nenhum módulo de lançamento.
+  const CENARIOS_PADRAO = [[10, 5, 10], [20, 10, 15], [30, 20, 15], [-10, -5, -10], [-20, -10, -15], [-30, -20, -15]];
+  function cenariosVazios(L, ctx) {
+    if (!Array.isArray(ctx?.cenarios) || ctx.cenarios.length > 0) return null;
+    const c = calcular(L); if (!(c.faturamento > 0) || !(c.investimentoTotal > 0)) return null;
+    const mk = () => CENARIOS_PADRAO.map(([f, v, x], i) => ({ id: uid(), nome: `Cenário ${i + 1}`, variacaoFaturamento: String(f), variacaoCustoVariavel: String(v), variacaoCustoFixo: String(x) }));
+    const itens = [{ id: "n_cen", texto: "Análise de Cenários: 6 cenários (faturamento +10% / +20% / +30% e −10% / −20% / −30%, com custo variável e custo fixo acompanhando). A equipe pode editar depois.", linha: "6 cenários lançados (3 de alta e 3 de baixa)", fn: (_X, Xx) => { Xx.cenarios = mk(); } }];
+    const tabela = [{ rot: "Cenários cadastrados", hoje: "0", faixa: "pelo menos 1", sit: "fora", depois: "6" }];
+    return montarLista("R|cen", "Mercado", "Análise de Cenários (6 cenários)", ["cenarios"], tabela, itens, "Análise de Cenários", { resumo: "Análise de Cenários: 6 cenários lançados (nenhum módulo de lançamento alterado)." });
+  }
   // Reequilíbrio de viabilidade (equipe e volume): quando o plano dá prejuízo ou não se paga em 10 anos por causa de um "Reforço de equipe" acima do salário mínimo,
   // dimensiona o reforço (nunca abaixo de 1 salário mínimo), ajusta as quantidades do Módulo 5 ao que a capacidade comporta e atualiza os vendedores da Capacidade.
   // NUNCA mexe nos módulos 1, 2, 3, 4 e 11 (nem no pró-labore). Só vale se o professor aplicar.
@@ -10181,7 +10192,7 @@ const PA = (() => {
     return montarLista("R|cal", "Mercado", "Calibragem pela meta de retorno (5 a 10 anos)", ["m5"], tabela, itens, "Calibragem pela meta de retorno",
       { resumo: `Calibragem pela meta de retorno: resultado mensal ${fmtBRL(c.resultadoOperacional)} → ${fmtBRL(cd.resultadoOperacional)}; retorno ${anos(c.prazoRetorno)} → ${anos(cd.prazoRetorno)} (módulos 1, 2, 3, 4 e 11 intocados).` });
   }
-  const LISTAS = [["R|est", estoqueNoM1], ["R|giro", giro], ["R|vol", compensacaoVolume], ["R|dem", volumePelaDemanda], ["R|imp", imposto], ["R|coe", coerencia], ["R|cus", custosFaltantes], ["R|pro", proLabore], ["R|fin", financiamento], ["R|prc", precoMinimo], ["R|arr", arranque], ["R|rec", reequilibrio], ["R|cal", calibragem]];
+  const LISTAS = [["R|est", estoqueNoM1], ["R|giro", giro], ["R|vol", compensacaoVolume], ["R|dem", volumePelaDemanda], ["R|cen", cenariosVazios], ["R|imp", imposto], ["R|coe", coerencia], ["R|cus", custosFaltantes], ["R|pro", proLabore], ["R|fin", financiamento], ["R|prc", precoMinimo], ["R|arr", arranque], ["R|rec", reequilibrio], ["R|cal", calibragem]];
 
   // ---- Realismo de mercado: aproxima a empresa das faixas típicas do segmento (só corrige o que está "bom demais") ----
   const MERC_MAX = { cmv: 150, mo: 1e9, div: 1e9, preco: 40, qtd: 50, inv: 100 };
@@ -10300,7 +10311,7 @@ const PA = (() => {
   // escolhas = { [chave]: { opt, v } } → { lancDepois, aplicados:[chave], taxaDepois, capacidadeDepois, linhasExtras }
   function aplicar(lancIn, escolhas, ctx) {
     const base = mergeLancamentos(lancIn); const L = clone(base); const aplicados = []; ctx = ctx || {};
-    const X = { taxaCrescimentoFluxo: ctx.taxaCrescimento ?? 0, capacidade: ctx.capacidade ? clone(ctx.capacidade) : null, curva: ctx.curva ? clone(ctx.curva) : null, linhas: [] };
+    const X = { taxaCrescimentoFluxo: ctx.taxaCrescimento ?? 0, capacidade: ctx.capacidade ? clone(ctx.capacidade) : null, curva: ctx.curva ? clone(ctx.curva) : null, cenarios: Array.isArray(ctx.cenarios) ? clone(ctx.cenarios) : undefined, linhas: [] };
     analisar(base, null, ctx).forEach((pt) => {
       const e = escolhas[pt.chave]; if (!e || !e.opt || e.opt === "manter") return;
       const antes = JSON.stringify([L, X]); pt.aplicar(L, e.opt, e.v, X);
@@ -10319,11 +10330,11 @@ const PA = (() => {
     // Listas de verificação (giro, impostos, coerência): sobre o cenário já corrigido, antes do realismo de mercado
     LISTAS.forEach(([chave, fn]) => {
       const el = escolhas[chave]; if (!el || !el.opt || el.opt === "manter") return;
-      const pt = fn(L, { ...ctx, capacidade: X.capacidade || ctx.capacidade }, X);
+      const pt = fn(L, { ...ctx, capacidade: X.capacidade || ctx.capacidade, cenarios: X.cenarios !== undefined ? X.cenarios : ctx.cenarios }, X);
       if (pt && pt.opcoes.some((o) => o.id === el.opt)) {
-        const aL = JSON.stringify([L, X.curva ?? null, X.capacidade ?? null]); const n0 = X.linhas.length;
+        const aL = JSON.stringify([L, X.curva ?? null, X.capacidade ?? null, X.cenarios ?? null]); const n0 = X.linhas.length;
         pt.aplicar(L, el.opt, el.v, X);
-        if (JSON.stringify([L, X.curva ?? null, X.capacidade ?? null]) !== aL) { aplicados.push(chave); X.linhas.splice(n0, 0, pt.resumo); }
+        if (JSON.stringify([L, X.curva ?? null, X.capacidade ?? null, X.cenarios ?? null]) !== aL) { aplicados.push(chave); X.linhas.splice(n0, 0, pt.resumo); }
       }
     });
     // Realismo de mercado: sobre o cenário já corrigido e com a capacidade decidida; a viabilidade vem depois
@@ -10349,11 +10360,12 @@ const PA = (() => {
     const taxaMudou = String(X.taxaCrescimentoFluxo ?? 0) !== String(ctx.taxaCrescimento ?? 0);
     const capMudou = JSON.stringify(X.capacidade ?? null) !== JSON.stringify(ctx.capacidade ?? null);
     const curvaMudou = JSON.stringify(X.curva ?? null) !== JSON.stringify(ctx.curva ?? null);
-    return { lancDepois: L, aplicados, taxaDepois: taxaMudou ? X.taxaCrescimentoFluxo : undefined, capacidadeDepois: capMudou ? X.capacidade : undefined, curvaDepois: curvaMudou ? X.curva : undefined, linhasExtras: X.linhas };
+    const cenMudou = X.cenarios !== undefined && JSON.stringify(X.cenarios) !== JSON.stringify(ctx.cenarios ?? null);
+    return { cenariosDepois: cenMudou ? X.cenarios : undefined, lancDepois: L, aplicados, taxaDepois: taxaMudou ? X.taxaCrescimentoFluxo : undefined, capacidadeDepois: capMudou ? X.capacidade : undefined, curvaDepois: curvaMudou ? X.curva : undefined, linhasExtras: X.linhas };
   }
   // ---- Estabilizar: aplica, em ordem fixa e em rodadas, as correções de realismo e coerência até nada mais mudar (só simula; não grava) ----
   // O retorno do investimento NÃO é forçado a 5 anos: a aproximação da meta (Viabilidade) só entra se o professor ligar (opts.viab).
-  const ESTAB_ROT = { "R|dem": "Volume pela demanda pesquisada (Módulo 5)", "R|vol": "Compensação do imposto pelo volume (Módulo 5)", "R|rec": "Reequilíbrio de viabilidade: equipe e volume", "R|cal": "Calibragem pela meta de retorno", "R|est": "Mercadoria lançada no Módulo 1", "R|giro": "Capital de giro e prazos", "R|imp": "Impostos", "R|coe": "Coerência entre módulos", "R|cus": "Custos que faltavam", "R|pro": "Pró-labore", "R|fin": "Financiamento", "R|prc": "Preço mínimo", "R|arr": "Arranque do fluxo", "R|mer": "Realismo de mercado", "V|via": "Viabilidade (aproximar da meta de anos de retorno)" };
+  const ESTAB_ROT = { "R|cen": "Análise de Cenários (6 cenários)", "R|dem": "Volume pela demanda pesquisada (Módulo 5)", "R|vol": "Compensação do imposto pelo volume (Módulo 5)", "R|rec": "Reequilíbrio de viabilidade: equipe e volume", "R|cal": "Calibragem pela meta de retorno", "R|est": "Mercadoria lançada no Módulo 1", "R|giro": "Capital de giro e prazos", "R|imp": "Impostos", "R|coe": "Coerência entre módulos", "R|cus": "Custos que faltavam", "R|pro": "Pró-labore", "R|fin": "Financiamento", "R|prc": "Preço mínimo", "R|arr": "Arranque do fluxo", "R|mer": "Realismo de mercado", "V|via": "Viabilidade (aproximar da meta de anos de retorno)" };
   function estabilizar(L0, ctx, opts) {
     opts = opts || {}; const excl = new Set(opts.excluir || []); const alvo = opts.alvo || 5; const MAXR = 6;
     let L = clone(L0); let cap = ctx.capacidade || null, curva = ctx.curva !== undefined ? ctx.curva : null;
@@ -10369,7 +10381,7 @@ const PA = (() => {
     for (let n = 1; n <= MAXR; n++) {
       const passos = [];
       for (const [k, fn] of LISTAS) {
-        if (excl.has(k) || k === "R|cal" || k === "R|rec" || k === "R|vol" || k === "R|dem") continue; let p = null; try { p = fn(L, mk()); } catch { p = null; }
+        if (excl.has(k) || k === "R|cal" || k === "R|rec" || k === "R|vol" || k === "R|dem" || k === "R|cen") continue; let p = null; try { p = fn(L, mk()); } catch { p = null; }
         if (!p || !(p.itens || []).some((i) => !i.info)) continue;
         const o = (p.opcoes || []).find((x) => x.recomendado) || (p.opcoes || []).find((x) => x.id === "aplicar");
         if (!o || o.id === "manter") { const dc = `${ESTAB_ROT[k] || k}: precisa de decisão sua (não há opção segura para aplicar sozinha).`; if (!decisoes.includes(dc)) decisoes.push(dc); continue; }
@@ -10408,11 +10420,11 @@ const PA = (() => {
     if (norm.length) { pen += Math.min(15, norm.length * 3); pend.push(`${norm.length} ponto(s) de atenção`); }
     const cp = seguro(() => capacidade(L, ctx)); if (cp && cp.semDados) { pen += 5; pend.push("capacidade sem dados"); }
     const m = seguro(() => mercado(L, ctx)); if (m) { pen += pesos["R|mer"]; pend.push("realismo de mercado"); }
-    LISTAS.forEach(([k, fn]) => { if (k === "R|cal" || k === "R|rec" || k === "R|vol" || k === "R|dem") return; const pt = seguro(() => fn(L, ctx)); if (pt && (pt.itens || []).some((i) => !i.info)) { pen += pesos[k]; pend.push(String(pt.rotulo).replace(/ \(.*\)$/, "").toLowerCase()); } });
+    LISTAS.forEach(([k, fn]) => { if (k === "R|cal" || k === "R|rec" || k === "R|vol" || k === "R|dem" || k === "R|cen") return; const pt = seguro(() => fn(L, ctx)); if (pt && (pt.itens || []).some((i) => !i.info)) { pen += pesos[k]; pend.push(String(pt.rotulo).replace(/ \(.*\)$/, "").toLowerCase()); } });
     const cv = seguro(() => calcular(L)); if (cv && cv.faturamento > 0 && cv.investimentoTotal > 0 && cv.prazoRetorno == null) { pen += 15; pend.push("o investimento não se paga"); }   // prazo longo (fora da meta de 5 anos) NÃO penaliza: o prazo real é o resultado do plano
     return { nota: Math.max(0, 100 - pen), pend };
   }
-  const CHAVES_EXTRA = ["H|cap", "R|est", "R|giro", "R|imp", "R|coe", "R|cus", "R|pro", "R|fin", "R|prc", "R|arr", "R|vol", "R|dem", "R|rec", "R|cal", "R|mer", "V|via"];
+  const CHAVES_EXTRA = ["H|cap", "R|est", "R|giro", "R|imp", "R|coe", "R|cus", "R|pro", "R|fin", "R|prc", "R|arr", "R|vol", "R|dem", "R|cen", "R|rec", "R|cal", "R|mer", "V|via"];
   return { analisar, aplicar, capacidade, viabilidade, sugestoes, simular, mercado, mercadoSim, giro, imposto, coerencia, estoqueNoM1, estabilizar, ESTAB_ROT, LISTAS, CHAVES_EXTRA, estresse, pontuacao };
 })();
 
@@ -10738,9 +10750,9 @@ function diffAjuste(a, b, rot, out) {
   }
   if (JSON.stringify(a) !== JSON.stringify(b)) out.push({ rot, antes: fmtValAj(a), depois: fmtValAj(b) });
 }
-const CAMPO_EXTRA_AJ = { fluxo: "taxaCrescimentoFluxo", capacidade: "capacidade", curva: "curvaFluxo" };
+const CAMPO_EXTRA_AJ = { fluxo: "taxaCrescimentoFluxo", capacidade: "capacidade", curva: "curvaFluxo", cenarios: "cenarios" };
 const MODS_PONTOS = ["m1", "m2", "m4", "m5", "m6", "m7", "m8", "m9", "m10", "m11"];
-const rotModAj = (modId) => (modId === "fluxo" ? "Fluxo de caixa" : modId === "curva" ? "Fluxo de caixa (arranque/sazonalidade)" : modId === "capacidade" ? "Capacidade de produção" : `Módulo ${String(modId).slice(1)}`);
+const rotModAj = (modId) => (modId === "fluxo" ? "Fluxo de caixa" : modId === "curva" ? "Fluxo de caixa (arranque/sazonalidade)" : modId === "capacidade" ? "Capacidade de produção" : modId === "cenarios" ? "Análise de Cenários" : `Módulo ${String(modId).slice(1)}`);
 function linhasDiffModulo(nMod, antes, depois) {
   const out = []; diffAjuste(antes, depois, `Módulo ${nMod}`, out);
   return out.map((x) => `${x.rot}: ${x.antes} → ${x.depois}`);
@@ -10848,7 +10860,7 @@ async function gravarModulosEquipe(turmaId, equipeId, novos, esperado, comentari
   if (relat) novoD.relatorioAjustes = relat;
   // Campos fora dos módulos de lançamento (crescimento do Fluxo de caixa, capacidade): conferidos e gravados juntos.
   if (extras) Object.keys(extras).forEach((campo) => {
-    if (JSON.stringify(d[campo] ?? null) !== JSON.stringify(extras[campo].esperado ?? null)) throw new Error(`a equipe alterou ${campo === "capacidade" ? "a Capacidade de produção" : campo === "curvaFluxo" ? "a curva do Fluxo de caixa" : "o crescimento do Fluxo de caixa"} depois que você abriu — recarregue e refaça`);
+    if (JSON.stringify(d[campo] ?? null) !== JSON.stringify(extras[campo].esperado ?? null)) throw new Error(`a equipe alterou ${campo === "capacidade" ? "a Capacidade de produção" : campo === "curvaFluxo" ? "a curva do Fluxo de caixa" : campo === "cenarios" ? "a Análise de Cenários" : "o crescimento do Fluxo de caixa"} depois que você abriu — recarregue e refaça`);
     novoD[campo] = extras[campo].novo;
   });
   // A curva de 24 passos (calibragem pela meta de retorno) ou o Reequilíbrio de viabilidade marcam M1, M2, M3, M4 e M11 como preservados, inclusive em atualizações automáticas futuras.
@@ -11135,7 +11147,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
       const d = await lerDadosEstrito(paEq); const lanc = mergeLancamentos(d.lancamentos);
       const refsCfg = await window.storage.get(`refs_segmento_${turma.professorUid}`, true).then((x) => (x ? JSON.parse(x.value) : null)).catch(() => null);
       const segEq = equipes.find((e) => e.id === paEq)?.segmento;
-      const ctx = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [], refs: refsDoSegmento(refsCfg, segEq), capacidade: d.capacidade || null, curva: d.curvaFluxo || null, segmento: segEq, nSocios: (equipes.find((e) => e.id === paEq)?.integrantes || []).length || 0 };
+      const ctx = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [], refs: refsDoSegmento(refsCfg, segEq), capacidade: d.capacidade || null, curva: d.curvaFluxo || null, cenarios: Array.isArray(d.cenarios) ? d.cenarios : [], segmento: segEq, nSocios: (equipes.find((e) => e.id === paEq)?.integrantes || []).length || 0 };
       const pts = PA.analisar(lanc, null, ctx);
       const esc = {}; pts.forEach((pt) => { esc[pt.chave] = { opt: pt.padrao || "manter", v: "" }; });
       const pd = lerPedidoAjuste(turma.id);
@@ -11163,7 +11175,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
     // 4) listas de verificação (giro, impostos, coerência), cada uma sobre o cenário anterior
     const listas = {}; let escL = { ...escC }; let cur = rc;
     PA.LISTAS.forEach(([chave, fn]) => {
-      const pt = fn(cur.lancDepois, { ...paPontos.ctx, capacidade: cur.capacidadeDepois ?? paPontos.ctx.capacidade, curva: cur.curvaDepois !== undefined ? cur.curvaDepois : paPontos.ctx.curva }, cur.curvaDepois !== undefined ? { curva: cur.curvaDepois } : undefined);
+      const pt = fn(cur.lancDepois, { ...paPontos.ctx, capacidade: cur.capacidadeDepois ?? paPontos.ctx.capacidade, cenarios: cur.cenariosDepois !== undefined ? cur.cenariosDepois : paPontos.ctx.cenarios, curva: cur.curvaDepois !== undefined ? cur.curvaDepois : paPontos.ctx.curva }, cur.curvaDepois !== undefined ? { curva: cur.curvaDepois } : undefined);
       if (!pt) return; listas[chave] = pt; const eL = paEsc[chave] || {};
       escL = { ...escL, [chave]: { opt: eL.opt || "manter", v: eL.v || {} } }; cur = PA.aplicar(paPontos.lanc, escL, paPontos.ctx);
     });
@@ -11188,11 +11200,11 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
     try {
       if (!equipePronta(await lerAvaliacao(turma.id), eqId, Date.now())) throw new Error("a equipe não está mais bloqueada/pronta");
       const d = await lerDadosEstrito(eqId); const lanc = mergeLancamentos(d.lancamentos);
-      const ctxF = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [], refs: paPontos.ctx.refs, capacidade: d.capacidade || null, curva: d.curvaFluxo || null, segmento: paPontos.ctx.segmento, nSocios: paPontos.ctx.nSocios };
+      const ctxF = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [], refs: paPontos.ctx.refs, capacidade: d.capacidade || null, curva: d.curvaFluxo || null, cenarios: Array.isArray(d.cenarios) ? d.cenarios : [], segmento: paPontos.ctx.segmento, nSocios: paPontos.ctx.nSocios };
       const chavesFrescas = new Set(PA.analisar(lanc, null, ctxF).map((p) => p.chave));
       const escFresco = {}; Object.keys(paResultado.esc).forEach((k) => { if ((chavesFrescas.has(k) || PA.CHAVES_EXTRA.includes(k)) && paResultado.aplicados.includes(k)) escFresco[k] = paResultado.esc[k]; });
       if (!Object.keys(escFresco).length) throw new Error("os pontos escolhidos já não existem (a equipe alterou os lançamentos?)");
-      const { lancDepois, taxaDepois, capacidadeDepois, curvaDepois, linhasExtras } = PA.aplicar(lanc, escFresco, ctxF);
+      const { lancDepois, taxaDepois, capacidadeDepois, curvaDepois, cenariosDepois, linhasExtras } = PA.aplicar(lanc, escFresco, ctxF);
       const mods = {}; const esperado = {}; const linhas = []; const mudancas = [];
       if (PA.CHAVES_EXTRA.some((k) => escFresco[k])) linhas.push(...linhasExtras);
       MODS_PONTOS.forEach((m) => {
@@ -11213,7 +11225,8 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
         extras.curvaFluxo = { esperado: d.curvaFluxo ?? null, novo: curvaDepois };
         mudancas.push({ equipeId: eqId, equipeNome: nomeEq(eqId), modId: "curva", antes: d.curvaFluxo ?? null, depois: curvaDepois });
       }
-      const modsRel = { ...mods, ...(taxaDepois !== undefined ? { fluxo: 1 } : {}), ...(capacidadeDepois !== undefined ? { capacidade: 1 } : {}), ...(curvaDepois !== undefined ? { curva: 1 } : {}) };
+      if (cenariosDepois !== undefined) { extras.cenarios = { esperado: d.cenarios ?? null, novo: cenariosDepois }; mudancas.push({ equipeId: eqId, equipeNome: nomeEq(eqId), modId: "cenarios", antes: d.cenarios ?? null, depois: cenariosDepois }); }
+      const modsRel = { ...mods, ...(cenariosDepois !== undefined ? { cenarios: 1 } : {}), ...(taxaDepois !== undefined ? { fluxo: 1 } : {}), ...(capacidadeDepois !== undefined ? { capacidade: 1 } : {}), ...(curvaDepois !== undefined ? { curva: 1 } : {}) };
       if (!mudancas.length) throw new Error("nenhuma alteração resultou das escolhas");
       await registrarAjusteProf(turma.id, { id, em: Date.now(), por: professorNome, tipo: "pontos", motivo: "Pontos de atenção (correções escolhidas pelo professor)", mudancas, desfeito: false });
       registrado = true;
@@ -11235,7 +11248,7 @@ function AjusteGeralTurma({ turma, equipes, professorNome }) {
       const d = await lerDadosEstrito(paEq); const lanc = mergeLancamentos(d.lancamentos);
       const refsCfg = await window.storage.get(`refs_segmento_${turma.professorUid}`, true).then((x) => (x ? JSON.parse(x.value) : null)).catch(() => null);
       const segEq = equipes.find((e) => e.id === paEq)?.segmento;
-      const ctx = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [], refs: refsDoSegmento(refsCfg, segEq), capacidade: d.capacidade || null, curva: d.curvaFluxo || null, segmento: segEq, nSocios: (equipes.find((e) => e.id === paEq)?.integrantes || []).length || 0 };
+      const ctx = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [], refs: refsDoSegmento(refsCfg, segEq), capacidade: d.capacidade || null, curva: d.curvaFluxo || null, cenarios: Array.isArray(d.cenarios) ? d.cenarios : [], segmento: segEq, nSocios: (equipes.find((e) => e.id === paEq)?.integrantes || []).length || 0 };
       setPaPontos(null); setStab({ equipeId: paEq, lanc, dados: d, ctx, excl: {}, viab: false });
     } catch (e) { falhar(e); }
     setOcupado(false);
@@ -12524,7 +12537,7 @@ async function aplicarSugestaoDireta({ turma, equipe, professorNome, pcts, maxim
 }
 function montarSugestoes(equipe, dados, T, refs, X) {
   try {
-    const ctx = { taxaCrescimento: dados.taxaCrescimentoFluxo ?? 0, historico: dados.historico || [], refs, capacidade: dados.capacidade || null, curva: dados.curvaFluxo || null, segmento: equipe.segmento, nSocios: (equipe.integrantes || []).length || 0 };
+    const ctx = { taxaCrescimento: dados.taxaCrescimentoFluxo ?? 0, historico: dados.historico || [], refs, capacidade: dados.capacidade || null, curva: dados.curvaFluxo || null, cenarios: Array.isArray(dados.cenarios) ? dados.cenarios : [], segmento: equipe.segmento, nSocios: (equipe.integrantes || []).length || 0 };
     const s = PA.sugestoes(X.lanc, ctx); if (!s) return null;
     const taxa = dados.taxaCrescimentoFluxo ?? 0;
     const avaliar = (lx) => avaliarCenario(equipe, dados, lx, s.alvo, X);
@@ -13993,7 +14006,7 @@ function GestaoRealismoTurmaView({ user, turmas }) {
           let d = null; try { const x = await window.storage.get(`dados_equipe_${eq.id}`, true); d = x ? JSON.parse(x.value) : null; } catch { d = null; }
           if (!d) continue; const L = mergeLancamentos(d.lancamentos);
           if (!(calcular(L).faturamento > 0)) { out.push({ id: eq.id, nome: eq.nomeNegocio || "(sem nome)", seg: eq.segmento || "", nota: null, pend: ["sem faturamento lançado"] }); continue; }
-          const ctx = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [], refs: refsDoSegmento(cfg, eq.segmento), capacidade: d.capacidade || null, curva: d.curvaFluxo || null, segmento: eq.segmento, nSocios: (eq.integrantes || []).length || 0 };
+          const ctx = { taxaCrescimento: d.taxaCrescimentoFluxo ?? 0, historico: d.historico || [], refs: refsDoSegmento(cfg, eq.segmento), capacidade: d.capacidade || null, curva: d.curvaFluxo || null, cenarios: Array.isArray(d.cenarios) ? d.cenarios : [], segmento: eq.segmento, nSocios: (eq.integrantes || []).length || 0 };
           const pt = PA.pontuacao(L, ctx); out.push({ id: eq.id, nome: eq.nomeNegocio || "(sem nome)", seg: eq.segmento || "", nota: pt.nota, pend: pt.pend });
         }
         out.sort((a, b) => (a.nota ?? -1) - (b.nota ?? -1));

@@ -1,4 +1,4 @@
-// build: 20261120_22h37 Análise de Cenários pelo Ajuste geral
+// build: 20261122_12h33 Pico de capacidade coberto de outra forma (Capacidade e Ajuste geral)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1385,6 +1385,7 @@ const VERSOES = [
     "Ajuste geral › 3. Ajuste manual: cada equipe ganhou a linha \"Análises da equipe (calculadas · somente leitura)\" com Análise da DRE, Análise de Indicadores, Análise do Negócio, Análise de Cenários e Fluxo de Caixa Anual (abrem em uma janela com os dados atuais da equipe, sem sair do Ajuste geral) e os botões Baixar Apresentação e Baixar Plano Financeiro (Word). O professor não precisa mais entrar em \"Ver como aluno\" a cada conferência. Nada é gravado.",
     "Ajuste geral › cartão \"Retorno do investimento\" alinhado à faixa de 5 a 10 anos: retorno dentro da faixa (ou mais rápido) aparece em verde, sem plano de alavancas; só acima de 10 anos continua o plano opcional. Nada é corrigido por causa do retorno.",
     "Indicadores › nova Margem de segurança = (faturamento anual − ponto de equilíbrio) ÷ faturamento anual: mostra quanto as vendas podem cair antes de dar prejuízo (abaixo de 10% estreita · 10 a 25% confortável · acima de 25% ampla; só informativa, sem nota). Aparece na Análise de Indicadores (com o faturamento anual planejado e a frase \"Como ler\"), no Word, no slide 3 do PowerPoint e na Conferência dos documentos, para todas as equipes. Um ponto de equilíbrio alto não é cobrado: ele acompanha o faturamento.",
+    "Capacidade › novo campo \"Como o pico é atendido?\": quando a utilização média cabe (até 100%) mas o dia de pico passa de 100%, a equipe (ou o professor, pelo Ajuste geral › \"Pico coberto de outra forma\") registra a forma (produção antecipada e estoque, encomendas agendadas, turnos escalonados ou outra) e a justificativa. O alerta de capacidade no pico deixa de bloquear e o texto entra nos relatórios. Nenhum valor nem fator de pico é alterado.",
     "Ajuste geral › nova etapa \"Análise de Cenários (6 cenários)\": para a equipe que ainda não lançou nenhum cenário, propõe 6 (faturamento +10% / +20% / +30% e −10% / −20% / −30%, com custo variável e custo fixo acompanhando). Não mexe em nenhum módulo de lançamento; a equipe pode editar depois. Fica registrado, com Desfazer.",
     "Ajuste geral › Calibragem: dois novos itens. (1) Alternativa \"6 meses negativos\": curva de 24 passos com só o 1º semestre abaixo do ponto de equilíbrio e caixa positivo a partir do 7º mês (marque no lugar da curva de 12 meses; indicada para empresas de retorno muito rápido, como as de investimento baixo). (2) O item de preço pode ser desmarcado para manter os preços da equipe. Em ambos os casos os Módulos 1, 2, 3, 4 e 11 ficam preservados.",
     "Ajuste geral › nova etapa \"Volume pela demanda pesquisada (Módulo 5)\": para plano que dá prejuízo (ou não se paga em 10 anos) com a capacidade quase toda ociosa (utilização abaixo de 50%) e vendas lançadas bem abaixo dos clientes por dia que a própria equipe pesquisou, propõe o menor aumento das quantidades do Módulo 5 (preços inalterados) que leva o retorno a até 6 anos, sem passar de 85% da demanda pesquisada nem de 80% de utilização. Aplique junto com o cartão de Impostos; depois a Calibragem propõe o 1º ano negativo e a recuperação no 2º. Não mexe nos Módulos 1, 2, 3, 4 e 11.",
@@ -4729,7 +4730,7 @@ function conclusaoResumo({ equipe, calc, fluxo, fluxoL, capCalc, tmaAnual, pPro 
   let capTxt = "Capacidade ainda não analisada na plataforma.";
   if (capCalc) {
     const gp = [...capCalc.grupos.filter((g) => g.cap != null && g.usoPico != null)].sort((a, b) => b.usoPico - a.usoPico)[0];
-    if (gp) capTxt = `Uso de ${num(gp.uso * 100)}% da capacidade e ${num(gp.usoPico * 100)}% no pico${gp.usoPico > 1 ? ": a estrutura não comporta" : gp.usoPico >= 0.9 ? ": pouca folga" : ": estrutura comporta com folga"}.`;
+    if (gp) capTxt = `Uso de ${num(gp.uso * 100)}% da capacidade e ${num(gp.usoPico * 100)}% no pico${gp.usoPico > 1 ? (capCalc.picoCoberto && gp.uso <= 1 ? ": pico acima da estrutura, coberto por — " + capCalc.picoCoberto : ": a estrutura não comporta") : gp.usoPico >= 0.9 ? ": pouca folga" : ": estrutura comporta com folga"}.`;
     else capTxt = "Análise de capacidade incompleta.";
   }
   sec.push(["Capacidade", capTxt]);
@@ -5030,7 +5031,7 @@ async function gerarApresentacaoEquipe({ equipe, calc, fluxo, capCalc, lanc, cen
   const sN = base("4 · Caixa, Cenários e Capacidade", "Quando o caixa fica positivo, o que muda se as vendas variarem e se a estrutura comporta", 5, [
     `Caixa: saldo de ${money0(fluxo[12] ? fluxo[12].saldo : 0)} ao final do mês 12; o caixa fica positivo em ${rotRet}. Explique de onde vem o dinheiro que cobre o período negativo.`,
     censTodos.length ? `Cenários: ${censTodos.map((x, i) => { const r = calcularCenario(calc, x); return `${x.nome || "Cenário " + (i + 1)} → resultado de ${money0(r.resultadoOperacional)} por mês`; }).join("; ")}. Responda: e se as vendas caírem?` : "Criem cenários na plataforma (pessimista e otimista) para responder: e se as vendas caírem?",
-    gP ? `Capacidade: uso normal de ${pct(gP.uso * 100, 0)} e de ${pct(gP.usoPico * 100, 0)} no pico${gP.gargalo ? `; o gargalo é ${gP.gargalo}` : ""}. ${gP.usoPico > 1 ? "A estrutura não atende o pico: digam o que fariam." : "A estrutura comporta o pico."}` : "Capacidade: preencham os passos 1 a 3 da Capacidade na plataforma.",
+    gP ? `Capacidade: uso normal de ${pct(gP.uso * 100, 0)} e de ${pct(gP.usoPico * 100, 0)} no pico${gP.gargalo ? `; o gargalo é ${gP.gargalo}` : ""}. ${gP.usoPico > 1 ? (capCalc && capCalc.picoCoberto && gP.uso <= 1 ? "Pico coberto por: " + capCalc.picoCoberto : "A estrutura não atende o pico: digam o que fariam.") : "A estrutura comporta o pico."}` : "Capacidade: preencham os passos 1 a 3 da Capacidade na plataforma.",
     "Se a banca perguntar: por que o caixa começa negativo? O que muda se o faturamento cair 10%? A estrutura atende o pico?",
   ], "50 s");
   if (!temDados || !temInvest) aviso(sN, "Esta parte ainda não pode ser montada: faltam investimento e faturamento (Módulos 1 a 5) para projetar o caixa.");
@@ -5627,7 +5628,7 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
         filhos.push(comoCalc([
           `Plano do Módulo 5 = ${nf(g.dem)} ${capCalc.un}/mês; capacidade = ${nf(g.cap)} ${capCalc.un}/mês`,
           `Uso no mês normal = plano ÷ capacidade = ${nf(g.dem)} ÷ ${nf(g.cap)} = ${nf(g.uso * 100)}%`,
-          `Uso no pico = plano × fator de pico ÷ capacidade = ${nf(g.dem)} × ${nf(fm.pico, 1)} ÷ ${nf(g.cap)} = ${nf(g.usoPico * 100)}% — ${g.usoPico > 1 ? "NÃO ATENDE o pico" : g.usoPico >= 0.9 ? "atende, com pouca folga" : "atende com folga"}`,
+          `Uso no pico = plano × fator de pico ÷ capacidade = ${nf(g.dem)} × ${nf(fm.pico, 1)} ÷ ${nf(g.cap)} = ${nf(g.usoPico * 100)}% — ${g.usoPico > 1 ? (capCalc.picoCoberto && g.uso <= 1 ? "pico acima de 100%, coberto de outra forma (ver abaixo)" : "NÃO ATENDE o pico") : g.usoPico >= 0.9 ? "atende, com pouca folga" : "atende com folga"}`,
         ], `Resultado — ${g.titulo}`));
       } else filhos.push(vazio("Faltam quantidades ou tempos para concluir esta parte."));
     });
@@ -5692,7 +5693,7 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
       const gs = capCalc.grupos.filter((g) => g.cap != null && g.usoPico != null);
       const gp = [...gs].sort((a, b) => b.usoPico - a.usoPico)[0];
       if (!gp) filhos.push(pj("A análise de capacidade está incompleta (faltam quantidades ou tempos); ela deve ser concluída para confirmar que a estrutura comporta o plano."));
-      else filhos.push(pj(`A capacidade de ${gp.titulo.toLowerCase()} é de ${num(gp.cap)} ${capCalc.un} por mês, contra uma demanda planejada de ${num(gp.dem)} (uso de ${num(gp.uso * 100)}%). No pico de movimento (fator ${num(capCalc.func.pico, 1)}), a demanda chega a ${num(gp.dem * capCalc.func.pico)} e o uso a ${num(gp.usoPico * 100)}%${gp.usoPico > 1 ? ", o que a estrutura atual não comporta. Para atender o pico, é preciso ampliar a estrutura ou reduzir o plano de vendas, conforme detalhado na seção 7" : gp.usoPico >= 0.9 ? ", o que deixa pouca folga" : ", o que a estrutura comporta com folga"}.`));
+      else filhos.push(pj(`A capacidade de ${gp.titulo.toLowerCase()} é de ${num(gp.cap)} ${capCalc.un} por mês, contra uma demanda planejada de ${num(gp.dem)} (uso de ${num(gp.uso * 100)}%). No pico de movimento (fator ${num(capCalc.func.pico, 1)}), a demanda chega a ${num(gp.dem * capCalc.func.pico)} e o uso a ${num(gp.usoPico * 100)}%${gp.usoPico > 1 ? (capCalc.picoCoberto && gp.uso <= 1 ? ", acima da estrutura no pico; a empresa cobre o pico da seguinte forma — " + capCalc.picoCoberto : ", o que a estrutura atual não comporta. Para atender o pico, é preciso ampliar a estrutura ou reduzir o plano de vendas, conforme detalhado na seção 7") : gp.usoPico >= 0.9 ? ", o que deixa pouca folga" : ", o que a estrutura comporta com folga"}.`));
     }
 
     filhos.push(h2("5. Conclusão e recomendações"));
@@ -10060,6 +10061,19 @@ const PA = (() => {
     const tabela = [{ rot: "Cenários cadastrados", hoje: "0", faixa: "pelo menos 1", sit: "fora", depois: "6" }];
     return montarLista("R|cen", "Mercado", "Análise de Cenários (6 cenários)", ["cenarios"], tabela, itens, "Análise de Cenários", { resumo: "Análise de Cenários: 6 cenários lançados (nenhum módulo de lançamento alterado)." });
   }
+  // Pico coberto de outra forma: a utilização média cabe (<=100%) mas o dia de pico (fator de pico da equipe) passa de 100%. Registra como o pico é atendido, sem mudar valor algum.
+  function picoCobertoLista(L, ctx) {
+    const cap = ctx?.capacidade; if (!cap || cap.picoCoberto) return null;
+    const c = calcular(L); if (!(c.faturamento > 0) || !(c.investimentoTotal > 0)) return null;
+    let cp = null; try { cp = capacidade(L, ctx); } catch { cp = null; }
+    const u = cp?.info?.utilizacao; const pico = Math.max(1, Number(String(cap?.funcionamento?.pico ?? "").replace(",", ".")) || 1);
+    if (u == null || !(u > 0) || u > 1 || u * pico <= 1) return null;
+    const forma = "Produção antecipada e estoque";
+    const texto = `A utilização média da estrutura é de ${fmtNum(u * 100, 0)}%, dentro da capacidade. O pico de ${fmtNum(u * pico * 100, 0)}% decorre do fator de pico de ${fmtNum(pico, 1)}× adotado pela equipe como teste de estresse. A empresa cobre os dias de pico com produção antecipada, estoque de segurança e encomendas com agendamento, sem ampliar a estrutura.`;
+    const itens = [{ id: "p_pico", texto: `Capacidade: registra que o pico de ${fmtNum(u * pico * 100, 0)}% (utilização média de ${fmtNum(u * 100, 0)}%) é coberto por "${forma}", com a justificativa que entra no relatório da equipe. Nenhum valor ou módulo é alterado.`, linha: `pico de ${fmtNum(u * pico * 100, 0)}% registrado como coberto por ${forma.toLowerCase()}`, fn: (_X, Xx) => { Xx.capacidade = { ...(Xx.capacidade || {}), picoCoberto: { forma, texto } }; } }];
+    const tabela = [{ rot: "Utilização média da capacidade", hoje: `${fmtNum(u * 100, 0)}%`, faixa: "até 100%", sit: "ok", depois: `${fmtNum(u * 100, 0)}%` }, { rot: "Utilização no pico", hoje: `${fmtNum(u * pico * 100, 0)}%`, faixa: "até 100% ou pico coberto", sit: "fora", depois: "registrado como coberto" }];
+    return montarLista("R|pic", "Capacidade", "Pico coberto de outra forma (Capacidade)", [], tabela, itens, "Pico de capacidade", { resumo: `Pico de capacidade registrado como coberto por ${forma.toLowerCase()} (nenhum valor alterado).` });
+  }
   // Reequilíbrio de viabilidade (equipe e volume): quando o plano dá prejuízo ou não se paga em 10 anos por causa de um "Reforço de equipe" acima do salário mínimo,
   // dimensiona o reforço (nunca abaixo de 1 salário mínimo), ajusta as quantidades do Módulo 5 ao que a capacidade comporta e atualiza os vendedores da Capacidade.
   // NUNCA mexe nos módulos 1, 2, 3, 4 e 11 (nem no pró-labore). Só vale se o professor aplicar.
@@ -10192,7 +10206,7 @@ const PA = (() => {
     return montarLista("R|cal", "Mercado", "Calibragem pela meta de retorno (5 a 10 anos)", ["m5"], tabela, itens, "Calibragem pela meta de retorno",
       { resumo: `Calibragem pela meta de retorno: resultado mensal ${fmtBRL(c.resultadoOperacional)} → ${fmtBRL(cd.resultadoOperacional)}; retorno ${anos(c.prazoRetorno)} → ${anos(cd.prazoRetorno)} (módulos 1, 2, 3, 4 e 11 intocados).` });
   }
-  const LISTAS = [["R|est", estoqueNoM1], ["R|giro", giro], ["R|vol", compensacaoVolume], ["R|dem", volumePelaDemanda], ["R|cen", cenariosVazios], ["R|imp", imposto], ["R|coe", coerencia], ["R|cus", custosFaltantes], ["R|pro", proLabore], ["R|fin", financiamento], ["R|prc", precoMinimo], ["R|arr", arranque], ["R|rec", reequilibrio], ["R|cal", calibragem]];
+  const LISTAS = [["R|est", estoqueNoM1], ["R|giro", giro], ["R|vol", compensacaoVolume], ["R|dem", volumePelaDemanda], ["R|cen", cenariosVazios], ["R|pic", picoCobertoLista], ["R|imp", imposto], ["R|coe", coerencia], ["R|cus", custosFaltantes], ["R|pro", proLabore], ["R|fin", financiamento], ["R|prc", precoMinimo], ["R|arr", arranque], ["R|rec", reequilibrio], ["R|cal", calibragem]];
 
   // ---- Realismo de mercado: aproxima a empresa das faixas típicas do segmento (só corrige o que está "bom demais") ----
   const MERC_MAX = { cmv: 150, mo: 1e9, div: 1e9, preco: 40, qtd: 50, inv: 100 };
@@ -10365,7 +10379,7 @@ const PA = (() => {
   }
   // ---- Estabilizar: aplica, em ordem fixa e em rodadas, as correções de realismo e coerência até nada mais mudar (só simula; não grava) ----
   // O retorno do investimento NÃO é forçado a 5 anos: a aproximação da meta (Viabilidade) só entra se o professor ligar (opts.viab).
-  const ESTAB_ROT = { "R|cen": "Análise de Cenários (6 cenários)", "R|dem": "Volume pela demanda pesquisada (Módulo 5)", "R|vol": "Compensação do imposto pelo volume (Módulo 5)", "R|rec": "Reequilíbrio de viabilidade: equipe e volume", "R|cal": "Calibragem pela meta de retorno", "R|est": "Mercadoria lançada no Módulo 1", "R|giro": "Capital de giro e prazos", "R|imp": "Impostos", "R|coe": "Coerência entre módulos", "R|cus": "Custos que faltavam", "R|pro": "Pró-labore", "R|fin": "Financiamento", "R|prc": "Preço mínimo", "R|arr": "Arranque do fluxo", "R|mer": "Realismo de mercado", "V|via": "Viabilidade (aproximar da meta de anos de retorno)" };
+  const ESTAB_ROT = { "R|pic": "Pico coberto de outra forma (Capacidade)", "R|cen": "Análise de Cenários (6 cenários)", "R|dem": "Volume pela demanda pesquisada (Módulo 5)", "R|vol": "Compensação do imposto pelo volume (Módulo 5)", "R|rec": "Reequilíbrio de viabilidade: equipe e volume", "R|cal": "Calibragem pela meta de retorno", "R|est": "Mercadoria lançada no Módulo 1", "R|giro": "Capital de giro e prazos", "R|imp": "Impostos", "R|coe": "Coerência entre módulos", "R|cus": "Custos que faltavam", "R|pro": "Pró-labore", "R|fin": "Financiamento", "R|prc": "Preço mínimo", "R|arr": "Arranque do fluxo", "R|mer": "Realismo de mercado", "V|via": "Viabilidade (aproximar da meta de anos de retorno)" };
   function estabilizar(L0, ctx, opts) {
     opts = opts || {}; const excl = new Set(opts.excluir || []); const alvo = opts.alvo || 5; const MAXR = 6;
     let L = clone(L0); let cap = ctx.capacidade || null, curva = ctx.curva !== undefined ? ctx.curva : null;
@@ -10381,7 +10395,7 @@ const PA = (() => {
     for (let n = 1; n <= MAXR; n++) {
       const passos = [];
       for (const [k, fn] of LISTAS) {
-        if (excl.has(k) || k === "R|cal" || k === "R|rec" || k === "R|vol" || k === "R|dem" || k === "R|cen") continue; let p = null; try { p = fn(L, mk()); } catch { p = null; }
+        if (excl.has(k) || k === "R|cal" || k === "R|rec" || k === "R|vol" || k === "R|dem" || k === "R|cen" || k === "R|pic") continue; let p = null; try { p = fn(L, mk()); } catch { p = null; }
         if (!p || !(p.itens || []).some((i) => !i.info)) continue;
         const o = (p.opcoes || []).find((x) => x.recomendado) || (p.opcoes || []).find((x) => x.id === "aplicar");
         if (!o || o.id === "manter") { const dc = `${ESTAB_ROT[k] || k}: precisa de decisão sua (não há opção segura para aplicar sozinha).`; if (!decisoes.includes(dc)) decisoes.push(dc); continue; }
@@ -10420,11 +10434,11 @@ const PA = (() => {
     if (norm.length) { pen += Math.min(15, norm.length * 3); pend.push(`${norm.length} ponto(s) de atenção`); }
     const cp = seguro(() => capacidade(L, ctx)); if (cp && cp.semDados) { pen += 5; pend.push("capacidade sem dados"); }
     const m = seguro(() => mercado(L, ctx)); if (m) { pen += pesos["R|mer"]; pend.push("realismo de mercado"); }
-    LISTAS.forEach(([k, fn]) => { if (k === "R|cal" || k === "R|rec" || k === "R|vol" || k === "R|dem" || k === "R|cen") return; const pt = seguro(() => fn(L, ctx)); if (pt && (pt.itens || []).some((i) => !i.info)) { pen += pesos[k]; pend.push(String(pt.rotulo).replace(/ \(.*\)$/, "").toLowerCase()); } });
+    LISTAS.forEach(([k, fn]) => { if (k === "R|cal" || k === "R|rec" || k === "R|vol" || k === "R|dem" || k === "R|cen" || k === "R|pic") return; const pt = seguro(() => fn(L, ctx)); if (pt && (pt.itens || []).some((i) => !i.info)) { pen += pesos[k]; pend.push(String(pt.rotulo).replace(/ \(.*\)$/, "").toLowerCase()); } });
     const cv = seguro(() => calcular(L)); if (cv && cv.faturamento > 0 && cv.investimentoTotal > 0 && cv.prazoRetorno == null) { pen += 15; pend.push("o investimento não se paga"); }   // prazo longo (fora da meta de 5 anos) NÃO penaliza: o prazo real é o resultado do plano
     return { nota: Math.max(0, 100 - pen), pend };
   }
-  const CHAVES_EXTRA = ["H|cap", "R|est", "R|giro", "R|imp", "R|coe", "R|cus", "R|pro", "R|fin", "R|prc", "R|arr", "R|vol", "R|dem", "R|cen", "R|rec", "R|cal", "R|mer", "V|via"];
+  const CHAVES_EXTRA = ["H|cap", "R|est", "R|giro", "R|imp", "R|coe", "R|cus", "R|pro", "R|fin", "R|prc", "R|arr", "R|vol", "R|dem", "R|cen", "R|pic", "R|rec", "R|cal", "R|mer", "V|via"];
   return { analisar, aplicar, capacidade, viabilidade, sugestoes, simular, mercado, mercadoSim, giro, imposto, coerencia, estoqueNoM1, estabilizar, ESTAB_ROT, LISTAS, CHAVES_EXTRA, estresse, pontuacao };
 })();
 
@@ -12461,7 +12475,7 @@ function pendenciasDados(T) {
   if (calc.resultadoOperacional <= 0) out.push({ rot: "Resultado operacional", msg: `o resultado mensal está em ${brlC(calc.resultadoOperacional)}`, onde: "Módulos 5 a 11 (preços, quantidades e custos)" });
   else if (calc.pontoEquilibrio != null && calc.receitaAnual < calc.pontoEquilibrio) out.push({ rot: "Ponto de equilíbrio", msg: "a receita anual fica abaixo do ponto de equilíbrio", onde: "Módulos 5 a 11" });
   if (calc.prazoRetorno == null && calc.investimentoTotal > 0 && calc.faturamento > 0) out.push({ rot: "Retorno do investimento", msg: "o lucro atual não recupera o investimento", onde: "Módulos 5, 6 e 11" });
-  if (usoPico != null && usoPico > 100) out.push({ rot: "Capacidade no pico", msg: `a estrutura não comporta o plano de vendas (${nC(usoPico, 0)}% no pico)`, onde: "Capacidade (Ajuste geral)" });
+  if (usoPico != null && usoPico > 100 && !T.picoCoberto) out.push({ rot: "Capacidade no pico", msg: `a estrutura não comporta o plano de vendas (${nC(usoPico, 0)}% no pico)`, onde: "Capacidade (Ajuste geral)" });
   const neg = fluxo12.filter((m) => m.mes > 0 && m.resultado < 0).length;
   if (!caixa1Ok(neg, fluxo12, T.fluxoL, T.curva)) out.push({ rot: "Caixa no 1º ano", msg: `${neg} meses com resultado negativo${fluxo12[12] && fluxo12[12].resultado < 0 ? " e o mês 12 ainda negativo" : ""}`, onde: "Módulos 5 a 11 e arranque do fluxo" });
   return out;
@@ -12556,7 +12570,7 @@ async function conferirDocumentosEquipe(equipe, dados, refs) {
   let usoPico = null; if (capCalc) { const gs = capCalc.grupos.filter((g) => g.cap != null && g.usoPico != null); if (gs.length) usoPico = Math.round(Math.max(...gs.map((g) => g.usoPico)) * 100); }
   const pPro = Math.min(100, Math.max(0, Number(lanc?.m4?.pctProprio) || 0));
   const parecer = conclusaoResumo({ equipe, calc, fluxo: fluxo12, fluxoL, capCalc, tmaAnual, pPro }).rotulo;
-  const T = { curva: dados.curvaFluxo, calc, fluxoL, fluxo12, posL, capCalc, vpl: temTma ? vpl : null, tirA, parecer, usoPico };
+  const T = { curva: dados.curvaFluxo, calc, fluxoL, fluxo12, posL, capCalc, vpl: temTma ? vpl : null, tirA, parecer, usoPico, picoCoberto: (() => { const gs = capCalc ? capCalc.grupos.filter((g) => g.cap != null && g.uso != null) : []; return picoCobertoTxt(dados.capacidade?.picoCoberto) && gs.length && Math.max(...gs.map((g) => g.uso)) <= 1 ? picoCobertoTxt(dados.capacidade.picoCoberto) : null; })() };
   const comum = { equipe, calc, fluxo: fluxoL, capCalc, lanc, cenarios, tmaAnual, modoConferir: true };
   const wBlob = await gerarPlanoFinanceiroWord({ ...comum, taxaCrescimento: taxa, historico: dados.historico || [] });
   const pBuf = await gerarApresentacaoEquipe(comum);
@@ -13652,6 +13666,16 @@ function CapacidadeView({ equipe, lanc, dados, setDados, somenteLeitura, simulad
           <div className="text-sm text-slate-200 space-y-2">
             <div>Capacidade da empresa (o recurso que mais limita é <b>{R.gargalo.r.nome.toLowerCase()}</b>): <b>{fmtNum(R.capacidade, 0)} {modelo.unidade}/mês</b>{R.demanda > 0 ? <> · demanda planejada: <b>{fmtNum(R.demanda, 0)}</b> · utilização <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${corUso(R.utilizacao)}`}>{pct(R.utilizacao)}{R.utilizacao > 1 ? " — acima da capacidade" : ""}</span></> : <span className="text-slate-500"> · sem demanda informada ainda</span>}</div>
             {R.pico > 1 && R.demanda > 0 && <div className={`text-xs ${R.utilizacaoPico > 1 ? "text-rose-300" : "text-emerald-300"}`}>No mês/dia de pico (×{fmtNum(R.pico, 1)}): demanda de {fmtNum(R.demanda * R.pico, 0)} {modelo.unidade} → utilização de <b>{pct(R.utilizacaoPico)}</b>{R.utilizacaoPico > 1 && R.utilizacao <= 1 ? " — atende na média, mas NÃO no pico: avaliem reforço de equipe/estoque para esses períodos." : ""}</div>}
+            {R.pico > 1 && R.demanda > 0 && R.utilizacaoPico > 1 && R.utilizacao <= 1 && (
+              <div className="rounded-lg border border-amber-700/60 bg-amber-950/20 p-3 text-xs space-y-2">
+                <div className="font-bold text-amber-200">Como o pico é atendido? <span className="font-normal text-slate-400">(a média cabe; só o pico passa de 100%. Se o pico é coberto de outra forma, registrem aqui — entra no relatório.)</span></div>
+                <select disabled={somenteLeitura} value={cap.picoCoberto?.forma || ""} onChange={(e) => set({ picoCoberto: { ...(cap.picoCoberto || {}), forma: e.target.value } })} className="w-full bg-slate-950 border border-slate-700 rounded-md p-2 text-sm text-slate-100">
+                  <option value="">Escolha a forma…</option>{PICO_FORMAS.map((f) => <option key={f} value={f}>{f}</option>)}
+                </select>
+                <textarea disabled={somenteLeitura} value={cap.picoCoberto?.texto || ""} onChange={(e) => set({ picoCoberto: { ...(cap.picoCoberto || {}), texto: e.target.value } })} rows={3} placeholder="Expliquem como a empresa atende os dias de pico (ex.: o que é produzido antes, estoque de segurança, encomendas agendadas)." className="w-full bg-slate-950 border border-slate-700 rounded-md p-2 text-sm text-slate-100" />
+                {picoCobertoTxt(cap.picoCoberto) && <div className="text-emerald-300">✔ Pico registrado como coberto.</div>}
+              </div>
+            )}
             {carga.ativo && (
               <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3 text-xs space-y-1">
                 <div className="text-slate-100 font-bold">Carga de trabalho (pelos minutos por unidade)</div>
@@ -17633,13 +17657,18 @@ function gerarCalculoCapacidade(item) {
   if (A.durMedia && capTipoSeg(equipe.segmento) === "servico") (A.recA || []).forEach((r) => { const d = capNum((cap.recursos || {})[r.id]?.duracao); if (r.tipo === "servico" && d > 0 && Math.abs(d - A.durMedia) / A.durMedia >= 0.1) out.conferir.push(`O tempo do recurso "${r.nome}" (${fmtNum(d, 0)} min) é diferente da média dos minutos por serviço informados (${fmtNum(A.durMedia, 0)} min). Usar o mesmo tempo nos dois lugares.`); });
   if (!out.func.picoInformado) out.conferir.push("O fator de pico não foi informado (a conta usa 1,0). Informar quanto a movimentação sobe nos melhores dias.");
   try { const pq = capPesqPreenchidos(cap, equipe.segmento); if (pq.total > 0 && pq.n < pq.total) out.conferir.push(`Condições do segmento: ${pq.n} de ${pq.total} dados pesquisados. Pesquisar e anotar a fonte.`); } catch { /* sem pesquisa */ }
+  out.picoCoberto = picoCobertoTxt(cap && cap.picoCoberto);
   // resumo para a lista
   const cand = out.grupos.filter((g) => g.usoPico != null).sort((a, b) => b.usoPico - a.usoPico)[0];
   const hPico = out.horas ? out.horas.usoPico : null;
   if (!cand && hPico == null) out.res = { k: "n", txt: "não calculada (faltam tempos ou quantidades)", gargalo: "" };
   else { const u = Math.max(cand ? cand.usoPico : 0, hPico || 0); out.res = { k: u > 1 ? "r" : u >= 0.9 ? "a" : "g", txt: `${pcc(u)} no pico${u > 1 ? " — não atende" : ""}`, gargalo: hPico != null && hPico >= (cand ? cand.usoPico : 0) ? "Horas das pessoas" : cand.gargalo }; }
+  if (out.picoCoberto && out.res && out.res.k === "r") { const mu = Math.max(0, ...out.grupos.filter((g) => g.uso != null).map((g) => g.uso), (out.horas && out.horas.uso) || 0); if (mu <= 1) out.res = { ...out.res, k: "a", txt: String(out.res.txt).replace(" — não atende", " — coberto de outra forma") }; }
   return out;
 }
+
+const PICO_FORMAS = ["Produção antecipada e estoque", "Encomendas com agendamento", "Turnos escalonados", "Outra forma (explicar no texto)"];
+const picoCobertoTxt = (pc) => (pc && String(pc.texto || "").trim() ? `${pc.forma || "Outra forma"}: ${String(pc.texto).trim()}` : null);
 
 function CalculoCapacidadeTela({ c }) {
   const cor = { r: "text-rose-400", a: "text-amber-400", g: "text-emerald-400", n: "text-slate-400" };

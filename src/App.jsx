@@ -1,4 +1,4 @@
-// build: 20261122_12h33 Pico de capacidade coberto de outra forma (Capacidade e Ajuste geral)
+// build: 20261122_18h40 Gráficos do Word em página única na horizontal (só os que precisam)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1385,6 +1385,7 @@ const VERSOES = [
     "Ajuste geral › 3. Ajuste manual: cada equipe ganhou a linha \"Análises da equipe (calculadas · somente leitura)\" com Análise da DRE, Análise de Indicadores, Análise do Negócio, Análise de Cenários e Fluxo de Caixa Anual (abrem em uma janela com os dados atuais da equipe, sem sair do Ajuste geral) e os botões Baixar Apresentação e Baixar Plano Financeiro (Word). O professor não precisa mais entrar em \"Ver como aluno\" a cada conferência. Nada é gravado.",
     "Ajuste geral › cartão \"Retorno do investimento\" alinhado à faixa de 5 a 10 anos: retorno dentro da faixa (ou mais rápido) aparece em verde, sem plano de alavancas; só acima de 10 anos continua o plano opcional. Nada é corrigido por causa do retorno.",
     "Indicadores › nova Margem de segurança = (faturamento anual − ponto de equilíbrio) ÷ faturamento anual: mostra quanto as vendas podem cair antes de dar prejuízo (abaixo de 10% estreita · 10 a 25% confortável · acima de 25% ampla; só informativa, sem nota). Aparece na Análise de Indicadores (com o faturamento anual planejado e a frase \"Como ler\"), no Word, no slide 3 do PowerPoint e na Conferência dos documentos, para todas as equipes. Um ponto de equilíbrio alto não é cobrado: ele acompanha o faturamento.",
+    "Word › gráficos com muitas categorias (Margem de contribuição por produto, Preço x custo por produto, Depreciação por bem) agora saem em barras horizontais, com os nomes legíveis, cada um em página própria na horizontal (A4 paisagem); acima de 20 itens mostra os maiores e soma os demais. Gráficos pequenos continuam na página normal. Vale para todas as empresas, inclusive no download após o professor encerrar o projeto.",
     "Capacidade › novo campo \"Como o pico é atendido?\": quando a utilização média cabe (até 100%) mas o dia de pico passa de 100%, a equipe (ou o professor, pelo Ajuste geral › \"Pico coberto de outra forma\") registra a forma (produção antecipada e estoque, encomendas agendadas, turnos escalonados ou outra) e a justificativa. O alerta de capacidade no pico deixa de bloquear e o texto entra nos relatórios. Nenhum valor nem fator de pico é alterado.",
     "Ajuste geral › nova etapa \"Análise de Cenários (6 cenários)\": para a equipe que ainda não lançou nenhum cenário, propõe 6 (faturamento +10% / +20% / +30% e −10% / −20% / −30%, com custo variável e custo fixo acompanhando). Não mexe em nenhum módulo de lançamento; a equipe pode editar depois. Fica registrado, com Desfazer.",
     "Ajuste geral › Calibragem: dois novos itens. (1) Alternativa \"6 meses negativos\": curva de 24 passos com só o 1º semestre abaixo do ponto de equilíbrio e caixa positivo a partir do 7º mês (marque no lugar da curva de 12 meses; indicada para empresas de retorno muito rápido, como as de investimento baixo). (2) O item de preço pode ser desmarcado para manter os preços da equipe. Em ambos os casos os Módulos 1, 2, 3, 4 e 11 ficam preservados.",
@@ -5130,7 +5131,7 @@ const DOCXJS_URL = "https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.iife.js"
 // telas do sistema, com fundo branco para imprimir bem) e inseridos como PNG.
 // ---------------------------------------------------------------------------
 function graficoPng(cfg) {
-  const S = 2, W = 620 * S, H = (cfg.alt || 300) * S;
+  const S = 2, W = (cfg.larg || 620) * S, H = (cfg.alt || 300) * S;
   const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
   const g = cv.getContext("2d");
   g.fillStyle = "#FFFFFF"; g.fillRect(0, 0, W, H);
@@ -5141,7 +5142,31 @@ function graficoPng(cfg) {
   g.fillText(cfg.titulo, W / 2, 8 * S);
   const topo = 34 * S;
 
-  if (cfg.tipo === "pizza") {
+  if (cfg.tipo === "barrasH") {
+    // barras horizontais (nomes legíveis à esquerda), para muitas categorias em página inteira na horizontal; aceita 1 ou 2 séries (agrupadas)
+    const series = cfg.series || [{ nome: "", valores: cfg.valores, cor: null }]; const k = cfg.categorias.length, ns = series.length;
+    const todos = series.flatMap((x) => x.valores); let vmin = Math.min(0, ...todos), vmax = Math.max(0, ...todos); if (vmin === vmax) vmax = vmin + 1;
+    const bruto = (vmax - vmin) / 6, pot = Math.pow(10, Math.floor(Math.log10(bruto))), n = bruto / pot; const passo = (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * pot; vmin = Math.floor(vmin / passo) * passo; vmax = Math.ceil(vmax / passo) * passo;
+    const legH = ns > 1 ? 26 * S : 0; const Lm = 250 * S, Rm = 86 * S, Tm = topo + legH + 6 * S, Bm = H - 30 * S;
+    const x = (v) => Lm + ((v - vmin) / (vmax - vmin)) * (W - Lm - Rm); const rowH = (Bm - Tm) / k;
+    if (ns > 1) { let lx = Lm; g.font = F(11.5); g.textAlign = "left"; g.textBaseline = "middle"; series.forEach((x2) => { g.fillStyle = x2.cor; g.fillRect(lx, topo + 6 * S, 16 * S, 10 * S); g.fillStyle = "#334155"; g.fillText(x2.nome, lx + 22 * S, topo + 11 * S); lx += 22 * S + g.measureText(x2.nome).width + 30 * S; }); }
+    g.font = F(10.5); g.textAlign = "center"; g.textBaseline = "top";
+    for (let v = vmin; v <= vmax + passo / 2; v += passo) { g.strokeStyle = v === 0 ? "#64748B" : "#E2E8F0"; g.lineWidth = (v === 0 ? 1.5 : 1) * S; g.beginPath(); g.moveTo(x(v), Tm); g.lineTo(x(v), Bm); g.stroke(); g.fillStyle = "#475569"; g.fillText(moneyCurto(v), x(v), Bm + 6 * S); }
+    const quebraH = (t, max) => { const pal = String(t).split(" "), ls = []; let cur = ""; pal.forEach((w) => { if ((cur + " " + w).trim().length > max && cur) { ls.push(cur); cur = w; } else cur = (cur + " " + w).trim(); }); if (cur) ls.push(cur); return ls.slice(0, 2); };
+    const fn = rowH >= 30 * S ? 12 : rowH >= 22 * S ? 11 : 9.5;
+    cfg.categorias.forEach((c, i) => {
+      const cy = Tm + rowH * (i + 0.5); g.fillStyle = "#1E293B"; g.font = F(fn); g.textAlign = "right"; g.textBaseline = "middle";
+      const ls = rowH >= 28 * S ? quebraH(c, 36) : [String(c).length > 44 ? String(c).slice(0, 43) + "…" : String(c)];
+      ls.forEach((ln, li) => g.fillText(ln, Lm - 10 * S, cy + (li - (ls.length - 1) / 2) * (fn + 2) * S));
+      const bh = Math.min(rowH * 0.7 / ns, 22 * S);
+      series.forEach((sr, si) => {
+        const v = sr.valores[i], by = cy - (bh * ns) / 2 + bh * si, x0 = x(0), x1 = x(v);
+        g.fillStyle = sr.cor || cfg.cores[i % cfg.cores.length]; g.fillRect(Math.min(x0, x1), by, Math.max(1, Math.abs(x1 - x0)), bh * 0.92);
+        g.fillStyle = "#0F172A"; g.font = F(ns > 1 ? 9.5 : 11, true); g.textAlign = v >= 0 ? "left" : "right"; g.textBaseline = "middle";
+        g.fillText(Math.max(...todos.map(Math.abs)) < 1000 ? `${v < 0 ? "-" : ""}R$ ${Math.abs(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : moneyCheio(v), v >= 0 ? Math.max(x0, x1) + 5 * S : Math.min(x0, x1) - 5 * S, by + (bh * 0.92) / 2);
+      });
+    });
+  } else if (cfg.tipo === "pizza") {
     const total = cfg.fatias.reduce((s, f) => s + f.valor, 0);
     const cx = 165 * S, cy = topo + (H - topo) / 2, r = Math.min(105 * S, (H - topo) / 2 - 8 * S);
     let ang = -Math.PI / 2;
@@ -5203,7 +5228,7 @@ function graficoPng(cfg) {
   }
   const b64 = cv.toDataURL("image/png").split(",")[1], bin = atob(b64), u8 = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-  return { data: u8, w: 620, h: cfg.alt || 300 };
+  return { data: u8, w: cfg.larg || 620, h: cfg.alt || 300 };
 }
 
 const PALETA_GRAFICOS = ["#c9972e", "#4f83c9", "#5c7186", "#2dd4a8", "#f87171", "#a78bfa", "#38bdf8", "#f59e0b"];
@@ -5295,6 +5320,15 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
     return new Table({ width: { size: CW, type: WidthType.DXA }, columnWidths: larg, rows });
   };
   const imagem = (cfg) => { const im = graficoPng(cfg); return new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 120, after: 160 }, keepLines: true, children: [new ImageRun({ data: im.data, type: "png", transformation: { width: im.w, height: im.h } })] }); };
+  // gráfico com muitas categorias: barras horizontais em página própria na horizontal (A4 paisagem)
+  const imagemPaisagem = (cfg, n) => {
+    const alt = Math.min(560, Math.max(320, n * 30 + 110));
+    const im = graficoPng({ ...cfg, tipo: "barrasH", larg: 940, alt });
+    return { __paisagem: new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 60, after: 60 }, keepLines: true, children: [new ImageRun({ data: im.data, type: "png", transformation: { width: im.w, height: im.h } })] }) };
+  };
+  // limita a ~20 barras por gráfico (legível em 1 página); o excedente é somado em "Demais" quando faz sentido somar
+  const LIM_BARRAS = 20;
+  const topSoma = (nomes, valores, rotulo) => { if (nomes.length <= LIM_BARRAS) return { nomes, valores, extra: "" }; const ix = nomes.map((_, i) => i).sort((a, b) => valores[b] - valores[a]); const t = ix.slice(0, LIM_BARRAS - 1); const rest = ix.slice(LIM_BARRAS - 1); return { nomes: [...t.map((i) => nomes[i]), `Demais ${rest.length} ${rotulo}`], valores: [...t.map((i) => valores[i]), rest.reduce((a, i) => a + valores[i], 0)], extra: ` (${LIM_BARRAS - 1} maiores de ${nomes.length}; os demais somados)` }; };
   const pizza = (titulo, itens, alt = 250) => { const v = itens.filter((x) => x.valor > 0).sort((a, b) => b.valor - a.valor); let use = v; if (v.length > 7) { use = [...v.slice(0, 6), { nome: "Outros", valor: v.slice(6).reduce((s, x) => s + x.valor, 0) }]; } if (use.length < 2) return null; return imagem({ tipo: "pizza", titulo, fatias: use.map((x, i) => ({ nome: x.nome.length > 30 ? x.nome.slice(0, 29) + "…" : x.nome, valor: x.valor, cor: PALETA_GRAFICOS[i % PALETA_GRAFICOS.length] })), alt }); };
   // Quadro azul "Como foi calculado": a fórmula e a conta com os números da própria empresa (para a defesa na banca).
   const semBorda = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
@@ -5459,8 +5493,8 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
         `Margem total = margem unitária × quantidade = ${brl(p1.margemUnit)} × ${num(p1.qtd)} = ${brl(p1.margemTotal)}`,
       ]));
     }
-    filhos.push(imagem({ tipo: "barras", titulo: "Margem de contribuição total por produto (mensal)", categorias: calc.produtosRanking.map((x) => x.nome), valores: calc.produtosRanking.map((x) => x.margemTotal), cores: PALETA_GRAFICOS, alt: 290 }));
-    filhos.push(imagem({ tipo: "barras", titulo: "Preço de venda x custo unitário por produto", categorias: calc.produtosRanking.flatMap((x) => [`${x.nome} (preço)`, `${x.nome} (custo)`]), valores: calc.produtosRanking.flatMap((x) => [x.preco, x.custoUnit]), cores: ["#4f83c9", "#c9972e"], alt: 300 }));
+    { const tp = topSoma(calc.produtosRanking.map((x) => x.nome), calc.produtosRanking.map((x) => x.margemTotal), "produtos"); filhos.push(calc.produtosRanking.length > 6 ? imagemPaisagem({ titulo: "Margem de contribuição total por produto (mensal)" + tp.extra, categorias: tp.nomes, valores: tp.valores, cores: PALETA_GRAFICOS }, tp.nomes.length) : imagem({ tipo: "barras", titulo: "Margem de contribuição total por produto (mensal)", categorias: calc.produtosRanking.map((x) => x.nome), valores: calc.produtosRanking.map((x) => x.margemTotal), cores: PALETA_GRAFICOS, alt: 290 })); }
+    filhos.push(calc.produtosRanking.length > 4 ? imagemPaisagem((() => { const pr = calc.produtosRanking.slice(0, Math.min(calc.produtosRanking.length, 14)); return { titulo: "Preço de venda x custo unitário por produto" + (calc.produtosRanking.length > 14 ? ` (14 maiores margens de ${calc.produtosRanking.length} produtos)` : ""), categorias: pr.map((x) => x.nome), series: [{ nome: "Preço de venda", valores: pr.map((x) => x.preco), cor: "#4f83c9" }, { nome: "Custo unitário", valores: pr.map((x) => x.custoUnit), cor: "#c9972e" }], cores: PALETA_GRAFICOS }; })(), Math.min(calc.produtosRanking.length, 14) * 1.5) : imagem({ tipo: "barras", titulo: "Preço de venda x custo unitário por produto", categorias: calc.produtosRanking.flatMap((x) => [`${x.nome} (preço)`, `${x.nome} (custo)`]), valores: calc.produtosRanking.flatMap((x) => [x.preco, x.custoUnit]), cores: ["#4f83c9", "#c9972e"], alt: 300 }));
   }
 
   // ================= 3. Estrutura de custos fixos =================
@@ -5487,7 +5521,7 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
         `Total mensal = soma de todos os bens = ${brl(calc.depreciacaoMensal)}`,
       ]));
     }
-    filhos.push(imagem({ tipo: "barras", titulo: "Depreciação mensal por bem", categorias: calc.depreciacaoLinhas.map((r) => r.desc || "—"), valores: calc.depreciacaoLinhas.map((r) => r.mensal), cores: PALETA_GRAFICOS, alt: 290 }));
+    { const td = topSoma(calc.depreciacaoLinhas.map((r) => r.desc || "—"), calc.depreciacaoLinhas.map((r) => r.mensal), "bens"); filhos.push(calc.depreciacaoLinhas.length > 6 ? imagemPaisagem({ titulo: "Depreciação mensal por bem" + td.extra, categorias: td.nomes, valores: td.valores, cores: PALETA_GRAFICOS }, td.nomes.length) : imagem({ tipo: "barras", titulo: "Depreciação mensal por bem", categorias: calc.depreciacaoLinhas.map((r) => r.desc || "—"), valores: calc.depreciacaoLinhas.map((r) => r.mensal), cores: PALETA_GRAFICOS, alt: 290 })); }
   }
   filhos.push(mod(11, "Custos Fixos"));
   if (!lanc.m11.itens.length && !calc.maoDeObra) filhos.push(vazio("Módulo 11 ainda não preenchido."));
@@ -5729,12 +5763,18 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
     creator: "CEDUP Hermann Hering", title: `Plano Financeiro — ${equipe.nomeNegocio}`,
     styles: { default: { document: { run: { font: FONT, size: 21 } } } },
     numbering: { config: [{ reference: "marcadores", levels: [{ level: 0, format: D.LevelFormat.BULLET, text: "•", alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: 540, hanging: 270 } } } }] }] },
-    sections: [{
-      properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } },
+    sections: (() => {
+      const mk = (land, kids) => ({
+        properties: { page: { size: { width: 11906, height: 16838, orientation: land ? D.PageOrientation.LANDSCAPE : D.PageOrientation.PORTRAIT }, margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } },
       headers: { default: new Header({ children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [run(`${equipe.nomeNegocio} · Plano Financeiro`, { size: 16, color: GRAY })] })] }) },
       footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [run("CEDUP Hermann Hering · Plataforma do Plano Financeiro · página ", { size: 16, color: GRAY }), new TextRun({ children: [PageNumber.CURRENT], font: FONT, size: 16, color: GRAY })] }), new Paragraph({ alignment: AlignmentType.CENTER, children: [run(carimboDocumento([lanc, cenarios, tmaAnual, fluxoL.map((m) => Math.round(m.saldo)), capResumoCodigo(capCalc)]), { size: 14, color: GRAY })] })] }) },
-      children: filhos,
-    }],
+        children: kids,
+      });
+      const secs = []; let cur = [];
+      filhos.forEach((f) => { if (f && f.__paisagem) { if (cur.length) secs.push(mk(false, cur)); secs.push(mk(true, [f.__paisagem])); cur = []; } else cur.push(f); });
+      if (cur.length) secs.push(mk(false, cur));
+      return secs;
+    })(),
   });
   const blob = await Packer.toBlob(doc);
   if (modoConferir) return blob;

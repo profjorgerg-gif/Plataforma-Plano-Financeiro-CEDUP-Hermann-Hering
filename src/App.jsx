@@ -1,4 +1,4 @@
-// build: 20261122_18h40 Gráficos do Word em página única na horizontal (só os que precisam)
+// build: 20261125_20h50 Word: blindagem contra erro de abertura no Word antigo (XML)
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1385,6 +1385,7 @@ const VERSOES = [
     "Ajuste geral › 3. Ajuste manual: cada equipe ganhou a linha \"Análises da equipe (calculadas · somente leitura)\" com Análise da DRE, Análise de Indicadores, Análise do Negócio, Análise de Cenários e Fluxo de Caixa Anual (abrem em uma janela com os dados atuais da equipe, sem sair do Ajuste geral) e os botões Baixar Apresentação e Baixar Plano Financeiro (Word). O professor não precisa mais entrar em \"Ver como aluno\" a cada conferência. Nada é gravado.",
     "Ajuste geral › cartão \"Retorno do investimento\" alinhado à faixa de 5 a 10 anos: retorno dentro da faixa (ou mais rápido) aparece em verde, sem plano de alavancas; só acima de 10 anos continua o plano opcional. Nada é corrigido por causa do retorno.",
     "Indicadores › nova Margem de segurança = (faturamento anual − ponto de equilíbrio) ÷ faturamento anual: mostra quanto as vendas podem cair antes de dar prejuízo (abaixo de 10% estreita · 10 a 25% confortável · acima de 25% ampla; só informativa, sem nota). Aparece na Análise de Indicadores (com o faturamento anual planejado e a frase \"Como ler\"), no Word, no slide 3 do PowerPoint e na Conferência dos documentos, para todas as equipes. Um ponto de equilíbrio alto não é cobrado: ele acompanha o faturamento.",
+    "Word › arquivo mais robusto para abrir em versões antigas do Microsoft Word (2007/2010): remove caracteres invisíveis colados de outros programas e dá identificação única a cada gráfico, evitando a mensagem \"o arquivo XML não pôde ser aberto\". Os dados não mudam.",
     "Word › gráficos com muitas categorias (Margem de contribuição por produto, Preço x custo por produto, Depreciação por bem) agora saem em barras horizontais, com os nomes legíveis, cada um em página própria na horizontal (A4 paisagem); acima de 20 itens mostra os maiores e soma os demais. Gráficos pequenos continuam na página normal. Vale para todas as empresas, inclusive no download após o professor encerrar o projeto.",
     "Capacidade › novo campo \"Como o pico é atendido?\": quando a utilização média cabe (até 100%) mas o dia de pico passa de 100%, a equipe (ou o professor, pelo Ajuste geral › \"Pico coberto de outra forma\") registra a forma (produção antecipada e estoque, encomendas agendadas, turnos escalonados ou outra) e a justificativa. O alerta de capacidade no pico deixa de bloquear e o texto entra nos relatórios. Nenhum valor nem fator de pico é alterado.",
     "Ajuste geral › nova etapa \"Análise de Cenários (6 cenários)\": para a equipe que ainda não lançou nenhum cenário, propõe 6 (faturamento +10% / +20% / +30% e −10% / −20% / −30%, com custo variável e custo fixo acompanhando). Não mexe em nenhum módulo de lançamento; a equipe pode editar depois. Fica registrado, com Desfazer.",
@@ -5776,7 +5777,22 @@ async function gerarPlanoFinanceiroWord({ equipe, lanc, calc, fluxo, cenarios, t
       return secs;
     })(),
   });
-  const blob = await Packer.toBlob(doc);
+  let blob = await Packer.toBlob(doc);
+  // Blindagem para o Word antigo (2007/2010): remove caracteres de controle (ex.: colados de outros programas) e dá identificador único a cada imagem.
+  try {
+    const JSZipW = await carregarScriptCDN(JSZIP_URL, "JSZip");
+    const zw = await JSZipW.loadAsync(await blob.arrayBuffer());
+    const ruim = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+    let contaImg = 0;
+    for (const nome of Object.keys(zw.files)) {
+      if (!/^word\/(document|header\d*|footer\d*|footnotes|comments)\.xml$/.test(nome)) continue;
+      let x = await zw.file(nome).async("string"); const x0 = x;
+      x = x.replace(ruim, "");
+      if (nome === "word/document.xml") x = x.replace(/<wp:docPr id="\d+" name="[^"]*"/g, () => { contaImg += 1; return `<wp:docPr id="${contaImg}" name="Grafico ${contaImg}"`; });
+      if (x !== x0) zw.file(nome, x);
+    }
+    blob = await zw.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", compression: "DEFLATE" });
+  } catch (e) { /* se a blindagem falhar, entrega o arquivo original */ }
   if (modoConferir) return blob;
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
